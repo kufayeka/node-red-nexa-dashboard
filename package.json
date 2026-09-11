@@ -20,5 +20,12 @@
     "dashboard",
     "scada",
     "hmi"
-  ]
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
 }
