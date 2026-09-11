@@ -4,7 +4,7 @@ import { addLogicNode } from "../logic/logic-nodes.js";
 
 export function buildPalette(paletteEl) {
     paletteEl.empty();
-    var components = window.NEXA.getComponents();
+    var components = (window.NEXA && typeof window.NEXA.getComponents === "function") ? window.NEXA.getComponents() : [];
     if (!components.length) {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("No components registered.").appendTo(paletteEl);
         return;

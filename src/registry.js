@@ -34,3 +34,6 @@ export function initNexaRegistry() {
     };
     pendingQueue.forEach(function (item) { window.NEXA.registerComponent(item[0], item[1]); });
 }
+
+// Initialize immediately so window.NEXA is always present
+initNexaRegistry();
