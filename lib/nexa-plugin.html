@@ -314,6 +314,14 @@
       });
       if (!tcomp) return;
       tcomp.rotation = direction === "undo" ? ev.from : ev.to;
+    } else if (ev.t === "flip") {
+      var fcomp = screen.components.find(function(c) {
+        return c.id === ev.id;
+      });
+      if (!fcomp) return;
+      var fstate = direction === "undo" ? ev.from : ev.to;
+      fcomp.flipH = fstate.flipH;
+      fcomp.flipV = fstate.flipV;
     } else if (ev.t === "group") {
       screen.groups = screen.groups || [];
       if (direction === "undo") {
@@ -442,415 +450,129 @@
     state.undoStack.push(ev);
   }
 
-  // src/canvas/selection-handles.js
-  var HANDLE_SIZE = 8;
-  function clearSelectionHandles() {
-    if (state.selectionHandlesEl) {
-      state.selectionHandlesEl.remove();
-      state.selectionHandlesEl = null;
+  // src/sidebar/properties-panel.js
+  function renderPropertiesPanel() {
+    if (!state.propertiesPane) return;
+    state.propertiesPane.empty();
+    if (state.selectedIds.length > 1) {
+      window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
+      var isOneWholeGroup = (function() {
+        var first = findComponent(state.selectedIds[0]);
+        if (!first || !first.g) return false;
+        var members = groupMemberIds(first.g);
+        return members.length === state.selectedIds.length && members.every(isSelected);
+      })();
+      var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      if (isOneWholeGroup) {
+        window.$("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
+      } else {
+        window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
+      }
+      var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" }).on("click", function() {
+        setLockedForSelection(true);
+      }).appendTo(lockRow);
+      window.$("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" }).on("click", function() {
+        setLockedForSelection(false);
+      }).appendTo(lockRow);
+      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).html('<i class="fa fa-arrows-h"></i> Flip H').css({ flex: "1" }).on("click", function() {
+        toggleFlipForSelection("h");
+      }).appendTo(flipRow);
+      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).html('<i class="fa fa-arrows-v"></i> Flip V').css({ flex: "1" }).on("click", function() {
+        toggleFlipForSelection("v");
+      }).appendTo(flipRow);
+      return;
     }
-  }
-  function updateComponentBox(comp) {
-    if (!state.artboardEl) return;
-    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    el.css({
-      left: comp.x + "px",
-      top: comp.y + "px",
-      width: comp.w + "px",
-      height: comp.h + "px",
-      transform: "rotate(" + (comp.rotation || 0) + "deg)"
+    var comp = state.selectedIds.length === 1 ? findComponent(state.selectedIds[0]) : null;
+    if (!comp) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
+      return;
+    }
+    var typeDef = window.NEXA.getComponent(comp.type);
+    if (!typeDef) {
+      window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
+      return;
+    }
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(typeDef.label || comp.type).appendTo(state.propertiesPane);
+    var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
+    var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
+    lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked"));
+    lockInput.on("change", function() {
+      setLockedForSelection(lockInput.is(":checked"), [comp.id]);
     });
-    if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
-      state.selectionHandlesEl.css({
-        left: comp.x + "px",
-        top: comp.y + "px",
-        width: comp.w + "px",
-        height: comp.h + "px",
-        transform: "rotate(" + (comp.rotation || 0) + "deg)"
+    var layerRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
+    var layerSelect = window.$("<select>").css({ width: "100%" }).appendTo(layerRow);
+    (function buildLayerOptions(parentId, depth) {
+      getLayerChildren(parentId).forEach(function(layer) {
+        window.$("<option>", { value: layer.id }).text(new Array(depth + 1).join("\u2014 ") + layer.name).prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
+        buildLayerOptions(layer.id, depth + 1);
       });
-    }
-  }
-  function wireResizeHandle(handle, comp, handleName) {
-    handle.get(0).addEventListener("mousedown", function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      var screen = getActiveScreen();
-      var minSize = 20;
-      var start = { x: e.clientX, y: e.clientY };
-      var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
-      var rad = (comp.rotation || 0) * Math.PI / 180;
-      var cos = Math.cos(rad), sin = Math.sin(rad);
-      function onMove(ev) {
-        var dxScreen = (ev.clientX - start.x) / state.zoomLevel;
-        var dyScreen = (ev.clientY - start.y) / state.zoomLevel;
-        var dx = dxScreen * cos + dyScreen * sin;
-        var dy = -dxScreen * sin + dyScreen * cos;
-        var nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
-        if (handleName.indexOf("e") !== -1) nw = Math.max(minSize, orig.w + dx);
-        if (handleName.indexOf("s") !== -1) nh = Math.max(minSize, orig.h + dy);
-        if (handleName.indexOf("w") !== -1) {
-          nw = Math.max(minSize, orig.w - dx);
-          nx = orig.x + (orig.w - nw);
-        }
-        if (handleName.indexOf("n") !== -1) {
-          nh = Math.max(minSize, orig.h - dy);
-          ny = orig.y + (orig.h - nh);
-        }
-        if (screen && screen.snap) {
-          nx = snap(nx, screen.gridSize);
-          ny = snap(ny, screen.gridSize);
-          nw = snap(nw, screen.gridSize);
-          nh = snap(nh, screen.gridSize);
-        }
-        comp.x = nx;
-        comp.y = ny;
-        comp.w = Math.max(minSize, nw);
-        comp.h = Math.max(minSize, nh);
-        updateComponentBox(comp);
-      }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
-          pushHistory({
-            t: "resize",
-            screenId: screen ? screen.id : "",
-            id: comp.id,
-            from: orig,
-            to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
-          });
-          markDirty();
-        }
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+    })(null, 0);
+    layerSelect.on("change", function() {
+      comp.layerId = layerSelect.val();
+      markDirty();
+      renderActiveScreen();
+      selectOnly(comp.id);
     });
-  }
-  function wireRotateHandle(handle, comp) {
-    handle.get(0).addEventListener("mousedown", function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      var screen = getActiveScreen();
-      var origRotation = comp.rotation || 0;
-      var artboardOffset = state.artboardEl.offset();
-      var centerX = artboardOffset.left + (comp.x + comp.w / 2) * state.zoomLevel;
-      var centerY = artboardOffset.top + (comp.y + comp.h / 2) * state.zoomLevel;
-      var startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
-      function onMove(ev) {
-        var angle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * 180 / Math.PI;
-        var next = origRotation + (angle - startAngle);
-        if (ev.shiftKey) next = Math.round(next / 15) * 15;
-        comp.rotation = Math.round(next);
-        updateComponentBox(comp);
+    var defaults = typeDef.defaults || {};
+    Object.keys(defaults).forEach(function(key) {
+      var fieldDef = defaults[key] || {};
+      var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+      var input;
+      if (inputType === "checkbox") {
+        input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+      } else {
+        input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
       }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        if (comp.rotation !== origRotation) {
-          pushHistory({ t: "rotate", screenId: screen ? screen.id : "", id: comp.id, from: origRotation, to: comp.rotation });
-          markDirty();
-        }
-      }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      input.on("change", function() {
+        var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
+        comp.props[key] = v;
+        refreshComponentRender(comp);
+        markDirty();
+      });
     });
-  }
-  function renderSelectionHandles(comp) {
-    clearSelectionHandles();
-    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
+    [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair) {
+      var field = pair[0], label = pair[1];
+      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
+      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
+      input.on("change", function() {
+        comp[field] = parseFloat(input.val()) || 0;
+        updateComponentBox(comp);
+        markDirty();
+      });
+    });
     var caps = typeDef && typeDef.capabilities || {};
-    state.selectionHandlesEl = $("<div>", { "class": "nexa-selection-handles" }).css({
-      position: "absolute",
-      left: comp.x + "px",
-      top: comp.y + "px",
-      width: comp.w + "px",
-      height: comp.h + "px",
-      "pointer-events": "none",
-      transform: "rotate(" + (comp.rotation || 0) + "deg)"
-    }).appendTo(state.artboardEl);
-    if (!comp.locked) {
-      if (caps.resizable) {
-        [
-          { n: "nw", x: 0, y: 0, cursor: "nwse-resize" },
-          { n: "n", x: 0.5, y: 0, cursor: "ns-resize" },
-          { n: "ne", x: 1, y: 0, cursor: "nesw-resize" },
-          { n: "e", x: 1, y: 0.5, cursor: "ew-resize" },
-          { n: "se", x: 1, y: 1, cursor: "nwse-resize" },
-          { n: "s", x: 0.5, y: 1, cursor: "ns-resize" },
-          { n: "sw", x: 0, y: 1, cursor: "nesw-resize" },
-          { n: "w", x: 0, y: 0.5, cursor: "ew-resize" }
-        ].forEach(function(p) {
-          var handle = $("<div>", { "class": "nexa-resize-handle" }).css({
-            position: "absolute",
-            left: p.x * 100 + "%",
-            top: p.y * 100 + "%",
-            width: HANDLE_SIZE + "px",
-            height: HANDLE_SIZE + "px",
-            margin: -HANDLE_SIZE / 2 + "px 0 0 " + -HANDLE_SIZE / 2 + "px",
-            background: "#fff",
-            border: "1px solid #ff5722",
-            "box-sizing": "border-box",
-            cursor: p.cursor,
-            "pointer-events": "auto",
-            transform: "scale(" + 1 / state.zoomLevel + ")"
-          }).appendTo(state.selectionHandlesEl);
-          wireResizeHandle(handle, comp, p.n);
-        });
-      }
-      if (caps.rotatable) {
-        $("<div>").css({
-          position: "absolute",
-          left: "50%",
-          top: -24 / state.zoomLevel + "px",
-          width: "1px",
-          height: 24 / state.zoomLevel + "px",
-          background: "#ff5722",
-          "pointer-events": "none"
-        }).appendTo(state.selectionHandlesEl);
-        var rotHandle = $("<div>", { "class": "nexa-rotate-handle" }).css({
-          position: "absolute",
-          left: "50%",
-          top: -24 / state.zoomLevel + "px",
-          width: HANDLE_SIZE + "px",
-          height: HANDLE_SIZE + "px",
-          margin: -HANDLE_SIZE / 2 + "px 0 0 " + -HANDLE_SIZE / 2 + "px",
-          background: "#fff",
-          border: "1px solid #ff5722",
-          "border-radius": "50%",
-          cursor: "grab",
-          "pointer-events": "auto",
-          transform: "scale(" + 1 / state.zoomLevel + ")"
-        }).appendTo(state.selectionHandlesEl);
-        wireRotateHandle(rotHandle, comp);
-      }
+    if (caps.flippable !== false) {
+      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "6px", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).css({
+        flex: "1",
+        padding: "5px 8px",
+        "font-size": "11px",
+        cursor: comp.locked ? "default" : "pointer",
+        background: comp.flipH ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+        border: comp.flipH ? "1px solid #2196f3" : "1px solid #ccc",
+        "font-weight": comp.flipH ? "bold" : "normal"
+      }).html('<i class="fa fa-arrows-h"></i> Flip H').prop("disabled", comp.locked).on("click", function() {
+        toggleFlipForSelection("h");
+      }).appendTo(flipRow);
+      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).css({
+        flex: "1",
+        padding: "5px 8px",
+        "font-size": "11px",
+        cursor: comp.locked ? "default" : "pointer",
+        background: comp.flipV ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+        border: comp.flipV ? "1px solid #2196f3" : "1px solid #ccc",
+        "font-weight": comp.flipV ? "bold" : "normal"
+      }).html('<i class="fa fa-arrows-v"></i> Flip V').prop("disabled", comp.locked).on("click", function() {
+        toggleFlipForSelection("v");
+      }).appendTo(flipRow);
     }
-    if (caps.lockable !== false) {
-      var lockIcon = $("<div>", { "class": "nexa-lock-handle" }).css({
-        position: "absolute",
-        right: -22 / state.zoomLevel + "px",
-        top: -22 / state.zoomLevel + "px",
-        width: "16px",
-        height: "16px",
-        background: "#fff",
-        border: "1px solid #999",
-        "border-radius": "3px",
-        cursor: "pointer",
-        "pointer-events": "auto",
-        "font-size": "10px",
-        "text-align": "center",
-        "line-height": "15px",
-        color: "#666",
-        transform: "scale(" + 1 / state.zoomLevel + ")"
-      }).html(comp.locked ? '<i class="fa fa-lock"></i>' : '<i class="fa fa-unlock-alt"></i>').appendTo(state.selectionHandlesEl);
-      lockIcon.on("click", function(e) {
-        e.stopPropagation();
-        setLockedForSelection(!comp.locked, [comp.id]);
-      });
-    }
-  }
-
-  // src/canvas/component-renderer.js
-  function refreshComponentRender(comp) {
-    if (!state.artboardEl) return;
-    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    var node = el && el.get && el.get(0);
-    if (!node) return;
-    var typeDef = window.NEXA.getComponent(comp.type);
-    if (!typeDef || typeof typeDef.render !== "function") return;
-    try {
-      typeDef.render(node, comp.props || {}, {
-        emit: function(eventName, payload) {
-          if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
-        }
-      });
-    } catch (e) {
-      el.text("(render error: " + e.message + ")");
-    }
-  }
-  function removeComponents(ids) {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var toRemove = ids.map(function(id) {
-      return screen.components.find(function(c) {
-        return c.id === id;
-      });
-    }).filter(function(c) {
-      return c && !c.locked;
-    });
-    if (!toRemove.length) return;
-    var removeIds = toRemove.map(function(c) {
-      return c.id;
-    });
-    screen.components = screen.components.filter(function(c) {
-      return removeIds.indexOf(c.id) === -1;
-    });
-    if (state.artboardEl) {
-      removeIds.forEach(function(id) {
-        state.artboardEl.find('[data-id="' + id + '"]').remove();
-      });
-    }
-    state.selectedIds = state.selectedIds.filter(function(id) {
-      return removeIds.indexOf(id) === -1;
-    });
-    refreshSelectionVisuals();
-    if (toRemove.length === 1) {
-      pushHistory({ t: "delete", screenId: screen.id, comp: toRemove[0] });
-    } else {
-      pushHistory({ t: "multi", screenId: screen.id, events: toRemove.map(function(c) {
-        return { t: "delete", screenId: screen.id, comp: c };
-      }) });
-    }
-    markDirty();
-  }
-  function renderComponent(comp) {
-    var screen = getActiveScreen();
-    if (!screen || !state.artboardEl) return;
-    var dragStart = null;
-    var typeDef = window.NEXA.getComponent(comp.type);
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
-      position: "absolute",
-      left: comp.x + "px",
-      top: comp.y + "px",
-      width: comp.w + "px",
-      height: comp.h + "px",
-      transform: "rotate(" + (comp.rotation || 0) + "deg)",
-      "box-sizing": "border-box",
-      cursor: comp.locked ? "default" : "move",
-      "user-select": "none",
-      display: isLayerVisible(comp.layerId) ? "" : "none"
-    }).appendTo(state.artboardEl);
-    if (typeDef && typeof typeDef.render === "function") {
-      try {
-        typeDef.render(el.get(0), comp.props || {}, {
-          emit: function(eventName, payload) {
-            if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
-          }
-        });
-      } catch (e) {
-        el.text("(render error: " + e.message + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
-      }
-    } else {
-      el.text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
-    }
-    el.on("mousedown", function(e) {
-      e.stopPropagation();
-      var targetIds = comp.g ? groupMemberIds(comp.g) : [comp.id];
-      var alreadyAllSelected = targetIds.every(isSelected);
-      if (e.shiftKey) {
-        if (alreadyAllSelected) {
-          state.selectedIds = state.selectedIds.filter(function(id) {
-            return targetIds.indexOf(id) === -1;
-          });
-        } else {
-          targetIds.forEach(function(id) {
-            if (!isSelected(id)) state.selectedIds.push(id);
-          });
-        }
-        refreshSelectionVisuals();
-      } else if (!alreadyAllSelected) {
-        selectMultiple(targetIds);
-      }
-    });
-    if (!comp.locked) {
-      var groupStart = null;
-      var dragStartPage = null;
-      el.draggable({
-        start: function(e) {
-          if (!isSelected(comp.id)) selectOnly(comp.id);
-          dragStart = { x: comp.x, y: comp.y };
-          dragStartPage = { x: e.pageX, y: e.pageY };
-          groupStart = {};
-          state.selectedIds.forEach(function(id) {
-            var c = findComponent(id);
-            if (c) groupStart[id] = { x: c.x, y: c.y };
-          });
-        },
-        drag: function(e, ui) {
-          var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
-          var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
-          localLeft = snap(localLeft, screen.gridSize);
-          localTop = snap(localTop, screen.gridSize);
-          localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
-          localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
-          ui.position.left = localLeft;
-          ui.position.top = localTop;
-          if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
-            state.selectionHandlesEl.css({ left: localLeft + "px", top: localTop + "px" });
-          }
-          var dx = localLeft - dragStart.x;
-          var dy = localTop - dragStart.y;
-          state.selectedIds.forEach(function(id) {
-            if (id === comp.id) return;
-            var c = findComponent(id);
-            var start = groupStart[id];
-            if (!c || !start) return;
-            c.x = start.x + dx;
-            c.y = start.y + dy;
-            updateComponentBox(c);
-          });
-        },
-        stop: function(e) {
-          var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
-          var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
-          localLeft = snap(localLeft, screen.gridSize);
-          localTop = snap(localTop, screen.gridSize);
-          localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
-          localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
-          comp.x = localLeft;
-          comp.y = localTop;
-          updateComponentBox(comp);
-          var moved = [];
-          state.selectedIds.forEach(function(id) {
-            var c = findComponent(id);
-            var start = groupStart[id];
-            if (!c || !start) return;
-            if (start.x !== c.x || start.y !== c.y) {
-              moved.push({ id, from: start, to: { x: c.x, y: c.y } });
-            }
-          });
-          if (moved.length === 1) {
-            pushHistory({ t: "move", screenId: screen.id, id: moved[0].id, from: moved[0].from, to: moved[0].to });
-          } else if (moved.length > 1) {
-            pushHistory({
-              t: "multi",
-              screenId: screen.id,
-              events: moved.map(function(m) {
-                return { t: "move", screenId: screen.id, id: m.id, from: m.from, to: m.to };
-              })
-            });
-          }
-          if (moved.length) markDirty();
-        }
-      });
-    }
-  }
-  function addComponentAt(type, artboardX, artboardY) {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var def = window.NEXA.getComponent(type);
-    if (!def) return;
-    var size = def.defaultSize || { w: 100, h: 60 };
-    var props = {};
-    Object.keys(def.defaults || {}).forEach(function(k) {
-      props[k] = def.defaults[k].value;
-    });
-    var comp = {
-      id: genId(),
-      type,
-      x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
-      y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
-      w: size.w,
-      h: size.h,
-      rotation: 0,
-      locked: false,
-      layerId: (screen.layers[0] || {}).id,
-      props
-    };
-    screen.components.push(comp);
-    renderComponent(comp);
-    selectOnly(comp.id);
-    pushHistory({ t: "add", screenId: screen.id, comp });
-    markDirty();
   }
 
   // src/canvas/canvas-ui.js
@@ -1115,96 +837,424 @@
     }).appendTo(state.layersPane);
   }
 
-  // src/sidebar/properties-panel.js
-  function renderPropertiesPanel() {
-    if (!state.propertiesPane) return;
-    state.propertiesPane.empty();
-    if (state.selectedIds.length > 1) {
-      window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
-      var isOneWholeGroup = (function() {
-        var first = findComponent(state.selectedIds[0]);
-        if (!first || !first.g) return false;
-        var members = groupMemberIds(first.g);
-        return members.length === state.selectedIds.length && members.every(isSelected);
-      })();
-      var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      if (isOneWholeGroup) {
-        window.$("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
-      } else {
-        window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
-      }
-      var lockRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
-      window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" }).on("click", function() {
-        setLockedForSelection(true);
-      }).appendTo(lockRow);
-      window.$("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" }).on("click", function() {
-        setLockedForSelection(false);
-      }).appendTo(lockRow);
-      return;
-    }
-    var comp = state.selectedIds.length === 1 ? findComponent(state.selectedIds[0]) : null;
-    if (!comp) {
-      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
-      return;
-    }
+  // src/canvas/component-renderer.js
+  function refreshComponentRender(comp) {
+    if (!state.artboardEl) return;
+    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    var node = el && el.get && el.get(0);
+    if (!node) return;
     var typeDef = window.NEXA.getComponent(comp.type);
-    if (!typeDef) {
-      window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
-      return;
+    if (!typeDef || typeof typeDef.render !== "function") return;
+    try {
+      typeDef.render(node, comp.props || {}, {
+        emit: function(eventName, payload) {
+          if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+        }
+      });
+    } catch (e) {
+      el.text("(render error: " + e.message + ")");
     }
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(typeDef.label || comp.type).appendTo(state.propertiesPane);
-    var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
-    var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
-    lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked"));
-    lockInput.on("change", function() {
-      setLockedForSelection(lockInput.is(":checked"), [comp.id]);
-    });
-    var layerRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
-    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
-    var layerSelect = window.$("<select>").css({ width: "100%" }).appendTo(layerRow);
-    (function buildLayerOptions(parentId, depth) {
-      getLayerChildren(parentId).forEach(function(layer) {
-        window.$("<option>", { value: layer.id }).text(new Array(depth + 1).join("\u2014 ") + layer.name).prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
-        buildLayerOptions(layer.id, depth + 1);
+  }
+  function removeComponents(ids) {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var toRemove = ids.map(function(id) {
+      return screen.components.find(function(c) {
+        return c.id === id;
       });
-    })(null, 0);
-    layerSelect.on("change", function() {
-      comp.layerId = layerSelect.val();
-      markDirty();
-      renderActiveScreen();
-      selectOnly(comp.id);
+    }).filter(function(c) {
+      return c && !c.locked;
     });
-    var defaults = typeDef.defaults || {};
-    Object.keys(defaults).forEach(function(key) {
-      var fieldDef = defaults[key] || {};
-      var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
-      var input;
-      if (inputType === "checkbox") {
-        input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
-      } else {
-        input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+    if (!toRemove.length) return;
+    var removeIds = toRemove.map(function(c) {
+      return c.id;
+    });
+    screen.components = screen.components.filter(function(c) {
+      return removeIds.indexOf(c.id) === -1;
+    });
+    if (state.artboardEl) {
+      removeIds.forEach(function(id) {
+        state.artboardEl.find('[data-id="' + id + '"]').remove();
+      });
+    }
+    state.selectedIds = state.selectedIds.filter(function(id) {
+      return removeIds.indexOf(id) === -1;
+    });
+    refreshSelectionVisuals();
+    if (toRemove.length === 1) {
+      pushHistory({ t: "delete", screenId: screen.id, comp: toRemove[0] });
+    } else {
+      pushHistory({ t: "multi", screenId: screen.id, events: toRemove.map(function(c) {
+        return { t: "delete", screenId: screen.id, comp: c };
+      }) });
+    }
+    markDirty();
+  }
+  function getComponentTransform(comp) {
+    var transform = "rotate(" + (comp.rotation || 0) + "deg)";
+    if (comp.flipH || comp.flipV) {
+      var sx = comp.flipH ? -1 : 1;
+      var sy = comp.flipV ? -1 : 1;
+      transform += " scale(" + sx + "," + sy + ")";
+    }
+    return transform;
+  }
+  function renderComponent(comp) {
+    var screen = getActiveScreen();
+    if (!screen || !state.artboardEl) return;
+    var dragStart = null;
+    var typeDef = window.NEXA.getComponent(comp.type);
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
+      position: "absolute",
+      left: comp.x + "px",
+      top: comp.y + "px",
+      width: comp.w + "px",
+      height: comp.h + "px",
+      transform: getComponentTransform(comp),
+      "box-sizing": "border-box",
+      cursor: comp.locked ? "default" : "move",
+      "user-select": "none",
+      display: isLayerVisible(comp.layerId) ? "" : "none"
+    }).appendTo(state.artboardEl);
+    if (typeDef && typeof typeDef.render === "function") {
+      try {
+        typeDef.render(el.get(0), comp.props || {}, {
+          emit: function(eventName, payload) {
+            if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+          }
+        });
+      } catch (e) {
+        el.text("(render error: " + e.message + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
       }
-      input.on("change", function() {
-        var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
-        comp.props[key] = v;
-        refreshComponentRender(comp);
-        markDirty();
-      });
+    } else {
+      el.text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
+    }
+    el.on("mousedown", function(e) {
+      e.stopPropagation();
+      var targetIds = comp.g ? groupMemberIds(comp.g) : [comp.id];
+      var alreadyAllSelected = targetIds.every(isSelected);
+      if (e.shiftKey) {
+        if (alreadyAllSelected) {
+          state.selectedIds = state.selectedIds.filter(function(id) {
+            return targetIds.indexOf(id) === -1;
+          });
+        } else {
+          targetIds.forEach(function(id) {
+            if (!isSelected(id)) state.selectedIds.push(id);
+          });
+        }
+        refreshSelectionVisuals();
+      } else if (!alreadyAllSelected) {
+        selectMultiple(targetIds);
+      }
     });
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
-    [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair) {
-      var field = pair[0], label = pair[1];
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
-      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
-      input.on("change", function() {
-        comp[field] = parseFloat(input.val()) || 0;
+    if (!comp.locked) {
+      var groupStart = null;
+      var dragStartPage = null;
+      el.draggable({
+        start: function(e) {
+          if (!isSelected(comp.id)) selectOnly(comp.id);
+          dragStart = { x: comp.x, y: comp.y };
+          dragStartPage = { x: e.pageX, y: e.pageY };
+          groupStart = {};
+          state.selectedIds.forEach(function(id) {
+            var c = findComponent(id);
+            if (c) groupStart[id] = { x: c.x, y: c.y };
+          });
+        },
+        drag: function(e, ui) {
+          var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
+          var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
+          localLeft = snap(localLeft, screen.gridSize);
+          localTop = snap(localTop, screen.gridSize);
+          localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
+          localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
+          ui.position.left = localLeft;
+          ui.position.top = localTop;
+          if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
+            state.selectionHandlesEl.css({ left: localLeft + "px", top: localTop + "px" });
+          }
+          var dx = localLeft - dragStart.x;
+          var dy = localTop - dragStart.y;
+          state.selectedIds.forEach(function(id) {
+            if (id === comp.id) return;
+            var c = findComponent(id);
+            var start = groupStart[id];
+            if (!c || !start) return;
+            c.x = start.x + dx;
+            c.y = start.y + dy;
+            updateComponentBox(c);
+          });
+        },
+        stop: function(e) {
+          var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
+          var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
+          localLeft = snap(localLeft, screen.gridSize);
+          localTop = snap(localTop, screen.gridSize);
+          localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
+          localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
+          comp.x = localLeft;
+          comp.y = localTop;
+          updateComponentBox(comp);
+          var moved = [];
+          state.selectedIds.forEach(function(id) {
+            var c = findComponent(id);
+            var start = groupStart[id];
+            if (!c || !start) return;
+            if (start.x !== c.x || start.y !== c.y) {
+              moved.push({ id, from: start, to: { x: c.x, y: c.y } });
+            }
+          });
+          if (moved.length === 1) {
+            pushHistory({ t: "move", screenId: screen.id, id: moved[0].id, from: moved[0].from, to: moved[0].to });
+          } else if (moved.length > 1) {
+            pushHistory({
+              t: "multi",
+              screenId: screen.id,
+              events: moved.map(function(m) {
+                return { t: "move", screenId: screen.id, id: m.id, from: m.from, to: m.to };
+              })
+            });
+          }
+          if (moved.length) markDirty();
+        }
+      });
+    }
+  }
+  function addComponentAt(type, artboardX, artboardY) {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var def = window.NEXA.getComponent(type);
+    if (!def) return;
+    var size = def.defaultSize || { w: 100, h: 60 };
+    var props = {};
+    Object.keys(def.defaults || {}).forEach(function(k) {
+      props[k] = def.defaults[k].value;
+    });
+    var comp = {
+      id: genId(),
+      type,
+      x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
+      y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
+      w: size.w,
+      h: size.h,
+      rotation: 0,
+      locked: false,
+      layerId: (screen.layers[0] || {}).id,
+      props
+    };
+    screen.components.push(comp);
+    renderComponent(comp);
+    selectOnly(comp.id);
+    pushHistory({ t: "add", screenId: screen.id, comp });
+    markDirty();
+  }
+
+  // src/canvas/selection-handles.js
+  var HANDLE_SIZE = 8;
+  function clearSelectionHandles() {
+    if (state.selectionHandlesEl) {
+      state.selectionHandlesEl.remove();
+      state.selectionHandlesEl = null;
+    }
+  }
+  function updateComponentBox(comp) {
+    if (!state.artboardEl) return;
+    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    el.css({
+      left: comp.x + "px",
+      top: comp.y + "px",
+      width: comp.w + "px",
+      height: comp.h + "px",
+      transform: getComponentTransform(comp)
+    });
+    if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
+      state.selectionHandlesEl.css({
+        left: comp.x + "px",
+        top: comp.y + "px",
+        width: comp.w + "px",
+        height: comp.h + "px",
+        transform: "rotate(" + (comp.rotation || 0) + "deg)"
+      });
+    }
+  }
+  function wireResizeHandle(handle, comp, handleName) {
+    handle.get(0).addEventListener("mousedown", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      var screen = getActiveScreen();
+      var minSize = 20;
+      var start = { x: e.clientX, y: e.clientY };
+      var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+      var rad = (comp.rotation || 0) * Math.PI / 180;
+      var cos = Math.cos(rad), sin = Math.sin(rad);
+      function onMove(ev) {
+        var dxScreen = (ev.clientX - start.x) / state.zoomLevel;
+        var dyScreen = (ev.clientY - start.y) / state.zoomLevel;
+        var dx = dxScreen * cos + dyScreen * sin;
+        var dy = -dxScreen * sin + dyScreen * cos;
+        var nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
+        if (handleName.indexOf("e") !== -1) nw = Math.max(minSize, orig.w + dx);
+        if (handleName.indexOf("s") !== -1) nh = Math.max(minSize, orig.h + dy);
+        if (handleName.indexOf("w") !== -1) {
+          nw = Math.max(minSize, orig.w - dx);
+          nx = orig.x + (orig.w - nw);
+        }
+        if (handleName.indexOf("n") !== -1) {
+          nh = Math.max(minSize, orig.h - dy);
+          ny = orig.y + (orig.h - nh);
+        }
+        if (screen && screen.snap) {
+          nx = snap(nx, screen.gridSize);
+          ny = snap(ny, screen.gridSize);
+          nw = snap(nw, screen.gridSize);
+          nh = snap(nh, screen.gridSize);
+        }
+        comp.x = nx;
+        comp.y = ny;
+        comp.w = Math.max(minSize, nw);
+        comp.h = Math.max(minSize, nh);
         updateComponentBox(comp);
-        markDirty();
-      });
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
+          pushHistory({
+            t: "resize",
+            screenId: screen ? screen.id : "",
+            id: comp.id,
+            from: orig,
+            to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
+          });
+          markDirty();
+        }
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
     });
+  }
+  function wireRotateHandle(handle, comp) {
+    handle.get(0).addEventListener("mousedown", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      var screen = getActiveScreen();
+      var origRotation = comp.rotation || 0;
+      var artboardOffset = state.artboardEl.offset();
+      var centerX = artboardOffset.left + (comp.x + comp.w / 2) * state.zoomLevel;
+      var centerY = artboardOffset.top + (comp.y + comp.h / 2) * state.zoomLevel;
+      var startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+      function onMove(ev) {
+        var angle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * 180 / Math.PI;
+        var next = origRotation + (angle - startAngle);
+        if (ev.shiftKey) next = Math.round(next / 15) * 15;
+        comp.rotation = Math.round(next);
+        updateComponentBox(comp);
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (comp.rotation !== origRotation) {
+          pushHistory({ t: "rotate", screenId: screen ? screen.id : "", id: comp.id, from: origRotation, to: comp.rotation });
+          markDirty();
+        }
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+  function renderSelectionHandles(comp) {
+    clearSelectionHandles();
+    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+    var caps = typeDef && typeDef.capabilities || {};
+    state.selectionHandlesEl = $("<div>", { "class": "nexa-selection-handles" }).css({
+      position: "absolute",
+      left: comp.x + "px",
+      top: comp.y + "px",
+      width: comp.w + "px",
+      height: comp.h + "px",
+      "pointer-events": "none",
+      transform: "rotate(" + (comp.rotation || 0) + "deg)"
+    }).appendTo(state.artboardEl);
+    if (!comp.locked) {
+      if (caps.resizable) {
+        [
+          { n: "nw", x: 0, y: 0, cursor: "nwse-resize" },
+          { n: "n", x: 0.5, y: 0, cursor: "ns-resize" },
+          { n: "ne", x: 1, y: 0, cursor: "nesw-resize" },
+          { n: "e", x: 1, y: 0.5, cursor: "ew-resize" },
+          { n: "se", x: 1, y: 1, cursor: "nwse-resize" },
+          { n: "s", x: 0.5, y: 1, cursor: "ns-resize" },
+          { n: "sw", x: 0, y: 1, cursor: "nesw-resize" },
+          { n: "w", x: 0, y: 0.5, cursor: "ew-resize" }
+        ].forEach(function(p) {
+          var handle = $("<div>", { "class": "nexa-resize-handle" }).css({
+            position: "absolute",
+            left: p.x * 100 + "%",
+            top: p.y * 100 + "%",
+            width: HANDLE_SIZE + "px",
+            height: HANDLE_SIZE + "px",
+            margin: -HANDLE_SIZE / 2 + "px 0 0 " + -HANDLE_SIZE / 2 + "px",
+            background: "#fff",
+            border: "1px solid #ff5722",
+            "box-sizing": "border-box",
+            cursor: p.cursor,
+            "pointer-events": "auto",
+            transform: "scale(" + 1 / state.zoomLevel + ")"
+          }).appendTo(state.selectionHandlesEl);
+          wireResizeHandle(handle, comp, p.n);
+        });
+      }
+      if (caps.rotatable) {
+        $("<div>").css({
+          position: "absolute",
+          left: "50%",
+          top: -24 / state.zoomLevel + "px",
+          width: "1px",
+          height: 24 / state.zoomLevel + "px",
+          background: "#ff5722",
+          "pointer-events": "none"
+        }).appendTo(state.selectionHandlesEl);
+        var rotHandle = $("<div>", { "class": "nexa-rotate-handle" }).css({
+          position: "absolute",
+          left: "50%",
+          top: -24 / state.zoomLevel + "px",
+          width: HANDLE_SIZE + "px",
+          height: HANDLE_SIZE + "px",
+          margin: -HANDLE_SIZE / 2 + "px 0 0 " + -HANDLE_SIZE / 2 + "px",
+          background: "#fff",
+          border: "1px solid #ff5722",
+          "border-radius": "50%",
+          cursor: "grab",
+          "pointer-events": "auto",
+          transform: "scale(" + 1 / state.zoomLevel + ")"
+        }).appendTo(state.selectionHandlesEl);
+        wireRotateHandle(rotHandle, comp);
+      }
+    }
+    if (caps.lockable !== false) {
+      var lockIcon = $("<div>", { "class": "nexa-lock-handle" }).css({
+        position: "absolute",
+        right: -22 / state.zoomLevel + "px",
+        top: -22 / state.zoomLevel + "px",
+        width: "16px",
+        height: "16px",
+        background: "#fff",
+        border: "1px solid #999",
+        "border-radius": "3px",
+        cursor: "pointer",
+        "pointer-events": "auto",
+        "font-size": "10px",
+        "text-align": "center",
+        "line-height": "15px",
+        color: "#666",
+        transform: "scale(" + 1 / state.zoomLevel + ")"
+      }).html(comp.locked ? '<i class="fa fa-lock"></i>' : '<i class="fa fa-unlock-alt"></i>').appendTo(state.selectionHandlesEl);
+      lockIcon.on("click", function(e) {
+        e.stopPropagation();
+        setLockedForSelection(!comp.locked, [comp.id]);
+      });
+    }
   }
 
   // src/logic/logic-wires.js
@@ -2090,6 +2140,9 @@
     }
     renderPropertiesPanel();
     refreshEventsHighlight();
+    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+      state.sidebarTabs.activateTab("properties");
+    }
   }
   function selectOnly(id) {
     state.selectedIds = [id];
@@ -2117,6 +2170,30 @@
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
+  }
+  function toggleFlipForSelection(axis) {
+    var screen = getActiveScreen();
+    if (!screen || !state.selectedIds.length) return;
+    var events = [];
+    state.selectedIds.forEach(function(id) {
+      var c = findComponent(id);
+      if (!c || c.locked) return;
+      var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
+      if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
+      var from = { flipH: !!c.flipH, flipV: !!c.flipV };
+      if (axis === "h") {
+        c.flipH = !c.flipH;
+      } else if (axis === "v") {
+        c.flipV = !c.flipV;
+      }
+      var to = { flipH: !!c.flipH, flipV: !!c.flipV };
+      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
+      updateComponentBox(c);
+    });
+    if (!events.length) return;
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
+    markDirty();
+    renderPropertiesPanel();
   }
   function groupSelection() {
     if (state.selectedIds.length < 2) {
@@ -2482,6 +2559,18 @@
         else pasteClipboard();
       }
     }
+    if (state.activeCanvasTab === "ui" && !isTextField && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+      if (e.key === "H" || e.key === "h") {
+        e.preventDefault();
+        toggleFlipForSelection("h");
+        return;
+      }
+      if (e.key === "V" || e.key === "v") {
+        e.preventDefault();
+        toggleFlipForSelection("v");
+        return;
+      }
+    }
   }
   function buildCanvasArea(trayBody) {
     trayBody.css({
@@ -2749,7 +2838,7 @@
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({ "margin-bottom": "8px" }).appendTo(screensPane);
     window.$("<button>", { type: "button" }).text("+ Add Screen").css({ width: "100%" }).on("click", addScreenFromSidebar).appendTo(screensPane);
     state.screenFormEl = window.$("<div>").css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(screensPane);
-    var sidebarTabs = window.RED.tabs.create({
+    state.sidebarTabs = window.RED.tabs.create({
       element: ul,
       onchange: function(tab) {
         if (!tab) return;
@@ -2770,11 +2859,11 @@
         if (tab.id === "events") renderEventsPanel();
       }
     });
-    sidebarTabs.addTab({ id: "components", label: "Components" });
-    sidebarTabs.addTab({ id: "screens", label: "Screens" });
-    sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    sidebarTabs.addTab({ id: "layers", label: "Layers" });
-    sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "components", label: "Components" });
+    state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
+    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
+    state.sidebarTabs.addTab({ id: "events", label: "Events" });
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
       window.NEXA.onRegister(function() {
         if (state.componentsPane) {

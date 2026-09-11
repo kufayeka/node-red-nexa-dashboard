@@ -1,7 +1,7 @@
 // --- Canvas Component Selection & Grouping -----------------------------
 import { state, genId, markDirty, getActiveScreen, findComponent, findGroup, groupMemberIds } from "../state.js";
 import { pushHistory } from "../history.js";
-import { clearSelectionHandles, renderSelectionHandles } from "./selection-handles.js";
+import { clearSelectionHandles, renderSelectionHandles, updateComponentBox } from "./selection-handles.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { refreshEventsHighlight } from "../sidebar/palette-events-panel.js";
 import { renderActiveScreen } from "./canvas-ui.js";
@@ -23,6 +23,9 @@ export function refreshSelectionVisuals() {
     }
     renderPropertiesPanel();
     refreshEventsHighlight();
+    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+        state.sidebarTabs.activateTab("properties");
+    }
 }
 
 export function selectOnly(id) {
@@ -61,6 +64,31 @@ export function setLockedForSelection(locked, idsOverride) {
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
+}
+
+export function toggleFlipForSelection(axis) {
+    var screen = getActiveScreen();
+    if (!screen || !state.selectedIds.length) return;
+    var events = [];
+    state.selectedIds.forEach(function (id) {
+        var c = findComponent(id);
+        if (!c || c.locked) return;
+        var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
+        if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
+        var from = { flipH: !!c.flipH, flipV: !!c.flipV };
+        if (axis === "h") {
+            c.flipH = !c.flipH;
+        } else if (axis === "v") {
+            c.flipV = !c.flipV;
+        }
+        var to = { flipH: !!c.flipH, flipV: !!c.flipV };
+        events.push({ t: "flip", screenId: screen.id, id: c.id, from: from, to: to });
+        updateComponentBox(c);
+    });
+    if (!events.length) return;
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events: events });
+    markDirty();
+    renderPropertiesPanel();
 }
 
 export function groupSelection() {

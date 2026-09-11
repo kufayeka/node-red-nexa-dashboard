@@ -47,6 +47,12 @@ export function applyHistoryMutation(ev, direction) {
         var tcomp = screen.components.find(function (c) { return c.id === ev.id; });
         if (!tcomp) return;
         tcomp.rotation = direction === "undo" ? ev.from : ev.to;
+    } else if (ev.t === "flip") {
+        var fcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        if (!fcomp) return;
+        var fstate = direction === "undo" ? ev.from : ev.to;
+        fcomp.flipH = fstate.flipH;
+        fcomp.flipV = fstate.flipV;
     } else if (ev.t === "group") {
         screen.groups = screen.groups || [];
         if (direction === "undo") {

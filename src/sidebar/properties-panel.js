@@ -1,5 +1,5 @@
 import { state, findComponent, groupMemberIds, markDirty } from "../state.js";
-import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection } from "../canvas/selection.js";
+import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
@@ -24,11 +24,17 @@ export function renderPropertiesPanel() {
             window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
         }
 
-        var lockRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
+        var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
         window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" })
             .on("click", function () { setLockedForSelection(true); }).appendTo(lockRow);
         window.$("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" })
             .on("click", function () { setLockedForSelection(false); }).appendTo(lockRow);
+
+        var flipRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
+        window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).html('<i class="fa fa-arrows-h"></i> Flip H').css({ flex: "1" })
+            .on("click", function () { toggleFlipForSelection("h"); }).appendTo(flipRow);
+        window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).html('<i class="fa fa-arrows-v"></i> Flip V').css({ flex: "1" })
+            .on("click", function () { toggleFlipForSelection("v"); }).appendTo(flipRow);
         return;
     }
     var comp = state.selectedIds.length === 1 ? findComponent(state.selectedIds[0]) : null;
@@ -101,4 +107,32 @@ export function renderPropertiesPanel() {
             markDirty();
         });
     });
+
+    var caps = (typeDef && typeDef.capabilities) || {};
+    if (caps.flippable !== false) {
+        var flipRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "6px", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" })
+            .css({
+                flex: "1", padding: "5px 8px", "font-size": "11px", cursor: comp.locked ? "default" : "pointer",
+                background: comp.flipH ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+                border: comp.flipH ? "1px solid #2196f3" : "1px solid #ccc",
+                "font-weight": comp.flipH ? "bold" : "normal"
+            })
+            .html('<i class="fa fa-arrows-h"></i> Flip H')
+            .prop("disabled", comp.locked)
+            .on("click", function () { toggleFlipForSelection("h"); })
+            .appendTo(flipRow);
+
+        window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" })
+            .css({
+                flex: "1", padding: "5px 8px", "font-size": "11px", cursor: comp.locked ? "default" : "pointer",
+                background: comp.flipV ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+                border: comp.flipV ? "1px solid #2196f3" : "1px solid #ccc",
+                "font-weight": comp.flipV ? "bold" : "normal"
+            })
+            .html('<i class="fa fa-arrows-v"></i> Flip V')
+            .prop("disabled", comp.locked)
+            .on("click", function () { toggleFlipForSelection("v"); })
+            .appendTo(flipRow);
+    }
 }

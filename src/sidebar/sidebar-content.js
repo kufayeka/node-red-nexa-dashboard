@@ -25,7 +25,7 @@ export function buildSidebarContent() {
     window.$("<button>", { type: "button" }).text("+ Add Screen").css({ width: "100%" }).on("click", addScreenFromSidebar).appendTo(screensPane);
     state.screenFormEl = window.$("<div>").css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(screensPane);
 
-    var sidebarTabs = window.RED.tabs.create({
+    state.sidebarTabs = window.RED.tabs.create({
         element: ul,
         onchange: function (tab) {
             if (!tab) return;
@@ -46,11 +46,11 @@ export function buildSidebarContent() {
             if (tab.id === "events") renderEventsPanel();
         }
     });
-    sidebarTabs.addTab({ id: "components", label: "Components" });
-    sidebarTabs.addTab({ id: "screens", label: "Screens" });
-    sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    sidebarTabs.addTab({ id: "layers", label: "Layers" });
-    sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "components", label: "Components" });
+    state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
+    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
+    state.sidebarTabs.addTab({ id: "events", label: "Events" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
         window.NEXA.onRegister(function () {

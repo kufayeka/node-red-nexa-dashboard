@@ -45,6 +45,16 @@ export function removeComponents(ids) {
     markDirty();
 }
 
+export function getComponentTransform(comp) {
+    var transform = "rotate(" + (comp.rotation || 0) + "deg)";
+    if (comp.flipH || comp.flipV) {
+        var sx = comp.flipH ? -1 : 1;
+        var sy = comp.flipV ? -1 : 1;
+        transform += " scale(" + sx + "," + sy + ")";
+    }
+    return transform;
+}
+
 export function renderComponent(comp) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
@@ -56,7 +66,7 @@ export function renderComponent(comp) {
         top: comp.y + "px",
         width: comp.w + "px",
         height: comp.h + "px",
-        transform: "rotate(" + (comp.rotation || 0) + "deg)",
+        transform: getComponentTransform(comp),
         "box-sizing": "border-box",
         cursor: comp.locked ? "default" : "move",
         "user-select": "none",

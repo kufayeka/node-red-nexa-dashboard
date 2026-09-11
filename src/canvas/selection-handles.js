@@ -2,6 +2,7 @@
 import { state, snap, markDirty, getActiveScreen } from "../state.js";
 import { pushHistory } from "../history.js";
 import { setLockedForSelection } from "./selection.js";
+import { getComponentTransform } from "./component-renderer.js";
 
 const HANDLE_SIZE = 8;
 
@@ -18,7 +19,7 @@ export function updateComponentBox(comp) {
     el.css({
         left: comp.x + "px", top: comp.y + "px",
         width: comp.w + "px", height: comp.h + "px",
-        transform: "rotate(" + (comp.rotation || 0) + "deg)"
+        transform: getComponentTransform(comp)
     });
     if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
         state.selectionHandlesEl.css({

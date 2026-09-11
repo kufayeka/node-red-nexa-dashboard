@@ -3,7 +3,7 @@ import {
     ensureScreensLoaded
 } from "./state.js";
 import { undo, redo } from "./history.js";
-import { groupSelection, ungroupSelection, deselectAll, startMarqueeSelect } from "./canvas/selection.js";
+import { groupSelection, ungroupSelection, deselectAll, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
 import { removeComponents } from "./canvas/component-renderer.js";
 import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
@@ -53,6 +53,18 @@ export function onKeyDown(e) {
             e.preventDefault();
             if (state.activeCanvasTab === "logic") pasteLogicClipboard();
             else pasteClipboard();
+        }
+    }
+    if (state.activeCanvasTab === "ui" && !isTextField && !e.ctrlKey && !e.metaKey && e.shiftKey) {
+        if (e.key === "H" || e.key === "h") {
+            e.preventDefault();
+            toggleFlipForSelection("h");
+            return;
+        }
+        if (e.key === "V" || e.key === "v") {
+            e.preventDefault();
+            toggleFlipForSelection("v");
+            return;
         }
     }
 }
