@@ -52,5 +52,16 @@ export function buildSidebarContent() {
     sidebarTabs.addTab({ id: "layers", label: "Layers" });
     sidebarTabs.addTab({ id: "events", label: "Events" });
 
+    if (window.NEXA && typeof window.NEXA.onRegister === "function") {
+        window.NEXA.onRegister(function () {
+            if (state.componentsPane) {
+                buildPalette(state.componentsPane);
+            }
+            if (state.eventsPane && state.eventsPane.is(":visible")) {
+                renderEventsPanel();
+            }
+        });
+    }
+
     return container;
 }

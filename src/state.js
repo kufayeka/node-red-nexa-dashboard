@@ -199,7 +199,15 @@ export function getComponentsInLayer(layerId) {
     return screen.components.filter(function (c) { return c.layerId === layerId; });
 }
 
-export function findLogicNode(id) {
-    var screen = getActiveScreen();
+export function findLogicNode(screenOrId, maybeId) {
+    var screen, id;
+    if (maybeId !== undefined) {
+        screen = screenOrId;
+        id = maybeId;
+    } else {
+        screen = getActiveScreen();
+        id = screenOrId;
+    }
     return screen && screen.logic && (screen.logic.nodes || []).find(function (n) { return n.id === id; });
 }
+

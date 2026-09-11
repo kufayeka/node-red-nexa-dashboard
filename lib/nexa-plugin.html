@@ -6,9 +6,19 @@
   function initNexaRegistry() {
     var pendingQueue = window.NEXA && window.NEXA._q || [];
     var registry = {};
+    var listeners = [];
     window.NEXA = {
       registerComponent: function(id, def) {
         registry[id] = def;
+        listeners.forEach(function(fn) {
+          try {
+            fn(id, def);
+          } catch (e) {
+          }
+        });
+      },
+      onRegister: function(fn) {
+        listeners.push(fn);
       },
       getComponent: function(id) {
         return registry[id];
@@ -233,8 +243,15 @@
       return c.layerId === layerId;
     });
   }
-  function findLogicNode(id) {
-    var screen = getActiveScreen();
+  function findLogicNode(screenOrId, maybeId) {
+    var screen, id;
+    if (maybeId !== void 0) {
+      screen = screenOrId;
+      id = maybeId;
+    } else {
+      screen = getActiveScreen();
+      id = screenOrId;
+    }
     return screen && screen.logic && (screen.logic.nodes || []).find(function(n) {
       return n.id === id;
     });
@@ -2758,6 +2775,16 @@
     sidebarTabs.addTab({ id: "properties", label: "Properties" });
     sidebarTabs.addTab({ id: "layers", label: "Layers" });
     sidebarTabs.addTab({ id: "events", label: "Events" });
+    if (window.NEXA && typeof window.NEXA.onRegister === "function") {
+      window.NEXA.onRegister(function() {
+        if (state.componentsPane) {
+          buildPalette(state.componentsPane);
+        }
+        if (state.eventsPane && state.eventsPane.is(":visible")) {
+          renderEventsPanel();
+        }
+      });
+    }
     return container;
   }
 

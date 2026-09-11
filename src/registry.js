@@ -4,9 +4,16 @@
 export function initNexaRegistry() {
     var pendingQueue = (window.NEXA && window.NEXA._q) || [];
     var registry = {};
+    var listeners = [];
     window.NEXA = {
         registerComponent: function (id, def) {
             registry[id] = def;
+            listeners.forEach(function (fn) {
+                try { fn(id, def); } catch (e) {}
+            });
+        },
+        onRegister: function (fn) {
+            listeners.push(fn);
         },
         getComponent: function (id) {
             return registry[id];
