@@ -1,0 +1,3145 @@
+<script type="text/javascript">
+// --- NEXA component registry -------------------------------------------
+// Component plugins call NEXA.registerComponent(id, def) from their own
+// .html — see @kufayeka/nexa-component-basic-shapes for real examples (one
+// plain-DOM component, one Lit-based Web Component; the contract doesn't
+// care which). This runs unconditionally (not inside the `typeof RED`
+// guard below) and BEFORE any check for whether it's "the real one" yet,
+// because plugin/node .html files load via bundles with no guaranteed
+// order between packages (the same class of bug already hit twice in this
+// codebase: RED.asset being a per-plugin object, and RED.nodes.getType
+// timing) — so a component plugin's own required first line
+// (window.NEXA = window.NEXA || {_q:[], registerComponent:...}) may have
+// already queued registrations before this file got a chance to run.
+(function () {
+    var pendingQueue = (window.NEXA && window.NEXA._q) || [];
+    var registry = {};
+    window.NEXA = {
+        registerComponent: function (id, def) {
+            registry[id] = def;
+        },
+        getComponent: function (id) {
+            return registry[id];
+        },
+        getComponents: function () {
+            return Object.keys(registry).map(function (id) {
+                var def = registry[id];
+                return {
+                    id: id,
+                    category: def.category || "General",
+                    label: def.label || id,
+                    icon: def.icon,
+                    defaultSize: def.defaultSize || { w: 100, h: 60 },
+                    capabilities: def.capabilities || {},
+                    defaults: def.defaults || {},
+                    bindable: def.bindable || [],
+                    render: def.render,
+                    onBind: def.onBind,
+                    // Every event a component fires is DEFINED BY THE
+                    // PLUGIN, not synthesized by the dashboard — a bare
+                    // string ("click") still works (normalized to a
+                    // generic "On click" label here, for components that
+                    // don't need anything fancier), but a plugin author
+                    // can supply { name, label } so the Events palette
+                    // shows a real, specific label instead of a generic
+                    // "on <raw-event-name>" the dashboard made up.
+                    events: (def.events || []).map(function (e) {
+                        return typeof e === "string" ? { name: e, label: "On " + e } : { name: e.name, label: e.label || ("On " + e.name) };
+                    })
+                };
+            });
+        }
+    };
+    pendingQueue.forEach(function (item) { window.NEXA.registerComponent(item[0], item[1]); });
+})();
+
+(function () {
+    if (typeof RED === "undefined") return;
+
+    var componentsPane = null; // hoisted so both the sidebar tab and the
+    // tray's open() can refresh it — component plugins can register after
+    // this sidebar content was first built (same load-order note above).
+    var propertiesPane = null; // hoisted so refreshSelectionVisuals()/deselectAll()
+    // can refresh it from wherever selection changes on the canvas.
+    var layersPane = null; // hoisted so layer/z-order actions (which can be
+    // triggered from this tab itself) can refresh it after they run.
+    var eventsPane = null; // hoisted so it can be refreshed after adding/
+    // removing a component (its event/update node list is derived from
+    // the active screen's current components) and on tray open, same
+    // load-order reasoning as componentsPane above.
+
+    // --- Screen data model. Persisted the same way node-red-asset-engine
+    // persists its schema: as a property on a config node (kufayeka-nexa-
+    // project, see ../nodes/nexa-project.js), NOT a separate JSON file. That
+    // means it's included in flows.json / export / import / Projects(git)
+    // and saved by Node-RED's own Deploy — no save endpoint of our own.
+    var screens = [];
+    var activeScreenId = null;
+    var screensLoaded = false;
+    var screenCounter = 0;
+    var projectConfigNode = null;
+
+    var trayContent = null;
+    var artboardEl = null;
+    var stageEl = null;
+    var sizerEl = null; // reserves scroll space for the SCALED stage size (a transform alone doesn't affect layout/scroll size)
+    var viewportEl = null; // the scrollable ancestor — needed to read/set scroll position for focal-point zoom
+    var zoomLabelEl = null; // the "100%" readout in the floating zoom toolbar
+    var selectedIds = []; // multi-select: plain array, small N, order = click order
+
+    // Logic canvas (the "Logic" sub-tab next to "UI" inside buildCanvasArea)
+    // — a separate, much simpler node-box canvas, no zoom/selection-handles/
+    // grouping. Hoisted for the same reason as artboardEl/stageEl above:
+    // built once per tray-open, read/written from functions triggered by
+    // the sidebar's Events tab and by node/wire interactions on the canvas.
+    var logicViewportEl = null;
+    var logicArtboardEl = null;
+    var logicSvgEl = null;
+    // Multi-select on the Logic canvas — its own array, deliberately never
+    // mixed with selectedIds (the UI canvas's own selection). Mirrors the
+    // UI canvas's own selectedIds pattern (plain array, click/shift-click/
+    // marquee, small N so no Set needed) rather than the single-id it
+    // started as, so click/shift-click/marquee/Delete work the same way
+    // here as they already do for UI components.
+    var logicSelectedIds = [];
+    // Which canvas sub-tab is currently showing — onKeyDown's Delete/
+    // Backspace handling reads this so it acts on the right selection.
+    // Without this, a UI component selected before switching to the Logic
+    // tab (selectedIds isn't touched by the tab switch itself) would get
+    // deleted instead of the logic node the user actually meant to remove.
+    var activeCanvasTab = "ui";
+    var SVG_NS = "http://www.w3.org/2000/svg";
+    var LOGIC_CANVAS_W = 2000, LOGIC_CANVAS_H = 1400;
+    var LOGIC_NODE_W = 150, LOGIC_NODE_H = 34;
+    var LOGIC_GRID_SIZE = 20;
+    // Same zoom mechanics as the UI canvas (ZOOM_MIN/MAX/STEP below,
+    // applyZoomTransform/setZoom/zoomToFit), deliberately mirrored as its
+    // own parallel set of vars/functions rather than shared — the UI
+    // canvas's zoom code is proven (including the jQuery-UI-drag-under-
+    // CSS-scale fix) and this avoids risking a regression there while
+    // giving the Logic canvas the same capability.
+    var logicZoomLevel = 1;
+    var logicStageEl = null;
+    var logicSizerEl = null;
+    var logicZoomLabelEl = null;
+    // hasInput/hasOutput determine which port dots a node gets; onload/
+    // onrender/onclose/ui-event are pure SOURCES (no input — they're only
+    // ever started by fireLifecycle/fireUiEvent, never by an incoming
+    // wire); ui-update/debug are pure SINKS.
+    var LOGIC_NODE_KINDS = {
+        onload: { label: "On Load", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+        onrender: { label: "On Render", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+        onclose: { label: "On Close", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+        "ui-event": { hasInput: false, hasOutput: true, color: "#3a6fb0" },
+        "ui-update": { hasInput: true, hasOutput: false, color: "#b0663a" },
+        "function": { label: "Function", hasInput: true, hasOutput: true, color: "#7a5aa8" },
+        "debug": { label: "Debug", hasInput: true, hasOutput: false, color: "#777" },
+        // A SOURCE, like the lifecycle nodes — fires on its own on an
+        // interval once the deployed page has mounted (config: intervalMs).
+        "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
+        // Sinks — terminal actions with no output to wire further.
+        "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
+        "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" }
+    };
+
+    // --- Zoom. Mirrors Node-RED's own flow-editor zoom toolbar/constants
+    // (view.js / view-zoom-constants.js: MIN_ZOOM/MAX_ZOOM/ZOOM_STEP), but
+    // adapted for OUR case — one small FIXED-size artboard per screen,
+    // not an effectively-infinite canvas that must always fill the
+    // viewport. So there's no calculateMinZoom() forcing a viewport-filling
+    // minimum; ZOOM_MIN is just a fixed floor that still lets a big SCADA
+    // screen be zoomed way out to see the whole thing.
+    var ZOOM_MIN = 0.1;
+    var ZOOM_MAX = 2.0;
+    var ZOOM_STEP = 0.2;
+    var zoomLevel = 1;
+
+    // Sidebar elements, built once when the editor loads and kept alive
+    // for the whole session — independent of the tray's own open/close
+    // lifecycle, so the palette and screen list are always usable.
+    var screenListEl = null;
+    var screenFormEl = null;
+
+    function genId() {
+        return "n" + Math.random().toString(16).slice(2, 10);
+    }
+
+    function snap(v, gridSize) {
+        return Math.round(v / gridSize) * gridSize;
+    }
+
+    function getActiveScreen() {
+        return screens.find(function (s) { return s.id === activeScreenId; });
+    }
+
+    function makeScreen(opts) {
+        screenCounter++;
+        return {
+            id: genId(),
+            name: (opts && opts.name) || ("Screen " + screenCounter),
+            path: (opts && opts.path) || ("/screen" + screenCounter),
+            width: (opts && opts.width) || 1280,
+            height: (opts && opts.height) || 800,
+            gridSize: (opts && opts.gridSize) || 20,
+            snap: opts ? opts.snap !== false : true,
+            components: (opts && opts.components) || [],
+            // Groups mirror @node-red/editor-client's group.js: a group
+            // record only holds a DERIVED bbox — membership lives on the
+            // member (component.g = groupId), not as a list on the group.
+            groups: (opts && opts.groups) || [],
+            // Layers: a hierarchical tree (parentId pointers, like group
+            // membership above) purely for organization/visibility — NOT
+            // for z-order, which stays the flat `components` array order
+            // (already the render order, needs no separate concept). Every
+            // component always belongs to exactly one layer.
+            layers: (opts && opts.layers) || [{ id: "default", name: "Default Layer", parentId: null, visible: true }],
+            // Per-screen logic graph: lifecycle/UI-event nodes wired to
+            // UI-update/function/debug nodes, executed by a small
+            // synchronous graph walker (see runLogicGraph) — a simple event
+            // loop scoped to this screen, NOT the real Node-RED flow
+            // runtime. See the "Logic" sub-tab in buildCanvasArea and the
+            // "Events" sidebar tab (renderEventsPanel).
+            logic: (opts && opts.logic) || { nodes: [], wires: [] }
+        };
+    }
+
+    function markDirty() {
+        // Keep the config node's own property in sync with our in-memory
+        // `screens` — some operations (e.g. removing a screen) reassign the
+        // top-level `screens` variable to a new array, which would silently
+        // detach it from the node otherwise. Same mechanism a moved/edited
+        // flow node uses to light up the main Deploy button — Nexa Dashboard
+        // deliberately has no deploy button of its own.
+        if (projectConfigNode) projectConfigNode.screens = screens;
+        RED.nodes.dirty(true);
+    }
+
+    // --- Persistence: find-or-create the kufayeka-nexa-project config node
+    // (mirrors how @node-red/editor-client's editor.js:1353-1367 builds a
+    // brand new config node object before RED.nodes.add) ------------------
+
+    function getOrCreateProjectConfigNode() {
+        var existing = null;
+        RED.nodes.eachConfig(function (n) {
+            if (n.type === "kufayeka-nexa-project") existing = n;
+        });
+        if (existing) return existing;
+
+        var node_def = RED.nodes.getType("kufayeka-nexa-project");
+        if (!node_def) {
+            RED.notify("Nexa Dashboard: kufayeka-nexa-project node type not found — is the package installed correctly?", { type: "error" });
+            return null;
+        }
+        var node = {
+            id: RED.nodes.id(),
+            _def: node_def,
+            type: "kufayeka-nexa-project",
+            z: "", // global scope config node, not tied to any flow tab
+            users: [],
+            name: "Nexa Project",
+            screens: []
+        };
+        for (var d in node_def.defaults) {
+            if (node[d] === undefined && node_def.defaults[d].value !== undefined) {
+                node[d] = JSON.parse(JSON.stringify(node_def.defaults[d].value));
+            }
+        }
+        RED.nodes.add(node);
+        RED.nodes.dirty(true);
+        return node;
+    }
+
+    function ensureScreensLoaded(cb) {
+        if (screensLoaded) {
+            if (cb) cb();
+            return;
+        }
+        projectConfigNode = getOrCreateProjectConfigNode();
+        var data = (projectConfigNode && projectConfigNode.screens) || [];
+        // Screens persisted before the groups/layers features existed
+        // won't have these fields — default them rather than litter every
+        // group/layer function with the same fallback.
+        data.forEach(function (s) {
+            if (!s.groups) s.groups = [];
+            if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, visible: true }];
+            s.components.forEach(function (c) { if (!c.layerId) c.layerId = s.layers[0].id; });
+            if (!s.logic) s.logic = { nodes: [], wires: [] };
+        });
+        screenCounter = data.length;
+        screens = data.length ? data : [makeScreen({ name: "Screen 1", path: "/screen1" })];
+        if (projectConfigNode) projectConfigNode.screens = screens;
+        activeScreenId = screens[0].id;
+        screensLoaded = true;
+        renderScreenList();
+        renderScreenForm();
+        if (cb) cb();
+    }
+
+    // --- Undo/redo. Same push/pop/event-shape *pattern* as RED.history
+    // (history.js:40 undoEvent, keyed by ev.t), but a genuinely separate
+    // stack — history.js's dispatcher is a hardcoded if/else chain over
+    // known flow event types (move/delete/createGroup/...) with no fallback
+    // for an unrecognized `t`, so pushing our own event types onto the real
+    // RED.history would silently no-op on undo. Safe to keep fully separate
+    // without UX conflict: RED's own ctrl-z/ctrl-y are scoped to
+    // #red-ui-workspace / #red-ui-sidebar-node-config in keymap.json, not
+    // global, and our tray lives outside both — see the keydown.nexa
+    // listener below, active only while this tray is open.
+    var undoStack = [];
+    var redoStack = [];
+
+    function pushHistory(ev) {
+        undoStack.push(ev);
+        redoStack = [];
+    }
+
+    // Pure state mutation, no render/dirty side effects — "multi" (a batched
+    // group-move or group-delete) recurses into this, not into
+    // applyHistoryEvent, so the render/markDirty side effects below happen
+    // exactly once per undo/redo regardless of how many sub-events it has.
+    // Mirrors @node-red/editor-client's own history.js "multi" pattern
+    // (reverse-iterated on undo, forward on redo).
+    function applyHistoryMutation(ev, direction) {
+        var screen = screens.find(function (s) { return s.id === ev.screenId; });
+        if (!screen) return;
+        if (ev.t === "multi") {
+            var subs = direction === "undo" ? ev.events.slice().reverse() : ev.events;
+            subs.forEach(function (sub) { applyHistoryMutation(sub, direction); });
+        } else if (ev.t === "add") {
+            if (direction === "undo") {
+                screen.components = screen.components.filter(function (c) { return c.id !== ev.comp.id; });
+            } else {
+                screen.components.push(ev.comp);
+            }
+        } else if (ev.t === "delete") {
+            if (direction === "undo") {
+                screen.components.push(ev.comp);
+            } else {
+                screen.components = screen.components.filter(function (c) { return c.id !== ev.comp.id; });
+            }
+        } else if (ev.t === "move") {
+            var comp = screen.components.find(function (c) { return c.id === ev.id; });
+            if (!comp) return;
+            var pos = direction === "undo" ? ev.from : ev.to;
+            comp.x = pos.x;
+            comp.y = pos.y;
+        } else if (ev.t === "resize") {
+            var rcomp = screen.components.find(function (c) { return c.id === ev.id; });
+            if (!rcomp) return;
+            var box = direction === "undo" ? ev.from : ev.to;
+            rcomp.x = box.x; rcomp.y = box.y; rcomp.w = box.w; rcomp.h = box.h;
+        } else if (ev.t === "rotate") {
+            var tcomp = screen.components.find(function (c) { return c.id === ev.id; });
+            if (!tcomp) return;
+            tcomp.rotation = direction === "undo" ? ev.from : ev.to;
+        } else if (ev.t === "group") {
+            screen.groups = screen.groups || [];
+            if (direction === "undo") {
+                ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) delete c.g; });
+                screen.groups = screen.groups.filter(function (g) { return g.id !== ev.group.id; });
+            } else {
+                if (!screen.groups.some(function (g) { return g.id === ev.group.id; })) screen.groups.push(ev.group);
+                ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) c.g = ev.group.id; });
+            }
+        } else if (ev.t === "ungroup") {
+            // Exact inverse of "group" — undo re-creates it, redo removes it again.
+            screen.groups = screen.groups || [];
+            if (direction === "undo") {
+                if (!screen.groups.some(function (g) { return g.id === ev.group.id; })) screen.groups.push(ev.group);
+                ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) c.g = ev.group.id; });
+            } else {
+                ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) delete c.g; });
+                screen.groups = screen.groups.filter(function (g) { return g.id !== ev.group.id; });
+            }
+        } else if (ev.t === "addLogicNode") {
+            if (direction === "undo") {
+                screen.logic.nodes = screen.logic.nodes.filter(function (n) { return n.id !== ev.node.id; });
+            } else {
+                screen.logic.nodes.push(ev.node);
+            }
+        } else if (ev.t === "deleteLogicNode") {
+            // Mirrors "delete" above, plus the wires that were touching it
+            // (removeLogicNode always deletes both together — see there).
+            if (direction === "undo") {
+                screen.logic.nodes.push(ev.node);
+                ev.wires.forEach(function (w) { screen.logic.wires.push(w); });
+            } else {
+                screen.logic.nodes = screen.logic.nodes.filter(function (n) { return n.id !== ev.node.id; });
+                var removedWireIds = ev.wires.map(function (w) { return w.id; });
+                screen.logic.wires = screen.logic.wires.filter(function (w) { return removedWireIds.indexOf(w.id) === -1; });
+            }
+        } else if (ev.t === "moveLogicNode") {
+            var lnode = screen.logic.nodes.find(function (n) { return n.id === ev.id; });
+            if (!lnode) return;
+            var lpos = direction === "undo" ? ev.from : ev.to;
+            lnode.x = lpos.x; lnode.y = lpos.y;
+        } else if (ev.t === "addLogicWire") {
+            if (direction === "undo") {
+                screen.logic.wires = screen.logic.wires.filter(function (w) { return w.id !== ev.wire.id; });
+            } else {
+                screen.logic.wires.push(ev.wire);
+            }
+        } else if (ev.t === "deleteLogicWire") {
+            if (direction === "undo") {
+                screen.logic.wires.push(ev.wire);
+            } else {
+                screen.logic.wires = screen.logic.wires.filter(function (w) { return w.id !== ev.wire.id; });
+            }
+        }
+    }
+
+    // Any event type whose name ends in "LogicNode"/"LogicWire" belongs to
+    // the Logic canvas, not the UI artboard — a "multi" batch inherits
+    // whichever kind its first sub-event is (batches are never mixed, see
+    // every call site that constructs one).
+    function isLogicHistoryEvent(ev) {
+        if (ev.t === "multi") return ev.events.length > 0 && isLogicHistoryEvent(ev.events[0]);
+        return ev.t.indexOf("Logic") !== -1;
+    }
+
+    function applyHistoryEvent(ev, direction) {
+        applyHistoryMutation(ev, direction);
+        var screen = screens.find(function (s) { return s.id === ev.screenId; });
+        if (isLogicHistoryEvent(ev)) {
+            logicSelectedIds = [];
+            if (screen && screen.id === activeScreenId) renderLogicCanvas();
+        } else {
+            selectedIds = [];
+            if (screen && screen.id === activeScreenId) renderActiveScreen();
+        }
+        markDirty();
+    }
+
+    function undo() {
+        if (!undoStack.length) return;
+        var ev = undoStack.pop();
+        applyHistoryEvent(ev, "undo");
+        redoStack.push(ev);
+    }
+
+    function redo() {
+        if (!redoStack.length) return;
+        var ev = redoStack.pop();
+        applyHistoryEvent(ev, "redo");
+        undoStack.push(ev);
+    }
+
+    // --- Component rendering (operates on the active screen's artboard) --
+
+    // Resize/rotate/lock are CANVAS concerns, not per-component-type ones —
+    // every component gets the same handles/behavior, gated only by the
+    // capability flags its type declared (capabilities.resizable/rotatable/
+    // lockable). A component's render() never has to know any of this
+    // exists; it only ever sees the wrapper's *content* area.
+    var HANDLE_SIZE = 8;
+    var selectionHandlesEl = null;
+
+    function findComponent(id) {
+        var screen = getActiveScreen();
+        return screen && screen.components.find(function (c) { return c.id === id; });
+    }
+
+    // --- Groups (mirrors @node-red/editor-client's group.js — see
+    // makeScreen() above for why membership lives on the component, not
+    // the group record) ---------------------------------------------------
+
+    function findGroup(id) {
+        var screen = getActiveScreen();
+        return screen && (screen.groups || []).find(function (g) { return g.id === id; });
+    }
+
+    function groupMemberIds(groupId) {
+        var screen = getActiveScreen();
+        if (!screen) return [];
+        return screen.components.filter(function (c) { return c.g === groupId; }).map(function (c) { return c.id; });
+    }
+
+    // --- Layers: hierarchical organization + visibility, deliberately NOT
+    // z-order (see makeScreen() above — z-order stays the flat `components`
+    // array order it already was, no separate concept needed for that).
+
+    function findLayer(id) {
+        var screen = getActiveScreen();
+        return screen && (screen.layers || []).find(function (l) { return l.id === id; });
+    }
+
+    function getLayerChildren(parentId) {
+        var screen = getActiveScreen();
+        if (!screen) return [];
+        return (screen.layers || []).filter(function (l) { return l.parentId === parentId; });
+    }
+
+    // A layer is effectively visible only if IT and every ancestor up the
+    // chain is visible — hiding a parent hides everything nested under it.
+    function isLayerVisible(layerId) {
+        var layer = findLayer(layerId);
+        while (layer) {
+            if (!layer.visible) return false;
+            layer = layer.parentId ? findLayer(layer.parentId) : null;
+        }
+        return true;
+    }
+
+    function getComponentsInLayer(layerId) {
+        var screen = getActiveScreen();
+        if (!screen) return [];
+        // Same order as screen.components — that order IS z-order, so a
+        // layer's component list is naturally already in z-order too.
+        return screen.components.filter(function (c) { return c.layerId === layerId; });
+    }
+
+    function addLayer(parentId) {
+        var screen = getActiveScreen();
+        var layer = { id: genId(), name: "New Layer", parentId: parentId || null, visible: true };
+        screen.layers.push(layer);
+        markDirty();
+        renderLayersPanel();
+        return layer;
+    }
+
+    function renameLayer(id, name) {
+        var layer = findLayer(id);
+        if (!layer) return;
+        layer.name = name || layer.name;
+        markDirty();
+    }
+
+    function toggleLayerVisibility(id) {
+        var layer = findLayer(id);
+        if (!layer) return;
+        layer.visible = !layer.visible;
+        markDirty();
+        renderActiveScreen();
+        renderLayersPanel();
+    }
+
+    // Deleting a layer reassigns its components AND child layers to its
+    // OWN parent (or the screen's first/root layer if it had none) —
+    // nothing is ever left pointing at a layer that no longer exists. The
+    // very last remaining layer on a screen can't be deleted (every
+    // component must always belong to something).
+    function deleteLayer(id) {
+        var screen = getActiveScreen();
+        if (screen.layers.length <= 1) {
+            RED.notify("A screen must have at least one layer", { type: "warning", timeout: 2000 });
+            return;
+        }
+        var layer = findLayer(id);
+        if (!layer) return;
+        var fallbackId = layer.parentId || screen.layers.filter(function (l) { return l.id !== id; })[0].id;
+        screen.components.forEach(function (c) { if (c.layerId === id) c.layerId = fallbackId; });
+        getLayerChildren(id).forEach(function (child) { child.parentId = layer.parentId; });
+        screen.layers = screen.layers.filter(function (l) { return l.id !== id; });
+        markDirty();
+        renderActiveScreen();
+        renderLayersPanel();
+    }
+
+    // Z-order lives purely in screen.components' array position (later =
+    // painted on top, since renderActiveScreen() just appends each
+    // component's element to the artboard in that order — normal DOM
+    // stacking already does the rest, no z-index bookkeeping needed).
+    function moveComponentZ(id, mode) {
+        var screen = getActiveScreen();
+        var idx = screen.components.findIndex(function (c) { return c.id === id; });
+        if (idx === -1) return;
+        var comp = screen.components[idx];
+        screen.components.splice(idx, 1);
+        if (mode === "front") screen.components.push(comp);
+        else if (mode === "back") screen.components.unshift(comp);
+        else if (mode === "forward") screen.components.splice(Math.min(idx + 1, screen.components.length), 0, comp);
+        else if (mode === "backward") screen.components.splice(Math.max(idx - 1, 0), 0, comp);
+        markDirty();
+        // renderActiveScreen() clears selectedIds as a side effect — z-order
+        // shouldn't lose your selection, so capture it first and restore.
+        var keepSelected = selectedIds.slice();
+        renderActiveScreen();
+        selectMultiple(keepSelected);
+        renderLayersPanel();
+    }
+
+    function clearSelectionHandles() {
+        if (selectionHandlesEl) {
+            selectionHandlesEl.remove();
+            selectionHandlesEl = null;
+        }
+    }
+
+    // Updates one component's box/rotation live during a drag, without the
+    // full artboard rebuild renderActiveScreen() does — keeps resize/rotate
+    // smooth, and keeps the (possibly still-open) selection overlay in sync.
+    function updateComponentBox(comp) {
+        var el = artboardEl.find('[data-id="' + comp.id + '"]');
+        el.css({
+            left: comp.x + "px", top: comp.y + "px",
+            width: comp.w + "px", height: comp.h + "px",
+            transform: "rotate(" + (comp.rotation || 0) + "deg)"
+        });
+        if (selectionHandlesEl && selectedIds.length === 1 && selectedIds[0] === comp.id) {
+            selectionHandlesEl.css({
+                left: comp.x + "px", top: comp.y + "px",
+                width: comp.w + "px", height: comp.h + "px",
+                transform: "rotate(" + (comp.rotation || 0) + "deg)"
+            });
+        }
+    }
+
+    function wireResizeHandle(handle, comp, handleName) {
+        handle.get(0).addEventListener("mousedown", function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var screen = getActiveScreen();
+            var minSize = 20;
+            var start = { x: e.clientX, y: e.clientY };
+            var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+            // Resize handles rotate visually with the object (see
+            // renderSelectionHandles), so a drag that LOOKS like it's along
+            // the object's own edge needs the mouse delta rotated back into
+            // the object's local (unrotated) frame before it's applied to
+            // w/h — otherwise resize feels wrong on anything rotated.
+            var rad = (comp.rotation || 0) * Math.PI / 180;
+            var cos = Math.cos(rad), sin = Math.sin(rad);
+
+            function onMove(ev) {
+                // Raw mouse deltas are real screen px; the stage they're
+                // dragging across is CSS-scaled by zoomLevel, so they must
+                // be divided back down to artboard-local px before any of
+                // this rotation/resize math (which all operates in local,
+                // unscaled units) touches them.
+                var dxScreen = (ev.clientX - start.x) / zoomLevel;
+                var dyScreen = (ev.clientY - start.y) / zoomLevel;
+                var dx = dxScreen * cos + dyScreen * sin;
+                var dy = -dxScreen * sin + dyScreen * cos;
+                var nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
+                if (handleName.indexOf("e") !== -1) nw = Math.max(minSize, orig.w + dx);
+                if (handleName.indexOf("s") !== -1) nh = Math.max(minSize, orig.h + dy);
+                if (handleName.indexOf("w") !== -1) { nw = Math.max(minSize, orig.w - dx); nx = orig.x + (orig.w - nw); }
+                if (handleName.indexOf("n") !== -1) { nh = Math.max(minSize, orig.h - dy); ny = orig.y + (orig.h - nh); }
+                if (screen.snap) {
+                    nx = snap(nx, screen.gridSize);
+                    ny = snap(ny, screen.gridSize);
+                    nw = snap(nw, screen.gridSize);
+                    nh = snap(nh, screen.gridSize);
+                }
+                comp.x = nx; comp.y = ny;
+                comp.w = Math.max(minSize, nw); comp.h = Math.max(minSize, nh);
+                updateComponentBox(comp);
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
+                    pushHistory({
+                        t: "resize", screenId: screen.id, id: comp.id,
+                        from: orig, to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
+                    });
+                    markDirty();
+                }
+            }
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    function wireRotateHandle(handle, comp) {
+        handle.get(0).addEventListener("mousedown", function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var screen = getActiveScreen();
+            var origRotation = comp.rotation || 0;
+            // artboardOffset is a real (post-transform) screen position
+            // (jQuery .offset() uses getBoundingClientRect, which already
+            // reflects the stage's CSS scale) — comp.x/y/w are artboard-
+            // local units, so they need *zoomLevel to land in that same
+            // real-screen-px space before the atan2 angle math below.
+            var artboardOffset = artboardEl.offset();
+            var centerX = artboardOffset.left + (comp.x + comp.w / 2) * zoomLevel;
+            var centerY = artboardOffset.top + (comp.y + comp.h / 2) * zoomLevel;
+            var startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
+
+            function onMove(ev) {
+                var angle = Math.atan2(ev.clientY - centerY, ev.clientX - centerX) * 180 / Math.PI;
+                var next = origRotation + (angle - startAngle);
+                if (ev.shiftKey) next = Math.round(next / 15) * 15;
+                comp.rotation = Math.round(next);
+                updateComponentBox(comp);
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                if (comp.rotation !== origRotation) {
+                    pushHistory({ t: "rotate", screenId: screen.id, id: comp.id, from: origRotation, to: comp.rotation });
+                    markDirty();
+                }
+            }
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    function renderSelectionHandles(comp) {
+        clearSelectionHandles();
+        var typeDef = NEXA.getComponent(comp.type);
+        var caps = (typeDef && typeDef.capabilities) || {};
+
+        selectionHandlesEl = $("<div>", { "class": "nexa-selection-handles" }).css({
+            position: "absolute",
+            left: comp.x + "px", top: comp.y + "px",
+            width: comp.w + "px", height: comp.h + "px",
+            "pointer-events": "none",
+            transform: "rotate(" + (comp.rotation || 0) + "deg)"
+        }).appendTo(artboardEl);
+
+        if (!comp.locked) {
+            if (caps.resizable) {
+                [
+                    { n: "nw", x: 0, y: 0, cursor: "nwse-resize" },
+                    { n: "n", x: 0.5, y: 0, cursor: "ns-resize" },
+                    { n: "ne", x: 1, y: 0, cursor: "nesw-resize" },
+                    { n: "e", x: 1, y: 0.5, cursor: "ew-resize" },
+                    { n: "se", x: 1, y: 1, cursor: "nwse-resize" },
+                    { n: "s", x: 0.5, y: 1, cursor: "ns-resize" },
+                    { n: "sw", x: 0, y: 1, cursor: "nesw-resize" },
+                    { n: "w", x: 0, y: 0.5, cursor: "ew-resize" }
+                ].forEach(function (p) {
+                    // The box/margin above is in artboard-LOCAL units, so it
+                    // already scales (and stays correctly centered on the
+                    // right corner point) along with the component under
+                    // the stage's own zoom transform — but that also means
+                    // its on-screen SIZE would grow/shrink with zoom, unlike
+                    // every real design tool's handles (Figma, Illustrator,
+                    // Node-RED's own port dots), which stay a constant
+                    // physical size regardless of canvas zoom. Countering
+                    // with scale(1/zoomLevel), around the handle's own
+                    // center (the default transform-origin, which is
+                    // exactly the corner point thanks to the margin
+                    // trick above), fixes the size without moving that
+                    // anchor point.
+                    var handle = $("<div>", { "class": "nexa-resize-handle" }).css({
+                        position: "absolute",
+                        left: (p.x * 100) + "%", top: (p.y * 100) + "%",
+                        width: HANDLE_SIZE + "px", height: HANDLE_SIZE + "px",
+                        margin: (-HANDLE_SIZE / 2) + "px 0 0 " + (-HANDLE_SIZE / 2) + "px",
+                        background: "#fff", border: "1px solid #ff5722", "box-sizing": "border-box",
+                        cursor: p.cursor, "pointer-events": "auto",
+                        transform: "scale(" + (1 / zoomLevel) + ")"
+                    }).appendTo(selectionHandlesEl);
+                    wireResizeHandle(handle, comp, p.n);
+                });
+            }
+            if (caps.rotatable) {
+                // Same zoom-compensation idea as the resize handles above,
+                // plus the connecting line's own offset/length are divided
+                // by zoomLevel too, so the rotate handle floats a constant
+                // *visual* distance above the box at any zoom (rather than
+                // stretching further away as you zoom in).
+                $("<div>").css({
+                    position: "absolute", left: "50%", top: (-24 / zoomLevel) + "px",
+                    width: "1px", height: (24 / zoomLevel) + "px", background: "#ff5722", "pointer-events": "none"
+                }).appendTo(selectionHandlesEl);
+                var rotHandle = $("<div>", { "class": "nexa-rotate-handle" }).css({
+                    position: "absolute",
+                    left: "50%", top: (-24 / zoomLevel) + "px",
+                    width: HANDLE_SIZE + "px", height: HANDLE_SIZE + "px",
+                    margin: (-HANDLE_SIZE / 2) + "px 0 0 " + (-HANDLE_SIZE / 2) + "px",
+                    background: "#fff", border: "1px solid #ff5722", "border-radius": "50%",
+                    cursor: "grab", "pointer-events": "auto",
+                    transform: "scale(" + (1 / zoomLevel) + ")"
+                }).appendTo(selectionHandlesEl);
+                wireRotateHandle(rotHandle, comp);
+            }
+        }
+
+        if (caps.lockable !== false) {
+            var lockIcon = $("<div>", { "class": "nexa-lock-handle" }).css({
+                position: "absolute", right: (-22 / zoomLevel) + "px", top: (-22 / zoomLevel) + "px",
+                width: "16px", height: "16px", background: "#fff", border: "1px solid #999",
+                "border-radius": "3px", cursor: "pointer", "pointer-events": "auto",
+                "font-size": "10px", "text-align": "center", "line-height": "15px", color: "#666",
+                transform: "scale(" + (1 / zoomLevel) + ")"
+            }).html(comp.locked ? '<i class="fa fa-lock"></i>' : '<i class="fa fa-unlock-alt"></i>').appendTo(selectionHandlesEl);
+            lockIcon.on("click", function (e) {
+                e.stopPropagation();
+                setLockedForSelection(!comp.locked, [comp.id]);
+            });
+        }
+    }
+
+    // --- Selection model (multi-select) ---------------------------------
+    // Plain array, not a Set — selection sizes here are always small, and
+    // an array keeps "is exactly one selected" (single.length===1) and
+    // iteration trivial without Set/Array conversions everywhere.
+
+    function isSelected(id) {
+        return selectedIds.indexOf(id) !== -1;
+    }
+
+    function refreshSelectionVisuals() {
+        if (!artboardEl) return;
+        artboardEl.find(".nexa-component").css("outline", "none");
+        selectedIds.forEach(function (id) {
+            artboardEl.find('[data-id="' + id + '"]').css("outline", "2px solid #ff5722");
+        });
+        // Resize/rotate handles only make sense for exactly one selected
+        // item for now (group-resize is a fair bit more math — bounding-box
+        // handles that scale every member proportionally — deferred until
+        // grouping itself exists, which needs a firm bounding box concept
+        // anyway).
+        clearSelectionHandles();
+        if (selectedIds.length === 1) {
+            var comp = findComponent(selectedIds[0]);
+            if (comp) renderSelectionHandles(comp);
+        }
+        renderPropertiesPanel();
+        refreshEventsHighlight();
+    }
+
+    function selectOnly(id) {
+        selectedIds = [id];
+        refreshSelectionVisuals();
+    }
+
+    function addToSelection(id) {
+        if (!isSelected(id)) selectedIds.push(id);
+        refreshSelectionVisuals();
+    }
+
+    function removeFromSelection(id) {
+        selectedIds = selectedIds.filter(function (x) { return x !== id; });
+        refreshSelectionVisuals();
+    }
+
+    function selectMultiple(ids) {
+        selectedIds = ids.slice();
+        refreshSelectionVisuals();
+    }
+
+    // v1 deliberately doesn't support nested/re-grouping — a member already
+    // in a group must be ungrouped first. That keeps the undo/redo shape
+    // simple (group/ungroup are exact inverses of each other, see
+    // applyHistoryMutation) instead of needing to track/restore a previous
+    // group membership per member.
+    function groupSelection() {
+        if (selectedIds.length < 2) {
+            RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2000 });
+            return;
+        }
+        var screen = getActiveScreen();
+        screen.groups = screen.groups || [];
+        var members = selectedIds.map(findComponent).filter(Boolean);
+        if (members.some(function (c) { return c.g; })) {
+            RED.notify("One or more selected components are already in a group — ungroup first", { type: "warning", timeout: 2500 });
+            return;
+        }
+        var minX = Math.min.apply(null, members.map(function (c) { return c.x; }));
+        var minY = Math.min.apply(null, members.map(function (c) { return c.y; }));
+        var maxX = Math.max.apply(null, members.map(function (c) { return c.x + c.w; }));
+        var maxY = Math.max.apply(null, members.map(function (c) { return c.y + c.h; }));
+        var pad = 10;
+        var group = { id: genId(), x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
+        var memberIds = members.map(function (c) { return c.id; });
+
+        screen.groups.push(group);
+        memberIds.forEach(function (id) { var c = findComponent(id); if (c) c.g = group.id; });
+        pushHistory({ t: "group", screenId: screen.id, group: group, memberIds: memberIds });
+        markDirty();
+        renderActiveScreen();
+        selectMultiple(memberIds);
+    }
+
+    function ungroupSelection() {
+        var screen = getActiveScreen();
+        var groupIds = {};
+        selectedIds.forEach(function (id) {
+            var c = findComponent(id);
+            if (c && c.g) groupIds[c.g] = true;
+        });
+        var ids = Object.keys(groupIds);
+        if (!ids.length) return;
+        var ungroupEvents = [];
+        var allMemberIds = [];
+        ids.forEach(function (gid) {
+            var group = findGroup(gid);
+            if (!group) return;
+            var memberIds = groupMemberIds(gid);
+            ungroupEvents.push({ t: "ungroup", screenId: screen.id, group: group, memberIds: memberIds });
+            memberIds.forEach(function (id) { var c = findComponent(id); if (c) delete c.g; });
+            screen.groups = (screen.groups || []).filter(function (g) { return g.id !== gid; });
+            allMemberIds = allMemberIds.concat(memberIds);
+        });
+        if (!ungroupEvents.length) return;
+        pushHistory(ungroupEvents.length === 1 ? ungroupEvents[0] : { t: "multi", screenId: screen.id, events: ungroupEvents });
+        markDirty();
+        renderActiveScreen();
+        selectMultiple(allMemberIds);
+    }
+
+    // --- Copy / cut / paste. Same shape as @node-red/editor-client's own
+    // view.js clipboard (internal `clipboard`/`clipboardSource` vars, IDs
+    // regenerated only on copy-paste, never on cut-paste — see the plan
+    // doc's reference notes) — reimplemented here since components aren't
+    // Node-RED nodes and RED.nodes.createExportableNodeSet doesn't apply.
+    var clipboard = null; // array of cloned component objects
+    var clipboardSource = null; // "copy" | "cut"
+    var clipboardFullGroups = null; // {groupId: true} — only groups where EVERY member was selected at copy time
+
+    function copySelection(isCut) {
+        if (!selectedIds.length) return;
+        var members = selectedIds.map(findComponent).filter(Boolean);
+        if (!members.length) return;
+
+        var touchedGroups = {};
+        members.forEach(function (c) { if (c.g) touchedGroups[c.g] = true; });
+        var fullGroups = {};
+        Object.keys(touchedGroups).forEach(function (gid) {
+            var allMembers = groupMemberIds(gid);
+            var selectedMembers = allMembers.filter(function (id) { return selectedIds.indexOf(id) !== -1; });
+            if (allMembers.length && selectedMembers.length === allMembers.length) fullGroups[gid] = true;
+        });
+
+        clipboard = JSON.parse(JSON.stringify(members));
+        clipboardFullGroups = fullGroups;
+        clipboardSource = isCut ? "cut" : "copy";
+
+        if (isCut) {
+            removeComponents(selectedIds.slice());
+        }
+    }
+
+    function pasteClipboard() {
+        if (!clipboard || !clipboard.length) return;
+        var screen = getActiveScreen();
+        screen.groups = screen.groups || [];
+        var regenerateIds = clipboardSource === "copy";
+        var groupIdMap = {};
+
+        var newComps = clipboard.map(function (c) {
+            var copy = JSON.parse(JSON.stringify(c));
+            copy.id = regenerateIds ? genId() : copy.id;
+            if (regenerateIds) {
+                copy.x += 20;
+                copy.y += 20;
+            }
+            return copy;
+        });
+
+        newComps.forEach(function (copy) {
+            if (!copy.g) return;
+            if (!clipboardFullGroups[copy.g]) {
+                delete copy.g; // partial group membership — don't dangle-reference a group that won't have every member
+            } else if (regenerateIds) {
+                if (!groupIdMap[copy.g]) groupIdMap[copy.g] = genId();
+                copy.g = groupIdMap[copy.g];
+            }
+            // else: cut-paste of a fully-grouped set keeps the original
+            // group id as-is — removeComponents() only ever removes
+            // components, never the group record itself, so the original
+            // group is still there, untouched, waiting for its members back.
+        });
+
+        Object.keys(groupIdMap).forEach(function (oldGid) {
+            var original = (screen.groups || []).find(function (g) { return g.id === oldGid; });
+            var newGroup = original ? JSON.parse(JSON.stringify(original)) : { x: 0, y: 0, w: 0, h: 0 };
+            newGroup.id = groupIdMap[oldGid];
+            screen.groups.push(newGroup);
+        });
+
+        newComps.forEach(function (copy) { screen.components.push(copy); });
+        newComps.forEach(renderComponent);
+
+        if (newComps.length === 1) {
+            pushHistory({ t: "add", screenId: screen.id, comp: newComps[0] });
+        } else {
+            pushHistory({ t: "multi", screenId: screen.id, events: newComps.map(function (c) { return { t: "add", screenId: screen.id, comp: c }; }) });
+        }
+        markDirty();
+        selectMultiple(newComps.map(function (c) { return c.id; }));
+
+        // A second Ctrl+V after a cut should duplicate what was just pasted,
+        // not fail/collide trying to re-paste the same (now already placed)
+        // ids again — flip to copy semantics after the first paste of a cut.
+        if (clipboardSource === "cut") {
+            clipboard = newComps;
+            clipboardFullGroups = {};
+            newComps.forEach(function (c) { if (c.g) clipboardFullGroups[c.g] = true; });
+            clipboardSource = "copy";
+        }
+    }
+
+    function deselectAll() {
+        selectedIds = [];
+        refreshSelectionVisuals();
+    }
+
+    // Rubber-band/marquee select — mousedown on empty artboard (not on a
+    // component, see the artboard's own mousedown handler) starts a
+    // dashed selection rectangle; anything whose bounding box intersects
+    // it on mouseup gets selected. Same AABB-overlap test view.js's own
+    // lasso select uses, reimplemented here in plain mouse events since
+    // components are absolutely-positioned divs, not an SVG/D3 scene.
+    function startMarqueeSelect(e) {
+        // marqueeEl is appended INSIDE artboardEl, which sits under the
+        // scaled stage — so its own left/top/width/height must be in the
+        // same artboard-local units as components (dividing the real-
+        // screen-px mouse offset by zoomLevel), both so it's drawn at the
+        // right visual size (the ancestor transform re-scales it) and so
+        // the hit-test below compares apples to apples against c.x/c.y/w/h.
+        var offset = artboardEl.offset();
+        var startX = (e.pageX - offset.left) / zoomLevel;
+        var startY = (e.pageY - offset.top) / zoomLevel;
+        var box = { left: startX, top: startY, width: 0, height: 0 };
+        var shiftHeld = e.shiftKey;
+
+        var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
+            position: "absolute", left: startX + "px", top: startY + "px",
+            width: "0px", height: "0px",
+            border: "1px dashed #2196f3", background: "rgba(33,150,243,0.1)",
+            "pointer-events": "none", "z-index": 999
+        }).appendTo(artboardEl);
+
+        function onMove(ev) {
+            var curX = (ev.pageX - offset.left) / zoomLevel;
+            var curY = (ev.pageY - offset.top) / zoomLevel;
+            box.left = Math.min(startX, curX);
+            box.top = Math.min(startY, curY);
+            box.width = Math.abs(curX - startX);
+            box.height = Math.abs(curY - startY);
+            marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+        }
+        function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            marqueeEl.remove();
+            if (box.width < 3 && box.height < 3) return; // treat as a plain click on empty space, not a drag
+            var screen = getActiveScreen();
+            var hits = screen.components.filter(function (c) {
+                return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
+            }).map(function (c) { return c.id; });
+            if (shiftHeld) {
+                hits.forEach(function (id) { if (!isSelected(id)) selectedIds.push(id); });
+                refreshSelectionVisuals();
+            } else {
+                selectMultiple(hits);
+            }
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    }
+
+    // Re-invokes just one component's render() with its current props —
+    // the contract's own "called again whenever props change" rule (see
+    // the component-plugin design notes) — no full artboard rebuild needed.
+    function refreshComponentRender(comp) {
+        if (!artboardEl) return;
+        var el = artboardEl.find('[data-id="' + comp.id + '"]');
+        var node = el && el.get && el.get(0);
+        if (!node) return;
+        var typeDef = NEXA.getComponent(comp.type);
+        if (!typeDef || typeof typeDef.render !== "function") return;
+        try {
+            typeDef.render(node, comp.props || {}, {
+                // Editor-only preview: logged, but NOT run through
+                // screen.logic — see the big comment on findLogicNode below
+                // for why the Logic canvas never executes here.
+                emit: function (eventName, payload) {
+                    if (RED.log) RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+                }
+            });
+        } catch (e) {
+            el.text("(render error: " + e.message + ")");
+        }
+    }
+
+    // --- Per-screen logic (design-time): the Logic canvas here is PURELY
+    // an editor for screen.logic (nodes/wires/config) — it never executes
+    // any of it. An earlier version did run the graph live while editing
+    // (onload/onrender on tray open, ctx.emit wired straight through), but
+    // that meant designing a screen had side effects happening *as you
+    // wired things up* — confusing, and not how a design surface should
+    // behave (Node-RED's own flow editor doesn't run your flow just
+    // because the tab is open, either). Actual execution now lives ONLY on
+    // the deployed page (lib/nexa-runtime-client.js's own runLogicGraph) —
+    // that engine is a close relative of this comment's old contents, not
+    // a copy-paste twin, since it also has to run headless (no jQuery, no
+    // tray) and support async Function nodes (fetch, etc).
+
+    function findLogicNode(screen, id) {
+        return (screen.logic.nodes || []).find(function (n) { return n.id === id; });
+    }
+
+    // Locks/unlocks every currently-selected component at once ("lock
+    // bareng"). renderActiveScreen() (needed since lock changes which
+    // handles/draggable wiring a component gets) resets selectedIds as a
+    // side effect, so the ids are captured up front and the selection is
+    // restored afterwards. Not pushed onto the undo stack — same as the
+    // single lock icon's own toggle, which never has been either.
+    function setLockedForSelection(locked, idsOverride) {
+        var ids = idsOverride || selectedIds.slice();
+        var changed = false;
+        ids.forEach(function (id) {
+            var c = findComponent(id);
+            if (c && c.locked !== locked) { c.locked = locked; changed = true; }
+        });
+        if (!changed) return;
+        markDirty();
+        renderActiveScreen();
+        selectMultiple(ids);
+    }
+
+    // --- Sidebar: Component Properties tab — dynamically shows whatever is
+    // currently selected on the canvas, live-updating (no dialog, same
+    // inline-edit philosophy as the Screens tab's own settings form).
+    // --- Sidebar: Layers tab — hierarchical layer tree (visibility +
+    // add/rename/delete) with each layer's components listed underneath in
+    // z-order, plus per-component z-order controls. Component-to-layer
+    // (re)assignment happens from the Properties tab instead of by
+    // dragging here — see the "Layer" field in renderPropertiesPanel.
+    function renderLayersPanel() {
+        if (!layersPane) return;
+        layersPane.empty();
+        var screen = getActiveScreen();
+        if (!screen) return;
+
+        function renderLayerNode(layer, depth) {
+            var row = $("<div>").css({
+                display: "flex", "align-items": "center", gap: "4px",
+                "margin-left": (depth * 14) + "px", "margin-bottom": "2px", "font-size": "12px"
+            }).appendTo(layersPane);
+
+            $("<span>", { style: "cursor:pointer; width:16px; text-align:center;" })
+                .html(layer.visible ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>')
+                .css({ color: layer.visible ? "#333" : "#bbb" })
+                .on("click", function () { toggleLayerVisibility(layer.id); })
+                .appendTo(row);
+
+            var nameEl = $("<span>", { style: "flex:1; cursor:text;" }).text(layer.name).appendTo(row);
+            nameEl.on("click", function () {
+                var input = $("<input>", { type: "text" }).val(layer.name).css({ width: "100%", "box-sizing": "border-box" });
+                nameEl.empty().append(input);
+                if (input.get && input.get(0) && input.get(0).focus) input.get(0).focus();
+                input.on("blur", function () {
+                    renameLayer(layer.id, input.val());
+                    renderLayersPanel();
+                });
+            });
+
+            $("<a>", { href: "#", title: "Add sub-layer" }).html('<i class="fa fa-plus"></i>').css({ color: "#888" })
+                .on("click", function (e) { e.preventDefault(); addLayer(layer.id); }).appendTo(row);
+
+            if (screen.layers.length > 1) {
+                $("<a>", { href: "#", title: "Delete layer" }).html('<i class="fa fa-trash"></i>').css({ color: "#888" })
+                    .on("click", function (e) { e.preventDefault(); deleteLayer(layer.id); }).appendTo(row);
+            }
+
+            // Reversed for display only (top of list = front-most, the
+            // Photoshop/Figma convention) — the underlying screen.
+            // components array order (back-to-front) stays the real
+            // source of truth for z-order.
+            getComponentsInLayer(layer.id).slice().reverse().forEach(function (comp) {
+                var typeDef = NEXA.getComponent(comp.type);
+                var compRow = $("<div>").css({
+                    display: "flex", "align-items": "center", gap: "3px", color: "#555",
+                    "margin-left": ((depth + 1) * 14) + "px", "margin-bottom": "2px", "font-size": "12px"
+                }).appendTo(layersPane);
+                $("<span>", { style: "flex:1; cursor:pointer;" }).text(typeDef ? typeDef.label : comp.type)
+                    .on("click", function () { selectOnly(comp.id); }).appendTo(compRow);
+                [
+                    ["front", "fa-angle-double-up", "Bring to front"],
+                    ["forward", "fa-angle-up", "Bring forward"],
+                    ["backward", "fa-angle-down", "Send backward"],
+                    ["back", "fa-angle-double-down", "Send to back"]
+                ].forEach(function (btn) {
+                    $("<a>", { href: "#", title: btn[2] }).html('<i class="fa ' + btn[1] + '"></i>')
+                        .on("click", function (e) { e.preventDefault(); moveComponentZ(comp.id, btn[0]); }).appendTo(compRow);
+                });
+            });
+
+            getLayerChildren(layer.id).forEach(function (child) { renderLayerNode(child, depth + 1); });
+        }
+
+        getLayerChildren(null).forEach(function (layer) { renderLayerNode(layer, 0); });
+
+        $("<button>", { type: "button" }).text("+ Add Layer").css({ width: "100%", "margin-top": "8px" })
+            .on("click", function () { addLayer(null); }).appendTo(layersPane);
+    }
+
+    function renderPropertiesPanel() {
+        if (!propertiesPane) return;
+        propertiesPane.empty();
+        if (selectedIds.length > 1) {
+            $("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(selectedIds.length + " components selected.").appendTo(propertiesPane);
+
+            var isOneWholeGroup = (function () {
+                var first = findComponent(selectedIds[0]);
+                if (!first || !first.g) return false;
+                var members = groupMemberIds(first.g);
+                return members.length === selectedIds.length && members.every(isSelected);
+            })();
+            var groupRow = $("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(propertiesPane);
+            if (isOneWholeGroup) {
+                $("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
+            } else {
+                $("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
+            }
+
+            var lockRow = $("<div>").css({ display: "flex", gap: "6px" }).appendTo(propertiesPane);
+            $("<button>", { type: "button" }).text("Lock all").css({ flex: "1" })
+                .on("click", function () { setLockedForSelection(true); }).appendTo(lockRow);
+            $("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" })
+                .on("click", function () { setLockedForSelection(false); }).appendTo(lockRow);
+            return;
+        }
+        var comp = selectedIds.length === 1 ? findComponent(selectedIds[0]) : null;
+        if (!comp) {
+            $("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(propertiesPane);
+            return;
+        }
+        var typeDef = NEXA.getComponent(comp.type);
+        if (!typeDef) {
+            $("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(propertiesPane);
+            return;
+        }
+
+        $("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(typeDef.label || comp.type).appendTo(propertiesPane);
+
+        var lockRow = $("<div>").css({ "margin-bottom": "10px" }).appendTo(propertiesPane);
+        var lockInput = $("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
+        lockRow.append(lockInput).append($("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked"));
+        lockInput.on("change", function () {
+            setLockedForSelection(lockInput.is(":checked"), [comp.id]);
+        });
+
+        var layerRow = $("<div>").css({ "margin-bottom": "10px" }).appendTo(propertiesPane);
+        $("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
+        var layerSelect = $("<select>").css({ width: "100%" }).appendTo(layerRow);
+        (function buildLayerOptions(parentId, depth) {
+            getLayerChildren(parentId).forEach(function (layer) {
+                $("<option>", { value: layer.id }).text(new Array(depth + 1).join("— ") + layer.name)
+                    .prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
+                buildLayerOptions(layer.id, depth + 1);
+            });
+        })(null, 0);
+        layerSelect.on("change", function () {
+            comp.layerId = layerSelect.val();
+            markDirty();
+            renderActiveScreen();
+            selectOnly(comp.id);
+        });
+
+        var defaults = typeDef.defaults || {};
+        Object.keys(defaults).forEach(function (key) {
+            var fieldDef = defaults[key] || {};
+            var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+            var row = $("<div>").css({ "margin-bottom": "8px" }).appendTo(propertiesPane);
+            $("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+
+            var input;
+            if (inputType === "checkbox") {
+                input = $("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+            } else {
+                input = $("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+            }
+            input.on("change", function () {
+                var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? (parseFloat(input.val()) || 0) : input.val();
+                comp.props[key] = v;
+                refreshComponentRender(comp);
+                markDirty();
+            });
+        });
+
+        $("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(propertiesPane);
+        [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function (pair) {
+            var field = pair[0], label = pair[1];
+            var row = $("<div>").css({ "margin-bottom": "8px" }).appendTo(propertiesPane);
+            $("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
+            var input = $("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
+            input.on("change", function () {
+                comp[field] = parseFloat(input.val()) || 0;
+                updateComponentBox(comp);
+                markDirty();
+            });
+        });
+    }
+
+    function removeComponents(ids) {
+        var screen = getActiveScreen();
+        var toRemove = ids
+            .map(function (id) { return screen.components.find(function (c) { return c.id === id; }); })
+            .filter(function (c) { return c && !c.locked; });
+        if (!toRemove.length) return;
+        var removeIds = toRemove.map(function (c) { return c.id; });
+        screen.components = screen.components.filter(function (c) { return removeIds.indexOf(c.id) === -1; });
+        removeIds.forEach(function (id) { artboardEl.find('[data-id="' + id + '"]').remove(); });
+        selectedIds = selectedIds.filter(function (id) { return removeIds.indexOf(id) === -1; });
+        refreshSelectionVisuals();
+        if (toRemove.length === 1) {
+            pushHistory({ t: "delete", screenId: screen.id, comp: toRemove[0] });
+        } else {
+            pushHistory({ t: "multi", screenId: screen.id, events: toRemove.map(function (c) { return { t: "delete", screenId: screen.id, comp: c }; }) });
+        }
+        markDirty();
+    }
+
+    function renderComponent(comp) {
+        var screen = getActiveScreen();
+        var dragStart = null;
+        var typeDef = NEXA.getComponent(comp.type);
+        var el = $("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
+            position: "absolute",
+            left: comp.x + "px",
+            top: comp.y + "px",
+            width: comp.w + "px",
+            height: comp.h + "px",
+            transform: "rotate(" + (comp.rotation || 0) + "deg)",
+            "box-sizing": "border-box",
+            cursor: comp.locked ? "default" : "move",
+            "user-select": "none",
+            display: isLayerVisible(comp.layerId) ? "" : "none"
+        }).appendTo(artboardEl);
+
+        if (typeDef && typeof typeDef.render === "function") {
+            try {
+                typeDef.render(el.get(0), comp.props || {}, {
+                    // Editor-only: logged for visibility/debugging, but
+                    // deliberately NOT run through screen.logic — the
+                    // Logic canvas is a pure editor for the graph, it never
+                    // executes it (see findLogicNode's comment). Actual
+                    // execution happens only on the deployed page.
+                    emit: function (eventName, payload) {
+                        if (RED.log) RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+                    }
+                });
+            } catch (e) {
+                el.text("(render error: " + e.message + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
+            }
+        } else {
+            el.text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
+        }
+
+        el.on("mousedown", function (e) {
+            e.stopPropagation();
+            // Clicking a component that belongs to a group (comp.g) treats
+            // the whole group as one selection unit — v1 has no "enter the
+            // group" mode to select an individual member, ungroup for that.
+            var targetIds = comp.g ? groupMemberIds(comp.g) : [comp.id];
+            var alreadyAllSelected = targetIds.every(isSelected);
+            if (e.shiftKey) {
+                if (alreadyAllSelected) {
+                    selectedIds = selectedIds.filter(function (id) { return targetIds.indexOf(id) === -1; });
+                } else {
+                    targetIds.forEach(function (id) { if (!isSelected(id)) selectedIds.push(id); });
+                }
+                refreshSelectionVisuals();
+            } else if (!alreadyAllSelected) {
+                // Clicking an item already part of a multi-selection, with
+                // no shift, leaves the whole (super-)selection alone — so
+                // the drag that (maybe) follows moves everyone together.
+                // Standard convention (Figma/PowerPoint/Node-RED's own flow
+                // canvas all work this way).
+                selectMultiple(targetIds);
+            }
+        });
+
+        if (!comp.locked) {
+            var groupStart = null; // {id: {x,y}, ...} for every selected item, captured at drag start
+            var dragStartPage = null; // {x,y} = the ORIGINAL mousedown's pageX/pageY (real, unscaled screen px)
+            // jQuery UI's own ui.position is computed from its internal
+            // _generatePosition() math, which assumes an unscaled ancestor
+            // chain — under our CSS-scaled stage that comes out wrong (and
+            // in a way that compounds every frame). So it's never trusted
+            // as an INPUT here — instead the raw mouse event's pageX/pageY
+            // (always real, physical screen px, unaffected by any ancestor
+            // transform) is read directly, and the delta divided by
+            // zoomLevel to land back in artboard-local units.
+            //
+            // IMPORTANT: jQuery UI's own _mouseDrag runs
+            // `this._trigger("drag", event, ui)` (our callback) and only
+            // AFTER it returns does `this.helper[0].style.left =
+            // this.position.left + "px"` (helper === this element itself,
+            // since no `helper` option is set) — i.e. it writes to this
+            // element's CSS unconditionally right after our callback, using
+            // `this.position = ui.position`. Calling el.css() inside our
+            // own drag callback (an earlier, WRONG attempt at this fix)
+            // therefore gets silently clobbered a moment later by jQuery
+            // UI's own broken value — the fix is to MUTATE ui.position in
+            // place instead, so jQuery UI's own follow-up write applies
+            // OUR corrected numbers. containment/grid are meaningless
+            // (jQuery UI would apply them to the same, still-wrong,
+            // unscaled math) so neither option is passed anymore — the
+            // manual clamp/snap below fully replaces them.
+            el.draggable({
+                start: function (e) {
+                    if (!isSelected(comp.id)) selectOnly(comp.id);
+                    dragStart = { x: comp.x, y: comp.y };
+                    dragStartPage = { x: e.pageX, y: e.pageY };
+                    groupStart = {};
+                    selectedIds.forEach(function (id) {
+                        var c = findComponent(id);
+                        if (c) groupStart[id] = { x: c.x, y: c.y };
+                    });
+                },
+                // jQuery UI only moves THIS wrapper element during drag; the
+                // rest of a multi-selection and the selection/handles
+                // overlay (a separate sibling element, see
+                // renderSelectionHandles) have no idea a drag is happening
+                // — without this they stay frozen at the pre-drag position
+                // while this one visibly moves away from under them.
+                drag: function (e, ui) {
+                    var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / zoomLevel;
+                    var localTop = dragStart.y + (e.pageY - dragStartPage.y) / zoomLevel;
+                    // Unconditional, matching the jQuery UI grid:[...]
+                    // option this replaces (which also snapped regardless
+                    // of the screen.snap checkbox — resize/placement are
+                    // the two spots that actually respect that flag).
+                    localLeft = snap(localLeft, screen.gridSize);
+                    localTop = snap(localTop, screen.gridSize);
+                    // Replaces jQuery UI's own containment:"parent" option
+                    // (dropped along with `ui.position` above, since it's
+                    // computed off the same unscaled-ancestor assumption) —
+                    // keeps the dragged item's box within the artboard.
+                    localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
+                    localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
+                    // See the big comment above the .draggable() call: this
+                    // MUST be a mutation of ui.position, not el.css(), or
+                    // jQuery UI's own next line overwrites it right back.
+                    ui.position.left = localLeft;
+                    ui.position.top = localTop;
+                    if (selectionHandlesEl && selectedIds.length === 1 && selectedIds[0] === comp.id) {
+                        selectionHandlesEl.css({ left: localLeft + "px", top: localTop + "px" });
+                    }
+                    var dx = localLeft - dragStart.x;
+                    var dy = localTop - dragStart.y;
+                    selectedIds.forEach(function (id) {
+                        if (id === comp.id) return; // jQuery UI already moved this one
+                        var c = findComponent(id);
+                        var start = groupStart[id];
+                        if (!c || !start) return;
+                        c.x = start.x + dx;
+                        c.y = start.y + dy;
+                        updateComponentBox(c);
+                    });
+                },
+                stop: function (e) {
+                    var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / zoomLevel;
+                    var localTop = dragStart.y + (e.pageY - dragStartPage.y) / zoomLevel;
+                    // Unconditional, matching the jQuery UI grid:[...]
+                    // option this replaces (which also snapped regardless
+                    // of the screen.snap checkbox — resize/placement are
+                    // the two spots that actually respect that flag).
+                    localLeft = snap(localLeft, screen.gridSize);
+                    localTop = snap(localTop, screen.gridSize);
+                    localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
+                    localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
+                    comp.x = localLeft;
+                    comp.y = localTop;
+                    updateComponentBox(comp); // final correction, same reason as the drag: callback's el.css() override above
+                    var moved = [];
+                    selectedIds.forEach(function (id) {
+                        var c = findComponent(id);
+                        var start = groupStart[id];
+                        if (!c || !start) return;
+                        if (start.x !== c.x || start.y !== c.y) {
+                            moved.push({ id: id, from: start, to: { x: c.x, y: c.y } });
+                        }
+                    });
+                    if (moved.length === 1) {
+                        pushHistory({ t: "move", screenId: screen.id, id: moved[0].id, from: moved[0].from, to: moved[0].to });
+                    } else if (moved.length > 1) {
+                        pushHistory({
+                            t: "multi", screenId: screen.id,
+                            events: moved.map(function (m) { return { t: "move", screenId: screen.id, id: m.id, from: m.from, to: m.to }; })
+                        });
+                    }
+                    if (moved.length) markDirty();
+                }
+            });
+        }
+    }
+
+    function addComponentAt(type, artboardX, artboardY) {
+        var screen = getActiveScreen();
+        var def = NEXA.getComponent(type);
+        if (!def) return;
+        var size = def.defaultSize || { w: 100, h: 60 };
+        var props = {};
+        Object.keys(def.defaults || {}).forEach(function (k) {
+            props[k] = def.defaults[k].value;
+        });
+        var comp = {
+            id: genId(),
+            type: type,
+            x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
+            y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
+            w: size.w,
+            h: size.h,
+            rotation: 0,
+            locked: false,
+            layerId: (screen.layers[0] || {}).id,
+            props: props
+        };
+        screen.components.push(comp);
+        renderComponent(comp);
+        selectOnly(comp.id);
+        pushHistory({ t: "add", screenId: screen.id, comp: comp });
+        markDirty();
+    }
+
+    // Palette lives in the sidebar (built once, persists across tray
+    // open/close) — dropping only does something while the canvas tray is
+    // open, since that's the only place with a live artboard to drop onto.
+    // Rebuilt (not just built once) from every safe, user-triggered call
+    // site — see the comment on componentsPane above for why.
+    function buildPalette(paletteEl) {
+        paletteEl.empty();
+        var components = NEXA.getComponents();
+        if (!components.length) {
+            $("<div>").css({ color: "#999", "font-size": "12px" }).text("No components registered.").appendTo(paletteEl);
+            return;
+        }
+        components.forEach(function (def) {
+            var chip = $("<div>", { "class": "nexa-palette-item" }).css({
+                padding: "8px",
+                margin: "0 0 6px 0",
+                border: "1px solid #ccc",
+                "border-radius": "4px",
+                background: "#fff",
+                cursor: "grab",
+                "font-size": "13px",
+                "text-align": "center"
+            }).text(def.label).appendTo(paletteEl);
+
+            // Same jQuery-UI draggable(helper:'clone') pattern
+            // @node-red/editor-client/src/js/ui/palette.js uses for
+            // dragging a node type onto the flow canvas.
+            chip.draggable({
+                helper: "clone",
+                appendTo: "#red-ui-editor",
+                revert: "invalid",
+                revertDuration: 100,
+                zIndex: 1000,
+                stop: function (e, ui) {
+                    if (!artboardEl) {
+                        RED.notify("Open the Pages canvas first (menu → Pages)", { type: "warning", timeout: 2000 });
+                        return;
+                    }
+                    // artboardEl still EXISTS while the Logic tab is showing
+                    // (only its pane is hidden via CSS, see buildCanvasArea)
+                    // — without this check, a UI component chip dropped
+                    // while looking at the Logic canvas would silently add
+                    // the component anyway (invisible until you switch back
+                    // to the UI tab), the same class of bug the Events
+                    // chips' own drop handler already guards against in the
+                    // opposite direction.
+                    if (activeCanvasTab !== "ui") {
+                        RED.notify("Switch to the UI tab first", { type: "warning", timeout: 2000 });
+                        return;
+                    }
+                    // The clone helper lives outside the scaled stage
+                    // (appendTo: "#red-ui-editor"), so ui.offset is a real,
+                    // unscaled screen position — but artboardEl.width()/
+                    // height() and addComponentAt() both work in artboard-
+                    // LOCAL units, so the real-pixel delta must come down
+                    // by zoomLevel before comparing/using it as local coords.
+                    var offset = artboardEl.offset();
+                    var x = (ui.offset.left - offset.left) / zoomLevel;
+                    var y = (ui.offset.top - offset.top) / zoomLevel;
+                    if (x >= 0 && y >= 0 && x <= artboardEl.width() && y <= artboardEl.height()) {
+                        addComponentAt(def.id, x, y);
+                    }
+                }
+            });
+        });
+    }
+
+    // Palette for the Logic canvas — unlike buildPalette above (which lists
+    // registered component TYPES), this lists per-screen node INSTANCES:
+    // fixed lifecycle chips, generic utility chips, and one chip per
+    // event/bindable prop actually declared by each component currently on
+    // THIS screen. Dragging one onto the Logic tab's canvas creates a
+    // screen.logic node (see addLogicNode). Rebuilt on tray open and Events
+    // tab click, same lazy-refresh reasoning as componentsPane.
+    function renderEventsPanel() {
+        if (!eventsPane) return;
+        eventsPane.empty();
+        var screen = getActiveScreen();
+
+        function sectionLabel(text) {
+            $("<div>").css({ "font-weight": "bold", "font-size": "11px", color: "#888", margin: "10px 0 4px" }).text(text).appendTo(eventsPane);
+        }
+
+        function chip(label, makeNode, compId) {
+            var item = $("<div>", { "class": "nexa-palette-item", "data-comp-id": compId || "" }).css({
+                padding: "8px", margin: "0 0 6px 0", border: "1px solid #ccc",
+                "border-radius": "4px", background: "#fff", cursor: "grab",
+                "font-size": "12px"
+            }).text(label).appendTo(eventsPane);
+            item.draggable({
+                helper: "clone",
+                appendTo: "#red-ui-editor",
+                revert: "invalid",
+                revertDuration: 100,
+                zIndex: 1000,
+                stop: function (e, ui) {
+                    // The Logic canvas has its own zoom now (same as the UI
+                    // canvas's buildPalette drop math) — divide the real-
+                    // pixel offset delta by logicZoomLevel to land in local
+                    // (unscaled) node coordinates.
+                    if (!logicArtboardEl || !logicArtboardEl.is(":visible")) {
+                        RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
+                        return;
+                    }
+                    var offset = logicArtboardEl.offset();
+                    var x = (ui.offset.left - offset.left) / logicZoomLevel;
+                    var y = (ui.offset.top - offset.top) / logicZoomLevel;
+                    if (x < 0 || y < 0) return;
+                    addLogicNode(makeNode(), x, y);
+                }
+            });
+            return item;
+        }
+
+        sectionLabel("Lifecycle");
+        chip("On Load", function () { return { type: "onload" }; });
+        chip("On Render", function () { return { type: "onrender" }; });
+        chip("On Close", function () { return { type: "onclose" }; });
+
+        sectionLabel("Utility");
+        chip("Function", function () { return { type: "function", code: "return msg;" }; });
+        chip("Debug", function () { return { type: "debug" }; });
+        chip("Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; });
+        chip("Reload Page", function () { return { type: "reload" }; });
+        chip("Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; });
+
+        if (screen && screen.components.length) {
+            sectionLabel("Components on this screen");
+            screen.components.forEach(function (comp) {
+                var typeDef = NEXA.getComponent(comp.type);
+                if (!typeDef) return;
+                var shortId = comp.id.slice(-4);
+                var name = (typeDef.label || comp.type) + " #" + shortId;
+                (typeDef.events || []).forEach(function (evtDef) {
+                    chip(name + " → " + evtDef.label, function () {
+                        return { type: "ui-event", compId: comp.id, event: evtDef.name };
+                    }, comp.id);
+                });
+                // ONE consolidated "Update" node per component (not one per
+                // bindable prop) — its own edit dialog (double-click, see
+                // openUiUpdateNodeEditor) exposes every settable field
+                // (x/y/w/h/rotation + every typeDef.defaults key) as an
+                // OPTIONAL static default; msg.properties.<key> at runtime
+                // overrides whichever of those it includes.
+                chip(name + " → Update", function () {
+                    return { type: "ui-update", compId: comp.id, config: {} };
+                }, comp.id);
+            });
+        } else {
+            $("<div>").css({ color: "#999", "font-size": "12px" }).text("Add components to the screen (Components tab) to see their event/update nodes here.").appendTo(eventsPane);
+        }
+        // This just rebuilt every row from scratch, so any highlight from
+        // a component selected BEFORE the rebuild (e.g. switching to this
+        // tab, or a component add/remove elsewhere) needs reapplying —
+        // without this, the highlight only reappeared on the NEXT
+        // selection change, not immediately when this panel (re)renders.
+        refreshEventsHighlight();
+    }
+
+    // Click a component on the UI canvas -> highlight its matching rows in
+    // the Events sidebar tab (and multi-select highlights all of them) —
+    // the low-cost alternative to a separate Logic window/popup for
+    // answering "which node belongs to which UI element," called from the
+    // same refreshSelectionVisuals() every other selection-visual update
+    // already goes through.
+    function refreshEventsHighlight() {
+        if (!eventsPane) return;
+        eventsPane.find(".nexa-palette-item").css({ background: "#fff", "border-color": "#ccc" });
+        if (!selectedIds.length) return;
+        selectedIds.forEach(function (id) {
+            eventsPane.find('.nexa-palette-item[data-comp-id="' + id + '"]').css({ background: "#fff3e0", "border-color": "#ff5722" });
+        });
+    }
+
+    function onKeyDown(e) {
+        if (!trayContent) return;
+        var isTextField = $(e.target).is("input,textarea");
+        // Gated on activeCanvasTab so Delete/Backspace always acts on
+        // whichever canvas you're actually looking at — selectedIds (UI
+        // components) and logicSelectedIds (logic nodes) are separate
+        // selections that both keep existing while the other tab is
+        // active, so without this check, Delete could remove a UI
+        // component you'd selected earlier while you're on the Logic tab
+        // trying to remove a node instead.
+        if ((e.key === "Delete" || e.key === "Backspace") && !isTextField) {
+            if (activeCanvasTab === "logic") {
+                if (logicSelectedIds.length) {
+                    e.preventDefault();
+                    removeLogicNodes(logicSelectedIds.slice());
+                }
+                return;
+            }
+            if (selectedIds.length) {
+                e.preventDefault();
+                removeComponents(selectedIds.slice());
+                return;
+            }
+        }
+        if ((e.ctrlKey || e.metaKey) && !isTextField) {
+            if (e.key === "z" || e.key === "Z") {
+                e.preventDefault();
+                if (e.shiftKey) redo(); else undo();
+            } else if (e.key === "y" || e.key === "Y") {
+                e.preventDefault();
+                redo();
+            } else if (e.key === "g" || e.key === "G") {
+                if (activeCanvasTab === "ui") {
+                    e.preventDefault();
+                    if (e.shiftKey) ungroupSelection(); else groupSelection();
+                }
+            } else if (e.key === "c" || e.key === "C") {
+                e.preventDefault();
+                if (activeCanvasTab === "logic") copyLogicSelection(false);
+                else copySelection(false);
+            } else if (e.key === "x" || e.key === "X") {
+                e.preventDefault();
+                if (activeCanvasTab === "logic") copyLogicSelection(true);
+                else copySelection(true);
+            } else if (e.key === "v" || e.key === "V") {
+                e.preventDefault();
+                if (activeCanvasTab === "logic") pasteLogicClipboard();
+                else pasteClipboard();
+            }
+        }
+    }
+
+    // --- Screen switching / artboard (re)rendering --------------------
+
+    function renderActiveScreen() {
+        if (!artboardEl) return;
+        var screen = getActiveScreen();
+        selectedIds = [];
+        selectionHandlesEl = null; // artboardEl.empty() below discards its DOM node too
+        renderPropertiesPanel();
+        artboardEl.empty();
+        // Proper square grid: two tiled linear-gradients with TRANSPARENT
+        // gaps over a solid background-color. (repeating-linear-gradient
+        // with opaque "#fff" gaps was the earlier bug — the top layer's
+        // opaque fill hid the second layer's lines completely, so it only
+        // ever looked like stripes, never a grid.)
+        artboardEl.css({
+            width: screen.width + "px",
+            height: screen.height + "px",
+            "background-color": "#fff",
+            "background-image":
+                "linear-gradient(to right, #e3e3e3 1px, transparent 1px)," +
+                "linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
+            "background-size": screen.gridSize + "px " + screen.gridSize + "px"
+        });
+        stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
+        applyZoomTransform(); // keeps the sizer in sync with this screen's (possibly just-changed) width/height
+        screen.components.forEach(renderComponent);
+    }
+
+    // --- Zoom --------------------------------------------------------
+
+    // Applies `zoomLevel` as a CSS transform on stageEl (component
+    // coordinates inside it stay in real, unscaled px — resize/rotate/drag
+    // math never needs to know about zoom) and resizes sizerEl to the
+    // SCALED dimensions so the viewport's native scrollbars reflect the
+    // zoomed-in size (a transform alone doesn't affect layout/scroll size).
+    function applyZoomTransform() {
+        if (!stageEl || !sizerEl) return;
+        var screen = getActiveScreen();
+        if (!screen) return;
+        stageEl.css("transform", "scale(" + zoomLevel + ")");
+        sizerEl.css({
+            width: (screen.width * zoomLevel) + "px",
+            height: (screen.height * zoomLevel) + "px"
+        });
+        updateZoomLabel();
+        // The resize/rotate/lock handles bake the CURRENT zoomLevel into
+        // their own inverse-scale transform at render time (see
+        // renderSelectionHandles) so they stay a constant physical size —
+        // that means they go stale the instant zoom changes again, unless
+        // rebuilt here every time it does.
+        refreshSelectionVisuals();
+    }
+
+    function updateZoomLabel() {
+        if (zoomLabelEl) zoomLabelEl.text(Math.round(zoomLevel * 100) + "%");
+    }
+
+    // Zooms while keeping `focalPoint` (viewport-relative {x,y}, defaults to
+    // the viewport's own center) visually stationary — same idea as
+    // Node-RED's button/hotkey zoom: convert the focal point to a stage-
+    // space coordinate under the OLD zoom, then solve for the scroll
+    // position that puts that same stage coordinate back under the focal
+    // point under the NEW zoom.
+    function setZoom(newZoom, focalPoint) {
+        if (!viewportEl || !sizerEl) return;
+        newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+        if (newZoom === zoomLevel) return;
+
+        var vp = viewportEl.get(0);
+        if (!focalPoint) {
+            focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
+        }
+        // sizerEl may be smaller than the viewport (centered via margin:auto
+        // flex centering) — scrollLeft/Top is 0 in that case, and the
+        // padding before the sizer isn't part of scroll space, so this
+        // still holds relative to the sizer's own top-left.
+        var sizerOffset = sizerEl.position(); // relative to viewport's own box
+        var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / zoomLevel;
+        var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / zoomLevel;
+
+        zoomLevel = newZoom;
+        applyZoomTransform();
+
+        // Re-measure sizerOffset after the resize above (margin:auto
+        // recentering can shift it) before solving for the new scroll pos.
+        var newOffset = sizerEl.position();
+        vp.scrollLeft = stageX * zoomLevel + newOffset.left - focalPoint.x;
+        vp.scrollTop = stageY * zoomLevel + newOffset.top - focalPoint.y;
+    }
+
+    function zoomIn() { setZoom(zoomLevel + ZOOM_STEP); }
+    function zoomOut() { setZoom(zoomLevel - ZOOM_STEP); }
+    function zoomReset() { setZoom(1); }
+
+    // --- Logic canvas zoom — same math as applyZoomTransform/setZoom/
+    // zoomToFit above, mirrored onto the Logic canvas's own state instead
+    // of sharing it (see the comment on the logicZoomLevel var).
+    function applyLogicZoomTransform() {
+        if (!logicStageEl || !logicSizerEl) return;
+        logicStageEl.css("transform", "scale(" + logicZoomLevel + ")");
+        logicSizerEl.css({
+            width: (LOGIC_CANVAS_W * logicZoomLevel) + "px",
+            height: (LOGIC_CANVAS_H * logicZoomLevel) + "px"
+        });
+        if (logicZoomLabelEl) logicZoomLabelEl.text(Math.round(logicZoomLevel * 100) + "%");
+    }
+
+    function setLogicZoom(newZoom, focalPoint) {
+        if (!logicViewportEl || !logicSizerEl) return;
+        newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+        if (newZoom === logicZoomLevel) return;
+        var vp = logicViewportEl.get(0);
+        if (!focalPoint) focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
+        var sizerOffset = logicSizerEl.position();
+        var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / logicZoomLevel;
+        var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / logicZoomLevel;
+        logicZoomLevel = newZoom;
+        applyLogicZoomTransform();
+        var newOffset = logicSizerEl.position();
+        vp.scrollLeft = stageX * logicZoomLevel + newOffset.left - focalPoint.x;
+        vp.scrollTop = stageY * logicZoomLevel + newOffset.top - focalPoint.y;
+    }
+
+    function zoomLogicIn() { setLogicZoom(logicZoomLevel + ZOOM_STEP); }
+    function zoomLogicOut() { setLogicZoom(logicZoomLevel - ZOOM_STEP); }
+    function zoomLogicReset() { setLogicZoom(1); }
+
+    // Fits the bounding box of the actual logic NODES (+ padding) into the
+    // viewport — mirrors real Node-RED's own zoomToFitAll (fit what's
+    // actually there, not the whole notional canvas), which matters more
+    // here than for the UI artboard since LOGIC_CANVAS_W/H (2000x1400) is
+    // just an oversized scroll area, not a meaningful "page" to fit to.
+    function zoomLogicToFit() {
+        if (!logicViewportEl) return;
+        var screen = getActiveScreen();
+        var nodes = (screen && screen.logic && screen.logic.nodes) || [];
+        var vp = logicViewportEl.get(0);
+        var pad = 60;
+        if (!nodes.length) { zoomLogicReset(); return; }
+        var minX = Math.min.apply(null, nodes.map(function (n) { return n.x; }));
+        var minY = Math.min.apply(null, nodes.map(function (n) { return n.y; }));
+        var maxX = Math.max.apply(null, nodes.map(function (n) { return n.x + LOGIC_NODE_W; }));
+        var maxY = Math.max.apply(null, nodes.map(function (n) { return n.y + LOGIC_NODE_H; }));
+        var boxW = Math.max(maxX - minX, 10), boxH = Math.max(maxY - minY, 10);
+        var availW = Math.max(vp.clientWidth - pad * 2, 10);
+        var availH = Math.max(vp.clientHeight - pad * 2, 10);
+        var fitZoom = Math.min(availW / boxW, availH / boxH);
+        fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
+        logicZoomLevel = fitZoom;
+        applyLogicZoomTransform();
+        var centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+        vp.scrollLeft = Math.max(0, centerX * logicZoomLevel - vp.clientWidth / 2);
+        vp.scrollTop = Math.max(0, centerY * logicZoomLevel - vp.clientHeight / 2);
+    }
+
+    // Fits the WHOLE artboard into the viewport (with a little padding) —
+    // simpler than Node-RED's zoomToFitAll(), since there's exactly one
+    // fixed-size artboard per screen to fit, not an arbitrary bounding box
+    // of scattered nodes.
+    function zoomToFit() {
+        if (!viewportEl) return;
+        var screen = getActiveScreen();
+        if (!screen) return;
+        var vp = viewportEl.get(0);
+        var pad = 40;
+        var availW = Math.max(vp.clientWidth - pad * 2, 10);
+        var availH = Math.max(vp.clientHeight - pad * 2, 10);
+        var fitZoom = Math.min(availW / screen.width, availH / screen.height);
+        fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
+        zoomLevel = fitZoom;
+        applyZoomTransform();
+        // Center the (now scaled) sizer in the scrollable viewport.
+        var sizerW = screen.width * zoomLevel, sizerH = screen.height * zoomLevel;
+        vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
+        vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+    }
+
+    // --- Sidebar: Screens list + inline property form -------------------
+
+    function renderScreenList() {
+        if (!screenListEl) return;
+        screenListEl.empty();
+        screens.forEach(function (screen) {
+            var row = $("<div>", { "class": "nexa-screen-row" }).css({
+                padding: "6px 8px", cursor: "pointer", "border-radius": "3px",
+                display: "flex", "justify-content": "space-between", "align-items": "center",
+                background: screen.id === activeScreenId ? "#d0e2ff" : "transparent"
+            }).appendTo(screenListEl);
+
+            $("<span>").text(screen.name).appendTo(row);
+
+            if (screens.length > 1) {
+                $("<a>", { href: "#", title: "Delete screen" }).html("&times;").css({ color: "#999" }).on("click", function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeScreen(screen.id);
+                }).appendTo(row);
+            }
+
+            row.on("click", function () { selectScreenFromSidebar(screen.id); });
+        });
+    }
+
+    function renderScreenForm() {
+        if (!screenFormEl) return;
+        var screen = getActiveScreen();
+        screenFormEl.empty();
+        if (!screen) return;
+
+        function row(label, field, value, type) {
+            var r = $("<div>").css({ "margin-bottom": "8px" }).appendTo(screenFormEl);
+            $("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(r);
+            var input = $("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
+            input.on("change", function () {
+                var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
+                screen[field] = v;
+                if (field === "name") renderScreenList();
+                markDirty();
+                renderActiveScreen();
+            });
+            return input;
+        }
+
+        $("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text("Screen Settings").appendTo(screenFormEl);
+        row("Name", "name", screen.name);
+        row("URL path", "path", screen.path);
+        row("Width (px)", "width", screen.width, "number");
+        row("Height (px)", "height", screen.height, "number");
+        row("Grid size (px)", "gridSize", screen.gridSize, "number");
+
+        var snapRow = $("<div>").appendTo(screenFormEl);
+        var snapInput = $("<input>", { type: "checkbox" }).prop("checked", screen.snap).css({ "margin-right": "6px" });
+        snapInput.on("change", function () {
+            screen.snap = snapInput.is(":checked");
+            markDirty();
+        });
+        $("<label>").css({ "font-size": "11px", color: "#888" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
+    }
+
+    function selectScreenFromSidebar(id) {
+        activeScreenId = id;
+        renderScreenList();
+        renderScreenForm();
+        renderActiveScreen();
+        refreshLogicCanvasIfActive();
+    }
+
+    // Same fix as selectScreenFromSidebar's own comment: the Logic canvas
+    // doesn't redraw itself just because the ACTIVE screen identity
+    // changed underneath it (unlike renderActiveScreen, which every one of
+    // these call sites already remembers to call for the UI side) — call
+    // this alongside renderActiveScreen() wherever the active screen might
+    // have just changed.
+    function refreshLogicCanvasIfActive() {
+        if (activeCanvasTab === "logic") renderLogicCanvas();
+    }
+
+    function addScreenFromSidebar() {
+        var screen = makeScreen({});
+        screens.push(screen);
+        activeScreenId = screen.id;
+        renderScreenList();
+        renderScreenForm();
+        renderActiveScreen();
+        refreshLogicCanvasIfActive();
+        markDirty();
+    }
+
+    function removeScreen(id) {
+        if (screens.length <= 1) return;
+        var wasActive = id === activeScreenId;
+        screens = screens.filter(function (s) { return s.id !== id; });
+        if (wasActive) activeScreenId = screens[0].id;
+        renderScreenList();
+        renderScreenForm();
+        if (wasActive) { renderActiveScreen(); refreshLogicCanvasIfActive(); }
+        markDirty();
+    }
+
+    function buildSidebarContent() {
+        var container = $("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
+
+        $("<button>", { type: "button" }).text("Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" })
+            .on("click", function () { RED.actions.invoke("nexa:open-pages-editor"); })
+            .appendTo(container);
+
+        var tabsWrap = $("<div>").css({ flex: "0 0 auto" }).appendTo(container);
+        var ul = $("<ul>").appendTo(tabsWrap);
+
+        var panesWrap = $("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
+        componentsPane = $("<div>").css({ padding: "8px" }).appendTo(panesWrap);
+        var screensPane = $("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+        propertiesPane = $("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+        layersPane = $("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+        eventsPane = $("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+
+        screenListEl = $("<div>", { "class": "nexa-screen-list" }).css({ "margin-bottom": "8px" }).appendTo(screensPane);
+        $("<button>", { type: "button" }).text("+ Add Screen").css({ width: "100%" }).on("click", addScreenFromSidebar).appendTo(screensPane);
+        screenFormEl = $("<div>").css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(screensPane);
+
+        var sidebarTabs = RED.tabs.create({
+            element: ul,
+            onchange: function (tab) {
+                if (!tab) return;
+                componentsPane.toggle(tab.id === "components");
+                screensPane.toggle(tab.id === "screens");
+                propertiesPane.toggle(tab.id === "properties");
+                layersPane.toggle(tab.id === "layers");
+                eventsPane.toggle(tab.id === "events");
+                // Deferred to first real interaction, not called eagerly at
+                // sidebar-build time: this content is built during onadd(),
+                // which fires as soon as the PLUGINS bundle finishes loading
+                // — but node TYPES (our own kufayeka-nexa-project included)
+                // load via a separate /nodes bundle with no guaranteed
+                // ordering against it. RED.nodes.getType(...) can still be
+                // undefined at onadd time even though it's registered
+                // moments later. Any user-triggered event (like clicking
+                // this tab) happens well after both have finished.
+                if (tab.id === "screens") ensureScreensLoaded();
+                if (tab.id === "components") buildPalette(componentsPane);
+                if (tab.id === "properties") renderPropertiesPanel();
+                if (tab.id === "layers") renderLayersPanel();
+                if (tab.id === "events") renderEventsPanel();
+            }
+        });
+        sidebarTabs.addTab({ id: "components", label: "Components" });
+        sidebarTabs.addTab({ id: "screens", label: "Screens" });
+        sidebarTabs.addTab({ id: "properties", label: "Properties" });
+        sidebarTabs.addTab({ id: "layers", label: "Layers" });
+        sidebarTabs.addTab({ id: "events", label: "Events" });
+
+        return container;
+    }
+
+    // --- Logic canvas: a much simpler node-box graph editor than the UI
+    // artboard above — no zoom/multi-select/grouping/undo-redo (v1 scope,
+    // see the plan file). Nodes are plain absolutely-positioned divs,
+    // wires are a single flat <svg><line> per screen.logic.wires entry,
+    // recomputed on every node drag. Deleting a node/wire is an explicit
+    // click (an inline × button on nodes, a direct click on a wire) rather
+    // than a select-then-Delete-key flow, since there's no selection model
+    // here to hang that off of.
+
+    function logicNodeLabel(node) {
+        var kind = LOGIC_NODE_KINDS[node.type] || {};
+        if (node.type === "ui-event" || node.type === "ui-update") {
+            var comp = findComponent(node.compId);
+            var typeDef = comp && NEXA.getComponent(comp.type);
+            var name = (typeDef ? typeDef.label : "?") + " #" + (comp ? comp.id.slice(-4) : "?");
+            if (node.type === "ui-event") {
+                // Look up the PLUGIN's own label for this event by name —
+                // falls back to the raw name if the component/event was
+                // since removed, so an orphaned node still renders instead
+                // of throwing.
+                var evtDef = typeDef && typeDef.events && typeDef.events.find(function (e) { return e.name === node.event; });
+                return name + " " + (evtDef ? evtDef.label : "on " + node.event);
+            }
+            return "Update " + name;
+        }
+        if (node.type === "inject") {
+            var pLabel = node.payloadType === "json" ? "JSON" : node.payloadType === "str" ? (node.payload || "str") : (node.payloadType || "date");
+            return "Inject (" + pLabel + ")";
+        }
+        if (node.type === "open-url") {
+            return "Open URL" + (node.url ? (" (" + node.url + ")") : "");
+        }
+        return kind.label || node.type;
+    }
+
+    function addLogicNode(nodeData, x, y) {
+        var screen = getActiveScreen();
+        var node = { id: genId(), x: x, y: y };
+        for (var k in nodeData) node[k] = nodeData[k];
+        screen.logic.nodes.push(node);
+        pushHistory({ t: "addLogicNode", screenId: screen.id, node: node });
+        renderLogicCanvas();
+        markDirty();
+    }
+
+    // Removes one or more logic nodes (and every wire touching any of
+    // them) as a single undo-able step — mirrors removeComponents' own
+    // single-vs-"multi" history event choice on the UI canvas.
+    function removeLogicNodes(ids) {
+        var screen = getActiveScreen();
+        var toRemove = ids.map(function (id) { return findLogicNode(screen, id); }).filter(Boolean);
+        if (!toRemove.length) return;
+        var removeIds = toRemove.map(function (n) { return n.id; });
+        var events = toRemove.map(function (node) {
+            var touchingWires = screen.logic.wires.filter(function (w) { return w.from === node.id || w.to === node.id; });
+            return { t: "deleteLogicNode", screenId: screen.id, node: node, wires: touchingWires };
+        });
+        // Apply directly (not via applyHistoryMutation) since we already
+        // have the exact wire lists captured above and want a single pass,
+        // not one filter-and-splice per node.
+        screen.logic.nodes = screen.logic.nodes.filter(function (n) { return removeIds.indexOf(n.id) === -1; });
+        screen.logic.wires = screen.logic.wires.filter(function (w) { return removeIds.indexOf(w.from) === -1 && removeIds.indexOf(w.to) === -1; });
+        pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events: events });
+        logicSelectedIds = logicSelectedIds.filter(function (id) { return removeIds.indexOf(id) === -1; });
+        renderLogicCanvas();
+        markDirty();
+    }
+
+    function isLogicSelected(id) { return logicSelectedIds.indexOf(id) !== -1; }
+    function selectLogicOnly(id) { logicSelectedIds = [id]; refreshLogicSelectionVisuals(); }
+    function selectLogicMultiple(ids) { logicSelectedIds = ids.slice(); refreshLogicSelectionVisuals(); }
+    function deselectAllLogic() { logicSelectedIds = []; refreshLogicSelectionVisuals(); }
+
+    var logicClipboard = null; // { nodes: [], wires: [] }
+
+    function copyLogicSelection(isCut) {
+        if (!logicSelectedIds.length) return;
+        var screen = getActiveScreen();
+        if (!screen || !screen.logic) return;
+        var selectedNodes = (screen.logic.nodes || []).filter(function (n) {
+            return logicSelectedIds.indexOf(n.id) !== -1;
+        });
+        if (!selectedNodes.length) return;
+
+        var selectedWires = (screen.logic.wires || []).filter(function (w) {
+            return logicSelectedIds.indexOf(w.from) !== -1 && logicSelectedIds.indexOf(w.to) !== -1;
+        });
+
+        logicClipboard = {
+            nodes: JSON.parse(JSON.stringify(selectedNodes)),
+            wires: JSON.parse(JSON.stringify(selectedWires))
+        };
+
+        if (isCut) {
+            removeLogicNodes(logicSelectedIds.slice());
+        }
+    }
+
+    function pasteLogicClipboard() {
+        if (!logicClipboard || !logicClipboard.nodes.length) return;
+        var screen = getActiveScreen();
+        if (!screen) return;
+        if (!screen.logic) screen.logic = { nodes: [], wires: [] };
+
+        var idMap = {};
+        var newNodes = logicClipboard.nodes.map(function (n) {
+            var copy = JSON.parse(JSON.stringify(n));
+            var newId = genId();
+            idMap[copy.id] = newId;
+            copy.id = newId;
+            copy.x = (copy.x || 0) + 30;
+            copy.y = (copy.y || 0) + 30;
+            return copy;
+        });
+
+        logicClipboard.nodes.forEach(function (n) {
+            n.x = (n.x || 0) + 30;
+            n.y = (n.y || 0) + 30;
+        });
+
+        var newWires = logicClipboard.wires.map(function (w) {
+            return {
+                id: genId(),
+                from: idMap[w.from] || w.from,
+                to: idMap[w.to] || w.to
+            };
+        });
+
+        newNodes.forEach(function (n) { screen.logic.nodes.push(n); });
+        newWires.forEach(function (w) { screen.logic.wires.push(w); });
+
+        var historyEvents = newNodes.map(function (n) {
+            return { t: "addLogicNode", screenId: screen.id, node: n };
+        }).concat(newWires.map(function (w) {
+            return { t: "addLogicWire", screenId: screen.id, wire: w };
+        }));
+        pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen.id, events: historyEvents });
+
+        selectLogicMultiple(newNodes.map(function (n) { return n.id; }));
+        renderLogicCanvas();
+        markDirty();
+    }
+
+    // Highlights every currently-selected logic node (a plain colored
+    // border, since this canvas has no zoom/handles concept to match the
+    // UI canvas's own orange-outline treatment) — cheap enough to just
+    // reset every node's border and reapply, same pattern as the UI
+    // canvas's own refreshSelectionVisuals().
+    function refreshLogicSelectionVisuals() {
+        if (!logicArtboardEl) return;
+        logicArtboardEl.find(".nexa-logic-node").css("border-color", "transparent");
+        logicSelectedIds.forEach(function (id) {
+            logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]').css("border-color", "#ffeb3b");
+        });
+    }
+
+    // Rubber-band/marquee select for logic nodes — mousedown on empty
+    // Logic-canvas space (not on a node, see its own mousedown handler)
+    // starts a dashed selection rectangle; any node whose box intersects it
+    // on mouseup gets selected. Mirrors the UI canvas's startMarqueeSelect,
+    // adapted for logicZoomLevel instead of zoomLevel.
+    function startLogicMarqueeSelect(e) {
+        var offset = logicArtboardEl.offset();
+        var startX = (e.pageX - offset.left) / logicZoomLevel;
+        var startY = (e.pageY - offset.top) / logicZoomLevel;
+        var box = { left: startX, top: startY, width: 0, height: 0 };
+        var shiftHeld = e.shiftKey;
+        var marqueeEl = $("<div>").css({
+            position: "absolute", left: startX + "px", top: startY + "px",
+            width: "0px", height: "0px",
+            border: "1px dashed #2196f3", background: "rgba(33,150,243,0.1)",
+            "pointer-events": "none", "z-index": 999
+        }).appendTo(logicArtboardEl);
+
+        function onMove(ev) {
+            var curX = (ev.pageX - offset.left) / logicZoomLevel;
+            var curY = (ev.pageY - offset.top) / logicZoomLevel;
+            box.left = Math.min(startX, curX);
+            box.top = Math.min(startY, curY);
+            box.width = Math.abs(curX - startX);
+            box.height = Math.abs(curY - startY);
+            marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+        }
+        function onUp() {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            marqueeEl.remove();
+            if (box.width < 3 && box.height < 3) return; // treat as a plain click on empty space
+            var screen = getActiveScreen();
+            var hits = (screen.logic.nodes || []).filter(function (n) {
+                return !(n.x > box.left + box.width || n.x + LOGIC_NODE_W < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
+            }).map(function (n) { return n.id; });
+            if (shiftHeld) {
+                hits.forEach(function (id) { if (!isLogicSelected(id)) logicSelectedIds.push(id); });
+                refreshLogicSelectionVisuals();
+            } else {
+                selectLogicMultiple(hits);
+            }
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    }
+
+    function removeLogicWire(id) {
+        var screen = getActiveScreen();
+        var wire = screen.logic.wires.find(function (w) { return w.id === id; });
+        if (!wire) return;
+        screen.logic.wires = screen.logic.wires.filter(function (w) { return w.id !== id; });
+        pushHistory({ t: "deleteLogicWire", screenId: screen.id, wire: wire });
+        renderLogicWires();
+        markDirty();
+    }
+
+    function logicNodePortPoint(node, role) { // role: "input" | "output"
+        return { x: role === "input" ? node.x : node.x + LOGIC_NODE_W, y: node.y + LOGIC_NODE_H / 2 };
+    }
+
+    // Cubic-bezier wire path — the common (left-to-right, output left of
+    // input) case of @node-red/editor-client's own generateLinkPath
+    // (view.js), scaled to LOGIC_NODE_W in place of its node_width. Real
+    // Node-RED also special-cases a right-to-left "U-turn" curve for wires
+    // that loop backward; skipped here since a small per-screen logic
+    // graph practically never needs it, and a plain forward curve still
+    // looks completely reasonable if it ever comes up.
+    function logicWirePath(p1, p2) {
+        var dx = p2.x - p1.x;
+        var scale = Math.abs(dx) < LOGIC_NODE_W ? 0.75 - 0.75 * ((LOGIC_NODE_W - Math.abs(dx)) / LOGIC_NODE_W) : 0.75;
+        var cp1x = p1.x + scale * LOGIC_NODE_W, cp2x = p2.x - scale * LOGIC_NODE_W;
+        return "M " + p1.x + " " + p1.y + " C " + cp1x + " " + p1.y + " " + cp2x + " " + p2.y + " " + p2.x + " " + p2.y;
+    }
+
+    function renderLogicWires() {
+        if (!logicSvgEl) return;
+        logicSvgEl.empty();
+        var screen = getActiveScreen();
+        (screen.logic.wires || []).forEach(function (w) {
+            var fromNode = findLogicNode(screen, w.from);
+            var toNode = findLogicNode(screen, w.to);
+            if (!fromNode || !toNode) return;
+            var p1 = logicNodePortPoint(fromNode, "output");
+            var p2 = logicNodePortPoint(toNode, "input");
+            var line = $(document.createElementNS(SVG_NS, "path")).attr({
+                d: logicWirePath(p1, p2), fill: "none"
+            }).css({ stroke: "var(--red-ui-node-border, #888)", "stroke-width": "2", cursor: "pointer", "pointer-events": "auto" })
+                .appendTo(logicSvgEl);
+            // A plain <title> is the simplest possible affordance here —
+            // this is a click-to-delete wire, not a select-then-confirm
+            // flow (see the comment above this whole section).
+            line.attr("title", "Click to delete this wire");
+            line.on("mouseenter", function () { line.css("stroke", "#d32f2f"); });
+            line.on("mouseleave", function () { line.css("stroke", "var(--red-ui-node-border, #888)"); });
+            line.on("click", function () { removeLogicWire(w.id); });
+        });
+    }
+
+    // Generous "magnetic" snap radius (px) for committing a wire onto an
+    // input port — matches the feel of real node-graph editors (Node-RED
+    // included), and is far more forgiving/reliable than requiring the
+    // mouse to land on the exact 10x10px dot.
+    var LOGIC_PORT_HIT_RADIUS = 26;
+
+    function pointDistanceSq(a, b) {
+        var dx = a.x - b.x, dy = a.y - b.y;
+        return dx * dx + dy * dy;
+    }
+
+    // Finds the closest eligible input port to (localX, localY), purely
+    // from screen.logic.nodes DATA — no document.elementFromPoint/DOM
+    // hit-testing at all, which was the previous approach here and is
+    // fragile in a real browser (needs the cursor to land on a specific
+    // 10px element exactly, and can be fooled by whatever else happens to
+    // be painted on top at that pixel). This is what actually decides
+    // whether a wire gets created, so it needs to be reliable.
+    function findNearestInputPort(screen, excludeNodeId, localX, localY) {
+        var best = null, bestDist = LOGIC_PORT_HIT_RADIUS * LOGIC_PORT_HIT_RADIUS;
+        (screen.logic.nodes || []).forEach(function (n) {
+            if (n.id === excludeNodeId) return; // no self-loops
+            var kind = LOGIC_NODE_KINDS[n.type] || {};
+            if (!kind.hasInput) return;
+            var d = pointDistanceSq(logicNodePortPoint(n, "input"), { x: localX, y: localY });
+            if (d <= bestDist) { bestDist = d; best = n; }
+        });
+        return best;
+    }
+
+    function wireLogicOutputPort(outDot, node) {
+        outDot.get(0).addEventListener("mousedown", function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var start = logicNodePortPoint(node, "output");
+            var tempLine = $(document.createElementNS(SVG_NS, "path")).attr({
+                d: logicWirePath(start, start), fill: "none"
+            }).css({ stroke: "#2196f3", "stroke-width": "2", "stroke-dasharray": "4,3", "pointer-events": "none" })
+                .appendTo(logicSvgEl);
+            var artboardOffset = logicArtboardEl.offset();
+            var hovered = null;
+
+            function onMove(ev) {
+                // artboardOffset is a real (post-transform) screen position;
+                // the artboard itself sits inside logicStageEl's CSS scale,
+                // so the real-pixel delta from it must come down by
+                // logicZoomLevel to land in the same local units as
+                // node.x/y — same fix as the UI canvas's own marquee/resize
+                // math under its own zoom.
+                var localX = (ev.clientX - artboardOffset.left) / logicZoomLevel;
+                var localY = (ev.clientY - artboardOffset.top) / logicZoomLevel;
+                var screen = getActiveScreen();
+                hovered = findNearestInputPort(screen, node.id, localX, localY);
+                // "Magnetic" snap: once within range, the dashed line locks
+                // onto the port's exact center (and turns green) instead of
+                // trailing the cursor — the same visual confirmation every
+                // node-graph editor gives you before you release the mouse.
+                var end = hovered ? logicNodePortPoint(hovered, "input") : { x: localX, y: localY };
+                tempLine.attr({ d: logicWirePath(start, end) }).css("stroke", hovered ? "#4caf50" : "#2196f3");
+            }
+            function onUp() {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                tempLine.remove();
+                if (!hovered) return;
+                var screen = getActiveScreen();
+                var alreadyWired = screen.logic.wires.some(function (w) { return w.from === node.id && w.to === hovered.id; });
+                if (alreadyWired) return;
+                var wire = { id: genId(), from: node.id, to: hovered.id };
+                screen.logic.wires.push(wire);
+                pushHistory({ t: "addLogicWire", screenId: screen.id, wire: wire });
+                renderLogicWires();
+                markDirty();
+            }
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    // Double-clicking a "function" node opens a REAL Node-RED tray with a
+    // REAL code editor — RED.editor.createEditor is the exact same public
+    // API @node-red/editor-client's own Function-node edit dialog uses
+    // (js.js), Monaco by default (falls back to ACE/plain textarea per the
+    // user's own Node-RED settings) — reused as-is, no bespoke editor code.
+    function openFunctionNodeEditor(node) {
+        var codeEditor = null;
+        RED.tray.show({
+            id: "nexa-logic-function-editor",
+            title: "Edit Function",
+            width: 700,
+            buttons: [
+                { text: "Cancel", click: function () { RED.tray.close(); } },
+                {
+                    text: "Done", "class": "primary",
+                    click: function () {
+                        if (codeEditor) node.code = codeEditor.getValue();
+                        markDirty();
+                        RED.tray.close();
+                    }
+                }
+            ],
+            open: function (tray) {
+                var body = tray.find(".red-ui-tray-body").css({ padding: "0" });
+                $("<div>").css({ padding: "8px 12px", "font-size": "12px", color: "#888" })
+                    .text("Receives msg (e.g. msg.payload from the node before this one). Return a new msg object to pass along the wire, or null to stop here.")
+                    .appendTo(body);
+                $("<div>", { id: "nexa-logic-function-code" }).css({ height: "320px" }).appendTo(body);
+                codeEditor = RED.editor.createEditor({
+                    id: "nexa-logic-function-code",
+                    mode: "ace/mode/javascript",
+                    value: node.code || "return msg;"
+                });
+            },
+            close: function () {
+                if (codeEditor && codeEditor.destroy) codeEditor.destroy();
+            }
+        });
+    }
+
+    // Double-clicking a "ui-update" node opens its config form — every
+    // settable field (geometry + the target component's own `defaults`)
+    // as an OPTIONAL static value. A field left blank only ever gets set
+    // via msg.properties.<key> at runtime; a field filled in here becomes
+    // that field's default whenever this node runs, still overridable by
+    // msg.properties (see applyUiUpdateMulti — msg always wins).
+    function openUiUpdateNodeEditor(node) {
+        var comp = findComponent(node.compId);
+        var typeDef = comp && NEXA.getComponent(comp.type);
+        var fieldEls = {};
+        RED.tray.show({
+            id: "nexa-logic-uiupdate-editor",
+            title: "Configure Update Node",
+            width: 450,
+            buttons: [
+                { text: "Cancel", click: function () { RED.tray.close(); } },
+                {
+                    text: "Save", "class": "primary",
+                    click: function () {
+                        var config = {};
+                        Object.keys(fieldEls).forEach(function (key) {
+                            var item = fieldEls[key];
+                            if (item.type === "checkbox") {
+                                if (item.overrideCheck.is(":checked")) {
+                                    config[key] = item.input.is(":checked");
+                                }
+                            } else {
+                                var raw = item.input.val();
+                                if (raw !== "" && raw !== null && raw !== undefined) {
+                                    config[key] = item.type === "number" ? (parseFloat(raw) || 0) : raw;
+                                }
+                            }
+                        });
+                        node.config = config;
+                        markDirty();
+                        RED.tray.close();
+                    }
+                }
+            ],
+            open: function (tray) {
+                var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+                if (!comp || !typeDef) {
+                    $("<div>").text("This component no longer exists.").appendTo(body);
+                    return;
+                }
+                $("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
+                    .text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.")
+                    .appendTo(body);
+
+                function field(key, label, type) {
+                    var row = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                    $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
+                    var current = node.config && node.config[key] !== undefined ? node.config[key] : "";
+                    var input;
+                    if (type === "checkbox") {
+                        var checkWrap = $("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
+                        var overrideCheck = $("<input>", { type: "checkbox" }).prop("checked", node.config && node.config[key] !== undefined).appendTo(checkWrap);
+                        $("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
+                        input = $("<input>", { type: "checkbox" }).prop("checked", !!current).appendTo(checkWrap);
+                        fieldEls[key] = { input: input, overrideCheck: overrideCheck, type: "checkbox" };
+                    } else if (type === "color") {
+                        var colorWrap = $("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(row);
+                        input = $("<input>", { type: "text", placeholder: "leave blank to keep unchanged (e.g. #ff8800)" })
+                            .css({ flex: "1", "box-sizing": "border-box" })
+                            .val(current)
+                            .appendTo(colorWrap);
+                        var picker = $("<input>", { type: "color" })
+                            .css({ width: "36px", height: "26px", padding: "0", cursor: "pointer", border: "1px solid #ccc" })
+                            .val(current && /^#[0-9a-fA-F]{6}$/.test(current) ? current : "#cfe0ff")
+                            .appendTo(colorWrap);
+                        var clearBtn = $("<button>", { type: "button" })
+                            .text("Clear")
+                            .css({ "font-size": "11px", padding: "2px 6px" })
+                            .appendTo(colorWrap);
+                        picker.on("input change", function () {
+                            input.val(picker.val());
+                        });
+                        input.on("input change", function () {
+                            if (/^#[0-9a-fA-F]{6}$/.test(input.val())) {
+                                picker.val(input.val());
+                            }
+                        });
+                        clearBtn.on("click", function () {
+                            input.val("");
+                        });
+                        fieldEls[key] = { input: input, type: "color" };
+                    } else {
+                        input = $("<input>", { type: type || "text", placeholder: "leave blank to keep unchanged" })
+                            .css({ width: "100%", "box-sizing": "border-box" })
+                            .val(current)
+                            .appendTo(row);
+                        fieldEls[key] = { input: input, type: type || "text" };
+                    }
+                }
+                field("x", "X", "number");
+                field("y", "Y", "number");
+                field("w", "Width", "number");
+                field("h", "Height", "number");
+                field("rotation", "Rotation", "number");
+                Object.keys(typeDef.defaults || {}).forEach(function (key) {
+                    var fieldDef = typeDef.defaults[key] || {};
+                    var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+                    field(key, key, inputType);
+                });
+            }
+        });
+    }
+
+    // "Inject" fires on its own once or on a repeating interval once the deployed
+    // page mounts — can emit JSON, string text, numbers, or timestamps.
+    function openInjectNodeEditor(node) {
+        var intervalInput, payloadTypeSelect, payloadInput, onceInput;
+        RED.tray.show({
+            id: "nexa-logic-inject-editor",
+            title: "Configure Inject Node",
+            width: 450,
+            buttons: [
+                { text: "Cancel", click: function () { RED.tray.close(); } },
+                {
+                    text: "Save", "class": "primary",
+                    click: function () {
+                        node.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
+                        node.payloadType = payloadTypeSelect.val();
+                        node.payload = payloadInput.val();
+                        node.once = onceInput.is(":checked");
+                        markDirty();
+                        renderLogicCanvas();
+                        RED.tray.close();
+                    }
+                }
+            ],
+            open: function (tray) {
+                var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+                $("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
+                    .text("Fires on the deployed page — can emit a string, JSON object (e.g. { \"text\": \"Hello\" }), number, or timestamp.")
+                    .appendTo(body);
+
+                var typeRow = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload Type").appendTo(typeRow);
+                payloadTypeSelect = $("<select>").css({ width: "100%" }).appendTo(typeRow);
+                [
+                    ["json", "JSON Object (e.g. {\"text\": \"Hello\"})"],
+                    ["str", "String (Text)"],
+                    ["num", "Number"],
+                    ["date", "Timestamp (Date.now())"]
+                ].forEach(function (opt) {
+                    $("<option>", { value: opt[0] }).text(opt[1])
+                        .prop("selected", (node.payloadType || "json") === opt[0])
+                        .appendTo(payloadTypeSelect);
+                });
+
+                var valRow = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload").appendTo(valRow);
+                payloadInput = $("<textarea>")
+                    .css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" })
+                    .val(node.payload !== undefined ? node.payload : '{"text": "Hello World"}')
+                    .appendTo(valRow);
+
+                function updatePayloadUi() {
+                    var t = payloadTypeSelect.val();
+                    if (t === "date") {
+                        valRow.hide();
+                    } else {
+                        valRow.show();
+                        if (t === "json" && !payloadInput.val()) payloadInput.val('{"text": "Hello"}');
+                        if (t === "str" && !payloadInput.val()) payloadInput.val('Hello World');
+                    }
+                }
+                payloadTypeSelect.on("change", updatePayloadUi);
+                updatePayloadUi();
+
+                var intervalRow = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Repeat every (ms, 0 to disable repeat)").appendTo(intervalRow);
+                intervalInput = $("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.intervalMs !== undefined ? node.intervalMs : 5000).appendTo(intervalRow);
+
+                var onceRow = $("<div>").css({ "margin-top": "10px" }).appendTo(body);
+                onceInput = $("<input>", { type: "checkbox" }).prop("checked", !!node.once).css({ "margin-right": "6px" });
+                onceRow.append(onceInput).append($("<label>").css({ "font-size": "11px", color: "#555" }).text("Fire once on startup"));
+            }
+        });
+    }
+
+    // "Open URL" navigates the deployed page — can replace the entire URL
+    // or just the trailing endpoint / screen sub-path.
+    function openOpenUrlNodeEditor(node) {
+        var modeSelect, urlInput, newTabInput;
+        RED.tray.show({
+            id: "nexa-logic-openurl-editor",
+            title: "Configure Open URL Node",
+            width: 450,
+            buttons: [
+                { text: "Cancel", click: function () { RED.tray.close(); } },
+                {
+                    text: "Save", "class": "primary",
+                    click: function () {
+                        node.mode = modeSelect.val();
+                        node.url = urlInput.val();
+                        node.newTab = newTabInput.is(":checked");
+                        markDirty();
+                        renderLogicCanvas();
+                        RED.tray.close();
+                    }
+                }
+            ],
+            open: function (tray) {
+                var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+                $("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
+                    .text("Configure how the deployed page navigates. Can be overridden at runtime via msg.payload.")
+                    .appendTo(body);
+
+                var modeRow = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Navigation Mode").appendTo(modeRow);
+                modeSelect = $("<select>").css({ width: "100%" }).appendTo(modeRow);
+                [
+                    ["replace", "Replace Whole URL (e.g. https://... or /full/path)"],
+                    ["endpoint", "Endpoint / Sub-path only (e.g. /screen2 or screen2)"]
+                ].forEach(function (opt) {
+                    $("<option>", { value: opt[0] }).text(opt[1])
+                        .prop("selected", (node.mode || "replace") === opt[0])
+                        .appendTo(modeSelect);
+                });
+
+                var row = $("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+                var urlLabel = $("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("URL or Endpoint").appendTo(row);
+                urlInput = $("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(row);
+
+                function updateUrlPlaceholder() {
+                    if (modeSelect.val() === "endpoint") {
+                        urlLabel.text("Endpoint / Screen Sub-path (e.g. /screen2)");
+                        urlInput.attr("placeholder", "/screen2 or screen2");
+                    } else {
+                        urlLabel.text("Full URL (e.g. https://example.com or /nexa/screen2)");
+                        urlInput.attr("placeholder", "https://example.com or /nexa/screen2");
+                    }
+                }
+                modeSelect.on("change", updateUrlPlaceholder);
+                updateUrlPlaceholder();
+
+                var tabRow = $("<label>").css({ "font-size": "11px", color: "#888", "margin-top": "6px", display: "block" }).appendTo(body);
+                newTabInput = $("<input>", { type: "checkbox" }).prop("checked", !!node.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
+                tabRow.append("Open in a new tab");
+            }
+        });
+    }
+
+    function renderLogicNode(node) {
+        var kind = LOGIC_NODE_KINDS[node.type] || {};
+        // Mirrors the real Node-RED flow-editor node look — a light body
+        // (var(--red-ui-node-label-color)/border reuse the SAME CSS custom
+        // properties the surrounding editor chrome already defines, so
+        // this automatically matches the user's light/dark theme) with a
+        // colored strip down the LEFT edge for the node's "kind" (that's
+        // Node-RED's own visual language for a node's category color —
+        // real Node-RED nodes are not solid-filled in their category color,
+        // just accented by it) — a full solid-color box was the earlier,
+        // much cruder v1 attempt at "looks like a node."
+        var box = $("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
+            position: "absolute", left: node.x + "px", top: node.y + "px",
+            width: LOGIC_NODE_W + "px", height: LOGIC_NODE_H + "px",
+            background: "var(--red-ui-view-background, #fff)",
+            color: "var(--red-ui-node-label-color, #333)",
+            "border-radius": "4px", "font-size": "12px",
+            display: "flex", "align-items": "center",
+            "padding-left": "16px", "padding-right": "10px", "box-sizing": "border-box", cursor: "move",
+            overflow: "hidden", "white-space": "nowrap", "text-overflow": "ellipsis",
+            border: "1px solid var(--red-ui-node-border, #999)",
+            "box-shadow": "0 1px 3px rgba(0,0,0,0.3)"
+        }).text(logicNodeLabel(node)).appendTo(logicArtboardEl);
+
+        $("<div>").css({
+            position: "absolute", left: "0", top: "0", bottom: "0", width: "6px",
+            background: kind.color || "#607d8b",
+            "border-top-left-radius": "4px", "border-bottom-left-radius": "4px"
+        }).appendTo(box);
+
+        // Click/shift-click multi-select — its own logicSelectedIds, never
+        // mixed with the UI canvas's selectedIds (see onKeyDown and the
+        // canvas tabs' onchange handler in buildCanvasArea for why they
+        // stay separate). No inline delete button anymore — real Node-RED
+        // doesn't have one on its nodes either, you select (click/shift-
+        // click/marquee, same as here now) and press Delete, so that's
+        // what removeLogicNodes via onKeyDown is for instead.
+        box.on("mousedown", function (e) {
+            e.stopPropagation();
+            if (e.shiftKey) {
+                if (isLogicSelected(node.id)) {
+                    logicSelectedIds = logicSelectedIds.filter(function (id) { return id !== node.id; });
+                } else {
+                    logicSelectedIds.push(node.id);
+                }
+                refreshLogicSelectionVisuals();
+            } else if (!isLogicSelected(node.id)) {
+                selectLogicOnly(node.id);
+            }
+            // Clicking an already-selected node with no shift leaves a
+            // multi-selection alone, same convention as the UI canvas —
+            // lets a drag that follows move the whole selection together.
+        });
+
+        if (node.type === "function") {
+            box.attr("title", "Double-click to edit code").on("dblclick", function (e) {
+                e.stopPropagation();
+                openFunctionNodeEditor(node);
+            });
+        }
+        if (node.type === "ui-update") {
+            box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+                e.stopPropagation();
+                openUiUpdateNodeEditor(node);
+            });
+        }
+        if (node.type === "inject") {
+            box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+                e.stopPropagation();
+                openInjectNodeEditor(node);
+            });
+        }
+        if (node.type === "open-url") {
+            box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+                e.stopPropagation();
+                openOpenUrlNodeEditor(node);
+            });
+        }
+
+        // Small squares, not circles — Node-RED's own port style — sitting
+        // right on the node's edge (real Node-RED ports overlap the node
+        // body slightly; -4px here does the same).
+        if (kind.hasOutput) {
+            var outDot = $("<div>", { "class": "nexa-logic-port-out" }).css({
+                position: "absolute", right: "-4px", top: "50%", "margin-top": "-4px",
+                width: "8px", height: "8px",
+                background: "var(--red-ui-node-border, #999)", cursor: "crosshair",
+                transform: "scale(" + (1 / logicZoomLevel) + ")"
+            }).appendTo(box);
+            wireLogicOutputPort(outDot, node);
+        }
+        if (kind.hasInput) {
+            $("<div>", { "class": "nexa-logic-port-in", "data-node-id": node.id }).css({
+                position: "absolute", left: "-4px", top: "50%", "margin-top": "-4px",
+                width: "8px", height: "8px",
+                background: "var(--red-ui-node-border, #999)",
+                transform: "scale(" + (1 / logicZoomLevel) + ")"
+            }).appendTo(box);
+        }
+
+        var moveStart = null;
+        var dragStartPage = null;
+        var groupStart = null; // {id: {x,y}, ...} for every OTHER selected node, captured at drag start — same group-move pattern as the UI canvas's renderComponent
+        box.draggable({
+            // jQuery UI's own position math assumes an unscaled ancestor
+            // chain — it breaks the exact same way under logicStageEl's
+            // CSS scale as it did on the UI canvas (see the long comment
+            // above renderComponent's own .draggable() call for the full
+            // story: jQuery UI writes its OWN style right after our `drag`
+            // callback returns, so the fix is to MUTATE ui.position in
+            // place with the zoom-corrected value, not to fight it with a
+            // separate el.css() call). containment is dropped for the same
+            // reason — it would just reapply the same broken math.
+            start: function (e) {
+                if (!isLogicSelected(node.id)) selectLogicOnly(node.id);
+                moveStart = { x: node.x, y: node.y };
+                dragStartPage = { x: e.pageX, y: e.pageY };
+                groupStart = {};
+                logicSelectedIds.forEach(function (id) {
+                    var n = findLogicNode(getActiveScreen(), id);
+                    if (n) groupStart[id] = { x: n.x, y: n.y };
+                });
+            },
+            drag: function (e, ui) {
+                var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / logicZoomLevel;
+                var localTop = moveStart.y + (e.pageY - dragStartPage.y) / logicZoomLevel;
+                localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
+                localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+                ui.position.left = localLeft;
+                ui.position.top = localTop;
+                var dx = localLeft - node.x, dy = localTop - node.y;
+                node.x = localLeft;
+                node.y = localTop;
+                // Move every OTHER selected node by the same delta — this
+                // node's own box already moved via jQuery UI/ui.position
+                // above; the rest have no idea a drag is happening unless
+                // told, same reason as the UI canvas's own group-move.
+                logicSelectedIds.forEach(function (id) {
+                    if (id === node.id) return;
+                    var n = findLogicNode(getActiveScreen(), id);
+                    if (!n) return;
+                    n.x += dx; n.y += dy;
+                    logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]').css({ left: n.x + "px", top: n.y + "px" });
+                });
+                renderLogicWires();
+            },
+            stop: function (e) {
+                // Same raw-pageX/pageY math as drag: above — jQuery UI's
+                // own ui.position for the final "stop" event is a fresh,
+                // still-uncorrected computation, not something drag:'s
+                // earlier mutation carries forward.
+                var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / logicZoomLevel;
+                var localTop = moveStart.y + (e.pageY - dragStartPage.y) / logicZoomLevel;
+                node.x = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
+                node.y = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+                var moved = [];
+                logicSelectedIds.forEach(function (id) {
+                    var n = findLogicNode(getActiveScreen(), id);
+                    var start = groupStart[id];
+                    if (!n || !start) return;
+                    if (start.x !== n.x || start.y !== n.y) {
+                        moved.push({ t: "moveLogicNode", screenId: getActiveScreen().id, id: id, from: start, to: { x: n.x, y: n.y } });
+                    }
+                });
+                if (moved.length === 1) {
+                    pushHistory(moved[0]);
+                } else if (moved.length > 1) {
+                    pushHistory({ t: "multi", screenId: getActiveScreen().id, events: moved });
+                }
+                if (moved.length) markDirty();
+                renderLogicWires();
+            }
+        });
+    }
+
+    function renderLogicCanvas() {
+        if (!logicArtboardEl) return;
+        logicArtboardEl.empty();
+        logicSvgEl = $(document.createElementNS(SVG_NS, "svg")).attr({
+            width: LOGIC_CANVAS_W, height: LOGIC_CANVAS_H
+        }).css({ position: "absolute", left: "0", top: "0", "pointer-events": "none" }).appendTo(logicArtboardEl);
+        var screen = getActiveScreen();
+        (screen.logic.nodes || []).forEach(renderLogicNode);
+        renderLogicWires();
+    }
+
+    // --- Canvas (tray) ---------------------------------------------------
+
+    function buildCanvasArea(trayBody) {
+        trayBody.css({
+            height: "100%", position: "relative", padding: "0", overflow: "hidden",
+            display: "flex", "flex-direction": "column"
+        });
+
+        zoomLevel = 1;
+
+        // Small "UI" / "Logic" tab bar (RED.tabs.create — same widget the
+        // sidebar uses) sits above the two canvas panes, which are
+        // absolutely stacked inside panesWrap and toggled by visibility —
+        // same panesWrap pattern buildSidebarContent() already uses.
+        var canvasTabsWrap = $("<div>").css({ flex: "0 0 auto", background: "#fff", "border-bottom": "1px solid #ddd" }).appendTo(trayBody);
+        var canvasTabsUl = $("<ul>").appendTo(canvasTabsWrap);
+        var panesWrap = $("<div>").css({ flex: "1 1 auto", position: "relative", overflow: "hidden" }).appendTo(trayBody);
+
+        var uiPane = $("<div>").css({ position: "absolute", top: "0", left: "0", right: "0", bottom: "0" }).appendTo(panesWrap);
+        var logicPane = $("<div>").css({ position: "absolute", top: "0", left: "0", right: "0", bottom: "0", display: "none" }).appendTo(panesWrap);
+
+        // viewport (scrolls) -> sizer (reserves scroll space at the CURRENT
+        // scaled size, centered via flex+margin:auto when it's smaller than
+        // the viewport) -> stage (carries the zoom transform; kept at the
+        // artboard's real, unscaled size so component coordinates inside it
+        // are always plain px, never scaled) -> artboard.
+        viewportEl = $("<div>").css({
+            height: "100%", position: "relative", overflow: "auto",
+            display: "flex", background: "#d8d8d8"
+        }).appendTo(uiPane);
+
+        sizerEl = $("<div>").css({ margin: "auto", "flex-shrink": "0", position: "relative" }).appendTo(viewportEl);
+
+        stageEl = $("<div>").css({
+            position: "absolute", left: "0", top: "0",
+            "transform-origin": "0 0"
+        }).appendTo(sizerEl);
+
+        artboardEl = $("<div>", { id: "nexa-artboard" }).css({
+            position: "relative",
+            "box-shadow": "0 0 0 1px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.15)"
+        }).appendTo(stageEl);
+
+        artboardEl.on("mousedown", function (e) {
+            if (e.target !== artboardEl.get(0)) return; // a component's own mousedown handles that case (and stops propagation)
+            if (!e.shiftKey) deselectAll();
+            startMarqueeSelect(e);
+        });
+
+        // Ctrl/Cmd+wheel zooms (the conventional browser zoom gesture, and
+        // what trackpad pinch reports as on most platforms), focused on the
+        // cursor position — same focal-point math as the toolbar buttons.
+        // A plain wheel keeps scrolling the viewport as normal.
+        viewportEl.on("wheel", function (e) {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            var oe = e.originalEvent;
+            var vpOffset = viewportEl.offset();
+            var focalPoint = { x: oe.clientX - vpOffset.left, y: oe.clientY - vpOffset.top };
+            setZoom(zoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
+        });
+
+        buildZoomToolbar(uiPane); // appended inside uiPane so it hides/shows along with the UI tab, no extra toggling needed
+
+        // ---- Logic pane: same viewport -> sizer -> stage(scaled) -> artboard
+        // structure as the UI canvas above, same reason (a transform alone
+        // doesn't affect layout/scroll size, so sizer reserves the SCALED
+        // space) — and the same line-grid look/gridSize as the UI artboard,
+        // per "belajar dari UI stage canvas" (learn from/reuse it).
+        logicZoomLevel = 1;
+        logicViewportEl = $("<div>").css({
+            height: "100%", position: "relative", overflow: "auto", background: "#e9e9e9"
+        }).appendTo(logicPane);
+        logicSizerEl = $("<div>").css({ position: "relative" }).appendTo(logicViewportEl);
+        logicStageEl = $("<div>").css({
+            position: "absolute", left: "0", top: "0", "transform-origin": "0 0"
+        }).appendTo(logicSizerEl);
+        logicArtboardEl = $("<div>").css({
+            position: "relative", width: LOGIC_CANVAS_W + "px", height: LOGIC_CANVAS_H + "px",
+            "background-color": "#fff",
+            "background-image":
+                "linear-gradient(to right, #e3e3e3 1px, transparent 1px)," +
+                "linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
+            "background-size": LOGIC_GRID_SIZE + "px " + LOGIC_GRID_SIZE + "px"
+        }).appendTo(logicStageEl);
+        logicArtboardEl.on("mousedown", function (e) {
+            if (e.target !== logicArtboardEl.get(0)) return; // a node's own mousedown handles that case (and stops propagation)
+            if (!e.shiftKey) deselectAllLogic();
+            startLogicMarqueeSelect(e);
+        });
+        // Ctrl/Cmd+wheel zoom, same convention and focal-point math as the
+        // UI canvas's own viewportEl wheel handler.
+        logicViewportEl.on("wheel", function (e) {
+            if (!e.ctrlKey && !e.metaKey) return;
+            e.preventDefault();
+            var oe = e.originalEvent;
+            var vpOffset = logicViewportEl.offset();
+            var focalPoint = { x: oe.clientX - vpOffset.left, y: oe.clientY - vpOffset.top };
+            setLogicZoom(logicZoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
+        });
+        applyLogicZoomTransform();
+        buildLogicZoomToolbar(logicPane);
+
+        var canvasTabs = RED.tabs.create({
+            element: canvasTabsUl,
+            onchange: function (tab) {
+                if (!tab) return;
+                activeCanvasTab = tab.id;
+                uiPane.toggle(tab.id === "ui");
+                logicPane.toggle(tab.id === "logic");
+                if (tab.id === "logic") {
+                    renderLogicCanvas();
+                    // Keep UI component selection active so Events tab highlights stay visible
+                    refreshEventsHighlight();
+                } else {
+                    logicSelectedIds = [];
+                    refreshLogicSelectionVisuals();
+                }
+            }
+        });
+        canvasTabs.addTab({ id: "ui", label: "UI" });
+        canvasTabs.addTab({ id: "logic", label: "Logic" });
+
+        $(document).on("keydown.nexa", onKeyDown);
+    }
+
+    // Floating toolbar, mirroring Node-RED's own flow-editor zoom controls
+    // (view.js: zoom-out/reset/zoom-in/zoom-to-fit, normally mounted via
+    // RED.statusBar.add — not usable here since that status bar belongs to
+    // the main flow editor, not our tray, so this is a small hand-built
+    // equivalent anchored to the canvas viewport instead).
+    function buildZoomToolbar(trayBody) {
+        var bar = $("<div>", { "class": "nexa-zoom-toolbar" }).css({
+            position: "absolute", right: "16px", bottom: "16px", "z-index": "10",
+            display: "flex", "align-items": "center",
+            background: "#fff", "border-radius": "4px",
+            "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+            overflow: "hidden"
+        }).appendTo(trayBody);
+
+        function zoomBtn(icon, title, onClick) {
+            return $("<a>", { href: "#", title: title }).css({
+                width: "26px", height: "26px", display: "flex",
+                "align-items": "center", "justify-content": "center",
+                color: "#555", cursor: "pointer"
+            }).append($("<i>", { "class": "fa " + icon })).on("click", function (e) {
+                e.preventDefault();
+                onClick();
+            }).appendTo(bar);
+        }
+
+        zoomBtn("fa-minus", "Zoom out", zoomOut);
+        zoomLabelEl = $("<span>").css({
+            width: "44px", "text-align": "center", "font-size": "11px", color: "#555"
+        }).appendTo(bar);
+        zoomBtn("fa-circle-o", "Reset zoom", zoomReset);
+        zoomBtn("fa-plus", "Zoom in", zoomIn);
+        zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
+        updateZoomLabel();
+    }
+
+    // Same widget as buildZoomToolbar above, mirrored onto the Logic
+    // canvas's own zoom state.
+    function buildLogicZoomToolbar(logicPane) {
+        var bar = $("<div>").css({
+            position: "absolute", right: "16px", bottom: "16px", "z-index": "10",
+            display: "flex", "align-items": "center",
+            background: "#fff", "border-radius": "4px",
+            "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+            overflow: "hidden"
+        }).appendTo(logicPane);
+
+        function zoomBtn(icon, title, onClick) {
+            return $("<a>", { href: "#", title: title }).css({
+                width: "26px", height: "26px", display: "flex",
+                "align-items": "center", "justify-content": "center",
+                color: "#555", cursor: "pointer"
+            }).append($("<i>", { "class": "fa " + icon })).on("click", function (e) {
+                e.preventDefault();
+                onClick();
+            }).appendTo(bar);
+        }
+
+        zoomBtn("fa-minus", "Zoom out", zoomLogicOut);
+        logicZoomLabelEl = $("<span>").css({
+            width: "44px", "text-align": "center", "font-size": "11px", color: "#555"
+        }).appendTo(bar);
+        zoomBtn("fa-circle-o", "Reset zoom", zoomLogicReset);
+        zoomBtn("fa-plus", "Zoom in", zoomLogicIn);
+        zoomBtn("fa-compress", "Zoom to fit (the nodes you have, not the whole canvas)", zoomLogicToFit);
+        applyLogicZoomTransform();
+    }
+
+    RED.actions.add("nexa:open-pages-editor", function () {
+        RED.tray.show({
+            id: "nexa-pages-editor",
+            title: "Pages",
+            width: Infinity,
+            // No separate Deploy button here on purpose — Nexa Dashboard piggy-
+            // backs on Node-RED's own main Deploy button (see the
+            // RED.events.on("deploy", ...) handler in onadd below). Unsaved
+            // screen changes show up the same way unsaved flow changes do.
+            buttons: [
+                {
+                    id: "nexa-pages-editor-close",
+                    text: "Close",
+                    click: function () { RED.tray.close(); }
+                }
+            ],
+            open: function (tray) {
+                // `tray` is the tray's root element — its own header/footer
+                // (with the Close button) live alongside `.red-ui-tray-body`,
+                // NOT inside it. Content must go in .red-ui-tray-body, or it
+                // covers the header/footer and the tray becomes unusable.
+                trayContent = tray.find(".red-ui-tray-body");
+                buildCanvasArea(trayContent);
+                ensureScreensLoaded(function () { renderActiveScreen(); });
+                // Refresh in case component plugins registered after the
+                // sidebar's own first (onadd-time) render of this list —
+                // see the componentsPane comment near the top of this file.
+                if (componentsPane) buildPalette(componentsPane);
+                if (eventsPane) renderEventsPanel();
+            },
+            // tray.js's finishBuild() unconditionally shades the header
+            // (blocking the main Deploy button, cursor:not-allowed) right
+            // after open() returns — this is correct for a normal node-edit
+            // tray, but wrong for us since Deploy is how Nexa Dashboard saves
+            // (there is no separate Nexa deploy button). `show` fires once
+            // finishBuild's own shading is done, so un-hiding it here is the
+            // last word — nothing re-shades it afterwards while this tray
+            // stays open. Zero core patch: just a runtime jQuery show/hide,
+            // and tray.js's own close() harmlessly re-hides it anyway.
+            show: function () {
+                $("#red-ui-header-shade").hide();
+            },
+            close: function () {
+                $(document).off("keydown.nexa");
+                trayContent = null;
+                artboardEl = null;
+                stageEl = null;
+                sizerEl = null;
+                viewportEl = null;
+                zoomLabelEl = null;
+                logicViewportEl = null;
+                logicArtboardEl = null;
+                logicSvgEl = null;
+                logicStageEl = null;
+                logicSizerEl = null;
+                logicZoomLabelEl = null;
+                logicSelectedIds = [];
+                activeCanvasTab = "ui";
+                // Undo history is scoped to one editing session — the
+                // screens/components themselves persist (via the config
+                // node), just not the ability to step back through how you
+                // got there, avoiding stale entries if the sidebar's Screens
+                // tab adds/removes a screen while this tray is closed.
+                undoStack = [];
+                redoStack = [];
+            }
+        });
+    });
+
+    RED.plugins.registerPlugin("kufayeka-nexa-dashboard", {
+        type: "node-red-editor-plugin",
+        onadd: function () {
+            RED.menu.addItem("red-ui-header-button-sidemenu", {
+                id: "menu-item-nexa-open-pages",
+                label: "Pages (Nexa Dashboard)",
+                onselect: "nexa:open-pages-editor"
+            });
+
+            RED.sidebar.addTab({
+                id: "nexa-dashboard-sidebar",
+                label: "Nexa",
+                name: "Nexa Dashboard",
+                iconClass: "fa fa-object-group",
+                content: buildSidebarContent(),
+                enableOnEdit: true
+            });
+
+            // No deploy listener needed here — screens live on the
+            // kufayeka-nexa-project config node (markDirty() keeps it in
+            // sync), so Node-RED's own Deploy already persists it as part
+            // of the normal flow save. RED.nodes.dirty(true) is what lights
+            // up the main Deploy button; that's all Nexa Dashboard needs.
+            //
+            // Nothing subscribes to RED.comms "nexa/value" on the editor
+            // side (that was only ever the removed demo badge) — the
+            // backend still publishes it (lib/nexa-plugin.js), ready for
+            // the live component-binding feature to consume once it exists.
+        }
+    });
+})();
+</script>

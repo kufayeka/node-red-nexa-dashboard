@@ -1,0 +1,32 @@
+<script type="text/javascript">
+    RED.nodes.registerType('kufayeka-nexa-project', {
+        category: 'config',
+        defaults: {
+            name: { value: "Nexa Project" },
+            screens: { value: [] }
+        },
+        label: function () {
+            return this.name || "Nexa Project";
+        },
+        oneditprepare: function () {
+            var count = (this.screens || []).length;
+            $("#node-config-input-info").text(count + " screen(s). Edit via menu → Pages (Nexa Dashboard), not here.");
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="kufayeka-nexa-project">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <span id="node-config-input-info" style="color:#888;font-size:12px;"></span>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="kufayeka-nexa-project">
+    <p>Holds the Nexa Dashboard <b>project</b> — screens and their components — as part of this flow, so it travels with flow export/import and Node-RED Projects (git), and is deployed by the normal Deploy button.</p>
+    <p>This node is created and managed automatically by Nexa Dashboard (menu → Pages). Edit screens and components there, not through this dialog.</p>
+    <p>Component <b>bindings</b> are just "@Path" references — the live tag values they point to stay entirely in the Asset Engine's own runtime store, never in this node's config.</p>
+</script>

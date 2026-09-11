@@ -1,0 +1,24 @@
+{
+  "name": "@kufayeka/node-red-nexa-dashboard",
+  "version": "0.1.0",
+  "description": "Node-RED-style drag-drop page/UI builder (SCADA/HMI/web) plugin, sharing the Kufayeka Asset Engine in-process.",
+  "main": "lib/nexa-plugin.js",
+  "node-red": {
+    "version": ">=4.0.0",
+    "plugins": {
+      "kufayeka-nexa-dashboard": "lib/nexa-plugin.js"
+    },
+    "nodes": {
+      "kufayeka-nexa-project": "nodes/nexa-project.js"
+    }
+  },
+  "keywords": [
+    "node-red",
+    "node-red-plugin",
+    "kufayeka",
+    "nexa",
+    "dashboard",
+    "scada",
+    "hmi"
+  ]
+}
