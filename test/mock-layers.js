@@ -35,6 +35,9 @@ function fakeJQ(selOrHtml, attrs) {
   const el = {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
     css(o){ if(typeof o==='string') return this._css[o]; Object.assign(this._css,o); return this; },
+    attr(k,v){ if(v===undefined) return this._attrs[k]; this._attrs[k]=v; return this; },
+    data(k,v){ this._data=this._data||{}; if(v===undefined) return this._data[k]; this._data[k]=v; return this; },
+    droppable(opts){ this._droppableOpts=opts; return this; },
     text(t){ if(t===undefined) return this._text; this._text=t; return this; },
     html(h){ if(h===undefined) return this._html; this._html=h; return this; },
     append(c){ this._children.push(c); return this; },
@@ -42,6 +45,11 @@ function fakeJQ(selOrHtml, attrs) {
       p._children.push(this); this._parent=p;
       if (this._attrs && this._attrs['data-id']) componentsById[this._attrs['data-id']] = this;
       if (this._attrs && this._attrs.title) titledEls.push({ title: this._attrs.title, el: this });
+      // Landmark for the UI canvas (real code gives it id="nexa-artboard")
+      // — needed so tests can reach its .droppable() drop handler, which is
+      // where drag-drop placement now actually happens (moved out of the
+      // palette chip's own draggable "stop").
+      if (this._attrs && this._attrs.id === 'nexa-artboard') global.__artboardEl = this;
       return this;
     },
     empty(){ this._children=[]; return this; },
@@ -130,9 +138,15 @@ const itemDraggables = draggables.filter(function (d) { return chipText(d.el) ==
 const chip = itemDraggables[itemDraggables.length - 1];
 
 console.log('--- drop 3 items ---');
-chip.opts.stop(null, { offset: { left: 100, top: 100 } });
-chip.opts.stop(null, { offset: { left: 300, top: 100 } });
-chip.opts.stop(null, { offset: { left: 500, top: 100 } });
+// Placement now happens in the artboard's own .droppable() "drop" handler
+// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
+// real drop by calling that handler directly with the chip as ui.draggable.
+function dropOnArtboard(x, y) {
+  global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
+}
+dropOnArtboard(100, 100);
+dropOnArtboard(300, 100);
+dropOnArtboard(500, 100);
 const screen = configNodes[0].screens[0];
 console.log('all default-layer?', screen.components.every(c => c.layerId === 'default'));
 console.log('default layer exists?', screen.layers.length === 1 && screen.layers[0].id === 'default');

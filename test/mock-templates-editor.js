@@ -43,6 +43,8 @@ function fakeJQ(selOrHtml, attrs) {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
     css(o, v) { if (typeof o === 'string') { if (v === undefined) return this._css[o]; this._css[o] = v; return this; } Object.assign(this._css, o); return this; },
     attr(k, v) { if (typeof k === 'object') { Object.assign(this._attrs, k); return this; } if (v === undefined) return this._attrs[k]; this._attrs[k] = v; return this; },
+    data(k, v) { this._data = this._data || {}; if (v === undefined) return this._data[k]; this._data[k] = v; return this; },
+    droppable(opts) { this._droppableOpts = opts; return this; },
     text(t) {
       if (t === undefined) return this._text;
       this._text = t;
@@ -77,6 +79,11 @@ function fakeJQ(selOrHtml, attrs) {
       if (this._attrs && this._attrs['class'] === 'nexa-template-list') global.__templateListEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-form') global.__templateFormEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-row') (global.__templateRows = global.__templateRows || []).push(this);
+      // Landmark for the UI canvas (real code gives it id="nexa-artboard")
+      // — needed so tests can reach its .droppable() drop handler, which is
+      // where drag-drop placement now actually happens (moved out of the
+      // palette chip's own draggable "stop").
+      if (this._attrs && this._attrs.id === 'nexa-artboard') global.__artboardEl = this;
       if (this._attrs && this._attrs['class'] === 'red-ui-editableList-addButton' && global.__lastLitComponentHeader) {
         if (!global.__addLitBindableBtn) global.__addLitBindableBtn = this;
         else if (!global.__addLitEventBtn) global.__addLitEventBtn = this;
@@ -288,7 +295,11 @@ function dropChipByLabel(label, x, y) {
   const list = draggables.filter(d => chipText(d.el) === label && d.el._attrs['class'] === 'nexa-palette-item');
   const chip = list[list.length - 1];
   if (!chip) throw new Error('no palette chip found for label: ' + label);
+  // Placement now happens in the artboard's own .droppable() "drop" handler
+  // (editor-tray.js), not the palette chip's draggable "stop" — simulate a
+  // real drop by calling that handler directly with the chip as ui.draggable.
   chip.opts.stop(null, { offset: { left: x, top: y } });
+  global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
 }
 // `draggables` accumulates EVERY chip ever created across every buildPalette()
 // call in this whole test (nothing is ever cleared from it) — checking

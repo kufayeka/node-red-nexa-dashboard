@@ -17,10 +17,21 @@ function fakeJQ(selOrHtml, attrs) {
   const el = {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {},
     css(o){ if(typeof o==='string') return this._css[o]; Object.assign(this._css,o); return this; },
+    attr(k,v){ if(v===undefined) return this._attrs[k]; this._attrs[k]=v; return this; },
+    data(k,v){ this._data=this._data||{}; if(v===undefined) return this._data[k]; this._data[k]=v; return this; },
+    droppable(opts){ this._droppableOpts=opts; return this; },
     text(t){ if(t===undefined) return this._text; this._text=t; return this; },
     html(h){ this._html=h; return this; },
     append(child){ this._children.push(child); return this; },
-    appendTo(parent){ parent._children.push(this); this._parent=parent; return this; },
+    appendTo(parent){
+      parent._children.push(this); this._parent=parent;
+      // Landmark for the UI canvas (real code gives it id="nexa-artboard")
+      // — needed so tests can reach its .droppable() drop handler, which is
+      // where drag-drop placement now actually happens (moved out of the
+      // palette chip's own draggable "stop").
+      if (this._attrs && this._attrs.id === 'nexa-artboard') global.__artboardEl = this;
+      return this;
+    },
     empty(){ this._children=[]; return this; },
     val(v){ if(v===undefined) return this._val; this._val=v; return this; },
     prop(){ return this; },
@@ -116,11 +127,19 @@ const textDraggables = draggables.filter(function (d) { return chipText(d.el) ==
 const rectDrag = rectDraggables[rectDraggables.length - 1];
 const textDrag = textDraggables[textDraggables.length - 1];
 
+// Placement now happens in the artboard's own .droppable() "drop" handler
+// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
+// real drop by calling that handler directly with the chip as ui.draggable,
+// the same way jQuery UI's ddmanager would.
+function dropOnArtboard(drag, x, y) {
+  global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: drag.el });
+}
+
 console.log('--- simulate dropping mock-rect ---');
-rectDrag.opts.stop(null, { offset: { left: 300, top: 220 } });
+dropOnArtboard(rectDrag, 300, 220);
 
 console.log('--- simulate dropping mock-text ---');
-textDrag.opts.stop(null, { offset: { left: 400, top: 320 } });
+dropOnArtboard(textDrag, 400, 320);
 
 console.log('components on screen 1:', configNodes[0].screens[0].components.map(c => ({type: c.type, props: c.props})));
 console.log('ALL OK');
