@@ -538,8 +538,7 @@
 
   // src/canvas/layers.js
   var collapsedLayers = /* @__PURE__ */ new Set();
-  var selectedTreeItemId = null;
-  var draggedItem = null;
+  var activeTreeWidget = null;
   function isExpanded(layerId) {
     return !collapsedLayers.has(layerId);
   }
@@ -615,14 +614,6 @@
     renderActiveScreen();
     renderLayersPanel();
   }
-  function isDescendantLayer(candidateParentId, targetLayerId) {
-    if (!candidateParentId || !targetLayerId) return false;
-    if (candidateParentId === targetLayerId) return true;
-    var children = getLayerChildren(targetLayerId);
-    return children.some(function(child) {
-      return child.id === candidateParentId || isDescendantLayer(candidateParentId, child.id);
-    });
-  }
   function renderLayersPanel() {
     if (!state.layersPane) return;
     state.layersPane.empty();
@@ -662,335 +653,188 @@
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small red-ui-button-primary", title: "Add Layer" }).html('<i class="fa fa-plus"></i> Layer').on("click", function() {
       addLayer(null);
     }).appendTo(btnGroup);
-    var treeContainer = $("<div>", { class: "red-ui-editableList-container nexa-layer-tree-container" }).css({
-      "min-height": "320px",
-      "max-height": "calc(100vh - 270px)",
-      "overflow-y": "auto",
-      "overflow-x": "hidden",
-      padding: "6px",
-      border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
-      "border-radius": "4px",
-      background: "var(--red-ui-secondary-background, #fff)",
-      "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)",
-      "box-sizing": "border-box",
-      width: "100%",
-      display: "block"
-    }).appendTo(state.layersPane);
-    var renderedLayerIds = /* @__PURE__ */ new Set();
-    function renderLayerNode(layer, depth) {
-      if (!layer || renderedLayerIds.has(layer.id)) return;
-      renderedLayerIds.add(layer.id);
+    function buildLayerItem(layer) {
       var directComponents = getComponentsInLayer(layer.id);
       var childLayers = getLayerChildren(layer.id);
-      var hasChildren = directComponents.length > 0 || childLayers.length > 0;
-      var expanded = isExpanded(layer.id);
       var layerRow = $("<div>", {
-        class: "nexa-layer-tree-item nexa-layer-node" + (selectedTreeItemId === layer.id ? " selected" : ""),
-        "data-layer-id": layer.id,
-        draggable: "true"
-      }).css({
-        display: "flex",
-        "align-items": "center",
-        gap: "4px",
-        padding: "4px 6px",
-        "margin-left": depth * 16 + "px",
-        "margin-bottom": "2px",
-        "border-radius": "3px",
-        background: selectedTreeItemId === layer.id ? "var(--red-ui-list-item-selected-background, #e3f2fd)" : "transparent",
-        border: selectedTreeItemId === layer.id ? "1px solid #90caf9" : "1px solid transparent",
-        cursor: "pointer",
-        "font-size": "12px",
-        "user-select": "none",
-        transition: "background 0.15s, border-color 0.15s"
-      }).appendTo(treeContainer);
-      layerRow.on("dragstart", function(ev) {
-        draggedItem = { type: "layer", id: layer.id };
-        if (ev && ev.originalEvent && ev.originalEvent.dataTransfer) {
-          ev.originalEvent.dataTransfer.setData("text/plain", JSON.stringify(draggedItem));
-          ev.originalEvent.dataTransfer.effectAllowed = "move";
-        }
-        layerRow.css("opacity", "0.4");
+        class: "nexa-layer-tree-item nexa-layer-node",
+        style: "display: flex; align-items: center; justify-content: space-between; width: calc(100% - 16px); gap: 4px; padding: 2px 0; font-size: 12px; user-select: none;"
       });
-      layerRow.on("dragend", function() {
-        draggedItem = null;
-        layerRow.css("opacity", "1");
-        if (treeContainer.find) {
-          treeContainer.find(".nexa-layer-tree-item").css({ "border-top": "1px solid transparent", "border-bottom": "1px solid transparent" });
-        }
-      });
-      layerRow.on("dragover", function(ev) {
-        if (ev && ev.preventDefault) ev.preventDefault();
-        if (ev && ev.originalEvent && ev.originalEvent.dataTransfer) ev.originalEvent.dataTransfer.dropEffect = "move";
-        layerRow.css("border", "1px dashed #2196f3");
-      });
-      layerRow.on("dragleave", function() {
-        layerRow.css("border", selectedTreeItemId === layer.id ? "1px solid #90caf9" : "1px solid transparent");
-      });
-      layerRow.on("drop", function(ev) {
-        if (ev && ev.preventDefault) ev.preventDefault();
-        layerRow.css("border", selectedTreeItemId === layer.id ? "1px solid #90caf9" : "1px solid transparent");
-        if (!draggedItem) return;
-        if (draggedItem.type === "comp") {
-          var comp = findComponent(draggedItem.id);
-          if (comp) {
-            comp.layerId = layer.id;
-            markDirty();
-            renderActiveScreen();
-            renderLayersPanel();
-          }
-        } else if (draggedItem.type === "layer" && draggedItem.id !== layer.id) {
-          if (!isDescendantLayer(layer.id, draggedItem.id)) {
-            var dLayer = findLayer(draggedItem.id);
-            if (dLayer) {
-              dLayer.parentId = layer.id;
-              setExpanded(layer.id, true);
-              markDirty();
-              renderActiveScreen();
-              renderLayersPanel();
-            }
-          }
-        }
-      });
-      if (hasChildren) {
-        $("<span>", { class: "nexa-tree-caret", style: "width: 14px; text-align: center; cursor: pointer; flex: 0 0 14px; color: #666;" }).html(expanded ? '<i class="fa fa-caret-down"></i>' : '<i class="fa fa-caret-right"></i>').on("click", function(e) {
-          if (e && e.stopPropagation) e.stopPropagation();
-          setExpanded(layer.id, !expanded);
-          renderLayersPanel();
-        }).appendTo(layerRow);
-      } else {
-        $("<span>", { style: "width: 14px; flex: 0 0 14px; opacity: 0.25; text-align: center;" }).html('<i class="fa fa-circle" style="font-size: 5px; vertical-align: middle;"></i>').appendTo(layerRow);
-      }
+      var left = $("<div>", { style: "display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0;" }).appendTo(layerRow);
       $("<span>", {
-        style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; margin-right: 2px;",
+        style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; color: " + (layer.visible ? "var(--red-ui-primary-text-color, #333)" : "#bbb") + ";",
         title: layer.visible ? "Hide layer" : "Show layer"
-      }).html(layer.visible ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>').css({ color: layer.visible ? "var(--red-ui-primary-text-color, #333)" : "#bbb" }).on("click", function(e) {
+      }).html(layer.visible ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>').on("click", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
         toggleLayerVisibility(layer.id);
-      }).appendTo(layerRow);
-      $("<span>", { style: "margin-right: 4px; color: #f59e0b; flex: 0 0 auto; font-size: 13px;" }).html(expanded ? '<i class="fa fa-folder-open"></i>' : '<i class="fa fa-folder"></i>').appendTo(layerRow);
-      var nameBox = $("<div>", { style: "flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px;" }).appendTo(layerRow);
-      var nameEl = $("<span>", {
-        style: "font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);"
-      }).text(layer.name).appendTo(nameBox);
+      }).appendTo(left);
+      $("<i>", { class: isExpanded(layer.id) ? "fa fa-folder-open" : "fa fa-folder", style: "color: #f59e0b; flex: 0 0 auto;" }).appendTo(left);
+      var nameSpan = $("<span>", {
+        style: "font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); cursor: pointer;"
+      }).text(layer.name).appendTo(left);
       function startRename() {
-        var input = $("<input>", { type: "text" }).val(layer.name).css({
-          width: "100%",
-          "box-sizing": "border-box",
-          padding: "1px 4px",
-          "font-size": "12px",
-          height: "22px"
-        });
-        nameBox.empty().append(input);
-        if (input.get && input.get(0) && input.get(0).focus) input.get(0).focus();
-        input.on("blur keydown", function(ev) {
+        var inp = $("<input>", { type: "text" }).val(layer.name).css({ width: "120px", height: "20px", "font-size": "11px", padding: "1px 3px" });
+        nameSpan.empty().append(inp);
+        if (inp.get && inp.get(0) && inp.get(0).focus) inp.get(0).focus();
+        inp.on("blur keydown", function(ev) {
           if (ev.type === "keydown" && ev.keyCode !== 13 && ev.keyCode !== 27) return;
           if (ev.type === "keydown" && ev.keyCode === 27) {
             renderLayersPanel();
             return;
           }
-          renameLayer(layer.id, input.val());
+          renameLayer(layer.id, inp.val());
           renderLayersPanel();
         });
       }
-      nameEl.on("dblclick", function(e) {
+      nameSpan.on("dblclick", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
         startRename();
       });
       var totalDirect = directComponents.length + childLayers.length;
       $("<span>", {
         style: "font-size: 10px; color: #888; background: rgba(0,0,0,0.06); padding: 0 5px; border-radius: 8px; flex: 0 0 auto;"
-      }).text(totalDirect).appendTo(nameBox);
-      var actionsBox = $("<div>", { style: "display: flex; align-items: center; gap: 2px; flex: 0 0 auto;" }).appendTo(layerRow);
-      $("<a>", { href: "#", title: "Add sub-layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 5px; font-size: 10px; color: #555;" }).html('<i class="fa fa-plus"></i>').on("click", function(e) {
+      }).text(totalDirect).appendTo(left);
+      var right = $("<div>", { style: "display: flex; align-items: center; gap: 2px; flex: 0 0 auto;" }).appendTo(layerRow);
+      $("<a>", { href: "#", title: "Add sub-layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 4px; font-size: 10px;" }).html('<i class="fa fa-plus"></i>').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
         addLayer(layer.id);
         setExpanded(layer.id, true);
-      }).appendTo(actionsBox);
-      $("<a>", { href: "#", title: "Rename layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 5px; font-size: 10px; color: #555;" }).html('<i class="fa fa-pencil"></i>').on("click", function(e) {
+      }).appendTo(right);
+      $("<a>", { href: "#", title: "Rename layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 4px; font-size: 10px;" }).html('<i class="fa fa-pencil"></i>').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
         startRename();
-      }).appendTo(actionsBox);
+      }).appendTo(right);
       if (screen.layers && screen.layers.length > 1) {
-        $("<a>", { href: "#", title: "Delete layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 5px; font-size: 10px; color: #d32f2f;" }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
+        $("<a>", { href: "#", title: "Delete layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 4px; font-size: 10px; color: #d32f2f;" }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
           deleteLayer(layer.id);
-        }).appendTo(actionsBox);
+        }).appendTo(right);
       }
-      layerRow.on("click", function() {
-        selectedTreeItemId = layer.id;
-        if (treeContainer.find) {
-          treeContainer.find(".nexa-layer-tree-item").css({
-            background: "transparent",
-            border: "1px solid transparent"
-          });
-        }
-        layerRow.css({
-          background: "var(--red-ui-list-item-selected-background, #e3f2fd)",
-          border: "1px solid #90caf9"
-        });
+      var children = [];
+      childLayers.forEach(function(child) {
+        children.push(buildLayerItem(child));
       });
-      if (expanded) {
-        directComponents.slice().reverse().forEach(function(comp) {
-          var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
-          var rowLabel = comp.props && comp.props.name || (typeDef ? typeDef.label : comp.type);
-          if (comp.type === "@template") {
-            var template = findTemplate(comp.templateId);
-            rowLabel = "Template: " + (template ? template.name : "(missing)");
-          }
-          var compRow = $("<div>", {
-            class: "nexa-layer-tree-item nexa-comp-node" + (selectedTreeItemId === comp.id ? " selected" : ""),
-            "data-comp-id": comp.id,
-            "data-id": comp.id,
-            draggable: "true"
-          }).css({
-            display: "flex",
-            "align-items": "center",
-            gap: "4px",
-            padding: "3px 6px",
-            "margin-left": (depth + 1) * 16 + "px",
-            "margin-bottom": "2px",
-            "border-radius": "3px",
-            background: selectedTreeItemId === comp.id ? "var(--red-ui-list-item-selected-background, #e3f2fd)" : "transparent",
-            border: selectedTreeItemId === comp.id ? "1px solid #90caf9" : "1px solid transparent",
-            cursor: "pointer",
-            "font-size": "12px",
-            "user-select": "none",
-            transition: "background 0.15s, border-color 0.15s"
-          }).appendTo(treeContainer);
-          compRow.on("dragstart", function(ev) {
-            draggedItem = { type: "comp", id: comp.id, layerId: comp.layerId };
-            if (ev && ev.originalEvent && ev.originalEvent.dataTransfer) {
-              ev.originalEvent.dataTransfer.setData("text/plain", JSON.stringify(draggedItem));
-              ev.originalEvent.dataTransfer.effectAllowed = "move";
-            }
-            compRow.css("opacity", "0.4");
-          });
-          compRow.on("dragend", function() {
-            draggedItem = null;
-            compRow.css("opacity", "1");
-            if (treeContainer.find) {
-              treeContainer.find(".nexa-layer-tree-item").css({ "border-top": "1px solid transparent", "border-bottom": "1px solid transparent" });
-            }
-          });
-          compRow.on("dragover", function(ev) {
-            if (ev && ev.preventDefault) ev.preventDefault();
-            if (ev && ev.originalEvent && ev.originalEvent.dataTransfer) ev.originalEvent.dataTransfer.dropEffect = "move";
-            var offset = compRow.offset ? compRow.offset() : { top: 0 };
-            var relY = (ev.pageY || ev.originalEvent && ev.originalEvent.pageY || 0) - (offset ? offset.top : 0);
-            var h = compRow.height ? compRow.height() : 24;
-            var isTopHalf = relY < h / 2;
-            compRow.css({
-              "border-top": isTopHalf ? "2px solid #2196f3" : "1px solid transparent",
-              "border-bottom": !isTopHalf ? "2px solid #2196f3" : "1px solid transparent"
-            });
-          });
-          compRow.on("dragleave", function() {
-            compRow.css({
-              "border-top": "1px solid transparent",
-              "border-bottom": "1px solid transparent",
-              border: selectedTreeItemId === comp.id ? "1px solid #90caf9" : "1px solid transparent"
-            });
-          });
-          compRow.on("drop", function(ev) {
-            if (ev && ev.preventDefault) ev.preventDefault();
-            compRow.css({
-              "border-top": "1px solid transparent",
-              "border-bottom": "1px solid transparent",
-              border: selectedTreeItemId === comp.id ? "1px solid #90caf9" : "1px solid transparent"
-            });
-            if (!draggedItem || draggedItem.type !== "comp" || draggedItem.id === comp.id) return;
-            var dIdx = screen.components.findIndex(function(c) {
-              return c.id === draggedItem.id;
-            });
-            var tIdx = screen.components.findIndex(function(c) {
-              return c.id === comp.id;
-            });
-            if (dIdx === -1 || tIdx === -1) return;
-            var dComp = screen.components[dIdx];
-            screen.components.splice(dIdx, 1);
-            tIdx = screen.components.findIndex(function(c) {
-              return c.id === comp.id;
-            });
-            var offset = compRow.offset ? compRow.offset() : { top: 0 };
-            var relY = (ev.pageY || ev.originalEvent && ev.originalEvent.pageY || 0) - (offset ? offset.top : 0);
-            var h = compRow.height ? compRow.height() : 24;
-            var isTopHalf = relY < h / 2;
-            var insertIdx = isTopHalf ? tIdx + 1 : tIdx;
-            screen.components.splice(Math.max(0, Math.min(insertIdx, screen.components.length)), 0, dComp);
-            dComp.layerId = comp.layerId;
-            markDirty();
-            renderActiveScreen();
-            renderLayersPanel();
-          });
-          $("<span>", { style: "margin-right: 4px; color: #2196f3; flex: 0 0 auto; font-size: 11px;" }).html(comp.type === "@template" ? '<i class="fa fa-clone"></i>' : '<i class="fa fa-cube"></i>').appendTo(compRow);
-          $("<span>", {
-            style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #444);"
-          }).text(rowLabel).appendTo(compRow);
-          $("<a>", {
-            href: "#",
-            title: "See component on canvas & inspect properties",
-            class: "red-ui-button red-ui-button-small nexa-btn-see",
-            style: "padding: 1px 7px; font-size: 11px; height: 20px; display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; font-weight: 500; color: #1976d2; background: #fff;"
-          }).html('<i class="fa fa-eye"></i> See').on("click", function(e) {
-            if (e && e.preventDefault) e.preventDefault();
-            if (e && e.stopPropagation) e.stopPropagation();
-            selectOnly(comp.id);
-            if (state.artboardEl && state.artboardEl.find) {
-              var targetEl = state.artboardEl.find('[data-id="' + comp.id + '"]');
-              if (targetEl && targetEl.length) {
-                targetEl.css("box-shadow", "0 0 10px #2196f3");
-                setTimeout(function() {
-                  targetEl.css("box-shadow", "none");
-                }, 600);
-              }
-            }
-          }).appendTo(compRow);
-          [
-            ["front", "fa-angle-double-up", "Bring to front"],
-            ["forward", "fa-angle-up", "Bring forward"],
-            ["backward", "fa-angle-down", "Send backward"],
-            ["back", "fa-angle-double-down", "Send to back"]
-          ].forEach(function(btn) {
-            $("<a>", { href: "#", title: btn[2], style: "padding: 1px 3px; font-size: 11px; color: #777; margin-left: 1px;" }).html('<i class="fa ' + btn[1] + '"></i>').on("click", function(e) {
-              if (e && e.preventDefault) e.preventDefault();
-              if (e && e.stopPropagation) e.stopPropagation();
-              moveComponentZ(comp.id, btn[0]);
-            }).appendTo(compRow);
-          });
-          compRow.on("click", function() {
-            selectedTreeItemId = comp.id;
-            if (treeContainer.find) {
-              treeContainer.find(".nexa-layer-tree-item").css({
-                background: "transparent",
-                border: "1px solid transparent"
-              });
-            }
-            compRow.css({
-              background: "var(--red-ui-list-item-selected-background, #e3f2fd)",
-              border: "1px solid #90caf9"
-            });
-          });
-        });
-        childLayers.forEach(function(child) {
-          renderLayerNode(child, depth + 1);
-        });
+      directComponents.slice().reverse().forEach(function(comp) {
+        children.push(buildCompItem(comp));
+      });
+      return {
+        id: layer.id,
+        element: layerRow,
+        expanded: isExpanded(layer.id),
+        children: children.length > 0 ? children : void 0
+      };
+    }
+    function buildCompItem(comp) {
+      var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+      var rowLabel = comp.props && comp.props.name || (typeDef ? typeDef.label : comp.type);
+      if (comp.type === "@template") {
+        var template = findTemplate(comp.templateId);
+        rowLabel = "Template: " + (template ? template.name : "(missing)");
       }
+      var compRow = $("<div>", {
+        class: "nexa-layer-tree-item nexa-comp-node",
+        style: "display: flex; align-items: center; justify-content: space-between; width: calc(100% - 16px); gap: 4px; padding: 2px 0; font-size: 12px; user-select: none;",
+        "data-comp-id": comp.id,
+        "data-id": comp.id
+      });
+      var left = $("<div>", { style: "display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0;" }).appendTo(compRow);
+      $("<i>", {
+        class: comp.type === "@template" ? "fa fa-clone" : "fa fa-cube",
+        style: "color: #2196f3; font-size: 11px; flex: 0 0 auto;"
+      }).appendTo(left);
+      $("<span>", {
+        style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #333);"
+      }).text(rowLabel).appendTo(left);
+      var right = $("<div>", { style: "display: flex; align-items: center; gap: 2px; flex: 0 0 auto;" }).appendTo(compRow);
+      $("<button>", {
+        type: "button",
+        title: "See component on canvas & inspect properties",
+        class: "red-ui-button red-ui-button-small nexa-btn-see",
+        style: "padding: 1px 6px; font-size: 10px; height: 20px; line-height: 18px; margin-right: 4px; color: #1976d2; font-weight: 500;"
+      }).html('<i class="fa fa-eye"></i> See').on("click", function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        selectOnly(comp.id);
+        if (state.artboardEl && state.artboardEl.find) {
+          var targetEl = state.artboardEl.find('[data-id="' + comp.id + '"]');
+          if (targetEl && targetEl.length) {
+            targetEl.css("box-shadow", "0 0 10px #2196f3");
+            setTimeout(function() {
+              targetEl.css("box-shadow", "none");
+            }, 600);
+          }
+        }
+      }).appendTo(right);
+      [
+        ["front", "fa-angle-double-up", "Bring to front"],
+        ["forward", "fa-angle-up", "Bring forward"],
+        ["backward", "fa-angle-down", "Send backward"],
+        ["back", "fa-angle-double-down", "Send to back"]
+      ].forEach(function(btn) {
+        $("<a>", { href: "#", title: btn[2], style: "padding: 1px 3px; font-size: 11px; color: #777; margin-left: 1px;" }).html('<i class="fa ' + btn[1] + '"></i>').on("click", function(e) {
+          if (e && e.preventDefault) e.preventDefault();
+          if (e && e.stopPropagation) e.stopPropagation();
+          moveComponentZ(comp.id, btn[0]);
+        }).appendTo(right);
+      });
+      return {
+        id: comp.id,
+        element: compRow
+      };
     }
     var rootLayers = getLayerChildren(null);
     if ((!rootLayers || rootLayers.length === 0) && screen.layers && screen.layers.length > 0) {
       rootLayers = screen.layers;
     }
+    var treeData = [];
+    var processedIds = /* @__PURE__ */ new Set();
     (rootLayers || []).forEach(function(layer) {
-      renderLayerNode(layer, 0);
+      processedIds.add(layer.id);
+      treeData.push(buildLayerItem(layer));
     });
     (screen.layers || []).forEach(function(layer) {
-      if (!renderedLayerIds.has(layer.id)) {
-        renderLayerNode(layer, 0);
+      if (!processedIds.has(layer.id)) {
+        processedIds.add(layer.id);
+        treeData.push(buildLayerItem(layer));
       }
     });
+    var treeContainer = $("<div>", { class: "nexa-layers-tree-wrap" }).css({
+      width: "100%",
+      height: "460px",
+      "min-height": "320px",
+      position: "relative",
+      "box-sizing": "border-box"
+    }).appendTo(state.layersPane);
+    if (typeof treeContainer.treeList === "function") {
+      activeTreeWidget = treeContainer.treeList({
+        data: treeData,
+        autoSelect: false
+      });
+    } else {
+      let renderFallbackNode = function(item, depth) {
+        if (!item) return;
+        var rowWrap = $("<div>").css({ "margin-left": depth * 14 + "px", "margin-bottom": "2px" }).appendTo(flatBox);
+        if (item.element) item.element.appendTo(rowWrap);
+        if (item.children && Array.isArray(item.children)) {
+          item.children.forEach(function(c) {
+            renderFallbackNode(c, depth + 1);
+          });
+        }
+      };
+      var flatBox = $("<div>", { class: "red-ui-treeList-container" }).css({
+        width: "100%",
+        "min-height": "300px",
+        padding: "4px",
+        border: "1px solid #ccc",
+        background: "#fff"
+      }).appendTo(treeContainer);
+      treeData.forEach(function(t) {
+        renderFallbackNode(t, 0);
+      });
+    }
     if (!screen.layers || screen.layers.length === 0) {
       $("<div>", { style: "padding: 16px; text-align: center; color: #888; font-size: 12px;" }).text("No layers available in this screen.").appendTo(treeContainer);
     }
