@@ -299,6 +299,11 @@
   function getLayerChildren(parentId) {
     var screen = getActiveScreen();
     if (!screen) return [];
+    if (!parentId) {
+      return (screen.layers || []).filter(function(l) {
+        return !l.parentId || !findLayer(l.parentId);
+      });
+    }
     return (screen.layers || []).filter(function(l) {
       return l.parentId === parentId;
     });
@@ -314,8 +319,12 @@
   function getComponentsInLayer(layerId) {
     var screen = getActiveScreen();
     if (!screen) return [];
+    var firstLayerId = screen.layers && screen.layers[0] && screen.layers[0].id;
     return screen.components.filter(function(c) {
-      return c.layerId === layerId;
+      if (c.layerId === layerId) return true;
+      if (!c.layerId && layerId === firstLayerId) return true;
+      if (c.layerId && !findLayer(c.layerId) && layerId === firstLayerId) return true;
+      return false;
     });
   }
   function findLogicNode(screenOrId, maybeId) {
@@ -528,24 +537,15 @@
   }
 
   // src/canvas/layers.js
-  var expandedLayers = /* @__PURE__ */ new Set();
-  var initialExpandDone = false;
+  var collapsedLayers = /* @__PURE__ */ new Set();
   var selectedTreeItemId = null;
   var draggedItem = null;
-  function ensureInitialExpanded(screen) {
-    if (!initialExpandDone && screen && screen.layers) {
-      screen.layers.forEach(function(l) {
-        expandedLayers.add(l.id);
-      });
-      initialExpandDone = true;
-    }
-  }
   function isExpanded(layerId) {
-    return expandedLayers.has(layerId);
+    return !collapsedLayers.has(layerId);
   }
   function setExpanded(layerId, val) {
-    if (val) expandedLayers.add(layerId);
-    else expandedLayers.delete(layerId);
+    if (val) collapsedLayers.delete(layerId);
+    else collapsedLayers.add(layerId);
   }
   function addLayer(parentId) {
     var screen = getActiveScreen();
@@ -593,7 +593,7 @@
     screen.layers = screen.layers.filter(function(l) {
       return l.id !== id;
     });
-    expandedLayers.delete(id);
+    collapsedLayers.delete(id);
     markDirty();
     renderActiveScreen();
     renderLayersPanel();
@@ -628,7 +628,6 @@
     state.layersPane.empty();
     var screen = getActiveScreen();
     if (!screen) return;
-    ensureInitialExpanded(screen);
     var header = $("<div>", { class: "nexa-layers-header" }).css({
       display: "flex",
       "align-items": "center",
@@ -648,34 +647,39 @@
     $("<span>").text("Layers & Elements").appendTo(titleBox);
     $("<span>", {
       style: "font-size: 10px; font-weight: normal; color: #777; background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 10px;"
-    }).text(screen.layers.length + " layers, " + screen.components.length + " items").appendTo(titleBox);
+    }).text((screen.layers ? screen.layers.length : 0) + " layers, " + (screen.components ? screen.components.length : 0) + " items").appendTo(titleBox);
     var btnGroup = $("<div>").css({ display: "flex", gap: "4px" }).appendTo(header);
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small", title: "Expand All" }).html('<i class="fa fa-angle-double-down"></i>').on("click", function() {
-      screen.layers.forEach(function(l) {
-        expandedLayers.add(l.id);
-      });
+      collapsedLayers.clear();
       renderLayersPanel();
     }).appendTo(btnGroup);
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small", title: "Collapse All" }).html('<i class="fa fa-angle-double-up"></i>').on("click", function() {
-      expandedLayers.clear();
+      (screen.layers || []).forEach(function(l) {
+        collapsedLayers.add(l.id);
+      });
       renderLayersPanel();
     }).appendTo(btnGroup);
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small red-ui-button-primary", title: "Add Layer" }).html('<i class="fa fa-plus"></i> Layer').on("click", function() {
       addLayer(null);
     }).appendTo(btnGroup);
     var treeContainer = $("<div>", { class: "red-ui-editableList-container nexa-layer-tree-container" }).css({
-      min_height: "260px",
-      "max-height": "calc(100vh - 280px)",
+      "min-height": "320px",
+      "max-height": "calc(100vh - 270px)",
       "overflow-y": "auto",
       "overflow-x": "hidden",
-      padding: "4px",
+      padding: "6px",
       border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
       "border-radius": "4px",
       background: "var(--red-ui-secondary-background, #fff)",
       "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)",
-      "box-sizing": "border-box"
+      "box-sizing": "border-box",
+      width: "100%",
+      display: "block"
     }).appendTo(state.layersPane);
+    var renderedLayerIds = /* @__PURE__ */ new Set();
     function renderLayerNode(layer, depth) {
+      if (!layer || renderedLayerIds.has(layer.id)) return;
+      renderedLayerIds.add(layer.id);
       var directComponents = getComponentsInLayer(layer.id);
       var childLayers = getLayerChildren(layer.id);
       var hasChildren = directComponents.length > 0 || childLayers.length > 0;
@@ -688,7 +692,7 @@
         display: "flex",
         "align-items": "center",
         gap: "4px",
-        padding: "3px 6px",
+        padding: "4px 6px",
         "margin-left": depth * 16 + "px",
         "margin-bottom": "2px",
         "border-radius": "3px",
@@ -808,7 +812,7 @@
         if (e && e.stopPropagation) e.stopPropagation();
         startRename();
       }).appendTo(actionsBox);
-      if (screen.layers.length > 1) {
+      if (screen.layers && screen.layers.length > 1) {
         $("<a>", { href: "#", title: "Delete layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 5px; font-size: 10px; color: #d32f2f;" }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
@@ -975,10 +979,19 @@
         });
       }
     }
-    getLayerChildren(null).forEach(function(layer) {
+    var rootLayers = getLayerChildren(null);
+    if ((!rootLayers || rootLayers.length === 0) && screen.layers && screen.layers.length > 0) {
+      rootLayers = screen.layers;
+    }
+    (rootLayers || []).forEach(function(layer) {
       renderLayerNode(layer, 0);
     });
-    if (screen.layers.length === 0) {
+    (screen.layers || []).forEach(function(layer) {
+      if (!renderedLayerIds.has(layer.id)) {
+        renderLayerNode(layer, 0);
+      }
+    });
+    if (!screen.layers || screen.layers.length === 0) {
       $("<div>", { style: "padding: 16px; text-align: center; color: #888; font-size: 12px;" }).text("No layers available in this screen.").appendTo(treeContainer);
     }
   }

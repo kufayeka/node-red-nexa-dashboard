@@ -289,6 +289,11 @@ export function findLayer(id) {
 export function getLayerChildren(parentId) {
     var screen = getActiveScreen();
     if (!screen) return [];
+    if (!parentId) {
+        return (screen.layers || []).filter(function (l) {
+            return !l.parentId || !findLayer(l.parentId);
+        });
+    }
     return (screen.layers || []).filter(function (l) { return l.parentId === parentId; });
 }
 
@@ -304,7 +309,13 @@ export function isLayerVisible(layerId) {
 export function getComponentsInLayer(layerId) {
     var screen = getActiveScreen();
     if (!screen) return [];
-    return screen.components.filter(function (c) { return c.layerId === layerId; });
+    var firstLayerId = screen.layers && screen.layers[0] && screen.layers[0].id;
+    return screen.components.filter(function (c) {
+        if (c.layerId === layerId) return true;
+        if (!c.layerId && layerId === firstLayerId) return true;
+        if (c.layerId && !findLayer(c.layerId) && layerId === firstLayerId) return true;
+        return false;
+    });
 }
 
 export function findLogicNode(screenOrId, maybeId) {
