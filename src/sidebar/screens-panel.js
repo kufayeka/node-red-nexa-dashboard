@@ -11,33 +11,27 @@ export function renderScreenList() {
     state.screenListEl.empty();
 
     state.screenListEl.css({
-        border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
-        "border-radius": "4px",
-        background: "var(--red-ui-secondary-background, #fff)",
-        "max-height": "220px",
-        "min-height": "90px",
-        "overflow-y": "auto",
-        "overflow-x": "hidden",
-        padding: "4px",
-        "box-sizing": "border-box",
         width: "100%",
-        "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)"
+        display: "flex",
+        "flex-direction": "column",
+        gap: "3px",
+        "box-sizing": "border-box"
     });
 
     state.screens.forEach(function (screen) {
         var isActive = screen.id === state.activeScreenId && state.editingMode !== "template";
         var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
-            padding: "4px 6px",
-            "border-radius": "3px",
-            "margin-bottom": "2px",
+            padding: "5px 8px",
+            "border-radius": "4px",
             display: "flex",
             "align-items": "center",
             cursor: "pointer",
-            background: isActive ? "var(--red-ui-list-item-selected-background, #e3f2fd)" : "transparent",
-            border: isActive ? "1px solid #90caf9" : "1px solid transparent",
+            background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
+            border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+            "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
             "font-size": "12px",
             "user-select": "none",
-            transition: "background 0.15s, border-color 0.15s"
+            transition: "all 0.15s ease"
         }).appendTo(state.screenListEl);
 
         // Enable / Disable status toggle icon
@@ -108,17 +102,40 @@ export function renderScreenList() {
 
         row.on("click", function () { selectScreenFromSidebar(screen.id); });
     });
+
+    if (!state.screens.length) {
+        window.$("<div>", { style: "padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 11px;" })
+            .text("No screens yet.")
+            .appendTo(state.screenListEl);
+    }
 }
 
 export function renderScreenForm() {
     if (!state.screenFormEl) return;
     var screen = getActiveScreen();
     state.screenFormEl.empty();
-    if (!screen || state.editingMode === "template") return;
+    if (!screen || state.editingMode === "template") {
+        window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" })
+            .html('<i class="fa fa-desktop" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select a screen from the list on the left to edit its properties.')
+            .appendTo(state.screenFormEl);
+        return;
+    }
+
+    var header = window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+    }).html('<i class="fa fa-sliders" style="color: #0284c7;"></i> Screen Properties').appendTo(state.screenFormEl);
 
     function row(label, field, value, type) {
-        var r = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.screenFormEl);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text(label).appendTo(r);
+        var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
         var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
         input.on("change", function () {
             var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
@@ -130,16 +147,22 @@ export function renderScreenForm() {
         return input;
     }
 
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px", color: "var(--red-ui-primary-text-color, #333)" }).text("Screen Settings").appendTo(state.screenFormEl);
     row("Name", "name", screen.name);
     row("URL path", "path", screen.path);
     row("Width (px)", "width", screen.width, "number");
     row("Height (px)", "height", screen.height, "number");
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
 
-    var checksWrap = window.$("<div>").css({ "margin-top": "6px", display: "flex", "flex-direction": "column", gap: "6px" }).appendTo(state.screenFormEl);
+    var checksWrap = window.$("<div>").css({
+        "margin-top": "12px",
+        "padding-top": "10px",
+        "border-top": "1px solid var(--red-ui-secondary-border-color, #f1f5f9)",
+        display: "flex",
+        "flex-direction": "column",
+        gap: "8px"
+    }).appendTo(state.screenFormEl);
 
-    var snapRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "6px", "font-size": "11px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
+    var snapRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
     var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", screen.snap !== false).appendTo(snapRow);
     window.$("<span>").text("Snap to grid").appendTo(snapRow);
     snapInput.on("change", function () {
@@ -147,7 +170,7 @@ export function renderScreenForm() {
         markDirty();
     });
 
-    var enableRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "6px", "font-size": "11px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
+    var enableRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
     var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !screen.disabled).appendTo(enableRow);
     window.$("<span>").text("Enable screen (live page at URL path)").appendTo(enableRow);
     enableInput.on("change", function () {

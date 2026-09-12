@@ -17,19 +17,65 @@ export function buildSidebarContent() {
 
     var panesWrap = window.$("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
     state.componentsPane = window.$("<div>").css({ padding: "8px" }).appendTo(panesWrap);
-    var screensPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.templatesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
 
-    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({ "margin-bottom": "8px" }).appendTo(screensPane);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).text("+ Add Screen").css({ width: "100%", "margin-bottom": "10px" }).on("click", addScreenFromSidebar).appendTo(screensPane);
-    state.screenFormEl = window.$("<div>").css({ "margin-top": "10px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px" }).appendTo(screensPane);
+    // --- Screens Tab: 2-Column Layout (List on Left, Properties on Right) ---
+    var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
+    var screenLeftCol = window.$("<div>").css({
+        flex: "0 0 240px", width: "240px", "min-width": "200px", "max-width": "300px",
+        display: "flex", "flex-direction": "column", height: "100%",
+        "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
+        background: "var(--red-ui-secondary-background, #fafafa)", "box-sizing": "border-box"
+    }).appendTo(screensSplit);
+    var screenToolbar = window.$("<div>").css({
+        display: "flex", "align-items": "center", "justify-content": "space-between",
+        padding: "8px 10px", "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
+        background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0"
+    }).appendTo(screenLeftCol);
+    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-desktop'></i> Screens</span>").appendTo(screenToolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" })
+        .text("+ Add Screen").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
+        .on("click", addScreenFromSidebar).appendTo(screenToolbar);
+    var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
+    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
 
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ "margin-bottom": "8px" }).appendTo(state.templatesPane);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).text("+ Add Template").css({ width: "100%", "margin-bottom": "10px" }).on("click", addTemplateFromSidebar).appendTo(state.templatesPane);
-    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).css({ "margin-top": "10px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px" }).appendTo(state.templatesPane);
+    var screenRightCol = window.$("<div>").css({
+        flex: "1 1 auto", display: "flex", "flex-direction": "column", height: "100%",
+        "overflow-y": "auto", padding: "12px 16px", "box-sizing": "border-box",
+        background: "var(--red-ui-primary-background, #fff)"
+    }).appendTo(screensSplit);
+    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form" }).appendTo(screenRightCol);
+
+    // --- Templates Tab: 2-Column Layout (List on Left, Properties & Params on Right) ---
+    var templatesSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(state.templatesPane);
+    var templateLeftCol = window.$("<div>").css({
+        flex: "0 0 240px", width: "240px", "min-width": "200px", "max-width": "300px",
+        display: "flex", "flex-direction": "column", height: "100%",
+        "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
+        background: "var(--red-ui-secondary-background, #fafafa)", "box-sizing": "border-box"
+    }).appendTo(templatesSplit);
+    var templateToolbar = window.$("<div>").css({
+        display: "flex", "align-items": "center", "justify-content": "space-between",
+        padding: "8px 10px", "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
+        background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0"
+    }).appendTo(templateLeftCol);
+    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-clone'></i> Templates</span>").appendTo(templateToolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" })
+        .text("+ Add Template").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
+        .on("click", addTemplateFromSidebar).appendTo(templateToolbar);
+    var templateListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(templateLeftCol);
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).appendTo(templateListWrap);
+
+    var templateRightCol = window.$("<div>").css({
+        flex: "1 1 auto", display: "flex", "flex-direction": "column", height: "100%",
+        "overflow-y": "auto", padding: "12px 16px", "box-sizing": "border-box",
+        background: "var(--red-ui-primary-background, #fff)"
+    }).appendTo(templatesSplit);
+    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).appendTo(templateRightCol);
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
