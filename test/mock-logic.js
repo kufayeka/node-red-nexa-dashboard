@@ -166,6 +166,21 @@ global.$ = function (sel, attrs) {
 $.fn = {};
 $.ajax = function () { return { done(fn) { fn({ value: 1 }); return this; }, fail(fn) { return this; } }; };
 
+// Palette chips no longer set their own _text (the label lives on a nested
+// .red-ui-palette-label child, avoiding the duplicate-text overlap bug real
+// jQuery's .text() as a GETTER would mask by concatenating descendant text
+// nodes) — so label lookups must walk _children the same way, instead of
+// reading the chip element's own _text directly.
+function chipText(el) {
+  if (el._text) return el._text;
+  var kids = el._children || [];
+  for (var i = 0; i < kids.length; i++) {
+    var t = chipText(kids[i]);
+    if (t) return t;
+  }
+  return '';
+}
+
 function mousedownOn(id, opts) {
   var el = componentsById[id];
   var handlers = el._handlers['mousedown'] || [];
@@ -251,7 +266,7 @@ const canvasTabsApi = global.__allTabsApis.filter(function (api) { return 'logic
 
 console.log('--- reported bug: dragging a UI component chip onto the LOGIC tab must be rejected, not silently add the component ---');
 canvasTabsApi.activateTab('logic');
-const buttonDraggables = draggables.filter(d => d.el._text === 'Button');
+const buttonDraggables = draggables.filter(d => chipText(d.el) === 'Button');
 const buttonChip = buttonDraggables[buttonDraggables.length - 1];
 notifications.length = 0;
 buttonChip.opts.stop(null, { offset: { left: 100, top: 100 } });
@@ -267,7 +282,7 @@ const buttonComp = screen.components[0];
 console.log('--- the existing reverse guard (Events chip dropped on the UI tab) still works ---');
 canvasTabsApi.activateTab('ui');
 notifications.length = 0;
-const onloadDraggables = draggables.filter(d => d.el._text === 'On Load');
+const onloadDraggables = draggables.filter(d => chipText(d.el) === 'On Load');
 const onloadChip = onloadDraggables[onloadDraggables.length - 1];
 onloadChip.opts.stop(null, { offset: { left: 50, top: 50 } });
 console.log('no logic node silently added while on the UI tab?', screen.logic.nodes.length === 0);
@@ -280,7 +295,7 @@ function dropChip(label, x, y) {
   // dropped onto the canvas, its rendered box shares the exact same label
   // text as the PALETTE CHIP it came from (both show "On Load"), so text
   // alone is ambiguous between the two.
-  const list = draggables.filter(d => d.el._text === label && d.el._attrs['class'] === 'nexa-palette-item');
+  const list = draggables.filter(d => chipText(d.el) === label && d.el._attrs['class'] === 'nexa-palette-item');
   list[list.length - 1].opts.stop(null, { offset: { left: x, top: y } });
 }
 dropChip('On Load', 10, 10);

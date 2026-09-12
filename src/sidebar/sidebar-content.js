@@ -16,11 +16,21 @@ export function buildSidebarContent() {
     var ul = window.$("<ul>").appendTo(tabsWrap);
 
     var panesWrap = window.$("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
-    state.componentsPane = window.$("<div>").css({ padding: "8px" }).appendTo(panesWrap);
+    // display:flex/flex-direction:column here (instead of each palette item
+    // centering itself with its own "margin:auto") matters for more than
+    // looks: jQuery UI draggable's _cacheMargins() reads the dragged
+    // element's OWN computed margin-left and folds it into the mouse-to-
+    // helper click offset. An "auto" margin resolves to however much blank
+    // space centers a 120px chip in this (wide) pane — tens to a couple
+    // hundred px — and draggable mistakes that resolved gap for a real
+    // margin, throwing the drag ghost that same distance off the cursor.
+    // Centering each item via its own align-self (see palette-events-
+    // panel.js) instead keeps their margin at a plain, non-auto value.
+    state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
     var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
 
     // --- Screens Tab: 2-Column Layout (List on Left, Properties on Right) ---
@@ -81,11 +91,18 @@ export function buildSidebarContent() {
         element: ul,
         onchange: function (tab) {
             if (!tab) return;
-            state.componentsPane.toggle(tab.id === "components");
+            // componentsPane/eventsPane are display:flex (see their creation
+            // above) so jQuery's plain .toggle() must not be trusted to pick
+            // that back up on its own — the very first .show() after
+            // starting as display:none has no "previous visible display" of
+            // its own to restore and would fall back to the tag's default
+            // ("block"), silently discarding the flex layout those two panes
+            // depend on.
+            state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             screensPane.toggle(tab.id === "screens");
             state.propertiesPane.toggle(tab.id === "properties");
             state.layersPane.toggle(tab.id === "layers");
-            state.eventsPane.toggle(tab.id === "events");
+            state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
             state.templatesPane.toggle(tab.id === "templates");
             if (tab.id === "screens") {
                 // The Screens form (name/URL path/width/height/grid/snap) is

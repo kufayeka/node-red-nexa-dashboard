@@ -269,8 +269,23 @@ NEXA.registerComponent('mock-rect', {
 const fs = require('fs');
 eval(fs.readFileSync(process.argv[2], 'utf8'));
 
+// Palette chips no longer set their own _text (the label lives on a nested
+// .red-ui-palette-label child, avoiding the duplicate-text overlap bug real
+// jQuery's .text() as a GETTER would mask by concatenating descendant text
+// nodes) — so label lookups must walk _children the same way, instead of
+// reading the chip element's own _text directly.
+function chipText(el) {
+  if (el._text) return el._text;
+  var kids = el._children || [];
+  for (var i = 0; i < kids.length; i++) {
+    var t = chipText(kids[i]);
+    if (t) return t;
+  }
+  return '';
+}
+
 function dropChipByLabel(label, x, y) {
-  const list = draggables.filter(d => d.el._text === label && d.el._attrs['class'] === 'nexa-palette-item');
+  const list = draggables.filter(d => chipText(d.el) === label && d.el._attrs['class'] === 'nexa-palette-item');
   const chip = list[list.length - 1];
   if (!chip) throw new Error('no palette chip found for label: ' + label);
   chip.opts.stop(null, { offset: { left: x, top: y } });
@@ -291,7 +306,7 @@ function paletteLabelsAfterFreshBuild() {
   // genuine rebuild, not a no-op.
   sidebarTabsApi.activateTab('properties');
   sidebarTabsApi.activateTab('components');
-  return draggables.slice(before).map(d => d.el._text);
+  return draggables.slice(before).map(d => chipText(d.el));
 }
 // renderTemplateForm()'s row() helper builds <div>[<label>text, <input>] —
 // the input is always the row's LAST child (only 2 children ever appended).
@@ -403,7 +418,7 @@ function eventsChipLabelsAfterFreshBuild() {
   sidebarTabsApi.activateTab('properties');
   const before = draggables.length;
   sidebarTabsApi.activateTab('events');
-  return draggables.slice(before).map(d => d.el._text);
+  return draggables.slice(before).map(d => chipText(d.el));
 }
 const eventLabelsOnScreen = eventsChipLabelsAfterFreshBuild();
 console.log('"On Params Change" is NOT offered while editing a Screen?', eventLabelsOnScreen.indexOf('On Params Change') === -1);

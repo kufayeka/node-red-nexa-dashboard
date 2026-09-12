@@ -65,6 +65,18 @@ function fakeJQ(selOrHtml, attrs) {
   return el;
 }
 const draggables = [];
+// Palette chips no longer set their own _text (the label lives on a nested
+// .red-ui-palette-label child) — walk _children the same way instead of
+// reading the chip element's own _text directly.
+function chipText(el) {
+  if (el._text) return el._text;
+  var kids = el._children || [];
+  for (var i = 0; i < kids.length; i++) {
+    var t = chipText(kids[i]);
+    if (t) return t;
+  }
+  return '';
+}
 let documentJQ = null;
 global.$ = function(sel, attrs){
   if (sel === global.document) { if (!documentJQ) documentJQ = fakeJQ(); return documentJQ; }
@@ -122,7 +134,7 @@ actions['nexa:open-pages-editor']();
 // draggable chips (On Load/On Render/On Close/Function/Debug) now, so the
 // LAST registered draggable is no longer necessarily this test's own "Box"
 // component chip — filter by its known label instead of positional index.
-const boxDraggables = draggables.filter(function (d) { return d.el._text === 'Box'; });
+const boxDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Box'; });
 const boxDrag = boxDraggables[boxDraggables.length - 1];
 boxDrag.opts.stop(null, { offset: { left: 200, top: 150 } });
 
