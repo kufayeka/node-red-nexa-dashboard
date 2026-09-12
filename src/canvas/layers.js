@@ -4,26 +4,18 @@ import { renderActiveScreen } from "./canvas-ui.js";
 
 export { isLayerVisible, getLayerChildren, getComponentsInLayer };
 
-// Expansion & selection state for the layers tree
-var expandedLayers = new Set();
-var initialExpandDone = false;
+// Layers are expanded by default unless explicitly collapsed
+var collapsedLayers = new Set();
 var selectedTreeItemId = null;
 var draggedItem = null;
 
-function ensureInitialExpanded(screen) {
-    if (!initialExpandDone && screen && screen.layers) {
-        screen.layers.forEach(function (l) { expandedLayers.add(l.id); });
-        initialExpandDone = true;
-    }
-}
-
 function isExpanded(layerId) {
-    return expandedLayers.has(layerId);
+    return !collapsedLayers.has(layerId);
 }
 
 function setExpanded(layerId, val) {
-    if (val) expandedLayers.add(layerId);
-    else expandedLayers.delete(layerId);
+    if (val) collapsedLayers.delete(layerId);
+    else collapsedLayers.add(layerId);
 }
 
 export function addLayer(parentId) {
@@ -67,7 +59,7 @@ export function deleteLayer(id) {
     screen.components.forEach(function (c) { if (c.layerId === id) c.layerId = fallbackId; });
     getLayerChildren(id).forEach(function (child) { child.parentId = layer.parentId; });
     screen.layers = screen.layers.filter(function (l) { return l.id !== id; });
-    expandedLayers.delete(id);
+    collapsedLayers.delete(id);
     markDirty();
     renderActiveScreen();
     renderLayersPanel();
@@ -104,8 +96,6 @@ export function renderLayersPanel() {
     var screen = getActiveScreen();
     if (!screen) return;
 
-    ensureInitialExpanded(screen);
-
     // 1. Panel Header & Controls Toolbar
     var header = $("<div>", { class: "nexa-layers-header" }).css({
         display: "flex", "align-items": "center", "justify-content": "space-between",
@@ -121,21 +111,21 @@ export function renderLayersPanel() {
     $("<span>").text("Layers & Elements").appendTo(titleBox);
     $("<span>", {
         style: "font-size: 10px; font-weight: normal; color: #777; background: rgba(0,0,0,0.06); padding: 1px 6px; border-radius: 10px;"
-    }).text(screen.layers.length + " layers, " + screen.components.length + " items").appendTo(titleBox);
+    }).text((screen.layers ? screen.layers.length : 0) + " layers, " + (screen.components ? screen.components.length : 0) + " items").appendTo(titleBox);
 
     var btnGroup = $("<div>").css({ display: "flex", gap: "4px" }).appendTo(header);
 
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small", title: "Expand All" })
         .html('<i class="fa fa-angle-double-down"></i>')
         .on("click", function () {
-            screen.layers.forEach(function (l) { expandedLayers.add(l.id); });
+            collapsedLayers.clear();
             renderLayersPanel();
         }).appendTo(btnGroup);
 
     $("<button>", { type: "button", class: "red-ui-button red-ui-button-small", title: "Collapse All" })
         .html('<i class="fa fa-angle-double-up"></i>')
         .on("click", function () {
-            expandedLayers.clear();
+            (screen.layers || []).forEach(function (l) { collapsedLayers.add(l.id); });
             renderLayersPanel();
         }).appendTo(btnGroup);
 
@@ -145,19 +135,26 @@ export function renderLayersPanel() {
 
     // 2. Boxed Tree Container (styled like Bindable Properties / EditableList)
     var treeContainer = $("<div>", { class: "red-ui-editableList-container nexa-layer-tree-container" }).css({
-        min_height: "260px",
-        "max-height": "calc(100vh - 280px)",
+        "min-height": "320px",
+        "max-height": "calc(100vh - 270px)",
         "overflow-y": "auto",
         "overflow-x": "hidden",
-        padding: "4px",
+        padding: "6px",
         border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
         "border-radius": "4px",
         background: "var(--red-ui-secondary-background, #fff)",
         "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)",
-        "box-sizing": "border-box"
+        "box-sizing": "border-box",
+        width: "100%",
+        display: "block"
     }).appendTo(state.layersPane);
 
+    var renderedLayerIds = new Set();
+
     function renderLayerNode(layer, depth) {
+        if (!layer || renderedLayerIds.has(layer.id)) return;
+        renderedLayerIds.add(layer.id);
+
         var directComponents = getComponentsInLayer(layer.id);
         var childLayers = getLayerChildren(layer.id);
         var hasChildren = directComponents.length > 0 || childLayers.length > 0;
@@ -170,7 +167,7 @@ export function renderLayersPanel() {
             draggable: "true"
         }).css({
             display: "flex", "align-items": "center", gap: "4px",
-            padding: "3px 6px",
+            padding: "4px 6px",
             "margin-left": (depth * 16) + "px",
             "margin-bottom": "2px",
             "border-radius": "3px",
@@ -316,7 +313,7 @@ export function renderLayersPanel() {
                 startRename();
             }).appendTo(actionsBox);
 
-        if (screen.layers.length > 1) {
+        if (screen.layers && screen.layers.length > 1) {
             $("<a>", { href: "#", title: "Delete layer", class: "red-ui-button red-ui-button-small", style: "padding: 1px 5px; font-size: 10px; color: #d32f2f;" })
                 .html('<i class="fa fa-trash"></i>')
                 .on("click", function (e) {
@@ -501,13 +498,24 @@ export function renderLayersPanel() {
         }
     }
 
-    // Render Root Layers
-    getLayerChildren(null).forEach(function (layer) {
+    // 1. Render Root Layers (parentId is null, undefined, or missing)
+    var rootLayers = getLayerChildren(null);
+    if ((!rootLayers || rootLayers.length === 0) && screen.layers && screen.layers.length > 0) {
+        rootLayers = screen.layers;
+    }
+    (rootLayers || []).forEach(function (layer) {
         renderLayerNode(layer, 0);
     });
 
+    // 2. Defensive fallback: Render any layer that was not reached through hierarchy
+    (screen.layers || []).forEach(function (layer) {
+        if (!renderedLayerIds.has(layer.id)) {
+            renderLayerNode(layer, 0);
+        }
+    });
+
     // Empty State if no layers
-    if (screen.layers.length === 0) {
+    if (!screen.layers || screen.layers.length === 0) {
         $("<div>", { style: "padding: 16px; text-align: center; color: #888; font-size: 12px;" })
             .text("No layers available in this screen.")
             .appendTo(treeContainer);
