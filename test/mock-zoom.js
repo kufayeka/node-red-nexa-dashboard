@@ -42,6 +42,9 @@ function fakeJQ(selOrHtml, attrs) {
     // order, so capturing this one id is enough to reach both ancestors
     // via ._parent afterward.
     css(o, v){ if(typeof o==='string') { if (v===undefined) return this._css[o]; this._css[o]=v; return this; } Object.assign(this._css,o); return this; },
+    attr(k,v){ if(v===undefined) return this._attrs[k]; this._attrs[k]=v; return this; },
+    data(k,v){ this._data=this._data||{}; if(v===undefined) return this._data[k]; this._data[k]=v; return this; },
+    droppable(opts){ this._droppableOpts=opts; return this; },
     text(t){ if(t===undefined) return this._text; this._text=t; return this; },
     html(h){ this._html=h; return this; },
     append(c){ this._children.push(c); return this; },
@@ -145,7 +148,10 @@ actions['nexa:open-pages-editor']();
 // component chip — filter by its known label instead of positional index.
 const boxDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Box'; });
 const boxDrag = boxDraggables[boxDraggables.length - 1];
-boxDrag.opts.stop(null, { offset: { left: 200, top: 150 } });
+// Placement now happens in the artboard's own .droppable() "drop" handler
+// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
+// real drop by calling that handler directly with the chip as ui.draggable.
+global.__artboardEl._droppableOpts.drop({ pageX: 200, pageY: 150 }, { draggable: boxDrag.el });
 
 const comp = configNodes[0].screens[0].components[0];
 console.log('placed comp:', { x: comp.x, y: comp.y, w: comp.w, h: comp.h });

@@ -52,6 +52,8 @@ function fakeJQ(selOrHtml, attrs) {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
     css(o, v) { if (typeof o === 'string') { if (v === undefined) return this._css[o]; this._css[o] = v; return this; } Object.assign(this._css, o); return this; },
     attr(k, v) { if (typeof k === 'object') { Object.assign(this._attrs, k); return this; } if (v === undefined) return this._attrs[k]; this._attrs[k] = v; return this; },
+    data(k, v) { this._data = this._data || {}; if (v === undefined) return this._data[k]; this._data[k] = v; return this; },
+    droppable(opts) { this._droppableOpts = opts; return this; },
     text(t) { if (t === undefined) return this._text; this._text = t; if (t === '+ Add Screen') global.__addScreenBtn = this; return this; },
     html(h) { if (h === undefined) return this._html; this._html = h; return this; },
     append(c) { this._children.push(c); return this; },
@@ -65,6 +67,11 @@ function fakeJQ(selOrHtml, attrs) {
       // specific to grab hold of from outside the plugin's own closure.
       if (this._attrs && this._attrs['class'] === 'nexa-screen-list') global.__screenListEl = this;
       if (this._attrs && this._attrs['data-comp-id']) (global.__eventsChips = global.__eventsChips || []).push(this);
+      // Landmark for the UI canvas (real code gives it id="nexa-artboard")
+      // — needed so tests can reach its .droppable() drop handler, which is
+      // where drag-drop placement now actually happens (moved out of the
+      // palette chip's own draggable "stop").
+      if (this._attrs && this._attrs.id === 'nexa-artboard') global.__artboardEl = this;
       // renderLogicCanvas() appends its SVG wire-overlay straight into
       // logicArtboardEl, which otherwise has no id/class of its own to
       // hook on to (unlike artboardEl's real id="nexa-artboard") — this is
@@ -264,18 +271,41 @@ console.log('screen.logic exists with empty nodes/wires by default?', Array.isAr
 // used throughout this suite.
 const canvasTabsApi = global.__allTabsApis.filter(function (api) { return 'logic' in api._tabs; }).pop();
 
+// Placement now happens in state.artboardEl / state.logicArtboardEl's own
+// .droppable() "drop" handlers (editor-tray.js), not the palette chip's
+// draggable "stop" (which now only shows the wrong-tab/no-canvas notices,
+// unconditionally, exactly like a real drop always fires the draggable's
+// own "stop" regardless of whether any droppable accepted it). A real
+// browser drop only invokes the target's "drop" when it's visible AND
+// matches its accept selector (state.artboardEl only accepts [data-type-id]
+// chips, state.logicArtboardEl only [data-palette-type] ones) — a raw
+// function call bypasses both of those checks for free, so these helpers
+// replicate them explicitly instead of only calling drop() unconditionally.
+function simulateComponentDrop(chip, x, y) {
+  chip.opts.stop(null, { offset: { left: x, top: y } });
+  if (global.__artboardEl.is(':visible') && chip.el._attrs['data-type-id']) {
+    global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
+  }
+}
+function simulateLogicNodeDrop(chip, x, y) {
+  chip.opts.stop(null, { offset: { left: x, top: y } });
+  if (global.__logicArtboardEl.is(':visible') && chip.el._attrs['data-palette-type']) {
+    global.__logicArtboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
+  }
+}
+
 console.log('--- reported bug: dragging a UI component chip onto the LOGIC tab must be rejected, not silently add the component ---');
 canvasTabsApi.activateTab('logic');
 const buttonDraggables = draggables.filter(d => chipText(d.el) === 'Button');
 const buttonChip = buttonDraggables[buttonDraggables.length - 1];
 notifications.length = 0;
-buttonChip.opts.stop(null, { offset: { left: 100, top: 100 } });
+simulateComponentDrop(buttonChip, 100, 100);
 console.log('no component silently added while on the Logic tab?', screen.components.length === 0);
 console.log('a warning notification was shown?', notifications.some(m => /UI tab/.test(m)));
 
 console.log('--- dropping the same chip on the UI tab works normally ---');
 canvasTabsApi.activateTab('ui');
-buttonChip.opts.stop(null, { offset: { left: 100, top: 100 } });
+simulateComponentDrop(buttonChip, 100, 100);
 console.log('component added once on the UI tab?', screen.components.length === 1);
 const buttonComp = screen.components[0];
 
@@ -284,7 +314,7 @@ canvasTabsApi.activateTab('ui');
 notifications.length = 0;
 const onloadDraggables = draggables.filter(d => chipText(d.el) === 'On Load');
 const onloadChip = onloadDraggables[onloadDraggables.length - 1];
-onloadChip.opts.stop(null, { offset: { left: 50, top: 50 } });
+simulateLogicNodeDrop(onloadChip, 50, 50);
 console.log('no logic node silently added while on the UI tab?', screen.logic.nodes.length === 0);
 console.log('a warning notification was shown?', notifications.some(m => /Logic tab/.test(m)));
 
@@ -296,7 +326,7 @@ function dropChip(label, x, y) {
   // text as the PALETTE CHIP it came from (both show "On Load"), so text
   // alone is ambiguous between the two.
   const list = draggables.filter(d => chipText(d.el) === label && d.el._attrs['class'] === 'nexa-palette-item');
-  list[list.length - 1].opts.stop(null, { offset: { left: x, top: y } });
+  simulateLogicNodeDrop(list[list.length - 1], x, y);
 }
 dropChip('On Load', 10, 10);
 dropChip('Function', 200, 10);

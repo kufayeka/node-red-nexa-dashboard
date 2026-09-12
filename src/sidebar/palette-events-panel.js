@@ -1,6 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains, LOGIC_NODE_W, LOGIC_NODE_H } from "../state.js";
-import { addComponentAt } from "../canvas/component-renderer.js";
-import { addLogicNode } from "../logic/logic-nodes.js";
+import { state, getActiveScreen, findTemplate, templateContains } from "../state.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -84,11 +82,11 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
     }).css({
         display: "flex",
         "align-items": "center",
-        width: "120px",
+        width: "250px",
         // Centered via the flex parent's align-self, NOT "margin: auto" —
         // see the comment on state.componentsPane's own creation for why an
         // auto margin here throws jQuery UI draggable's drag-ghost tracking
-        // off by however many px it takes to center a 120px box in this pane.
+        // off by however many px it takes to center a box in this pane.
         "align-self": "center",
         margin: "4px 0",
         height: "26px",
@@ -142,14 +140,13 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
     chip.draggable({
         helper: "clone",
         appendTo: "#red-ui-editor",
-        // revert:false, not "invalid": with no matching .droppable() target
-        // registered on the artboard, jQuery UI's own drop-detection never
-        // sees a "valid" drop, so "invalid" was true for EVERY drop — even
-        // ones addComponentAt() (in the "stop" handler below) placed fine —
-        // making the ghost always fly back to the palette first and only
-        // disappear after that animation, instead of vanishing where it was
-        // actually released.
-        revert: false,
+        // Actual placement now happens in state.artboardEl's own
+        // .droppable() (editor-tray.js) — that's also what makes
+        // revert:"invalid" meaningful: it reverts only when the drop wasn't
+        // accepted there (wrong tab / outside the artboard / no canvas
+        // open), instead of always, the way it did before that droppable
+        // existed.
+        revert: "invalid",
         zIndex: 10000,
         // No cursorAt, and never resize ui.helper here (matching core's own
         // palette.js draggable): the actual drag-ghost/mouse offset bug
@@ -167,7 +164,7 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
                 });
             }
         },
-        stop: function (e, ui) {
+        stop: function () {
             if (!state.artboardEl) {
                 if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas first (menu → Pages)", { type: "warning", timeout: 2000 });
                 return;
@@ -175,14 +172,6 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
             if (state.activeCanvasTab !== "ui") {
                 if (window.RED && window.RED.notify) window.RED.notify("Switch to the UI tab first", { type: "warning", timeout: 2000 });
                 return;
-            }
-            var offset = state.artboardEl.offset();
-            var dropX = (e && e.pageX !== undefined) ? (e.pageX - offset.left) : ((ui && ui.offset ? ui.offset.left : 0) - offset.left);
-            var dropY = (e && e.pageY !== undefined) ? (e.pageY - offset.top) : ((ui && ui.offset ? ui.offset.top : 0) - offset.top);
-            var x = dropX / state.zoomLevel;
-            var y = dropY / state.zoomLevel;
-            if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
-                addComponentAt(dropTypeId, x, y);
             }
         }
     });
@@ -244,7 +233,7 @@ export function renderEventsPanel() {
         }).css({
             display: "flex",
             "align-items": "center",
-            width: "120px",
+            width: "250px",
             // Centered via the flex parent's align-self, NOT "margin: auto"
             // — see the comment on state.eventsPane's own creation for why.
             "align-self": "center",
@@ -261,6 +250,13 @@ export function renderEventsPanel() {
             transition: "box-shadow 0.15s, border-color 0.15s",
             overflow: "hidden"
         }).appendTo(container);
+        // state.logicArtboardEl's .droppable() (editor-tray.js) reads this
+        // back via ui.draggable.data(...) to build the actual node — a
+        // logic-node chip can't be reduced to a plain type-id string the way
+        // a component chip's data-type-id is, since e.g. an
+        // "Instance #1234 -> Set Value" chip's node also needs its own
+        // captured instanceId/paramName.
+        item.data("nexaMakeNode", makeNode);
 
         // Input Port (Node-RED palette port)
         if (meta.portIn) {
@@ -304,14 +300,13 @@ export function renderEventsPanel() {
         item.draggable({
             helper: "clone",
             appendTo: "#red-ui-editor",
-            // revert:false, not "invalid": with no matching .droppable()
-            // target registered on the Logic canvas, jQuery UI's own drop-
-            // detection never sees a "valid" drop, so "invalid" was true for
-            // EVERY drop — even ones addLogicNode() (in the "stop" handler
-            // below) placed fine — making the ghost always fly back to the
-            // palette first and only disappear after that animation, instead
-            // of vanishing where it was actually released.
-            revert: false,
+            // Actual placement now happens in state.logicArtboardEl's own
+            // .droppable() (editor-tray.js) — that's also what makes
+            // revert:"invalid" meaningful: it reverts only when the drop
+            // wasn't accepted there (Logic tab not open / no canvas open),
+            // instead of always, the way it did before that droppable
+            // existed.
+            revert: "invalid",
             zIndex: 10000,
             // No cursorAt, and never resize ui.helper here (matching core's
             // own palette.js draggable): the actual drag-ghost/mouse offset
@@ -329,20 +324,10 @@ export function renderEventsPanel() {
                     });
                 }
             },
-            stop: function (e, ui) {
+            stop: function () {
                 if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
                     if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
-                    return;
                 }
-                var offset = state.logicArtboardEl.offset();
-                var dropX = (e && e.pageX !== undefined) ? (e.pageX - offset.left) : ((ui && ui.offset ? ui.offset.left : 0) - offset.left);
-                var dropY = (e && e.pageY !== undefined) ? (e.pageY - offset.top) : ((ui && ui.offset ? ui.offset.top : 0) - offset.top);
-                var x = dropX / state.logicZoomLevel;
-                var y = dropY / state.logicZoomLevel;
-                if (x < 0 || y < 0) return;
-                var nodeX = (e && e.pageX !== undefined) ? Math.max(0, Math.round(x - LOGIC_NODE_W / 2)) : x;
-                var nodeY = (e && e.pageY !== undefined) ? Math.max(0, Math.round(y - LOGIC_NODE_H / 2)) : y;
-                addLogicNode(makeNode(), nodeX, nodeY);
             }
         });
         return item;

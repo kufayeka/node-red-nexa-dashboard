@@ -2062,6 +2062,741 @@
     }
   }
 
+  // src/sidebar/palette-events-panel.js
+  function getComponentColor(category, typeId) {
+    if (typeId === "@lit-component") return "#f3e8ff";
+    if (typeId && typeId.indexOf("@template") === 0) return "#fef9c3";
+    var cat = (category || "").toLowerCase();
+    if (cat.indexOf("basic") !== -1 || cat.indexOf("shape") !== -1) return "#dbeafe";
+    if (cat.indexOf("form") !== -1 || cat.indexOf("input") !== -1) return "#e0e7ff";
+    if (cat.indexOf("display") !== -1 || cat.indexOf("text") !== -1) return "#d1fae5";
+    if (cat.indexOf("chart") !== -1 || cat.indexOf("gauge") !== -1) return "#fef3c7";
+    return "#e2e8f0";
+  }
+  function getComponentIcon(label, typeId) {
+    var l = (label || "").toLowerCase();
+    if (typeId === "@lit-component") return "fa-code";
+    if (typeId && typeId.indexOf("@template") === 0) return "fa-clone";
+    if (l.indexOf("rect") !== -1 || l.indexOf("box") !== -1) return "fa-square-o";
+    if (l.indexOf("circle") !== -1) return "fa-circle-o";
+    if (l.indexOf("line") !== -1) return "fa-minus";
+    if (l.indexOf("text") !== -1) return "fa-font";
+    if (l.indexOf("image") !== -1 || l.indexOf("picture") !== -1) return "fa-picture-o";
+    if (l.indexOf("button") !== -1) return "fa-hand-pointer-o";
+    if (l.indexOf("switch") !== -1 || l.indexOf("toggle") !== -1) return "fa-toggle-on";
+    if (l.indexOf("slider") !== -1) return "fa-sliders";
+    if (l.indexOf("chart") !== -1) return "fa-line-chart";
+    if (l.indexOf("gauge") !== -1) return "fa-tachometer";
+    return "fa-cube";
+  }
+  function getLogicNodeMeta(type) {
+    if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
+      return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
+    }
+    if (type === "function") {
+      return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
+    }
+    if (type === "debug") {
+      return { color: "#87a980", icon: "fa-bug", portOut: false, portIn: true };
+    }
+    if (type === "inject") {
+      return { color: "#a6bbcf", icon: "fa-clock-o", portOut: true, portIn: false };
+    }
+    if (type === "reload") {
+      return { color: "#e2d96e", icon: "fa-refresh", portOut: true, portIn: true };
+    }
+    if (type === "open-url") {
+      return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
+    }
+    if (type === "ui-update" || type === "set-template-param") {
+      return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
+    }
+    return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
+  }
+  function sectionHeader(parentEl, title) {
+    return window.$("<div>", { "class": "red-ui-palette-header" }).css({
+      padding: "5px 8px",
+      "font-size": "11px",
+      "font-weight": "bold",
+      background: "var(--red-ui-palette-header-background, var(--red-ui-tertiary-background, #f3f3f3))",
+      color: "var(--red-ui-palette-header-color, var(--red-ui-secondary-text-color, #475569))",
+      "text-transform": "uppercase",
+      "letter-spacing": "0.5px",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px",
+      margin: "8px 0 4px 0",
+      "border-radius": "3px",
+      border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      "user-select": "none"
+    }).html('<i class="fa fa-angle-down"></i> <span>' + title + "</span>").appendTo(parentEl);
+  }
+  function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
+    var color = getComponentColor(category, dropTypeId);
+    var iconClass = icon || getComponentIcon(label, dropTypeId);
+    var chip = window.$("<div>", {
+      "class": "nexa-palette-item",
+      "data-type-id": dropTypeId || ""
+    }).css({
+      display: "flex",
+      "align-items": "center",
+      width: "250px",
+      // Centered via the flex parent's align-self, NOT "margin: auto" —
+      // see the comment on state.componentsPane's own creation for why an
+      // auto margin here throws jQuery UI draggable's drag-ghost tracking
+      // off by however many px it takes to center a box in this pane.
+      "align-self": "center",
+      margin: "4px 0",
+      height: "26px",
+      "border-radius": "5px",
+      border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
+      background: color,
+      position: "relative",
+      cursor: "grab",
+      "user-select": "none",
+      "box-sizing": "border-box",
+      "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
+      transition: "box-shadow 0.15s, border-color 0.15s",
+      overflow: "hidden"
+    }).appendTo(paletteEl);
+    var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
+      position: "absolute",
+      left: "0",
+      top: "0",
+      bottom: "0",
+      width: "28px",
+      "border-right": "1px solid rgba(0,0,0,0.12)",
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "center",
+      background: "rgba(0,0,0,0.06)",
+      "border-top-left-radius": "4px",
+      "border-bottom-left-radius": "4px",
+      color: "rgba(0,0,0,0.65)",
+      "font-size": "12px",
+      "pointer-events": "none"
+    }).appendTo(chip);
+    window.$("<i>", { "class": "fa " + iconClass }).appendTo(iconContainer);
+    window.$("<div>", { "class": "red-ui-palette-label" }).css({
+      flex: "1 1 auto",
+      "margin-left": "28px",
+      "font-size": "12px",
+      "font-weight": "500",
+      "text-align": "center",
+      color: "var(--red-ui-node-label-color, #222)",
+      padding: "0 6px",
+      overflow: "hidden",
+      "text-overflow": "ellipsis",
+      "white-space": "nowrap",
+      "pointer-events": "none"
+    }).text(label).appendTo(chip);
+    chip.draggable({
+      helper: "clone",
+      appendTo: "#red-ui-editor",
+      // Actual placement now happens in state.artboardEl's own
+      // .droppable() (editor-tray.js) — that's also what makes
+      // revert:"invalid" meaningful: it reverts only when the drop wasn't
+      // accepted there (wrong tab / outside the artboard / no canvas
+      // open), instead of always, the way it did before that droppable
+      // existed.
+      revert: "invalid",
+      zIndex: 1e4,
+      // No cursorAt, and never resize ui.helper here (matching core's own
+      // palette.js draggable): the actual drag-ghost/mouse offset bug
+      // turned out to be the chip's own CSS (see makeComponentChip's
+      // "align-self" comment above, and componentsPane's), not this
+      // config — jQuery UI draggable computes the click offset once, up
+      // front, from the source element's own size/margins.
+      start: function(e, ui) {
+        if (ui && ui.helper) {
+          ui.helper.css({
+            "z-index": 1e4,
+            opacity: 0.88,
+            "pointer-events": "none",
+            "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
+          });
+        }
+      },
+      stop: function() {
+        if (!state.artboardEl) {
+          if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas first (menu \u2192 Pages)", { type: "warning", timeout: 2e3 });
+          return;
+        }
+        if (state.activeCanvasTab !== "ui") {
+          if (window.RED && window.RED.notify) window.RED.notify("Switch to the UI tab first", { type: "warning", timeout: 2e3 });
+          return;
+        }
+      }
+    });
+    return chip;
+  }
+  function buildPalette(paletteEl) {
+    paletteEl.empty();
+    var components = window.NEXA && typeof window.NEXA.getComponents === "function" ? window.NEXA.getComponents() : [];
+    var availableTemplates = (state.templates || []).filter(function(t) {
+      if (state.editingMode === "template" && state.activeTemplateId) {
+        return !templateContains(t.id, state.activeTemplateId);
+      }
+      return true;
+    });
+    if (!components.length && !availableTemplates.length) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "12px", "text-align": "center" }).text("No components registered.").appendTo(paletteEl);
+    }
+    var categories = {};
+    components.forEach(function(def) {
+      var cat = def.category || "Components";
+      categories[cat] = categories[cat] || [];
+      categories[cat].push(def);
+    });
+    Object.keys(categories).forEach(function(catName) {
+      sectionHeader(paletteEl, catName);
+      categories[catName].forEach(function(def) {
+        makeComponentChip(paletteEl, def.label, def.id, def.category, def.icon);
+      });
+    });
+    if (availableTemplates.length) {
+      sectionHeader(paletteEl, "Templates");
+      availableTemplates.forEach(function(t) {
+        makeComponentChip(paletteEl, t.name, "@template:" + t.id, "Templates", "fa-clone");
+      });
+    }
+    sectionHeader(paletteEl, "Custom");
+    makeComponentChip(paletteEl, "Lit Component", "@lit-component", "Custom", "fa-code");
+  }
+  function renderEventsPanel() {
+    if (!state.eventsPane) return;
+    state.eventsPane.empty();
+    var screen = getActiveScreen();
+    function chip(container, label, makeNode, compId, nodeType) {
+      var meta = getLogicNodeMeta(nodeType);
+      var item = window.$("<div>", {
+        "class": "nexa-palette-item",
+        "data-comp-id": compId || "",
+        "data-palette-type": nodeType || ""
+      }).css({
+        display: "flex",
+        "align-items": "center",
+        width: "250px",
+        // Centered via the flex parent's align-self, NOT "margin: auto"
+        // — see the comment on state.eventsPane's own creation for why.
+        "align-self": "center",
+        margin: "4px 0",
+        height: "26px",
+        "border-radius": "5px",
+        border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
+        background: meta.color,
+        position: "relative",
+        cursor: "grab",
+        "user-select": "none",
+        "box-sizing": "border-box",
+        "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
+        transition: "box-shadow 0.15s, border-color 0.15s",
+        overflow: "hidden"
+      }).appendTo(container);
+      item.data("nexaMakeNode", makeNode);
+      if (meta.portIn) {
+        window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-input" }).css({
+          position: "absolute",
+          left: "-5px",
+          top: "7px",
+          width: "10px",
+          height: "10px",
+          "border-radius": "3px",
+          background: "var(--red-ui-node-port-background, #d9d9d9)",
+          border: "1px solid var(--red-ui-node-border, #888)",
+          "box-sizing": "border-box",
+          "pointer-events": "none"
+        }).appendTo(item);
+      }
+      var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
+        position: "absolute",
+        left: "0",
+        top: "0",
+        bottom: "0",
+        width: "28px",
+        "border-right": "1px solid rgba(0,0,0,0.12)",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        background: "rgba(0,0,0,0.06)",
+        "border-top-left-radius": "4px",
+        "border-bottom-left-radius": "4px",
+        color: "rgba(0,0,0,0.65)",
+        "font-size": "12px",
+        "pointer-events": "none"
+      }).appendTo(item);
+      window.$("<i>", { "class": "fa " + meta.icon }).appendTo(iconContainer);
+      window.$("<div>", { "class": "red-ui-palette-label" }).css({
+        flex: "1 1 auto",
+        "margin-left": "28px",
+        "margin-right": meta.portOut ? "4px" : "0",
+        "font-size": "11px",
+        "font-weight": "500",
+        "text-align": "center",
+        color: "var(--red-ui-node-label-color, #222)",
+        padding: "0 4px",
+        overflow: "hidden",
+        "text-overflow": "ellipsis",
+        "white-space": "nowrap",
+        "pointer-events": "none"
+      }).text(label).appendTo(item);
+      if (meta.portOut) {
+        window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-output" }).css({
+          position: "absolute",
+          right: "-5px",
+          top: "7px",
+          width: "10px",
+          height: "10px",
+          "border-radius": "3px",
+          background: "var(--red-ui-node-port-background, #d9d9d9)",
+          border: "1px solid var(--red-ui-node-border, #888)",
+          "box-sizing": "border-box",
+          "pointer-events": "none"
+        }).appendTo(item);
+      }
+      item.draggable({
+        helper: "clone",
+        appendTo: "#red-ui-editor",
+        // Actual placement now happens in state.logicArtboardEl's own
+        // .droppable() (editor-tray.js) — that's also what makes
+        // revert:"invalid" meaningful: it reverts only when the drop
+        // wasn't accepted there (Logic tab not open / no canvas open),
+        // instead of always, the way it did before that droppable
+        // existed.
+        revert: "invalid",
+        zIndex: 1e4,
+        // No cursorAt, and never resize ui.helper here (matching core's
+        // own palette.js draggable): the actual drag-ghost/mouse offset
+        // bug turned out to be this chip's own CSS ("align-self" comment
+        // above, and eventsPane's), not this config — jQuery UI draggable
+        // computes the click offset once, up front, from the source
+        // element's own size/margins.
+        start: function(e, ui) {
+          if (ui && ui.helper) {
+            ui.helper.css({
+              "z-index": 1e4,
+              opacity: 0.88,
+              "pointer-events": "none",
+              "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
+            });
+          }
+        },
+        stop: function() {
+          if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
+            if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
+          }
+        }
+      });
+      return item;
+    }
+    sectionHeader(state.eventsPane, "Lifecycle");
+    chip(state.eventsPane, "On Load", function() {
+      return { type: "onload" };
+    }, "", "onload");
+    chip(state.eventsPane, "On Render", function() {
+      return { type: "onrender" };
+    }, "", "onrender");
+    chip(state.eventsPane, "On Close", function() {
+      return { type: "onclose" };
+    }, "", "onclose");
+    if (state.editingMode === "template") {
+      chip(state.eventsPane, "On Params Change", function() {
+        return { type: "param-input" };
+      }, "", "param-input");
+    }
+    sectionHeader(state.eventsPane, "Utility");
+    chip(state.eventsPane, "Function", function() {
+      return { type: "function", code: "return msg;" };
+    }, "", "function");
+    chip(state.eventsPane, "Debug", function() {
+      return { type: "debug" };
+    }, "", "debug");
+    chip(state.eventsPane, "Inject", function() {
+      return { type: "inject", intervalMs: 5e3, payloadType: "json", payload: '{"text":"Hello World"}', once: false };
+    }, "", "inject");
+    chip(state.eventsPane, "Reload Page", function() {
+      return { type: "reload" };
+    }, "", "reload");
+    chip(state.eventsPane, "Open URL", function() {
+      return { type: "open-url", url: "", mode: "replace", newTab: false };
+    }, "", "open-url");
+    if (screen && screen.components.length) {
+      sectionHeader(state.eventsPane, "Components on this screen");
+      screen.components.forEach(function(comp) {
+        var shortId = comp.id.slice(-4);
+        if (comp.type === "@template") {
+          var template = findTemplate(comp.templateId);
+          var instanceName = "Instance #" + shortId + (template ? " (" + template.name + ")" : "");
+          (template && template.params || []).forEach(function(param) {
+            chip(state.eventsPane, instanceName + " \u2192 Set " + param.label, function() {
+              return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
+            }, comp.id, "set-template-param");
+          });
+          return;
+        }
+        if (comp.type === "@lit-component") {
+          var litName = "Lit Component #" + shortId;
+          (comp.litEvents || []).forEach(function(evt) {
+            chip(state.eventsPane, litName + " \u2192 on " + evt.name, function() {
+              return { type: "ui-event", compId: comp.id, event: evt.name };
+            }, comp.id, "ui-event");
+          });
+          chip(state.eventsPane, litName + " \u2192 Update", function() {
+            return { type: "ui-update", compId: comp.id, config: {} };
+          }, comp.id, "ui-update");
+          return;
+        }
+        var typeDef = window.NEXA.getComponent(comp.type);
+        if (!typeDef) return;
+        var name = (typeDef.label || comp.type) + " #" + shortId;
+        (typeDef.events || []).forEach(function(evtDef) {
+          chip(state.eventsPane, name + " \u2192 " + evtDef.label, function() {
+            return { type: "ui-event", compId: comp.id, event: evtDef.name };
+          }, comp.id, "ui-event");
+        });
+        chip(state.eventsPane, name + " \u2192 Update", function() {
+          return { type: "ui-update", compId: comp.id, config: {} };
+        }, comp.id, "ui-update");
+      });
+    } else {
+      window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "10px", "text-align": "center" }).text("Add components to the screen (Components tab) to see their event/update nodes here.").appendTo(state.eventsPane);
+    }
+    refreshEventsHighlight();
+  }
+  function refreshEventsHighlight() {
+    if (!state.eventsPane) return;
+    state.eventsPane.find(".nexa-palette-item").css({
+      background: "#fff",
+      "border-color": "var(--red-ui-node-border, rgba(0,0,0,0.25))",
+      "box-shadow": "0 1px 2px rgba(0,0,0,0.05)"
+    });
+    if (!state.selectedIds.length) return;
+    state.selectedIds.forEach(function(id) {
+      state.eventsPane.find('.nexa-palette-item[data-comp-id="' + id + '"]').css({
+        background: "#fff3e0",
+        "border-color": "#ff5722",
+        "box-shadow": "0 0 0 2px #ff5722"
+      });
+    });
+  }
+
+  // src/canvas/selection.js
+  function isSelected(id) {
+    return state.selectedIds.indexOf(id) !== -1;
+  }
+  function refreshSelectionVisuals() {
+    if (!state.artboardEl) return;
+    state.artboardEl.find(".nexa-component").css("outline", "none");
+    state.selectedIds.forEach(function(id) {
+      state.artboardEl.find('[data-id="' + id + '"]').css("outline", "2px solid #ff5722");
+    });
+    clearSelectionHandles();
+    if (state.selectedIds.length === 1) {
+      var comp = findComponent(state.selectedIds[0]);
+      if (comp) renderSelectionHandles(comp);
+    }
+    renderPropertiesPanel();
+    refreshEventsHighlight();
+    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+      state.sidebarTabs.activateTab("properties");
+    }
+  }
+  function selectOnly(id) {
+    state.selectedIds = [id];
+    refreshSelectionVisuals();
+  }
+  function selectMultiple(ids) {
+    state.selectedIds = ids.slice();
+    refreshSelectionVisuals();
+  }
+  function deselectAll() {
+    state.selectedIds = [];
+    refreshSelectionVisuals();
+  }
+  function setLockedForSelection(locked, idsOverride) {
+    var ids = idsOverride || state.selectedIds.slice();
+    var changed = false;
+    ids.forEach(function(id) {
+      var c = findComponent(id);
+      if (c && c.locked !== locked) {
+        c.locked = locked;
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    markDirty();
+    renderActiveScreen();
+    selectMultiple(ids);
+  }
+  function toggleFlipForSelection(axis) {
+    var screen = getActiveScreen();
+    if (!screen || !state.selectedIds.length) return;
+    var events = [];
+    state.selectedIds.forEach(function(id) {
+      var c = findComponent(id);
+      if (!c || c.locked) return;
+      var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
+      if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
+      var from = { flipH: !!c.flipH, flipV: !!c.flipV };
+      if (axis === "h") {
+        c.flipH = !c.flipH;
+      } else if (axis === "v") {
+        c.flipV = !c.flipV;
+      }
+      var to = { flipH: !!c.flipH, flipV: !!c.flipV };
+      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
+      updateComponentBox(c);
+    });
+    if (!events.length) return;
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
+    markDirty();
+    renderPropertiesPanel();
+  }
+  function groupSelection() {
+    if (state.selectedIds.length < 2) {
+      RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2e3 });
+      return;
+    }
+    var screen = getActiveScreen();
+    if (!screen) return;
+    screen.groups = screen.groups || [];
+    var members = state.selectedIds.map(findComponent).filter(Boolean);
+    if (members.some(function(c) {
+      return c.g;
+    })) {
+      RED.notify("One or more selected components are already in a group \u2014 ungroup first", { type: "warning", timeout: 2500 });
+      return;
+    }
+    var minX = Math.min.apply(null, members.map(function(c) {
+      return c.x;
+    }));
+    var minY = Math.min.apply(null, members.map(function(c) {
+      return c.y;
+    }));
+    var maxX = Math.max.apply(null, members.map(function(c) {
+      return c.x + c.w;
+    }));
+    var maxY = Math.max.apply(null, members.map(function(c) {
+      return c.y + c.h;
+    }));
+    var pad = 10;
+    var group = { id: genId(), x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
+    var memberIds = members.map(function(c) {
+      return c.id;
+    });
+    screen.groups.push(group);
+    memberIds.forEach(function(id) {
+      var c = findComponent(id);
+      if (c) c.g = group.id;
+    });
+    pushHistory({ t: "group", screenId: screen.id, group, memberIds });
+    markDirty();
+    renderActiveScreen();
+    selectMultiple(memberIds);
+  }
+  function ungroupSelection() {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var groupIds = {};
+    state.selectedIds.forEach(function(id) {
+      var c = findComponent(id);
+      if (c && c.g) groupIds[c.g] = true;
+    });
+    var ids = Object.keys(groupIds);
+    if (!ids.length) return;
+    var ungroupEvents = [];
+    var allMemberIds = [];
+    ids.forEach(function(gid) {
+      var group = findGroup(gid);
+      if (!group) return;
+      var memberIds = groupMemberIds(gid);
+      ungroupEvents.push({ t: "ungroup", screenId: screen.id, group, memberIds });
+      memberIds.forEach(function(id) {
+        var c = findComponent(id);
+        if (c) delete c.g;
+      });
+      screen.groups = (screen.groups || []).filter(function(g) {
+        return g.id !== gid;
+      });
+      allMemberIds = allMemberIds.concat(memberIds);
+    });
+    if (!ungroupEvents.length) return;
+    pushHistory(ungroupEvents.length === 1 ? ungroupEvents[0] : { t: "multi", screenId: screen.id, events: ungroupEvents });
+    markDirty();
+    renderActiveScreen();
+    selectMultiple(allMemberIds);
+  }
+  function startMarqueeSelect(e) {
+    if (!state.artboardEl) return;
+    var offset = state.artboardEl.offset();
+    var startX = (e.pageX - offset.left) / state.zoomLevel;
+    var startY = (e.pageY - offset.top) / state.zoomLevel;
+    var box = { left: startX, top: startY, width: 0, height: 0 };
+    var shiftHeld = e.shiftKey;
+    var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
+      position: "absolute",
+      left: startX + "px",
+      top: startY + "px",
+      width: "0px",
+      height: "0px",
+      border: "1px dashed #2196f3",
+      background: "rgba(33,150,243,0.1)",
+      "pointer-events": "none",
+      "z-index": 999
+    }).appendTo(state.artboardEl);
+    function onMove(ev) {
+      var curX = (ev.pageX - offset.left) / state.zoomLevel;
+      var curY = (ev.pageY - offset.top) / state.zoomLevel;
+      box.left = Math.min(startX, curX);
+      box.top = Math.min(startY, curY);
+      box.width = Math.abs(curX - startX);
+      box.height = Math.abs(curY - startY);
+      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      marqueeEl.remove();
+      if (box.width < 3 && box.height < 3) return;
+      var screen = getActiveScreen();
+      if (!screen) return;
+      var hits = screen.components.filter(function(c) {
+        return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
+      }).map(function(c) {
+        return c.id;
+      });
+      if (shiftHeld) {
+        hits.forEach(function(id) {
+          if (!isSelected(id)) state.selectedIds.push(id);
+        });
+        refreshSelectionVisuals();
+      } else {
+        selectMultiple(hits);
+      }
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // src/canvas/canvas-ui.js
+  function renderActiveScreen() {
+    if (!state.artboardEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    state.selectedIds = [];
+    state.selectionHandlesEl = null;
+    renderPropertiesPanel();
+    state.artboardEl.empty();
+    state.artboardEl.css({
+      width: screen.width + "px",
+      height: screen.height + "px",
+      "background-color": "#fff",
+      "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
+      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
+    });
+    if (state.stageEl) {
+      state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
+    }
+    applyZoomTransform();
+    screen.components.forEach(renderComponent);
+  }
+  function applyZoomTransform() {
+    if (!state.stageEl || !state.sizerEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
+    state.sizerEl.css({
+      width: screen.width * state.zoomLevel + "px",
+      height: screen.height * state.zoomLevel + "px"
+    });
+    updateZoomLabel();
+    refreshSelectionVisuals();
+  }
+  function updateZoomLabel() {
+    if (state.zoomLabelEl) state.zoomLabelEl.text(Math.round(state.zoomLevel * 100) + "%");
+  }
+  function setZoom(newZoom, focalPoint) {
+    if (!state.viewportEl || !state.sizerEl) return;
+    newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+    if (newZoom === state.zoomLevel) return;
+    var vp = state.viewportEl.get(0);
+    if (!focalPoint) {
+      focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
+    }
+    var sizerOffset = state.sizerEl.position();
+    var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / state.zoomLevel;
+    var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / state.zoomLevel;
+    state.zoomLevel = newZoom;
+    applyZoomTransform();
+    var newOffset = state.sizerEl.position();
+    vp.scrollLeft = stageX * state.zoomLevel + newOffset.left - focalPoint.x;
+    vp.scrollTop = stageY * state.zoomLevel + newOffset.top - focalPoint.y;
+  }
+  function zoomIn() {
+    setZoom(state.zoomLevel + ZOOM_STEP);
+  }
+  function zoomOut() {
+    setZoom(state.zoomLevel - ZOOM_STEP);
+  }
+  function zoomReset() {
+    setZoom(1);
+  }
+  function zoomToFit() {
+    if (!state.viewportEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var vp = state.viewportEl.get(0);
+    var pad = 40;
+    var availW = Math.max(vp.clientWidth - pad * 2, 10);
+    var availH = Math.max(vp.clientHeight - pad * 2, 10);
+    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
+    fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
+    state.zoomLevel = fitZoom;
+    applyZoomTransform();
+    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
+    vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
+    vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+  }
+  function buildZoomToolbar(trayBody) {
+    var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
+      position: "absolute",
+      right: "16px",
+      bottom: "16px",
+      "z-index": "10",
+      display: "flex",
+      "align-items": "center",
+      background: "#fff",
+      "border-radius": "4px",
+      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+      overflow: "hidden"
+    }).appendTo(trayBody);
+    function zoomBtn(icon, title, onClick) {
+      return window.$("<a>", { href: "#", title }).css({
+        width: "26px",
+        height: "26px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "#555",
+        cursor: "pointer"
+      }).append(window.$("<i>", { "class": "fa " + icon })).on("click", function(e) {
+        e.preventDefault();
+        onClick();
+      }).appendTo(bar);
+    }
+    zoomBtn("fa-minus", "Zoom out", zoomOut);
+    state.zoomLabelEl = window.$("<span>").css({
+      width: "44px",
+      "text-align": "center",
+      "font-size": "11px",
+      color: "#555"
+    }).appendTo(bar);
+    zoomBtn("fa-circle-o", "Reset zoom", zoomReset);
+    zoomBtn("fa-plus", "Zoom in", zoomIn);
+    zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
+    updateZoomLabel();
+  }
+
   // src/logic/logic-wires.js
   var LOGIC_PORT_HIT_RADIUS = 26;
   function logicNodePortPoint(node, role) {
@@ -2813,760 +3548,6 @@
     renderLogicWires();
   }
 
-  // src/sidebar/palette-events-panel.js
-  function getComponentColor(category, typeId) {
-    if (typeId === "@lit-component") return "#f3e8ff";
-    if (typeId && typeId.indexOf("@template") === 0) return "#fef9c3";
-    var cat = (category || "").toLowerCase();
-    if (cat.indexOf("basic") !== -1 || cat.indexOf("shape") !== -1) return "#dbeafe";
-    if (cat.indexOf("form") !== -1 || cat.indexOf("input") !== -1) return "#e0e7ff";
-    if (cat.indexOf("display") !== -1 || cat.indexOf("text") !== -1) return "#d1fae5";
-    if (cat.indexOf("chart") !== -1 || cat.indexOf("gauge") !== -1) return "#fef3c7";
-    return "#e2e8f0";
-  }
-  function getComponentIcon(label, typeId) {
-    var l = (label || "").toLowerCase();
-    if (typeId === "@lit-component") return "fa-code";
-    if (typeId && typeId.indexOf("@template") === 0) return "fa-clone";
-    if (l.indexOf("rect") !== -1 || l.indexOf("box") !== -1) return "fa-square-o";
-    if (l.indexOf("circle") !== -1) return "fa-circle-o";
-    if (l.indexOf("line") !== -1) return "fa-minus";
-    if (l.indexOf("text") !== -1) return "fa-font";
-    if (l.indexOf("image") !== -1 || l.indexOf("picture") !== -1) return "fa-picture-o";
-    if (l.indexOf("button") !== -1) return "fa-hand-pointer-o";
-    if (l.indexOf("switch") !== -1 || l.indexOf("toggle") !== -1) return "fa-toggle-on";
-    if (l.indexOf("slider") !== -1) return "fa-sliders";
-    if (l.indexOf("chart") !== -1) return "fa-line-chart";
-    if (l.indexOf("gauge") !== -1) return "fa-tachometer";
-    return "fa-cube";
-  }
-  function getLogicNodeMeta(type) {
-    if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
-      return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
-    }
-    if (type === "function") {
-      return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
-    }
-    if (type === "debug") {
-      return { color: "#87a980", icon: "fa-bug", portOut: false, portIn: true };
-    }
-    if (type === "inject") {
-      return { color: "#a6bbcf", icon: "fa-clock-o", portOut: true, portIn: false };
-    }
-    if (type === "reload") {
-      return { color: "#e2d96e", icon: "fa-refresh", portOut: true, portIn: true };
-    }
-    if (type === "open-url") {
-      return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
-    }
-    if (type === "ui-update" || type === "set-template-param") {
-      return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
-    }
-    return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
-  }
-  function sectionHeader(parentEl, title) {
-    return window.$("<div>", { "class": "red-ui-palette-header" }).css({
-      padding: "5px 8px",
-      "font-size": "11px",
-      "font-weight": "bold",
-      background: "var(--red-ui-palette-header-background, var(--red-ui-tertiary-background, #f3f3f3))",
-      color: "var(--red-ui-palette-header-color, var(--red-ui-secondary-text-color, #475569))",
-      "text-transform": "uppercase",
-      "letter-spacing": "0.5px",
-      display: "flex",
-      "align-items": "center",
-      gap: "6px",
-      margin: "8px 0 4px 0",
-      "border-radius": "3px",
-      border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-      "user-select": "none"
-    }).html('<i class="fa fa-angle-down"></i> <span>' + title + "</span>").appendTo(parentEl);
-  }
-  function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
-    var color = getComponentColor(category, dropTypeId);
-    var iconClass = icon || getComponentIcon(label, dropTypeId);
-    var chip = window.$("<div>", {
-      "class": "nexa-palette-item",
-      "data-type-id": dropTypeId || ""
-    }).css({
-      display: "flex",
-      "align-items": "center",
-      width: "120px",
-      // Centered via the flex parent's align-self, NOT "margin: auto" —
-      // see the comment on state.componentsPane's own creation for why an
-      // auto margin here throws jQuery UI draggable's drag-ghost tracking
-      // off by however many px it takes to center a 120px box in this pane.
-      "align-self": "center",
-      margin: "4px 0",
-      height: "26px",
-      "border-radius": "5px",
-      border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
-      background: color,
-      position: "relative",
-      cursor: "grab",
-      "user-select": "none",
-      "box-sizing": "border-box",
-      "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-      transition: "box-shadow 0.15s, border-color 0.15s",
-      overflow: "hidden"
-    }).appendTo(paletteEl);
-    var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
-      position: "absolute",
-      left: "0",
-      top: "0",
-      bottom: "0",
-      width: "28px",
-      "border-right": "1px solid rgba(0,0,0,0.12)",
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "center",
-      background: "rgba(0,0,0,0.06)",
-      "border-top-left-radius": "4px",
-      "border-bottom-left-radius": "4px",
-      color: "rgba(0,0,0,0.65)",
-      "font-size": "12px",
-      "pointer-events": "none"
-    }).appendTo(chip);
-    window.$("<i>", { "class": "fa " + iconClass }).appendTo(iconContainer);
-    window.$("<div>", { "class": "red-ui-palette-label" }).css({
-      flex: "1 1 auto",
-      "margin-left": "28px",
-      "font-size": "12px",
-      "font-weight": "500",
-      "text-align": "center",
-      color: "var(--red-ui-node-label-color, #222)",
-      padding: "0 6px",
-      overflow: "hidden",
-      "text-overflow": "ellipsis",
-      "white-space": "nowrap",
-      "pointer-events": "none"
-    }).text(label).appendTo(chip);
-    chip.draggable({
-      helper: "clone",
-      appendTo: "#red-ui-editor",
-      // revert:false, not "invalid": with no matching .droppable() target
-      // registered on the artboard, jQuery UI's own drop-detection never
-      // sees a "valid" drop, so "invalid" was true for EVERY drop — even
-      // ones addComponentAt() (in the "stop" handler below) placed fine —
-      // making the ghost always fly back to the palette first and only
-      // disappear after that animation, instead of vanishing where it was
-      // actually released.
-      revert: false,
-      zIndex: 1e4,
-      // No cursorAt, and never resize ui.helper here (matching core's own
-      // palette.js draggable): the actual drag-ghost/mouse offset bug
-      // turned out to be the chip's own CSS (see makeComponentChip's
-      // "align-self" comment above, and componentsPane's), not this
-      // config — jQuery UI draggable computes the click offset once, up
-      // front, from the source element's own size/margins.
-      start: function(e, ui) {
-        if (ui && ui.helper) {
-          ui.helper.css({
-            "z-index": 1e4,
-            opacity: 0.88,
-            "pointer-events": "none",
-            "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
-          });
-        }
-      },
-      stop: function(e, ui) {
-        if (!state.artboardEl) {
-          if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas first (menu \u2192 Pages)", { type: "warning", timeout: 2e3 });
-          return;
-        }
-        if (state.activeCanvasTab !== "ui") {
-          if (window.RED && window.RED.notify) window.RED.notify("Switch to the UI tab first", { type: "warning", timeout: 2e3 });
-          return;
-        }
-        var offset = state.artboardEl.offset();
-        var dropX = e && e.pageX !== void 0 ? e.pageX - offset.left : (ui && ui.offset ? ui.offset.left : 0) - offset.left;
-        var dropY = e && e.pageY !== void 0 ? e.pageY - offset.top : (ui && ui.offset ? ui.offset.top : 0) - offset.top;
-        var x = dropX / state.zoomLevel;
-        var y = dropY / state.zoomLevel;
-        if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
-          addComponentAt(dropTypeId, x, y);
-        }
-      }
-    });
-    return chip;
-  }
-  function buildPalette(paletteEl) {
-    paletteEl.empty();
-    var components = window.NEXA && typeof window.NEXA.getComponents === "function" ? window.NEXA.getComponents() : [];
-    var availableTemplates = (state.templates || []).filter(function(t) {
-      if (state.editingMode === "template" && state.activeTemplateId) {
-        return !templateContains(t.id, state.activeTemplateId);
-      }
-      return true;
-    });
-    if (!components.length && !availableTemplates.length) {
-      window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "12px", "text-align": "center" }).text("No components registered.").appendTo(paletteEl);
-    }
-    var categories = {};
-    components.forEach(function(def) {
-      var cat = def.category || "Components";
-      categories[cat] = categories[cat] || [];
-      categories[cat].push(def);
-    });
-    Object.keys(categories).forEach(function(catName) {
-      sectionHeader(paletteEl, catName);
-      categories[catName].forEach(function(def) {
-        makeComponentChip(paletteEl, def.label, def.id, def.category, def.icon);
-      });
-    });
-    if (availableTemplates.length) {
-      sectionHeader(paletteEl, "Templates");
-      availableTemplates.forEach(function(t) {
-        makeComponentChip(paletteEl, t.name, "@template:" + t.id, "Templates", "fa-clone");
-      });
-    }
-    sectionHeader(paletteEl, "Custom");
-    makeComponentChip(paletteEl, "Lit Component", "@lit-component", "Custom", "fa-code");
-  }
-  function renderEventsPanel() {
-    if (!state.eventsPane) return;
-    state.eventsPane.empty();
-    var screen = getActiveScreen();
-    function chip(container, label, makeNode, compId, nodeType) {
-      var meta = getLogicNodeMeta(nodeType);
-      var item = window.$("<div>", {
-        "class": "nexa-palette-item",
-        "data-comp-id": compId || "",
-        "data-palette-type": nodeType || ""
-      }).css({
-        display: "flex",
-        "align-items": "center",
-        width: "120px",
-        // Centered via the flex parent's align-self, NOT "margin: auto"
-        // — see the comment on state.eventsPane's own creation for why.
-        "align-self": "center",
-        margin: "4px 0",
-        height: "26px",
-        "border-radius": "5px",
-        border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
-        background: meta.color,
-        position: "relative",
-        cursor: "grab",
-        "user-select": "none",
-        "box-sizing": "border-box",
-        "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-        transition: "box-shadow 0.15s, border-color 0.15s",
-        overflow: "hidden"
-      }).appendTo(container);
-      if (meta.portIn) {
-        window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-input" }).css({
-          position: "absolute",
-          left: "-5px",
-          top: "7px",
-          width: "10px",
-          height: "10px",
-          "border-radius": "3px",
-          background: "var(--red-ui-node-port-background, #d9d9d9)",
-          border: "1px solid var(--red-ui-node-border, #888)",
-          "box-sizing": "border-box",
-          "pointer-events": "none"
-        }).appendTo(item);
-      }
-      var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
-        position: "absolute",
-        left: "0",
-        top: "0",
-        bottom: "0",
-        width: "28px",
-        "border-right": "1px solid rgba(0,0,0,0.12)",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        background: "rgba(0,0,0,0.06)",
-        "border-top-left-radius": "4px",
-        "border-bottom-left-radius": "4px",
-        color: "rgba(0,0,0,0.65)",
-        "font-size": "12px",
-        "pointer-events": "none"
-      }).appendTo(item);
-      window.$("<i>", { "class": "fa " + meta.icon }).appendTo(iconContainer);
-      window.$("<div>", { "class": "red-ui-palette-label" }).css({
-        flex: "1 1 auto",
-        "margin-left": "28px",
-        "margin-right": meta.portOut ? "4px" : "0",
-        "font-size": "11px",
-        "font-weight": "500",
-        "text-align": "center",
-        color: "var(--red-ui-node-label-color, #222)",
-        padding: "0 4px",
-        overflow: "hidden",
-        "text-overflow": "ellipsis",
-        "white-space": "nowrap",
-        "pointer-events": "none"
-      }).text(label).appendTo(item);
-      if (meta.portOut) {
-        window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-output" }).css({
-          position: "absolute",
-          right: "-5px",
-          top: "7px",
-          width: "10px",
-          height: "10px",
-          "border-radius": "3px",
-          background: "var(--red-ui-node-port-background, #d9d9d9)",
-          border: "1px solid var(--red-ui-node-border, #888)",
-          "box-sizing": "border-box",
-          "pointer-events": "none"
-        }).appendTo(item);
-      }
-      item.draggable({
-        helper: "clone",
-        appendTo: "#red-ui-editor",
-        // revert:false, not "invalid": with no matching .droppable()
-        // target registered on the Logic canvas, jQuery UI's own drop-
-        // detection never sees a "valid" drop, so "invalid" was true for
-        // EVERY drop — even ones addLogicNode() (in the "stop" handler
-        // below) placed fine — making the ghost always fly back to the
-        // palette first and only disappear after that animation, instead
-        // of vanishing where it was actually released.
-        revert: false,
-        zIndex: 1e4,
-        // No cursorAt, and never resize ui.helper here (matching core's
-        // own palette.js draggable): the actual drag-ghost/mouse offset
-        // bug turned out to be this chip's own CSS ("align-self" comment
-        // above, and eventsPane's), not this config — jQuery UI draggable
-        // computes the click offset once, up front, from the source
-        // element's own size/margins.
-        start: function(e, ui) {
-          if (ui && ui.helper) {
-            ui.helper.css({
-              "z-index": 1e4,
-              opacity: 0.88,
-              "pointer-events": "none",
-              "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
-            });
-          }
-        },
-        stop: function(e, ui) {
-          if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
-            if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
-            return;
-          }
-          var offset = state.logicArtboardEl.offset();
-          var dropX = e && e.pageX !== void 0 ? e.pageX - offset.left : (ui && ui.offset ? ui.offset.left : 0) - offset.left;
-          var dropY = e && e.pageY !== void 0 ? e.pageY - offset.top : (ui && ui.offset ? ui.offset.top : 0) - offset.top;
-          var x = dropX / state.logicZoomLevel;
-          var y = dropY / state.logicZoomLevel;
-          if (x < 0 || y < 0) return;
-          var nodeX = e && e.pageX !== void 0 ? Math.max(0, Math.round(x - LOGIC_NODE_W / 2)) : x;
-          var nodeY = e && e.pageY !== void 0 ? Math.max(0, Math.round(y - LOGIC_NODE_H / 2)) : y;
-          addLogicNode(makeNode(), nodeX, nodeY);
-        }
-      });
-      return item;
-    }
-    sectionHeader(state.eventsPane, "Lifecycle");
-    chip(state.eventsPane, "On Load", function() {
-      return { type: "onload" };
-    }, "", "onload");
-    chip(state.eventsPane, "On Render", function() {
-      return { type: "onrender" };
-    }, "", "onrender");
-    chip(state.eventsPane, "On Close", function() {
-      return { type: "onclose" };
-    }, "", "onclose");
-    if (state.editingMode === "template") {
-      chip(state.eventsPane, "On Params Change", function() {
-        return { type: "param-input" };
-      }, "", "param-input");
-    }
-    sectionHeader(state.eventsPane, "Utility");
-    chip(state.eventsPane, "Function", function() {
-      return { type: "function", code: "return msg;" };
-    }, "", "function");
-    chip(state.eventsPane, "Debug", function() {
-      return { type: "debug" };
-    }, "", "debug");
-    chip(state.eventsPane, "Inject", function() {
-      return { type: "inject", intervalMs: 5e3, payloadType: "json", payload: '{"text":"Hello World"}', once: false };
-    }, "", "inject");
-    chip(state.eventsPane, "Reload Page", function() {
-      return { type: "reload" };
-    }, "", "reload");
-    chip(state.eventsPane, "Open URL", function() {
-      return { type: "open-url", url: "", mode: "replace", newTab: false };
-    }, "", "open-url");
-    if (screen && screen.components.length) {
-      sectionHeader(state.eventsPane, "Components on this screen");
-      screen.components.forEach(function(comp) {
-        var shortId = comp.id.slice(-4);
-        if (comp.type === "@template") {
-          var template = findTemplate(comp.templateId);
-          var instanceName = "Instance #" + shortId + (template ? " (" + template.name + ")" : "");
-          (template && template.params || []).forEach(function(param) {
-            chip(state.eventsPane, instanceName + " \u2192 Set " + param.label, function() {
-              return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
-            }, comp.id, "set-template-param");
-          });
-          return;
-        }
-        if (comp.type === "@lit-component") {
-          var litName = "Lit Component #" + shortId;
-          (comp.litEvents || []).forEach(function(evt) {
-            chip(state.eventsPane, litName + " \u2192 on " + evt.name, function() {
-              return { type: "ui-event", compId: comp.id, event: evt.name };
-            }, comp.id, "ui-event");
-          });
-          chip(state.eventsPane, litName + " \u2192 Update", function() {
-            return { type: "ui-update", compId: comp.id, config: {} };
-          }, comp.id, "ui-update");
-          return;
-        }
-        var typeDef = window.NEXA.getComponent(comp.type);
-        if (!typeDef) return;
-        var name = (typeDef.label || comp.type) + " #" + shortId;
-        (typeDef.events || []).forEach(function(evtDef) {
-          chip(state.eventsPane, name + " \u2192 " + evtDef.label, function() {
-            return { type: "ui-event", compId: comp.id, event: evtDef.name };
-          }, comp.id, "ui-event");
-        });
-        chip(state.eventsPane, name + " \u2192 Update", function() {
-          return { type: "ui-update", compId: comp.id, config: {} };
-        }, comp.id, "ui-update");
-      });
-    } else {
-      window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "10px", "text-align": "center" }).text("Add components to the screen (Components tab) to see their event/update nodes here.").appendTo(state.eventsPane);
-    }
-    refreshEventsHighlight();
-  }
-  function refreshEventsHighlight() {
-    if (!state.eventsPane) return;
-    state.eventsPane.find(".nexa-palette-item").css({
-      background: "#fff",
-      "border-color": "var(--red-ui-node-border, rgba(0,0,0,0.25))",
-      "box-shadow": "0 1px 2px rgba(0,0,0,0.05)"
-    });
-    if (!state.selectedIds.length) return;
-    state.selectedIds.forEach(function(id) {
-      state.eventsPane.find('.nexa-palette-item[data-comp-id="' + id + '"]').css({
-        background: "#fff3e0",
-        "border-color": "#ff5722",
-        "box-shadow": "0 0 0 2px #ff5722"
-      });
-    });
-  }
-
-  // src/canvas/selection.js
-  function isSelected(id) {
-    return state.selectedIds.indexOf(id) !== -1;
-  }
-  function refreshSelectionVisuals() {
-    if (!state.artboardEl) return;
-    state.artboardEl.find(".nexa-component").css("outline", "none");
-    state.selectedIds.forEach(function(id) {
-      state.artboardEl.find('[data-id="' + id + '"]').css("outline", "2px solid #ff5722");
-    });
-    clearSelectionHandles();
-    if (state.selectedIds.length === 1) {
-      var comp = findComponent(state.selectedIds[0]);
-      if (comp) renderSelectionHandles(comp);
-    }
-    renderPropertiesPanel();
-    refreshEventsHighlight();
-    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
-      state.sidebarTabs.activateTab("properties");
-    }
-  }
-  function selectOnly(id) {
-    state.selectedIds = [id];
-    refreshSelectionVisuals();
-  }
-  function selectMultiple(ids) {
-    state.selectedIds = ids.slice();
-    refreshSelectionVisuals();
-  }
-  function deselectAll() {
-    state.selectedIds = [];
-    refreshSelectionVisuals();
-  }
-  function setLockedForSelection(locked, idsOverride) {
-    var ids = idsOverride || state.selectedIds.slice();
-    var changed = false;
-    ids.forEach(function(id) {
-      var c = findComponent(id);
-      if (c && c.locked !== locked) {
-        c.locked = locked;
-        changed = true;
-      }
-    });
-    if (!changed) return;
-    markDirty();
-    renderActiveScreen();
-    selectMultiple(ids);
-  }
-  function toggleFlipForSelection(axis) {
-    var screen = getActiveScreen();
-    if (!screen || !state.selectedIds.length) return;
-    var events = [];
-    state.selectedIds.forEach(function(id) {
-      var c = findComponent(id);
-      if (!c || c.locked) return;
-      var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
-      if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
-      var from = { flipH: !!c.flipH, flipV: !!c.flipV };
-      if (axis === "h") {
-        c.flipH = !c.flipH;
-      } else if (axis === "v") {
-        c.flipV = !c.flipV;
-      }
-      var to = { flipH: !!c.flipH, flipV: !!c.flipV };
-      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
-      updateComponentBox(c);
-    });
-    if (!events.length) return;
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
-    markDirty();
-    renderPropertiesPanel();
-  }
-  function groupSelection() {
-    if (state.selectedIds.length < 2) {
-      RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2e3 });
-      return;
-    }
-    var screen = getActiveScreen();
-    if (!screen) return;
-    screen.groups = screen.groups || [];
-    var members = state.selectedIds.map(findComponent).filter(Boolean);
-    if (members.some(function(c) {
-      return c.g;
-    })) {
-      RED.notify("One or more selected components are already in a group \u2014 ungroup first", { type: "warning", timeout: 2500 });
-      return;
-    }
-    var minX = Math.min.apply(null, members.map(function(c) {
-      return c.x;
-    }));
-    var minY = Math.min.apply(null, members.map(function(c) {
-      return c.y;
-    }));
-    var maxX = Math.max.apply(null, members.map(function(c) {
-      return c.x + c.w;
-    }));
-    var maxY = Math.max.apply(null, members.map(function(c) {
-      return c.y + c.h;
-    }));
-    var pad = 10;
-    var group = { id: genId(), x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
-    var memberIds = members.map(function(c) {
-      return c.id;
-    });
-    screen.groups.push(group);
-    memberIds.forEach(function(id) {
-      var c = findComponent(id);
-      if (c) c.g = group.id;
-    });
-    pushHistory({ t: "group", screenId: screen.id, group, memberIds });
-    markDirty();
-    renderActiveScreen();
-    selectMultiple(memberIds);
-  }
-  function ungroupSelection() {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var groupIds = {};
-    state.selectedIds.forEach(function(id) {
-      var c = findComponent(id);
-      if (c && c.g) groupIds[c.g] = true;
-    });
-    var ids = Object.keys(groupIds);
-    if (!ids.length) return;
-    var ungroupEvents = [];
-    var allMemberIds = [];
-    ids.forEach(function(gid) {
-      var group = findGroup(gid);
-      if (!group) return;
-      var memberIds = groupMemberIds(gid);
-      ungroupEvents.push({ t: "ungroup", screenId: screen.id, group, memberIds });
-      memberIds.forEach(function(id) {
-        var c = findComponent(id);
-        if (c) delete c.g;
-      });
-      screen.groups = (screen.groups || []).filter(function(g) {
-        return g.id !== gid;
-      });
-      allMemberIds = allMemberIds.concat(memberIds);
-    });
-    if (!ungroupEvents.length) return;
-    pushHistory(ungroupEvents.length === 1 ? ungroupEvents[0] : { t: "multi", screenId: screen.id, events: ungroupEvents });
-    markDirty();
-    renderActiveScreen();
-    selectMultiple(allMemberIds);
-  }
-  function startMarqueeSelect(e) {
-    if (!state.artboardEl) return;
-    var offset = state.artboardEl.offset();
-    var startX = (e.pageX - offset.left) / state.zoomLevel;
-    var startY = (e.pageY - offset.top) / state.zoomLevel;
-    var box = { left: startX, top: startY, width: 0, height: 0 };
-    var shiftHeld = e.shiftKey;
-    var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
-      position: "absolute",
-      left: startX + "px",
-      top: startY + "px",
-      width: "0px",
-      height: "0px",
-      border: "1px dashed #2196f3",
-      background: "rgba(33,150,243,0.1)",
-      "pointer-events": "none",
-      "z-index": 999
-    }).appendTo(state.artboardEl);
-    function onMove(ev) {
-      var curX = (ev.pageX - offset.left) / state.zoomLevel;
-      var curY = (ev.pageY - offset.top) / state.zoomLevel;
-      box.left = Math.min(startX, curX);
-      box.top = Math.min(startY, curY);
-      box.width = Math.abs(curX - startX);
-      box.height = Math.abs(curY - startY);
-      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
-    }
-    function onUp() {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      marqueeEl.remove();
-      if (box.width < 3 && box.height < 3) return;
-      var screen = getActiveScreen();
-      if (!screen) return;
-      var hits = screen.components.filter(function(c) {
-        return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
-      }).map(function(c) {
-        return c.id;
-      });
-      if (shiftHeld) {
-        hits.forEach(function(id) {
-          if (!isSelected(id)) state.selectedIds.push(id);
-        });
-        refreshSelectionVisuals();
-      } else {
-        selectMultiple(hits);
-      }
-    }
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  // src/canvas/canvas-ui.js
-  function renderActiveScreen() {
-    if (!state.artboardEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    state.selectedIds = [];
-    state.selectionHandlesEl = null;
-    renderPropertiesPanel();
-    state.artboardEl.empty();
-    state.artboardEl.css({
-      width: screen.width + "px",
-      height: screen.height + "px",
-      "background-color": "#fff",
-      "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
-      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
-    });
-    if (state.stageEl) {
-      state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
-    }
-    applyZoomTransform();
-    screen.components.forEach(renderComponent);
-  }
-  function applyZoomTransform() {
-    if (!state.stageEl || !state.sizerEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
-    state.sizerEl.css({
-      width: screen.width * state.zoomLevel + "px",
-      height: screen.height * state.zoomLevel + "px"
-    });
-    updateZoomLabel();
-    refreshSelectionVisuals();
-  }
-  function updateZoomLabel() {
-    if (state.zoomLabelEl) state.zoomLabelEl.text(Math.round(state.zoomLevel * 100) + "%");
-  }
-  function setZoom(newZoom, focalPoint) {
-    if (!state.viewportEl || !state.sizerEl) return;
-    newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
-    if (newZoom === state.zoomLevel) return;
-    var vp = state.viewportEl.get(0);
-    if (!focalPoint) {
-      focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
-    }
-    var sizerOffset = state.sizerEl.position();
-    var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / state.zoomLevel;
-    var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / state.zoomLevel;
-    state.zoomLevel = newZoom;
-    applyZoomTransform();
-    var newOffset = state.sizerEl.position();
-    vp.scrollLeft = stageX * state.zoomLevel + newOffset.left - focalPoint.x;
-    vp.scrollTop = stageY * state.zoomLevel + newOffset.top - focalPoint.y;
-  }
-  function zoomIn() {
-    setZoom(state.zoomLevel + ZOOM_STEP);
-  }
-  function zoomOut() {
-    setZoom(state.zoomLevel - ZOOM_STEP);
-  }
-  function zoomReset() {
-    setZoom(1);
-  }
-  function zoomToFit() {
-    if (!state.viewportEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var vp = state.viewportEl.get(0);
-    var pad = 40;
-    var availW = Math.max(vp.clientWidth - pad * 2, 10);
-    var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
-    fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
-    state.zoomLevel = fitZoom;
-    applyZoomTransform();
-    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
-    vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
-    vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
-  }
-  function buildZoomToolbar(trayBody) {
-    var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
-      position: "absolute",
-      right: "16px",
-      bottom: "16px",
-      "z-index": "10",
-      display: "flex",
-      "align-items": "center",
-      background: "#fff",
-      "border-radius": "4px",
-      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
-      overflow: "hidden"
-    }).appendTo(trayBody);
-    function zoomBtn(icon, title, onClick) {
-      return window.$("<a>", { href: "#", title }).css({
-        width: "26px",
-        height: "26px",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        color: "#555",
-        cursor: "pointer"
-      }).append(window.$("<i>", { "class": "fa " + icon })).on("click", function(e) {
-        e.preventDefault();
-        onClick();
-      }).appendTo(bar);
-    }
-    zoomBtn("fa-minus", "Zoom out", zoomOut);
-    state.zoomLabelEl = window.$("<span>").css({
-      width: "44px",
-      "text-align": "center",
-      "font-size": "11px",
-      color: "#555"
-    }).appendTo(bar);
-    zoomBtn("fa-circle-o", "Reset zoom", zoomReset);
-    zoomBtn("fa-plus", "Zoom in", zoomIn);
-    zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
-    updateZoomLabel();
-  }
-
   // src/canvas/clipboard.js
   var clipboard = null;
   var clipboardSource = null;
@@ -3861,6 +3842,20 @@
       if (!e.shiftKey) deselectAll();
       startMarqueeSelect(e);
     });
+    state.artboardEl.droppable({
+      accept: "[data-type-id]",
+      tolerance: "pointer",
+      drop: function(event, ui) {
+        var dropTypeId = ui.draggable.attr("data-type-id");
+        if (!dropTypeId) return;
+        var offset = state.artboardEl.offset();
+        var x = (event.pageX - offset.left) / state.zoomLevel;
+        var y = (event.pageY - offset.top) / state.zoomLevel;
+        if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
+          addComponentAt(dropTypeId, x, y);
+        }
+      }
+    });
     state.viewportEl.on("wheel", function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
@@ -3896,6 +3891,21 @@
       if (e.target !== state.logicArtboardEl.get(0)) return;
       if (!e.shiftKey) deselectAllLogic();
       startLogicMarqueeSelect(e);
+    });
+    state.logicArtboardEl.droppable({
+      accept: "[data-palette-type]",
+      tolerance: "pointer",
+      drop: function(event, ui) {
+        var makeNode = ui.draggable.data("nexaMakeNode");
+        if (typeof makeNode !== "function") return;
+        var offset = state.logicArtboardEl.offset();
+        var x = (event.pageX - offset.left) / state.logicZoomLevel;
+        var y = (event.pageY - offset.top) / state.logicZoomLevel;
+        if (x < 0 || y < 0) return;
+        var nodeX = Math.max(0, Math.round(x - LOGIC_NODE_W / 2));
+        var nodeY = Math.max(0, Math.round(y - LOGIC_NODE_H / 2));
+        addLogicNode(makeNode(), nodeX, nodeY);
+      }
     });
     state.logicViewportEl.on("wheel", function(e) {
       if (!e.ctrlKey && !e.metaKey) return;

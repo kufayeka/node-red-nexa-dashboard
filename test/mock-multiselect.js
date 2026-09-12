@@ -38,6 +38,9 @@ function fakeJQ(selOrHtml, attrs) {
   const el = {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
     css(o){ if(typeof o==='string') return this._css[o]; Object.assign(this._css,o); return this; },
+    attr(k,v){ if(v===undefined) return this._attrs[k]; this._attrs[k]=v; return this; },
+    data(k,v){ this._data=this._data||{}; if(v===undefined) return this._data[k]; this._data[k]=v; return this; },
+    droppable(opts){ this._droppableOpts=opts; return this; },
     text(t){ if(t===undefined) return this._text; this._text=t; return this; },
     html(h){ this._html=h; return this; },
     append(c){ this._children.push(c); return this; },
@@ -130,9 +133,15 @@ const itemDraggables = draggables.filter(function (d) { return chipText(d.el) ==
 const chip = itemDraggables[itemDraggables.length - 1]; // the palette chip for 'mock-item'
 
 console.log('--- drop 3 items at (100,100), (300,100), (500,100) ---');
-chip.opts.stop(null, { offset: { left: 100, top: 100 } });
-chip.opts.stop(null, { offset: { left: 300, top: 100 } });
-chip.opts.stop(null, { offset: { left: 500, top: 100 } });
+// Placement now happens in the artboard's own .droppable() "drop" handler
+// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
+// real drop by calling that handler directly with the chip as ui.draggable.
+function dropOnArtboard(x, y) {
+  global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
+}
+dropOnArtboard(100, 100);
+dropOnArtboard(300, 100);
+dropOnArtboard(500, 100);
 
 const comps = configNodes[0].screens[0].components;
 console.log('placed:', comps.map(c => ({ id: c.id, x: c.x, y: c.y })));

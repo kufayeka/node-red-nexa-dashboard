@@ -1,15 +1,15 @@
 import {
     state, ZOOM_STEP, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_GRID_SIZE,
-    ensureScreensLoaded
+    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded
 } from "./state.js";
 import { undo, redo } from "./history.js";
 import { groupSelection, ungroupSelection, deselectAll, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
-import { removeComponents } from "./canvas/component-renderer.js";
+import { removeComponents, addComponentAt } from "./canvas/component-renderer.js";
 import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
 import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect } from "./logic/logic-selection.js";
-import { removeLogicNodes, renderLogicCanvas } from "./logic/logic-nodes.js";
+import { removeLogicNodes, renderLogicCanvas, addLogicNode } from "./logic/logic-nodes.js";
 import { buildPalette, renderEventsPanel, refreshEventsHighlight } from "./sidebar/palette-events-panel.js";
 
 // Broader than a plain "is this an <input>/<textarea>" check: a real code
@@ -124,6 +124,29 @@ export function buildCanvasArea(trayBody) {
         startMarqueeSelect(e);
     });
 
+    // Mirrors core's own chart.droppable({accept:".red-ui-palette-node", ...})
+    // in view.js — placement lives here, on the actual drop target, instead
+    // of inside the palette chip's own draggable "stop" handler. This is
+    // also what gives revert:"invalid" (see makeComponentChip) real meaning:
+    // jQuery UI now has an actual accepted-target check to revert against,
+    // rather than reverting on every drop because nothing was ever "valid".
+    // [data-type-id] (set by makeComponentChip, but not by the Events tab's
+    // logic-node chips) is what tells this apart from those.
+    state.artboardEl.droppable({
+        accept: "[data-type-id]",
+        tolerance: "pointer",
+        drop: function (event, ui) {
+            var dropTypeId = ui.draggable.attr("data-type-id");
+            if (!dropTypeId) return;
+            var offset = state.artboardEl.offset();
+            var x = (event.pageX - offset.left) / state.zoomLevel;
+            var y = (event.pageY - offset.top) / state.zoomLevel;
+            if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
+                addComponentAt(dropTypeId, x, y);
+            }
+        }
+    });
+
     state.viewportEl.on("wheel", function (e) {
         if (!e.ctrlKey && !e.metaKey) return;
         e.preventDefault();
@@ -155,6 +178,29 @@ export function buildCanvasArea(trayBody) {
         if (e.target !== state.logicArtboardEl.get(0)) return;
         if (!e.shiftKey) deselectAllLogic();
         startLogicMarqueeSelect(e);
+    });
+
+    // Same reasoning as state.artboardEl's droppable above. The Events tab's
+    // chip() stashes its makeNode() factory via .data("nexaMakeNode", ...)
+    // (there's no plain-string equivalent of a component's data-type-id,
+    // since what a logic-node chip produces isn't just a type name — e.g.
+    // "Instance #1234 -> Set Value" needs its own captured instanceId/param).
+    // [data-palette-type] (set by that same chip(), but not by component
+    // chips) is what tells this apart from those.
+    state.logicArtboardEl.droppable({
+        accept: "[data-palette-type]",
+        tolerance: "pointer",
+        drop: function (event, ui) {
+            var makeNode = ui.draggable.data("nexaMakeNode");
+            if (typeof makeNode !== "function") return;
+            var offset = state.logicArtboardEl.offset();
+            var x = (event.pageX - offset.left) / state.logicZoomLevel;
+            var y = (event.pageY - offset.top) / state.logicZoomLevel;
+            if (x < 0 || y < 0) return;
+            var nodeX = Math.max(0, Math.round(x - LOGIC_NODE_W / 2));
+            var nodeY = Math.max(0, Math.round(y - LOGIC_NODE_H / 2));
+            addLogicNode(makeNode(), nodeX, nodeY);
+        }
     });
 
     state.logicViewportEl.on("wheel", function (e) {
