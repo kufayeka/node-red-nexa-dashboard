@@ -38,7 +38,7 @@ export function mapTypedInputTypeToParamType(typedInputType, rawValue) {
         try {
             var parsed = JSON.parse(rawValue);
             if (Array.isArray(parsed)) return "array";
-        } catch (e) {}
+        } catch (e) { }
         return "object";
     }
     return "string";
@@ -86,7 +86,7 @@ export function buildTypedInputWidget(container, initialType, initialValue, onCh
         input.typedInput("type", tiType);
         input.typedInput("value", initialText);
 
-        input.on("change", function () {
+        input.on("change input", function () {
             var chosenTiType = input.typedInput("type");
             var raw = input.typedInput("value");
             var parsedVal = parseTypedInputValue(chosenTiType, raw);
@@ -96,7 +96,7 @@ export function buildTypedInputWidget(container, initialType, initialValue, onCh
     } else {
         // Fallback for mock/test environments
         input.val(initialText);
-        input.on("change", function () {
+        input.on("change input", function () {
             var raw = input.val();
             var parsed = raw;
             var detType = initialType || "string";
@@ -111,7 +111,7 @@ export function buildTypedInputWidget(container, initialType, initialValue, onCh
                     parsed = JSON.parse(raw);
                     detType = Array.isArray(parsed) ? "array" : "object";
                 }
-            } catch (e) {}
+            } catch (e) { }
             onChange(parsed, detType, detType);
         });
     }

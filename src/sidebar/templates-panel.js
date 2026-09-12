@@ -209,7 +209,7 @@ function renderTemplateParamsSection() {
     template.params = template.params || [];
 
     var paramList = buildEditableListWidget(section, {
-        minHeight: "140px",
+        minHeight: "300px",
         removable: true,
         sortable: true,
         addItem: function (container, i, opt) {

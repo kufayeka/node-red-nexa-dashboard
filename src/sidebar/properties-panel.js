@@ -181,7 +181,7 @@ export function renderPropertiesPanel() {
         comp.litBindable = comp.litBindable || [];
 
         var bindableList = buildEditableListWidget(state.propertiesPane, {
-            minHeight: "120px",
+            minHeight: "300px",
             removable: true,
             sortable: true,
             addItem: function (container, i, opt) {
@@ -206,8 +206,14 @@ export function renderPropertiesPanel() {
                     .css({ flex: "1" })
                     .val(p.name)
                     .appendTo(nameRow);
-                nameInput.on("change", function () {
-                    p.name = nameInput.val().trim();
+                nameInput.on("change input", function () {
+                    var oldName = p.name;
+                    var newName = nameInput.val().trim();
+                    p.name = newName;
+                    if (comp.props && oldName !== newName && comp.props[oldName] !== undefined) {
+                        comp.props[newName] = comp.props[oldName];
+                        delete comp.props[oldName];
+                    }
                     markDirty();
                     refreshComponentRender(comp);
                 });
@@ -221,7 +227,8 @@ export function renderPropertiesPanel() {
                 buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function (parsedVal, detType) {
                     p.defaultValue = parsedVal;
                     p.type = detType;
-                    if (comp.props && comp.props[p.name] === undefined) comp.props[p.name] = parsedVal;
+                    comp.props = comp.props || {};
+                    comp.props[p.name] = parsedVal;
                     markDirty();
                     refreshComponentRender(comp);
                 });
@@ -248,7 +255,7 @@ export function renderPropertiesPanel() {
         comp.litEvents = comp.litEvents || [];
 
         var eventList = buildEditableListWidget(state.propertiesPane, {
-            minHeight: "80px",
+            minHeight: "300px",
             removable: true,
             sortable: true,
             addItem: function (container, i, opt) {

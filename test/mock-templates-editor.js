@@ -138,7 +138,12 @@ function fakeJQ(selOrHtml, attrs) {
       return fakeJQ();
     },
     closest() { return fakeJQ(); },
-    on(evt, fn) { (this._handlers[evt] = this._handlers[evt] || []).push(fn); return this; },
+    on(evt, fn) {
+      (evt || '').split(/\s+/).filter(Boolean).forEach(e => {
+        (this._handlers[e] = this._handlers[e] || []).push(fn);
+      });
+      return this;
+    },
     off() { return this; },
     get() { return this._domNode; },
     offset() { return { left: 0, top: 0 }; },
