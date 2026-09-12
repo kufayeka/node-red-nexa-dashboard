@@ -3734,26 +3734,28 @@
       width: "100%",
       display: "flex",
       "flex-direction": "column",
-      gap: "3px",
+      gap: "6px",
       "box-sizing": "border-box"
     });
     state.screens.forEach(function(screen) {
       var isActive = screen.id === state.activeScreenId && state.editingMode !== "template";
       var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
-        padding: "5px 8px",
-        "border-radius": "4px",
+        padding: "8px 10px",
+        "border-radius": "5px",
         display: "flex",
+        "flex-wrap": "wrap",
         "align-items": "center",
         cursor: "pointer",
         background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
         border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-        "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
+        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
         "font-size": "12px",
         "user-select": "none",
+        gap: "4px",
         transition: "all 0.15s ease"
       }).appendTo(state.screenListEl);
       window.$("<span>", {
-        style: "cursor: pointer; width: 16px; text-align: center; margin-right: 5px; flex: 0 0 16px;",
+        style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
         title: screen.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
       }).html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
@@ -3763,23 +3765,21 @@
         renderScreenForm();
       }).appendTo(row);
       window.$("<span>", {
-        style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
       }).text(screen.name).appendTo(row);
-      if (screen.path) {
-        window.$("<span>", {
-          style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; margin-right: 4px; flex: 0 0 auto;"
-        }).text(screen.path).appendTo(row);
-      }
       if (screen.disabled) {
         window.$("<span>", {
-          style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; margin-right: 4px; flex: 0 0 auto;"
+          style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
         }).text("DISABLED").appendTo(row);
       }
+      window.$("<div>", {
+        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
+      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? screen.path.startsWith("/") ? screen.path : "/" + screen.path : "/screen") + "</span>").appendTo(row);
       window.$("<button>", {
         type: "button",
         class: "red-ui-button red-ui-button-small",
         title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
-        style: "padding: 1px 6px; font-size: 10px; height: 20px; line-height: 18px; color: #1976d2; display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; flex: 0 0 auto;"
+        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
       }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
@@ -3794,7 +3794,7 @@
           href: "#",
           title: "Delete screen",
           class: "red-ui-button red-ui-button-small",
-          style: "padding: 1px 5px; font-size: 10px; color: #d32f2f; flex: 0 0 auto;"
+          style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
         }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
@@ -3934,45 +3934,47 @@
       width: "100%",
       display: "flex",
       "flex-direction": "column",
-      gap: "3px",
+      gap: "6px",
       "box-sizing": "border-box"
     });
     state.templates.forEach(function(t) {
       var isActive = state.editingMode === "template" && state.activeTemplateId === t.id;
       var usages = templateUsageCount(t.id);
       var row = window.$("<div>", { "class": "nexa-template-row" }).css({
-        padding: "5px 8px",
-        "border-radius": "4px",
+        padding: "8px 10px",
+        "border-radius": "5px",
         display: "flex",
+        "flex-wrap": "wrap",
         "align-items": "center",
         cursor: "pointer",
         background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
         border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-        "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
+        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
         "font-size": "12px",
         "user-select": "none",
+        gap: "4px",
         transition: "all 0.15s ease"
       }).appendTo(state.templateListEl);
-      window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 6px; flex: 0 0 auto;" }).appendTo(row);
+      window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
       window.$("<span>", {
-        style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
       }).text(t.name).on("click", function() {
         editTemplate(t.id);
       }).appendTo(row);
       if (t.identifier) {
         window.$("<span>", {
-          style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; margin-right: 4px; flex: 0 0 auto;"
+          style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; flex: 0 0 auto;"
         }).text("{" + t.identifier + "}").appendTo(row);
       }
-      window.$("<span>", {
-        style: "font-size: 10px; color: #888; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 8px; margin-right: 4px; flex: 0 0 auto;"
-      }).text(usages + " " + (usages === 1 ? "use" : "uses")).appendTo(row);
+      window.$("<div>", {
+        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0;"
+      }).html('<i class="fa fa-cubes" style="font-size: 10px; color: #94a3b8;"></i> <span>' + usages + " " + (usages === 1 ? "usage" : "usages") + "</span>").appendTo(row);
       window.$("<a>", {
         href: "#",
         title: "Edit",
         class: "red-ui-button red-ui-button-small",
-        style: "padding: 1px 5px; font-size: 10px; color: #555; margin-right: 4px; flex: 0 0 auto;"
-      }).html('<i class="fa fa-pencil"></i>').on("click", function(e) {
+        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #334155; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
+      }).html('<i class="fa fa-pencil"></i> Edit').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
         editTemplate(t.id);
@@ -3981,7 +3983,7 @@
         href: "#",
         title: "Delete",
         class: "red-ui-button red-ui-button-small",
-        style: "padding: 1px 5px; font-size: 10px; color: #d32f2f; flex: 0 0 auto;"
+        style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
       }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();

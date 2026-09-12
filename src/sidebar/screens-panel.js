@@ -14,29 +14,32 @@ export function renderScreenList() {
         width: "100%",
         display: "flex",
         "flex-direction": "column",
-        gap: "3px",
+        gap: "6px",
         "box-sizing": "border-box"
     });
 
     state.screens.forEach(function (screen) {
         var isActive = screen.id === state.activeScreenId && state.editingMode !== "template";
         var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
-            padding: "5px 8px",
-            "border-radius": "4px",
+            padding: "8px 10px",
+            "border-radius": "5px",
             display: "flex",
+            "flex-wrap": "wrap",
             "align-items": "center",
             cursor: "pointer",
             background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
             border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-            "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
+            "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
             "font-size": "12px",
             "user-select": "none",
+            gap: "4px",
             transition: "all 0.15s ease"
         }).appendTo(state.screenListEl);
 
+        // --- ROW 1: Status Icon + Screen Name + Disabled Badge ---
         // Enable / Disable status toggle icon
         window.$("<span>", {
-            style: "cursor: pointer; width: 16px; text-align: center; margin-right: 5px; flex: 0 0 16px;",
+            style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
             title: screen.disabled ? "Screen is disabled (returns 404) — click to enable" : "Screen is enabled — click to disable"
         })
             .html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>')
@@ -51,29 +54,28 @@ export function renderScreenList() {
 
         // Screen Name
         window.$("<span>", {
-            style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" +
+            style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" +
                 (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
         }).text(screen.name).appendTo(row);
 
-        // Path badge
-        if (screen.path) {
-            window.$("<span>", {
-                style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; margin-right: 4px; flex: 0 0 auto;"
-            }).text(screen.path).appendTo(row);
-        }
-
         if (screen.disabled) {
             window.$("<span>", {
-                style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; margin-right: 4px; flex: 0 0 auto;"
+                style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
             }).text("DISABLED").appendTo(row);
         }
 
-        // Open Screen in new tab
+        // --- ROW 2: /url path ---
+        window.$("<div>", {
+            style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
+        }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? (screen.path.startsWith("/") ? screen.path : "/" + screen.path) : "/screen") + '</span>').appendTo(row);
+
+        // --- ROW 3: Actions (Open | Delete) ---
+        // Open Screen button
         window.$("<button>", {
             type: "button",
             class: "red-ui-button red-ui-button-small",
             title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
-            style: "padding: 1px 6px; font-size: 10px; height: 20px; line-height: 18px; color: #1976d2; display: inline-flex; align-items: center; gap: 3px; margin-right: 4px; flex: 0 0 auto;"
+            style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
         }).html('<i class="fa fa-external-link"></i> Open')
             .on("click", function (e) {
                 if (e && e.preventDefault) e.preventDefault();
@@ -92,7 +94,7 @@ export function renderScreenList() {
                 href: "#",
                 title: "Delete screen",
                 class: "red-ui-button red-ui-button-small",
-                style: "padding: 1px 5px; font-size: 10px; color: #d32f2f; flex: 0 0 auto;"
+                style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
             }).html('<i class="fa fa-trash"></i>').on("click", function (e) {
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
