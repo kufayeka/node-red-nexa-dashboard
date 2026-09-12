@@ -1,5 +1,5 @@
 // --- Undo / Redo History Stack -------------------------------------------
-import { state, markDirty } from "./state.js";
+import { state, markDirty, findSurfaceById, getActiveScreen } from "./state.js";
 
 let _renderActiveScreenFn = null;
 let _renderLogicCanvasFn = null;
@@ -15,7 +15,7 @@ export function pushHistory(ev) {
 }
 
 export function applyHistoryMutation(ev, direction) {
-    var screen = state.screens.find(function (s) { return s.id === ev.screenId; });
+    var screen = findSurfaceById(ev.screenId);
     if (!screen) return;
     if (ev.t === "multi") {
         var subs = direction === "undo" ? ev.events.slice().reverse() : ev.events;
@@ -113,13 +113,15 @@ export function isLogicHistoryEvent(ev) {
 
 export function applyHistoryEvent(ev, direction) {
     applyHistoryMutation(ev, direction);
-    var screen = state.screens.find(function (s) { return s.id === ev.screenId; });
+    var screen = findSurfaceById(ev.screenId);
+    var active = getActiveScreen();
+    var isActiveSurface = screen && active && screen.id === active.id;
     if (isLogicHistoryEvent(ev)) {
         state.logicSelectedIds = [];
-        if (screen && screen.id === state.activeScreenId && _renderLogicCanvasFn) _renderLogicCanvasFn();
+        if (isActiveSurface && _renderLogicCanvasFn) _renderLogicCanvasFn();
     } else {
         state.selectedIds = [];
-        if (screen && screen.id === state.activeScreenId && _renderActiveScreenFn) _renderActiveScreenFn();
+        if (isActiveSurface && _renderActiveScreenFn) _renderActiveScreenFn();
     }
     markDirty();
 }

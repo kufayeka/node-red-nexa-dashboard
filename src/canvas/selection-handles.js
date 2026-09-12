@@ -1,5 +1,5 @@
 // --- Selection Handles, Resizing, and Rotation ---------------------------
-import { state, snap, markDirty, getActiveScreen } from "../state.js";
+import { state, snap, markDirty, getActiveScreen, findTemplate } from "../state.js";
 import { pushHistory } from "../history.js";
 import { setLockedForSelection } from "./selection.js";
 import { getComponentTransform } from "./component-renderer.js";
@@ -21,6 +21,20 @@ export function updateComponentBox(comp) {
         width: comp.w + "px", height: comp.h + "px",
         transform: getComponentTransform(comp)
     });
+    // A "@template" instance's actual content lives in a child wrapper
+    // scaled from the template's own intrinsic width/height (see
+    // renderTemplateInstance in component-renderer.js) — resizing the OUTER
+    // box above doesn't touch that child's transform on its own, so it has
+    // to be recomputed here too or dragging a resize handle would leave the
+    // instance's contents the wrong size relative to its own selection box.
+    if (comp.type === "@template") {
+        var template = findTemplate(comp.templateId);
+        if (template) {
+            var scaleX = template.width ? (comp.w / template.width) : 1;
+            var scaleY = template.height ? (comp.h / template.height) : 1;
+            el.find(".nexa-template-instance-inner").css("transform", "scale(" + scaleX + "," + scaleY + ")");
+        }
+    }
     if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
         state.selectionHandlesEl.css({
             left: comp.x + "px", top: comp.y + "px",

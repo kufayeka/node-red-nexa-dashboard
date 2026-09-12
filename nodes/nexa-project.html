@@ -3,14 +3,16 @@
         category: 'config',
         defaults: {
             name: { value: "Nexa Project" },
-            screens: { value: [] }
+            screens: { value: [] },
+            templates: { value: [] }
         },
         label: function () {
             return this.name || "Nexa Project";
         },
         oneditprepare: function () {
             var count = (this.screens || []).length;
-            $("#node-config-input-info").text(count + " screen(s). Edit via menu → Pages (Nexa Dashboard), not here.");
+            var templateCount = (this.templates || []).length;
+            $("#node-config-input-info").text(count + " screen(s), " + templateCount + " template(s). Edit via menu → Pages (Nexa Dashboard), not here.");
         }
     });
 </script>

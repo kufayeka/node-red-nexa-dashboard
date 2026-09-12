@@ -26,6 +26,7 @@
     "watch": "node build.js --watch"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.0",
+    "lit": "^3.3.3"
   }
 }

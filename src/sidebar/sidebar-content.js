@@ -3,6 +3,7 @@ import { buildPalette, renderEventsPanel } from "./palette-events-panel.js";
 import { renderPropertiesPanel } from "./properties-panel.js";
 import { renderLayersPanel } from "../canvas/layers.js";
 import { renderScreenList, renderScreenForm, addScreenFromSidebar } from "./screens-panel.js";
+import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTemplateEditing } from "./templates-panel.js";
 
 export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -20,10 +21,15 @@ export function buildSidebarContent() {
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.templatesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
 
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({ "margin-bottom": "8px" }).appendTo(screensPane);
     window.$("<button>", { type: "button" }).text("+ Add Screen").css({ width: "100%" }).on("click", addScreenFromSidebar).appendTo(screensPane);
     state.screenFormEl = window.$("<div>").css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(screensPane);
+
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ "margin-bottom": "8px" }).appendTo(state.templatesPane);
+    window.$("<button>", { type: "button" }).text("+ Add Template").css({ width: "100%" }).on("click", addTemplateFromSidebar).appendTo(state.templatesPane);
+    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(state.templatesPane);
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
@@ -34,11 +40,22 @@ export function buildSidebarContent() {
             state.propertiesPane.toggle(tab.id === "properties");
             state.layersPane.toggle(tab.id === "layers");
             state.eventsPane.toggle(tab.id === "events");
+            state.templatesPane.toggle(tab.id === "templates");
             if (tab.id === "screens") {
+                // The Screens form (name/URL path/width/height/grid/snap) is
+                // screen-shaped, not template-shaped (no `path` on a
+                // template) — same "picking a screen means work on this
+                // screen" rule already applied to selectScreenFromSidebar/
+                // addScreenFromSidebar, just triggered from the sidebar tab
+                // itself this time.
+                if (state.editingMode === "template") exitTemplateEditing();
                 ensureScreensLoaded(function () {
                     renderScreenList();
                     renderScreenForm();
                 });
+            }
+            if (tab.id === "templates") {
+                ensureScreensLoaded(function () { renderTemplateList(); renderTemplateForm(); });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
             if (tab.id === "properties") renderPropertiesPanel();
@@ -48,6 +65,7 @@ export function buildSidebarContent() {
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
+    state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

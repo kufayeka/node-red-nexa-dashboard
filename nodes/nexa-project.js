@@ -17,6 +17,7 @@ module.exports = function (RED) {
   function NexaProjectNode(config) {
     RED.nodes.createNode(this, config);
     this.screens = Array.isArray(config.screens) ? config.screens : [];
+    this.templates = Array.isArray(config.templates) ? config.templates : [];
     currentProject = this;
 
     if (RED.log) {
