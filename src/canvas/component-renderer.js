@@ -340,8 +340,13 @@ export function renderLitComponentInstance(el, comp, props, ctx) {
     instance.__nexaNamespace = ctx && ctx.namespace;
     (comp.litBindable || []).forEach(function (p) {
         var hasOwn = props && Object.prototype.hasOwnProperty.call(props, p.name);
-        instance[p.name] = coerceLitBindableValue(p.type, hasOwn ? props[p.name] : p.defaultValue);
+        var rawVal = hasOwn ? props[p.name] : p.defaultValue;
+        var coerced = coerceLitBindableValue(p.type, rawVal);
+        instance[p.name] = (coerced && typeof coerced === "object") ? (Array.isArray(coerced) ? [...coerced] : Object.assign({}, coerced)) : coerced;
     });
+    if (typeof instance.requestUpdate === "function") {
+        instance.requestUpdate();
+    }
 }
 
 // Renders a single component's own visual content into `el` — either a
