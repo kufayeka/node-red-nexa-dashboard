@@ -332,32 +332,32 @@ changeInput(findFormInput(global.__templateFormEl, 'Width (px)'), '300');
 changeInput(findFormInput(global.__templateFormEl, 'Height (px)'), '150');
 console.log('Width/Height are actually editable (the "aku perlu resize" ask)?', cardTemplate.width === 300 && cardTemplate.height === 150);
 
-console.log('--- Parameters editor: plain name/label/type/default schema, no more picking an existing node ---');
+console.log('--- Parameters editor: plain name/label/default schema with TypedInput (auto-determined type) ---');
 const paramsSection = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
 const addRow = paramsSection._children[paramsSection._children.length - 1]; // the "+ Add Parameter" row is appended last
-const nameRow = addRow._children[0], typeRow = addRow._children[1], defaultWrap = addRow._children[2], addBtn = addRow._children[addRow._children.length - 1];
+const nameRow = addRow._children[0], defaultWrap = addRow._children[1], addBtn = addRow._children[2];
 const nameInput = nameRow._children[0], labelInput = nameRow._children[1];
-const typeInput = typeRow._children[1];
 changeInput(nameInput, 'value');
 changeInput(labelInput, 'Value');
 addBtn._handlers.click[0]();
-console.log('one param declared with the right name/label/default type ("string", the new canonical name for the old "text")?', cardTemplate.params.length === 1 && cardTemplate.params[0].name === 'value' && cardTemplate.params[0].label === 'Value' && cardTemplate.params[0].type === 'string');
+console.log('one param declared with the right name/label/default type ("string")?', cardTemplate.params.length === 1 && cardTemplate.params[0].name === 'value' && cardTemplate.params[0].label === 'Value' && cardTemplate.params[0].type === 'string');
 
-console.log('--- typed params: switching the type dropdown swaps in the right default-value widget (object/array get a JSON typedInput) ---');
+console.log('--- typed params: typedInput auto-determines type and parses value (e.g. json -> object) ---');
 // renderTemplateParamsSection() rebuilt the whole section (including a fresh
 // add-row) after the add above — re-find it rather than reuse stale refs.
 const paramsSection2 = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
 const addRow2 = paramsSection2._children[paramsSection2._children.length - 1];
-const nameRow2 = addRow2._children[0], typeRow2 = addRow2._children[1], defaultWrap2 = addRow2._children[2], addBtn2 = addRow2._children[addRow2._children.length - 1];
-const nameInput2 = nameRow2._children[0], typeInput2 = typeRow2._children[1];
-changeInput(typeInput2, 'object');
-const objectWidget = defaultWrap2._children[defaultWrap2._children.length - 1];
-console.log('selecting "object" configures typedInput for JSON default value?', !!objectWidget && typeof objectWidget.typedInput === 'function');
-changeInput(objectWidget, '{"rpm": 1500}');
+const nameRow2 = addRow2._children[0], defaultWrap2 = addRow2._children[1], addBtn2 = addRow2._children[2];
+const nameInput2 = nameRow2._children[0];
+const objectWidget = defaultWrap2._children[1];
+console.log('default input is configured with typedInput?', !!objectWidget && typeof objectWidget.typedInput === 'function');
+objectWidget.typedInput('type', 'json');
+objectWidget.typedInput('value', '{"rpm": 1500}');
+if (objectWidget._handlers.change) objectWidget._handlers.change.forEach(fn => fn());
 changeInput(nameInput2, 'info');
 addBtn2._handlers.click[0]();
 const infoParam = cardTemplate.params.find(p => p.name === 'info');
-console.log('an "object"-typed param stores the REAL parsed object as defaultValue, not a JSON string?', !!infoParam && typeof infoParam.defaultValue === 'object' && infoParam.defaultValue.rpm === 1500);
+console.log('an "object"-typed param stores the REAL parsed object as defaultValue, not a JSON string?', !!infoParam && typeof infoParam.defaultValue === 'object' && infoParam.defaultValue.rpm === 1500 && infoParam.type === 'object');
 
 canvasTabsApi.activateTab('ui');
 dropChipByLabel('Rectangle', 50, 50);
@@ -438,22 +438,14 @@ console.log('--- Bindable Properties + Events list editors write back onto the i
 global.__addLitBindableBtn._handlers.click[0]();
 console.log('"+ Add Bindable Property" appended one entry to litBindable?', litComp.litBindable.length === 1 && litComp.litBindable[0].name === 'prop1');
 
-console.log('--- switching a Bindable Property\'s type resets its defaultValue to match (the actual root cause of the boolean-always-true bug) ---');
-// The bug: switching type WITHOUT resetting defaultValue left a stale,
-// wrongly-typed value (e.g. the literal string "false", typed while the
-// field was still "string") sitting in defaultValue — and Boolean("false")
-// is TRUE in plain JS, so the prop rendered as "always true" no matter what
-// the Properties panel showed. Simulate exactly that scenario: type "false"
-// into the string default-value field, THEN switch the type to "boolean".
+console.log('--- switching a Bindable Property\'s TypedInput type correctly parses and sets typed defaultValue ---');
 const bindableRow = (global.__litBindableRows || []).slice(-1)[0];
-const nameInputEl = bindableRow._children[0], typeWrapEl = bindableRow._children[1], defaultWrapEl = bindableRow._children[2];
-const typeInputEl = typeWrapEl._children[0];
-const stringDefaultInput = defaultWrapEl._children[0];
-changeInput(stringDefaultInput, 'false');
-console.log('typed the literal text "false" into the still-string default value field?', litComp.litBindable[0].defaultValue === 'false');
-changeInput(typeInputEl, 'boolean');
-console.log('switching to "boolean" reset defaultValue to a REAL boolean false, not the leftover string?', litComp.litBindable[0].defaultValue === false);
-console.log('(a leftover string "false" would have been TRUTHY — Boolean("false") === true — which was the actual bug)');
+const nameInputEl = bindableRow._children[0], valWrapEl = bindableRow._children[1];
+const valInputEl = valWrapEl._children[0];
+valInputEl.typedInput('type', 'bool');
+valInputEl.typedInput('value', 'false');
+if (valInputEl._handlers.change) valInputEl._handlers.change.forEach(fn => fn());
+console.log('switching typedInput to "bool" false sets a REAL boolean false (not string "false") and type "boolean"?', litComp.litBindable[0].defaultValue === false && litComp.litBindable[0].type === 'boolean');
 global.__addLitEventBtn._handlers.click[0]();
 
 console.log('"+ Add Event" appended one entry to litEvents?', litComp.litEvents.length === 1 && litComp.litEvents[0].name === 'myEvent1');

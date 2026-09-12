@@ -1,5 +1,5 @@
 import { state, findComponent, findTemplate, groupMemberIds, markDirty, genId } from "../state.js";
-import { buildTypeTypedInput, buildParamValueInput, PARAM_TYPES, defaultValueForType } from "../param-types.js";
+import { buildTypedInputWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
@@ -117,7 +117,7 @@ export function renderPropertiesPanel() {
             var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
             window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
             var current = (comp.paramValues && comp.paramValues[param.name] !== undefined) ? comp.paramValues[param.name] : param.defaultValue;
-            buildParamValueInput(row, param.type, current, function (v) {
+            buildTypedInputWidget(row, param.type, current, function (v) {
                 comp.paramValues = comp.paramValues || {};
                 comp.paramValues[param.name] = v;
                 markDirty();
@@ -176,29 +176,27 @@ export function renderPropertiesPanel() {
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
         comp.litBindable = comp.litBindable || [];
         comp.litBindable.forEach(function (p, idx) {
-            var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
-            var nameInput = window.$("<input>", { type: "text", placeholder: "name" }).css({ width: "68px", "box-sizing": "border-box" }).val(p.name).appendTo(row);
-            nameInput.on("change", function () { p.name = nameInput.val(); markDirty(); refreshComponentRender(comp); });
-
-            var typeWrap = window.$("<div>").css({ width: "95px", "flex-shrink": "0" }).appendTo(row);
-            buildTypeTypedInput(typeWrap, p.type, function (newType) {
-                p.type = newType;
-                p.defaultValue = defaultValueForType(p.type);
-                if (comp.props) delete comp.props[p.name];
+            var row = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
+            var nameInput = window.$("<input>", { type: "text", placeholder: "name" })
+                .css({ width: "90px", "flex-shrink": "0", "box-sizing": "border-box" })
+                .val(p.name)
+                .appendTo(row);
+            nameInput.on("change", function () {
+                p.name = nameInput.val().trim();
                 markDirty();
-                renderPropertiesPanel();
                 refreshComponentRender(comp);
             });
 
-            var defaultWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
-            buildParamValueInput(defaultWrap, p.type, p.defaultValue, function (v) {
-                p.defaultValue = v;
-                if (comp.props[p.name] === undefined) comp.props[p.name] = v;
+            var valWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
+            buildTypedInputWidget(valWrap, p.type || "string", p.defaultValue, function (parsedVal, detType) {
+                p.defaultValue = parsedVal;
+                p.type = detType;
+                if (comp.props && comp.props[p.name] === undefined) comp.props[p.name] = parsedVal;
                 markDirty();
                 refreshComponentRender(comp);
-            }, false);
+            });
 
-            window.$("<button>", { type: "button" }).text("×").css({ width: "20px", "flex-shrink": "0" }).on("click", function () {
+            window.$("<button>", { type: "button", title: "Delete property" }).text("×").css({ width: "22px", "flex-shrink": "0" }).on("click", function () {
                 comp.litBindable.splice(idx, 1);
                 markDirty();
                 renderPropertiesPanel();
@@ -210,6 +208,7 @@ export function renderPropertiesPanel() {
             markDirty();
             renderPropertiesPanel();
         }).appendTo(state.propertiesPane);
+
 
 
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Events").appendTo(state.propertiesPane);
