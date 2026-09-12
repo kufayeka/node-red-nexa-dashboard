@@ -150,6 +150,11 @@
       return t.id === id;
     });
   }
+  function findTemplateByIdOrName(idOrName) {
+    return findTemplate(idOrName) || state.templates.find(function(t) {
+      return t.name === idOrName || t.identifier === idOrName;
+    });
+  }
   function findSurfaceById(id) {
     return state.screens.find(function(s) {
       return s.id === id;
@@ -677,6 +682,8 @@
     var node = el && el.get && el.get(0);
     if (!node) return;
     var ctx = {
+      namespace: comp.id,
+      // top-level selection, so the raw id IS the full namespace
       emit: function(eventName, payload) {
         if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
       }
@@ -800,9 +807,39 @@
             this.__nexaCtx.emit(eventName, payload);
           }
         }
+        mountTemplate(hostEl, templateIdOrName, paramValues, opts) {
+          opts = opts || {};
+          if (!hostEl) return;
+          var template = findTemplateByIdOrName(templateIdOrName);
+          hostEl.innerHTML = "";
+          if (!template) {
+            hostEl.textContent = '(mountTemplate: unknown template "' + templateIdOrName + '")';
+            return;
+          }
+          var w = opts.width || template.width;
+          var h = opts.height || template.height;
+          var wrapper = document.createElement("div");
+          wrapper.style.position = "relative";
+          wrapper.style.width = w + "px";
+          wrapper.style.height = h + "px";
+          wrapper.style.overflow = "hidden";
+          hostEl.appendChild(wrapper);
+          var namespace = (this.__nexaNamespace || "lit-embed") + "::embed::" + (opts.key !== void 0 ? opts.key : template.id);
+          var fakeComp = { templateId: template.id, w, h, paramValues: paramValues || {} };
+          renderTemplateInstance(wrapper, fakeComp, namespace, [], void 0);
+        }
       };
     }
     return window.__nexaLitBase;
+  }
+  function coerceLitBindableValue(type, value) {
+    if (value === void 0 || value === null) return value;
+    if (type === "boolean") {
+      if (typeof value === "string") return value !== "" && value !== "false" && value !== "0";
+      return !!value;
+    }
+    if (type === "number") return typeof value === "number" ? value : parseFloat(value) || 0;
+    return value;
   }
   function litPropertyCtor(type) {
     if (type === "number") return "Number";
@@ -874,9 +911,10 @@
       el.appendChild(instance);
     }
     instance.__nexaCtx = ctx;
+    instance.__nexaNamespace = ctx && ctx.namespace;
     (comp.litBindable || []).forEach(function(p) {
       var hasOwn = props && Object.prototype.hasOwnProperty.call(props, p.name);
-      instance[p.name] = hasOwn ? props[p.name] : p.defaultValue;
+      instance[p.name] = coerceLitBindableValue(p.type, hasOwn ? props[p.name] : p.defaultValue);
     });
   }
   function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, paramState) {
@@ -910,7 +948,7 @@
       "box-sizing": "border-box",
       "pointer-events": "none"
     }).appendTo(parentEl);
-    renderComponentContent(el.get(0), innerComp, { emit: function() {
+    renderComponentContent(el.get(0), innerComp, { namespace: namespacedId, emit: function() {
     } }, namespacedId, visitedTemplateIds, paramState);
   }
   function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, enclosingParamState) {
@@ -958,6 +996,8 @@
       display: isLayerVisible(comp.layerId) ? "" : "none"
     }).appendTo(state.artboardEl);
     renderComponentContent(el.get(0), comp, {
+      namespace: comp.id,
+      // top-level, so the raw id IS the full namespace
       emit: function(eventName, payload) {
         if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
       }
@@ -1454,20 +1494,56 @@
     return widgetContainer;
   }
 
-  // src/sidebar/properties-panel.js
-  var activeCodeEditors = [];
-  function destroyActiveCodeEditors() {
-    activeCodeEditors.forEach(function(editor) {
-      try {
-        editor.destroy();
-      } catch (e) {
+  // src/dialogs/lit-code-dialog.js
+  function openLitComponentCodeEditor(comp) {
+    var jsEditor = null, cssEditor = null;
+    window.RED.tray.show({
+      id: "nexa-lit-component-editor",
+      title: "Edit Lit Component",
+      width: 700,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Done",
+          "class": "primary",
+          click: function() {
+            if (jsEditor) comp.litCode = jsEditor.getValue();
+            if (cssEditor) comp.litStyles = cssEditor.getValue();
+            refreshComponentRender(comp);
+            markDirty();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "0" });
+        window.$("<div>").css({ padding: "8px 12px", "font-size": "12px", color: "#888" }).text("Class body \u2014 write render()/methods here (properties are auto-declared from Bindable Properties below); call this.emit(name, payload) to fire an event, or this.mountTemplate(hostEl, templateIdOrName, paramValues) to embed a Screen Template.").appendTo(body);
+        window.$("<div>", { id: "nexa-lit-component-js" }).css({ height: "320px" }).appendTo(body);
+        jsEditor = window.RED.editor.createEditor({
+          id: "nexa-lit-component-js",
+          mode: "ace/mode/javascript",
+          value: comp.litCode || ""
+        });
+        window.$("<div>").css({ padding: "10px 12px 4px", "font-size": "12px", color: "#888" }).text("CSS \u2014 scoped to this component only, via Shadow DOM.").appendTo(body);
+        window.$("<div>", { id: "nexa-lit-component-css" }).css({ height: "180px" }).appendTo(body);
+        cssEditor = window.RED.editor.createEditor({
+          id: "nexa-lit-component-css",
+          mode: "ace/mode/css",
+          value: comp.litStyles || ""
+        });
+      },
+      close: function() {
+        if (jsEditor && jsEditor.destroy) jsEditor.destroy();
+        if (cssEditor && cssEditor.destroy) cssEditor.destroy();
       }
     });
-    activeCodeEditors = [];
   }
+
+  // src/sidebar/properties-panel.js
   function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
-    destroyActiveCodeEditors();
     state.propertiesPane.empty();
     if (state.selectedIds.length > 1) {
       window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
@@ -1571,34 +1647,20 @@
       });
     }
     if (isLitComponent) {
+      let previewText = function(code, emptyLabel) {
+        if (!code) return emptyLabel;
+        var firstLine = code.split("\n")[0];
+        return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code.length + " chars)";
+      };
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body \u2014 write render()/methods here (properties are auto-declared below); call this.emit(name, payload) to fire an event").appendTo(state.propertiesPane);
-      var jsContainerId = "nexa-lit-js-" + comp.id;
-      var cssContainerId = "nexa-lit-css-" + comp.id;
-      var jsContainer = window.$("<div>", { id: jsContainerId }).css({ height: "160px", border: "1px solid #ccc", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("CSS \u2014 scoped to this component only, via Lit's Shadow DOM").appendTo(state.propertiesPane);
-      var cssContainer = window.$("<div>", { id: cssContainerId }).css({ height: "100px", border: "1px solid #ccc", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      var jsEditor, cssEditor;
-      var hasCodeEditor = window.RED && window.RED.editor && typeof window.RED.editor.createEditor === "function";
-      if (hasCodeEditor) {
-        jsEditor = window.RED.editor.createEditor({ id: jsContainerId, mode: "ace/mode/javascript", value: comp.litCode || "" });
-        cssEditor = window.RED.editor.createEditor({ id: cssContainerId, mode: "ace/mode/css", value: comp.litStyles || "" });
-        activeCodeEditors.push(jsEditor, cssEditor);
-      } else {
-        var jsFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litCode || "").appendTo(jsContainer);
-        var cssFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litStyles || "").appendTo(cssContainer);
-        jsEditor = { getValue: function() {
-          return jsFallback.val();
-        } };
-        cssEditor = { getValue: function() {
-          return cssFallback.val();
-        } };
-      }
-      window.$("<button>", { type: "button" }).text("Apply Code").css({ width: "100%", "margin-bottom": "12px" }).on("click", function() {
-        comp.litCode = jsEditor.getValue();
-        comp.litStyles = cssEditor.getValue();
-        refreshComponentRender(comp);
-        markDirty();
+      var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
+      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litCode, "(empty \u2014 click Edit Code to write render())")).appendTo(jsPreviewRow);
+      var cssPreviewRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("CSS").appendTo(cssPreviewRow);
+      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litStyles, "(empty)")).appendTo(cssPreviewRow);
+      window.$("<button>", { type: "button" }).text("Edit Code...").css({ width: "100%", "margin-bottom": "12px" }).on("click", function() {
+        openLitComponentCodeEditor(comp);
       }).appendTo(state.propertiesPane);
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
       comp.litBindable = comp.litBindable || [];
@@ -1616,6 +1678,8 @@
         });
         typeSelect.on("change", function() {
           p.type = typeSelect.val();
+          p.defaultValue = defaultValueForType(p.type);
+          if (comp.props) delete comp.props[p.name];
           markDirty();
           renderPropertiesPanel();
           refreshComponentRender(comp);
@@ -3142,9 +3206,14 @@
   }
 
   // src/editor-tray.js
+  function isEditableTarget(target) {
+    var $t = window.$(target);
+    if ($t.is("input,textarea")) return true;
+    return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
+  }
   function onKeyDown(e) {
     if (!state.trayContent) return;
-    var isTextField = window.$(e.target).is("input,textarea");
+    var isTextField = isEditableTarget(e.target);
     if ((e.key === "Delete" || e.key === "Backspace") && !isTextField) {
       if (state.activeCanvasTab === "logic") {
         if (state.logicSelectedIds.length) {

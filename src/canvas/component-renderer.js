@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, templateContains, snap, genId, markDirty, groupMemberIds } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, groupMemberIds } from "../state.js";
 import { isLayerVisible } from "./layers.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
@@ -11,6 +11,7 @@ export function refreshComponentRender(comp) {
     var node = el && el.get && el.get(0);
     if (!node) return;
     var ctx = {
+        namespace: comp.id, // top-level selection, so the raw id IS the full namespace
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
         }
@@ -167,10 +168,25 @@ function hashLitSource(str) {
 }
 
 // A single shared base class (not the raw LitElement) so every compiled
-// "@lit-component" instance gets an `emit(name, payload)` method for free —
-// the user's own class body can call `this.emit(...)` to fire a Logic
-// ui-event, without needing to know how ctx.emit is wired underneath. Bound
-// per-instance via `__nexaCtx`, set right after the element is created.
+// "@lit-component" instance gets two methods for free:
+// - `emit(name, payload)` — the user's own class body calls `this.emit(...)`
+//   to fire a Logic ui-event, without needing to know how ctx.emit is wired
+//   underneath. Bound per-instance via `__nexaCtx`, set right after the
+//   element is created (renderLitComponentInstance).
+// - `mountTemplate(hostEl, templateIdOrName, paramValues, opts)` — lets a Lit
+//   Component's own code embed an already-authored Screen Template (found
+//   by id, name, or identifier) into a container INSIDE its own shadow DOM,
+//   passing `paramValues` in exactly like a normal `@template` instance's
+//   Properties-panel fields would. This is a deliberately VISUAL-ONLY reuse
+//   of the template-mounting code that already backs a dropped "@template"
+//   instance (renderTemplateInstance) — it does NOT fold the embedded
+//   template's own Logic graph into execution (no onload/inject/ui-event
+//   nodes run inside an embedded copy in v1); if you need that, drop the
+//   Template normally via the palette instead of embedding it from code.
+// `__nexaNamespace` (set alongside `__nexaCtx`) gives each mountTemplate call
+// a namespace rooted at THIS Lit instance's own fully-qualified path, so two
+// different Lit Component instances (or two different `key`s passed to
+// mountTemplate on the same instance, e.g. inside a loop) never collide.
 function getNexaLitBase() {
     if (!window.NEXA_LIT || !window.NEXA_LIT.LitElement) return null;
     if (!window.__nexaLitBase) {
@@ -181,9 +197,50 @@ function getNexaLitBase() {
                     this.__nexaCtx.emit(eventName, payload);
                 }
             }
+            mountTemplate(hostEl, templateIdOrName, paramValues, opts) {
+                opts = opts || {};
+                if (!hostEl) return;
+                var template = findTemplateByIdOrName(templateIdOrName);
+                hostEl.innerHTML = "";
+                if (!template) {
+                    hostEl.textContent = "(mountTemplate: unknown template \"" + templateIdOrName + "\")";
+                    return;
+                }
+                var w = opts.width || template.width;
+                var h = opts.height || template.height;
+                var wrapper = document.createElement("div");
+                wrapper.style.position = "relative";
+                wrapper.style.width = w + "px";
+                wrapper.style.height = h + "px";
+                wrapper.style.overflow = "hidden";
+                hostEl.appendChild(wrapper);
+                var namespace = (this.__nexaNamespace || "lit-embed") + "::embed::" +
+                    (opts.key !== undefined ? opts.key : template.id);
+                var fakeComp = { templateId: template.id, w: w, h: h, paramValues: paramValues || {} };
+                renderTemplateInstance(wrapper, fakeComp, namespace, [], undefined);
+            }
         };
     }
     return window.__nexaLitBase;
+}
+
+// Coerces a Bindable Property's raw value to its declared type before it
+// ever reaches the component. Defends against exactly the bug a stale/
+// wrongly-typed defaultValue caused in practice: switching a prop's type to
+// "boolean" without resetting its old (string) default left literal text
+// like "false" sitting in defaultValue — and `Boolean("false")` is `true`
+// in plain JS, so the prop silently rendered as "always true" no matter
+// what the Properties panel showed. properties-panel.js now also resets
+// defaultValue on a type change going forward; this coercion additionally
+// protects any data saved before that fix existed.
+function coerceLitBindableValue(type, value) {
+    if (value === undefined || value === null) return value;
+    if (type === "boolean") {
+        if (typeof value === "string") return value !== "" && value !== "false" && value !== "0";
+        return !!value;
+    }
+    if (type === "number") return typeof value === "number" ? value : (parseFloat(value) || 0);
+    return value;
 }
 
 function litPropertyCtor(type) {
@@ -196,11 +253,21 @@ function litPropertyCtor(type) {
 
 // Compiles (and caches by content hash, so re-rendering an unchanged
 // instance never re-registers a custom element) a Lit component class from
-// this instance's own code. `bindable` (comp.litBindable) becomes a Lit
-// `static properties` block generated for the user — the user's own class
-// body only needs render()/methods, not to redeclare property types that
-// are already declared once in the Properties panel's Bindable Properties
-// list. Returns {tagName, Klass} or {error}.
+// this instance's own code. Every declared Bindable Property is its OWN
+// top-level Lit reactive property (`static properties = { count: { type:
+// Number } }`, standard idiomatic Lit — exactly the shape a hand-written Lit
+// component would use) — the user's own code reads/writes it directly as
+// `this.count`. There is deliberately no separate "internal state" concept:
+// every piece of state a Lit Component needs is declared as a Bindable
+// Property, full stop — an earlier revision tried splitting "external"
+// (this.props.x) from "internal" (this.x) state into two namespaces to stop
+// an unrelated external update from resetting a value the component's own
+// code had just set; that turned out slower and buggier in practice than
+// the plain, ordinary Lit idiom this reverts to, so it was undone. When an
+// external update (a "ui-update"/"set-template-param" Logic node) arrives,
+// it sets `this.<name>` directly (see renderLitComponentInstance) — same as
+// any other Lit property assignment, triggering that property's own
+// reactive update, nothing more.
 export function compileLitComponentClass(litCode, litStyles, bindable) {
     var Base = getNexaLitBase();
     if (!Base) return { error: new Error("Lit runtime not loaded (window.NEXA_LIT missing)") };
@@ -242,11 +309,11 @@ export function compileLitComponentClass(litCode, litStyles, bindable) {
 }
 
 // Creates (or, if the tag hasn't changed, reuses in place — preserving the
-// Lit element's own internal state) the custom element inside `el`, and
-// assigns every declared bindable prop's current value onto it. Reused by
-// both the initial render and any later prop-only refresh
-// (refreshComponentRender), so editing one bindable prop's value never tears
-// down and rebuilds the whole element.
+// Lit element's own state) the custom element inside `el`, and assigns each
+// declared Bindable Property's current value directly onto the matching
+// top-level `this.<name>` property. Reused by both the initial render and
+// any later prop-only refresh (refreshComponentRender), so editing one
+// bindable prop's value never tears down and rebuilds the whole element.
 export function renderLitComponentInstance(el, comp, props, ctx) {
     if (!window.NEXA_LIT || !window.NEXA_LIT.LitElement) {
         window.$(el).empty();
@@ -270,9 +337,10 @@ export function renderLitComponentInstance(el, comp, props, ctx) {
         el.appendChild(instance);
     }
     instance.__nexaCtx = ctx;
+    instance.__nexaNamespace = ctx && ctx.namespace;
     (comp.litBindable || []).forEach(function (p) {
         var hasOwn = props && Object.prototype.hasOwnProperty.call(props, p.name);
-        instance[p.name] = hasOwn ? props[p.name] : p.defaultValue;
+        instance[p.name] = coerceLitBindableValue(p.type, hasOwn ? props[p.name] : p.defaultValue);
     });
 }
 
@@ -328,7 +396,7 @@ function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTempla
         "box-sizing": "border-box",
         "pointer-events": "none"
     }).appendTo(parentEl);
-    renderComponentContent(el.get(0), innerComp, { emit: function () {} }, namespacedId, visitedTemplateIds, paramState);
+    renderComponentContent(el.get(0), innerComp, { namespace: namespacedId, emit: function () {} }, namespacedId, visitedTemplateIds, paramState);
 }
 
 // Mounts a "@template" instance's whole component tree, scaled from the
@@ -381,6 +449,7 @@ export function renderComponent(comp) {
     }).appendTo(state.artboardEl);
 
     renderComponentContent(el.get(0), comp, {
+        namespace: comp.id, // top-level, so the raw id IS the full namespace
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
         }
