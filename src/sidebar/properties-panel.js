@@ -1,12 +1,26 @@
-import { state, findComponent, groupMemberIds, markDirty } from "../state.js";
+import { state, findComponent, findTemplate, groupMemberIds, markDirty, genId } from "../state.js";
+import { buildParamValueInput, PARAM_TYPES } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { updateComponentBox } from "../canvas/selection-handles.js";
 
+// RED.editor.createEditor() instances mounted into the panel by the
+// "@lit-component" section below — must be .destroy()ed before the panel's
+// own .empty() rips their DOM out from under them on the next render, or
+// the underlying ace/monaco instance leaks its resize observers/listeners.
+var activeCodeEditors = [];
+function destroyActiveCodeEditors() {
+    activeCodeEditors.forEach(function (editor) {
+        try { editor.destroy(); } catch (e) { /* already gone */ }
+    });
+    activeCodeEditors = [];
+}
+
 export function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
+    destroyActiveCodeEditors();
     state.propertiesPane.empty();
     if (state.selectedIds.length > 1) {
         window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
@@ -42,13 +56,18 @@ export function renderPropertiesPanel() {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
         return;
     }
-    var typeDef = window.NEXA.getComponent(comp.type);
-    if (!typeDef) {
+    var isTemplateInstance = comp.type === "@template";
+    var isLitComponent = comp.type === "@lit-component";
+    var typeDef = (isTemplateInstance || isLitComponent) ? null : window.NEXA.getComponent(comp.type);
+    if (!isTemplateInstance && !isLitComponent && !typeDef) {
         window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
         return;
     }
+    var templateRef = isTemplateInstance ? findTemplate(comp.templateId) : null;
 
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(typeDef.label || comp.type).appendTo(state.propertiesPane);
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" })
+        .text(isTemplateInstance ? ("Template instance: " + (templateRef ? templateRef.name : "(missing)")) : isLitComponent ? "Lit Component" : (typeDef.label || comp.type))
+        .appendTo(state.propertiesPane);
 
     var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
     var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
@@ -74,7 +93,7 @@ export function renderPropertiesPanel() {
         selectOnly(comp.id);
     });
 
-    var defaults = typeDef.defaults || {};
+    var defaults = (typeDef && typeDef.defaults) || {};
     Object.keys(defaults).forEach(function (key) {
         var fieldDef = defaults[key] || {};
         var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
@@ -94,6 +113,131 @@ export function renderPropertiesPanel() {
             markDirty();
         });
     });
+
+    // One field per param this instance's template declares — like a
+    // Subflow instance's own env-var dialog: sets this ONE instance's
+    // static/default value (comp.paramValues[name]), separate from any live
+    // override a "set-template-param" Logic node applies at runtime. A full
+    // re-render is the simplest correct way to make {name} interpolation
+    // reactive to this edit (design-time, low-frequency — not worth a more
+    // surgical update path).
+    if (isTemplateInstance && templateRef) {
+        if ((templateRef.params || []).length) {
+            window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Parameters").appendTo(state.propertiesPane);
+        }
+        (templateRef.params || []).forEach(function (param) {
+            var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+            window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
+            var current = (comp.paramValues && comp.paramValues[param.name] !== undefined) ? comp.paramValues[param.name] : param.defaultValue;
+            buildParamValueInput(row, param.type, current, function (v) {
+                comp.paramValues = comp.paramValues || {};
+                comp.paramValues[param.name] = v;
+                markDirty();
+                renderActiveScreen();
+                selectOnly(comp.id);
+            });
+        });
+    }
+
+    // "@lit-component": code lives on the instance itself, authored here.
+    // Bindable Properties doubles as the Lit `static properties` declaration
+    // (see compileLitComponentClass) AND the ui-update/Properties default
+    // value targets — one list, same role `typeDef.defaults` plays for a
+    // registered component. Events just needs names so palette-events-panel
+    // can offer "on <name>" chips for whatever this.emit(name, payload) call
+    // the user's own code makes.
+    if (isLitComponent) {
+        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" })
+            .text("Class body — write render()/methods here (properties are auto-declared below); call this.emit(name, payload) to fire an event")
+            .appendTo(state.propertiesPane);
+
+        var jsContainerId = "nexa-lit-js-" + comp.id;
+        var cssContainerId = "nexa-lit-css-" + comp.id;
+        var jsContainer = window.$("<div>", { id: jsContainerId }).css({ height: "160px", border: "1px solid #ccc", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" })
+            .text("CSS — scoped to this component only, via Lit's Shadow DOM")
+            .appendTo(state.propertiesPane);
+        var cssContainer = window.$("<div>", { id: cssContainerId }).css({ height: "100px", border: "1px solid #ccc", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+
+        var jsEditor, cssEditor;
+        var hasCodeEditor = window.RED && window.RED.editor && typeof window.RED.editor.createEditor === "function";
+        if (hasCodeEditor) {
+            // RED.editor.createEditor targets its container by DOM id (it
+            // resolves via document, not through our own jQuery reference),
+            // which is why the containers above are given real ids.
+            jsEditor = window.RED.editor.createEditor({ id: jsContainerId, mode: "ace/mode/javascript", value: comp.litCode || "" });
+            cssEditor = window.RED.editor.createEditor({ id: cssContainerId, mode: "ace/mode/css", value: comp.litStyles || "" });
+            activeCodeEditors.push(jsEditor, cssEditor);
+        } else {
+            // Defensive fallback (e.g. a test harness with no RED.editor) —
+            // not the primary authoring path. Appends into the container
+            // jQuery object we already hold, rather than re-querying by id.
+            var jsFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litCode || "").appendTo(jsContainer);
+            var cssFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litStyles || "").appendTo(cssContainer);
+            jsEditor = { getValue: function () { return jsFallback.val(); } };
+            cssEditor = { getValue: function () { return cssFallback.val(); } };
+        }
+
+        window.$("<button>", { type: "button" }).text("Apply Code").css({ width: "100%", "margin-bottom": "12px" }).on("click", function () {
+            comp.litCode = jsEditor.getValue();
+            comp.litStyles = cssEditor.getValue();
+            refreshComponentRender(comp);
+            markDirty();
+        }).appendTo(state.propertiesPane);
+
+        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
+        comp.litBindable = comp.litBindable || [];
+        comp.litBindable.forEach(function (p, idx) {
+            var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "4px", "align-items": "flex-start" }).appendTo(state.propertiesPane);
+            var nameInput = window.$("<input>", { type: "text", placeholder: "name" }).css({ width: "64px", "box-sizing": "border-box" }).val(p.name).appendTo(row);
+            nameInput.on("change", function () { p.name = nameInput.val(); markDirty(); refreshComponentRender(comp); });
+            var typeSelect = window.$("<select>").css({ width: "64px" }).appendTo(row);
+            PARAM_TYPES.forEach(function (t) { window.$("<option>", { value: t }).text(t).prop("selected", p.type === t).appendTo(typeSelect); });
+            typeSelect.on("change", function () {
+                p.type = typeSelect.val();
+                markDirty();
+                renderPropertiesPanel();
+                refreshComponentRender(comp);
+            });
+            var defaultWrap = window.$("<div>").css({ flex: "1" }).appendTo(row);
+            buildParamValueInput(defaultWrap, p.type, p.defaultValue, function (v) {
+                p.defaultValue = v;
+                if (comp.props[p.name] === undefined) comp.props[p.name] = v;
+                markDirty();
+                refreshComponentRender(comp);
+            }, false);
+            window.$("<button>", { type: "button" }).text("×").css({ width: "20px" }).on("click", function () {
+                comp.litBindable.splice(idx, 1);
+                markDirty();
+                renderPropertiesPanel();
+                refreshComponentRender(comp);
+            }).appendTo(row);
+        });
+        window.$("<button>", { type: "button" }).text("+ Add Bindable Property").css({ width: "100%", "margin-bottom": "10px" }).on("click", function () {
+            comp.litBindable.push({ name: "prop" + (comp.litBindable.length + 1), type: "string", defaultValue: "" });
+            markDirty();
+            renderPropertiesPanel();
+        }).appendTo(state.propertiesPane);
+
+        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Events").appendTo(state.propertiesPane);
+        comp.litEvents = comp.litEvents || [];
+        comp.litEvents.forEach(function (evt, idx) {
+            var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "4px" }).appendTo(state.propertiesPane);
+            var nameInput = window.$("<input>", { type: "text", placeholder: "event name" }).css({ flex: "1" }).val(evt.name).appendTo(row);
+            nameInput.on("change", function () { evt.name = nameInput.val(); markDirty(); });
+            window.$("<button>", { type: "button" }).text("×").css({ width: "20px" }).on("click", function () {
+                comp.litEvents.splice(idx, 1);
+                markDirty();
+                renderPropertiesPanel();
+            }).appendTo(row);
+        });
+        window.$("<button>", { type: "button" }).text("+ Add Event").css({ width: "100%", "margin-bottom": "10px" }).on("click", function () {
+            comp.litEvents.push({ name: "myEvent" + (comp.litEvents.length + 1) });
+            markDirty();
+            renderPropertiesPanel();
+        }).appendTo(state.propertiesPane);
+    }
 
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function (pair) {

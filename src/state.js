@@ -21,7 +21,14 @@ export const LOGIC_NODE_KINDS = {
     "debug": { label: "Debug", hasInput: true, hasOutput: false, color: "#777" },
     "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
     "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
-    "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" }
+    "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" },
+    // Subflow-style parameter passing (see plan "Phase 3 revision"):
+    // param-input is a SOURCE, like onload/onrender — only meaningful while
+    // editing a Template, outputs that instance's current param snapshot.
+    // set-template-param is a SINK placed on any canvas that can see a
+    // "@template" instance, setting ONE of its declared params by name.
+    "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" }
 };
 
 export const state = {
@@ -30,6 +37,15 @@ export const state = {
     screensLoaded: false,
     screenCounter: 0,
     projectConfigNode: null,
+
+    // Reusable Screen Templates (see plan "Phase 3"). `editingMode` gates
+    // getActiveScreen() (see below) so every existing caller — the whole
+    // canvas/Logic-canvas/palette/properties/layers machinery — becomes
+    // template-aware for free, with zero call-site changes.
+    templates: [],
+    templateCounter: 0,
+    editingMode: "screen", // "screen" | "template"
+    activeTemplateId: null,
 
     selectedIds: [],
     logicSelectedIds: [],
@@ -66,7 +82,11 @@ export const state = {
     layersPane: null,
     eventsPane: null,
     screenListEl: null,
-    screenFormEl: null
+    screenFormEl: null,
+    templatesPane: null,
+    templateListEl: null,
+    templateFormEl: null,
+    templateParamsEl: null
 };
 
 export function genId() {
@@ -77,16 +97,32 @@ export function snap(v, gridSize) {
     return Math.round(v / gridSize) * gridSize;
 }
 
+// Returns whichever surface is currently being edited — a Screen normally,
+// or a Template while state.editingMode === "template" (see the Templates
+// sidebar tab). Every existing caller (findComponent, findLogicNode,
+// groupMemberIds, the whole canvas/palette/properties/layers machinery)
+// just wants "the current editable thing" and needs no changes for this.
 export function getActiveScreen() {
+    if (state.editingMode === "template") {
+        return findTemplate(state.activeTemplateId);
+    }
     return state.screens.find(function (s) { return s.id === state.activeScreenId; });
 }
 
-export function makeScreen(opts) {
-    state.screenCounter++;
+export function findTemplate(id) {
+    return state.templates.find(function (t) { return t.id === id; });
+}
+
+// Templates and screens share globally-unique ids (genId()), so a history
+// event's screenId can be looked up here without any change to the event
+// shape itself.
+export function findSurfaceById(id) {
+    return state.screens.find(function (s) { return s.id === id; }) || findTemplate(id);
+}
+
+function makeSurfaceBase(opts) {
     return {
         id: genId(),
-        name: (opts && opts.name) || ("Screen " + state.screenCounter),
-        path: (opts && opts.path) || ("/screen" + state.screenCounter),
         width: (opts && opts.width) || 1280,
         height: (opts && opts.height) || 800,
         gridSize: (opts && opts.gridSize) || 20,
@@ -98,8 +134,58 @@ export function makeScreen(opts) {
     };
 }
 
+export function makeScreen(opts) {
+    state.screenCounter++;
+    var screen = makeSurfaceBase(opts);
+    screen.name = (opts && opts.name) || ("Screen " + state.screenCounter);
+    screen.path = (opts && opts.path) || ("/screen" + state.screenCounter);
+    return screen;
+}
+
+// A Template is data-shape-identical to a Screen (no `path` — it's never
+// routed to directly — plus a `params` list: the properties an instance of
+// this template exposes outward, see templates-panel.js).
+export function makeTemplate(opts) {
+    state.templateCounter++;
+    var template = makeSurfaceBase(opts);
+    template.name = (opts && opts.name) || ("Template " + state.templateCounter);
+    // Plain, user-editable reference/display field — mirrors the ROLE
+    // screen.path plays on a Screen, but purely for the user's own
+    // reference (not a routing key, and not the internal join key: every
+    // "@template" instance still references the template by `template.id`,
+    // exactly like a component still references its layer by `layer.id`
+    // even though the layer's own `name` is freely renamable).
+    template.identifier = (opts && opts.identifier) || "";
+    // Flat param declarations: {id, name, label, type, defaultValue} — see
+    // "Phase 3 revision" in the plan. `name` doubles as the {name}
+    // interpolation key and the msg key on the param-input node's output.
+    template.params = (opts && opts.params) || [];
+    return template;
+}
+
+// DFS over `template.components` (recursing into any nested `@template`
+// instance's own template) — true if `candidateId` already, directly or
+// transitively, contains an instance of `targetId`. Used both to block a
+// cyclical drop in the palette (dropping `targetId` while editing
+// `candidateId` would close a loop) and, defensively, as the mount-time
+// visitedTemplateIds guard's underlying logic.
+export function templateContains(candidateId, targetId, seen) {
+    if (candidateId === targetId) return true;
+    seen = seen || {};
+    if (seen[candidateId]) return false;
+    seen[candidateId] = true;
+    var candidate = findTemplate(candidateId);
+    if (!candidate) return false;
+    return (candidate.components || []).some(function (c) {
+        return c.type === "@template" && templateContains(c.templateId, targetId, seen);
+    });
+}
+
 export function markDirty() {
-    if (state.projectConfigNode) state.projectConfigNode.screens = state.screens;
+    if (state.projectConfigNode) {
+        state.projectConfigNode.screens = state.screens;
+        state.projectConfigNode.templates = state.templates;
+    }
     if (typeof RED !== "undefined" && RED.nodes && RED.nodes.dirty) {
         RED.nodes.dirty(true);
     }
@@ -136,6 +222,13 @@ export function getOrCreateProjectConfigNode() {
     return node;
 }
 
+function backfillSurface(s) {
+    if (!s.groups) s.groups = [];
+    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, visible: true }];
+    s.components.forEach(function (c) { if (!c.layerId) c.layerId = s.layers[0].id; });
+    if (!s.logic) s.logic = { nodes: [], wires: [] };
+}
+
 export function ensureScreensLoaded(cb) {
     if (state.screensLoaded) {
         if (cb) cb();
@@ -143,16 +236,22 @@ export function ensureScreensLoaded(cb) {
     }
     state.projectConfigNode = getOrCreateProjectConfigNode();
     var data = (state.projectConfigNode && state.projectConfigNode.screens) || [];
-    data.forEach(function (s) {
-        if (!s.groups) s.groups = [];
-        if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, visible: true }];
-        s.components.forEach(function (c) { if (!c.layerId) c.layerId = s.layers[0].id; });
-        if (!s.logic) s.logic = { nodes: [], wires: [] };
-    });
+    data.forEach(backfillSurface);
     state.screenCounter = data.length;
     state.screens = data.length ? data : [makeScreen({ name: "Screen 1", path: "/screen1" })];
     if (state.projectConfigNode) state.projectConfigNode.screens = state.screens;
     state.activeScreenId = state.screens[0].id;
+
+    var templateData = (state.projectConfigNode && state.projectConfigNode.templates) || [];
+    templateData.forEach(function (t) {
+        backfillSurface(t);
+        if (!t.params) t.params = [];
+        if (t.identifier === undefined) t.identifier = "";
+    });
+    state.templateCounter = templateData.length;
+    state.templates = templateData;
+    if (state.projectConfigNode) state.projectConfigNode.templates = state.templates;
+
     state.screensLoaded = true;
     if (cb) cb();
 }

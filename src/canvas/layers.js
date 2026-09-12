@@ -1,4 +1,4 @@
-import { state, genId, markDirty, getActiveScreen, findLayer, getLayerChildren, getComponentsInLayer, isLayerVisible } from "../state.js";
+import { state, genId, markDirty, getActiveScreen, findLayer, findTemplate, getLayerChildren, getComponentsInLayer, isLayerVisible } from "../state.js";
 import { selectMultiple, selectOnly } from "./selection.js";
 import { renderActiveScreen } from "./canvas-ui.js";
 
@@ -105,11 +105,16 @@ export function renderLayersPanel() {
 
         getComponentsInLayer(layer.id).slice().reverse().forEach(function (comp) {
             var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+            var rowLabel = typeDef ? typeDef.label : comp.type;
+            if (comp.type === "@template") {
+                var template = findTemplate(comp.templateId);
+                rowLabel = "Template: " + (template ? template.name : "(missing)");
+            }
             var compRow = $("<div>").css({
                 display: "flex", "align-items": "center", gap: "3px", color: "#555",
                 "margin-left": ((depth + 1) * 14) + "px", "margin-bottom": "2px", "font-size": "12px"
             }).appendTo(state.layersPane);
-            $("<span>", { style: "flex:1; cursor:pointer;" }).text(typeDef ? typeDef.label : comp.type)
+            $("<span>", { style: "flex:1; cursor:pointer;" }).text(rowLabel)
                 .on("click", function () { selectOnly(comp.id); }).appendTo(compRow);
             [
                 ["front", "fa-angle-double-up", "Bring to front"],

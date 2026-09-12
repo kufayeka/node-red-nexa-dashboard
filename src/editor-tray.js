@@ -214,6 +214,13 @@ export function registerPagesEditorAction() {
                 state.activeCanvasTab = "ui";
                 state.undoStack = [];
                 state.redoStack = [];
+                // Closing the tray without explicitly clicking "Back to
+                // Screens" should still leave template-editing mode — reopening
+                // via the sidebar's "Open Pages Canvas" button should show
+                // screens, not silently resume editing whatever template was
+                // last open.
+                state.editingMode = "screen";
+                state.activeTemplateId = null;
             }
         });
     });

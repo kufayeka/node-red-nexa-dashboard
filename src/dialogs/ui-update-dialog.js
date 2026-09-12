@@ -2,7 +2,8 @@ import { findComponent, markDirty } from "../state.js";
 
 export function openUiUpdateNodeEditor(node) {
     var comp = findComponent(node.compId);
-    var typeDef = comp && window.NEXA.getComponent(comp.type);
+    var isLitComponent = comp && comp.type === "@lit-component";
+    var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
     var fieldEls = {};
     window.RED.tray.show({
         id: "nexa-logic-uiupdate-editor",
@@ -35,7 +36,7 @@ export function openUiUpdateNodeEditor(node) {
         ],
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-            if (!comp || !typeDef) {
+            if (!comp || (!typeDef && !isLitComponent)) {
                 window.$("<div>").text("This component no longer exists.").appendTo(body);
                 return;
             }
@@ -93,11 +94,22 @@ export function openUiUpdateNodeEditor(node) {
             field("w", "Width", "number");
             field("h", "Height", "number");
             field("rotation", "Rotation", "number");
-            Object.keys(typeDef.defaults || {}).forEach(function (key) {
-                var fieldDef = typeDef.defaults[key] || {};
-                var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-                field(key, key, inputType);
-            });
+            if (isLitComponent) {
+                // object/array-typed bindable props aren't a good fit for
+                // this plain-text-field dialog — drive those via
+                // msg.properties.<field> (a Function node building a real
+                // object) instead of a static default here.
+                (comp.litBindable || []).forEach(function (p) {
+                    var inputType = p.type === "number" ? "number" : p.type === "color" ? "color" : p.type === "boolean" ? "checkbox" : "text";
+                    field(p.name, p.name, inputType);
+                });
+            } else {
+                Object.keys(typeDef.defaults || {}).forEach(function (key) {
+                    var fieldDef = typeDef.defaults[key] || {};
+                    var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+                    field(key, key, inputType);
+                });
+            }
         }
     });
 }

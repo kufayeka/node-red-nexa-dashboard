@@ -63,6 +63,10 @@ export function renderScreenForm() {
 }
 
 export function selectScreenFromSidebar(id) {
+    // Picking a screen implies "work on this screen" — leave template-editing
+    // mode if it was active, same as addScreenFromSidebar below.
+    state.editingMode = "screen";
+    state.activeTemplateId = null;
     state.activeScreenId = id;
     renderScreenList();
     renderScreenForm();
@@ -75,6 +79,8 @@ export function refreshLogicCanvasIfActive() {
 }
 
 export function addScreenFromSidebar() {
+    state.editingMode = "screen";
+    state.activeTemplateId = null;
     var screen = makeScreen({});
     state.screens.push(screen);
     state.activeScreenId = screen.id;

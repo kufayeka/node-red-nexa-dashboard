@@ -93,9 +93,15 @@ export function pasteLogicClipboard() {
 
 export function refreshLogicSelectionVisuals() {
     if (!state.logicArtboardEl) return;
-    state.logicArtboardEl.find(".nexa-logic-node").css("border-color", "transparent");
+    state.logicArtboardEl.find(".nexa-logic-node").css({
+        "border-color": "var(--red-ui-node-border, #999)",
+        "outline": "none"
+    });
     state.logicSelectedIds.forEach(function (id) {
-        state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]').css("border-color", "#ffeb3b");
+        state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]').css({
+            "outline": "2px solid var(--red-ui-node-selected-color, #ffeb3b)",
+            "outline-offset": "1px"
+        });
     });
 }
 

@@ -1,6 +1,6 @@
 import {
     state, SVG_NS, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_NODE_W, LOGIC_NODE_H,
-    LOGIC_NODE_KINDS, getActiveScreen, findComponent, findLogicNode, genId, markDirty
+    LOGIC_NODE_KINDS, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty
 } from "../state.js";
 import { pushHistory } from "../history.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
@@ -28,6 +28,12 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "open-url") {
         return "Open URL" + (node.url ? (" (" + node.url + ")") : "");
+    }
+    if (node.type === "set-template-param") {
+        var instComp = findComponent(node.instanceId);
+        var instTemplate = instComp && findTemplate(instComp.templateId);
+        var param = instTemplate && (instTemplate.params || []).find(function (p) { return p.name === node.paramName; });
+        return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " → Set " + (param ? param.label : node.paramName);
     }
     return kind.label || node.type;
 }
