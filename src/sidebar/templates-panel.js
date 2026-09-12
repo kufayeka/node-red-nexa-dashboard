@@ -12,7 +12,7 @@ import { state, genId, markDirty, findTemplate, makeTemplate } from "../state.js
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
-import { normalizeParamType, buildTypedInputWidget } from "../param-types.js";
+import { normalizeParamType, buildTypedInputWidget, buildEditableListWidget } from "../param-types.js";
 
 function refreshComponentsPaletteIfVisible() {
     // The Components palette filters out templates that would close a cycle
@@ -189,6 +189,7 @@ export function renderTemplateForm() {
 }
 
 function renderTemplateParamsSection() {
+    if (!state.templateFormEl) return;
     state.templateFormEl.find(".nexa-template-params-section").remove();
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
@@ -197,58 +198,87 @@ function renderTemplateParamsSection() {
         "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px"
     }).appendTo(state.templateFormEl);
 
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).text("Parameters").appendTo(section);
-    window.$("<div>").css({ color: "#888", "font-size": "11px", "margin-bottom": "6px" })
-        .text("Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {" + "name" + "}, or wire from the \"On Params Change\" node on this template's own Logic canvas.")
+    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "block" })
+        .html('<i class="fa fa-list"></i> Parameters')
         .appendTo(section);
 
-    var listEl = window.$("<div>").appendTo(section);
-    (template.params || []).forEach(function (p) {
-        var row = window.$("<div>").css({
-            display: "flex", "justify-content": "space-between", "align-items": "center",
-            padding: "4px 6px", background: "#f5f5f5", "border-radius": "3px", "margin-bottom": "4px", "font-size": "12px"
-        }).appendTo(listEl);
-        window.$("<span>").text("{" + p.name + "} — " + p.label + " (" + normalizeParamType(p.type) + ")").appendTo(row);
-        window.$("<a>", { href: "#" }).html('<i class="fa fa-trash"></i>').css({ color: "#999" })
-            .on("click", function (e) {
-                e.preventDefault();
-                template.params = template.params.filter(function (x) { return x.id !== p.id; });
+    window.$("<div>").css({ color: "#888", "font-size": "11px", "margin-bottom": "8px" })
+        .text("Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the \"On Params Change\" node on this template's own Logic canvas.")
+        .appendTo(section);
+
+    template.params = template.params || [];
+
+    var paramList = buildEditableListWidget(section, {
+        minHeight: "140px",
+        removable: true,
+        sortable: true,
+        addItem: function (container, i, opt) {
+            var p = opt || {};
+            if (!p.id) p.id = genId();
+            if (!p.name) p.name = "param" + (template.params.length + 1);
+            if (!p.label) p.label = p.name;
+            if (p.type === undefined) p.type = "string";
+            if (p.defaultValue === undefined) p.defaultValue = "";
+
+            if (template.params.indexOf(p) === -1) {
+                template.params.push(p);
                 markDirty();
-                renderTemplateParamsSection();
-            }).appendTo(row);
-    });
-    if (!template.params.length) {
-        window.$("<div>").css({ color: "#999", "font-size": "12px", "margin-bottom": "6px" }).text("No parameters declared yet.").appendTo(listEl);
-    }
+            }
 
-    var addRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "8px", "flex-direction": "column" }).appendTo(section);
-    var nameRow = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(addRow);
-    var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
-    var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
+            var row = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "6px", padding: "4px 0" }).appendTo(container);
 
-    var defaultWrap = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
-    var pendingType = "string";
-    var pendingDefault = "";
+            // Sub-row 1: Name
+            var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+            window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                .html('<i class="fa fa-tag"></i> Name')
+                .appendTo(nameRow);
+            var nameInput = window.$("<input>", { type: "text", "class": "node-input-param-name", placeholder: "e.g. speed" })
+                .css({ flex: "1" })
+                .val(p.name)
+                .appendTo(nameRow);
+            nameInput.on("change", function () {
+                var newName = nameInput.val().trim();
+                p.name = newName;
+                markDirty();
+            });
 
-    buildTypedInputWidget(defaultWrap, pendingType, pendingDefault, function (val, detType) {
-        pendingDefault = val;
-        pendingType = detType;
-    });
+            // Sub-row 2: Label
+            var labelRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+            window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                .html('<i class="fa fa-font"></i> Label')
+                .appendTo(labelRow);
+            var labelInput = window.$("<input>", { type: "text", "class": "node-input-param-label", placeholder: "e.g. Motor Speed" })
+                .css({ flex: "1" })
+                .val(p.label)
+                .appendTo(labelRow);
+            labelInput.on("change", function () {
+                p.label = labelInput.val();
+                markDirty();
+            });
 
-    window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ "margin-top": "4px", width: "100%" }).on("click", function () {
-        var name = (nameInput.val() || "").trim();
-        if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-            if (window.RED && window.RED.notify) window.RED.notify("Parameter name must look like a plain identifier (letters, numbers, _), e.g. \"value\"", { type: "warning", timeout: 3000 });
-            return;
+            // Sub-row 3: Default Value (TypedInput)
+            var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+            window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                .html('<i class="fa fa-arrow-left"></i> Value')
+                .appendTo(valRow);
+            var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+            buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function (parsedVal, detType) {
+                p.defaultValue = parsedVal;
+                p.type = detType;
+                markDirty();
+            });
+        },
+        removeItem: function (opt) {
+            var idx = template.params.indexOf(opt);
+            if (idx !== -1) {
+                template.params.splice(idx, 1);
+                markDirty();
+            }
         }
-        if ((template.params || []).some(function (p) { return p.name === name; })) {
-            if (window.RED && window.RED.notify) window.RED.notify("A parameter named \"" + name + "\" already exists on this template", { type: "warning", timeout: 3000 });
-            return;
-        }
-        template.params.push({ id: genId(), name: name, label: labelInput.val() || name, type: pendingType, defaultValue: pendingDefault });
-        markDirty();
-        renderTemplateParamsSection(); // rebuilds this whole section fresh, including a blank add-row
-    }).appendTo(addRow);
+    });
+
+    template.params.forEach(function (p) {
+        paramList.editableList("addItem", p);
+    });
 }
 

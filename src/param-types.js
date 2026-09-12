@@ -123,3 +123,117 @@ export function buildParamValueInput(row, type, currentValue, onChange) {
         onChange(parsedVal, detType);
     });
 }
+
+// Builds a boxed editableList container identical to Node-RED node config dialogs
+// (e.g. asset-multi-write rules container). Works with native Node-RED jQuery editableList
+// and provides a complete fallback when running in standalone/test environments.
+export function buildEditableListWidget(container, options) {
+    options = options || {};
+    var ol = window.$("<ol>").css({
+        "min-height": options.minHeight || "120px",
+        "max-height": options.maxHeight || "280px",
+        "margin-bottom": "8px"
+    }).appendTo(container);
+
+    if (typeof ol.editableList === "function") {
+        ol.editableList(options);
+        return ol;
+    }
+
+    // Fallback if editableList jQuery UI plugin is not loaded
+    ol.css({
+        "overflow-y": "auto",
+        "border": "1px solid var(--red-ui-form-input-border-color, #ccc)",
+        "border-radius": "4px",
+        "background": "var(--red-ui-form-input-background, #fff)",
+        "padding": "0",
+        "list-style": "none"
+    });
+
+    var items = [];
+
+    function addItem(data) {
+        var li = window.$("<li>", { "class": "red-ui-editableList-item" }).css({
+            "border-bottom": "1px solid var(--red-ui-form-input-border-color, #eee)",
+            "padding": "6px 8px",
+            "position": "relative",
+            "display": "flex",
+            "gap": "6px",
+            "align-items": "flex-start"
+        }).appendTo(ol);
+
+        var content = window.$("<div>", { "class": "red-ui-editableList-item-content" }).css({
+            "flex": "1",
+            "min-width": "0"
+        }).appendTo(li);
+
+        items.push({ li: li, data: data });
+
+        if (options.removable !== false) {
+            var removeBtn = window.$("<button>", {
+                type: "button",
+                "class": "red-ui-editableList-item-remove",
+                title: "Delete item"
+            }).css({
+                "background": "transparent",
+                "border": "none",
+                "color": "#999",
+                "cursor": "pointer",
+                "padding": "2px 6px",
+                "font-size": "14px",
+                "line-height": "1"
+            }).html('<i class="fa fa-remove"></i>').appendTo(li);
+
+            removeBtn.on("click", function (e) {
+                if (e && e.preventDefault) e.preventDefault();
+                li.remove();
+                var idx = items.findIndex(function (it) { return it.li === li; });
+                if (idx !== -1) items.splice(idx, 1);
+                if (typeof options.removeItem === "function") {
+                    options.removeItem(data);
+                }
+            });
+        }
+
+        if (typeof options.addItem === "function") {
+            options.addItem(content, items.length - 1, data);
+        }
+        return li;
+    }
+
+    if (options.addButton !== false) {
+        var addBtn = window.$("<button>", {
+            type: "button",
+            "class": "red-ui-editableList-addButton"
+        }).css({
+            "width": "100%",
+            "padding": "4px 8px",
+            "font-size": "11px",
+            "cursor": "pointer",
+            "margin-bottom": "8px"
+        }).html('<i class="fa fa-plus"></i> ' + (typeof options.addButton === "string" ? options.addButton : "add")).appendTo(container);
+
+        addBtn.on("click", function (e) {
+            if (e && e.preventDefault) e.preventDefault();
+            addItem({});
+        });
+    }
+
+    ol.editableList = function (method, arg) {
+        if (method === "addItem") {
+            return addItem(arg);
+        }
+        if (method === "empty") {
+            ol.empty();
+            items = [];
+            return ol;
+        }
+        if (method === "items") {
+            return ol.find("li");
+        }
+        return ol;
+    };
+
+    return ol;
+}
+
