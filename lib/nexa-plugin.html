@@ -1399,164 +1399,100 @@
 
   // src/param-types.js
   var PARAM_TYPES = ["string", "number", "boolean", "object", "array", "color"];
-  var WHOLE_BINDING_RE2 = /^\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*\}$/;
   function normalizeParamType(type) {
     if (type === "text") return "string";
     if (type === "checkbox") return "boolean";
     return PARAM_TYPES.indexOf(type) !== -1 ? type : "string";
   }
-  function defaultValueForType(type) {
-    switch (normalizeParamType(type)) {
-      case "number":
-        return 0;
-      case "boolean":
-        return false;
-      case "object":
-        return {};
-      case "array":
-        return [];
-      case "color":
-        return "#000000";
-      default:
-        return "";
-    }
+  function mapParamTypeToTypedInputType(paramType) {
+    var t = normalizeParamType(paramType);
+    if (t === "number") return "num";
+    if (t === "boolean") return "bool";
+    if (t === "object" || t === "array") return "json";
+    return "str";
   }
-  function buildTypeTypedInput(container, currentType, onChange) {
-    var normType = normalizeParamType(currentType);
+  function mapTypedInputTypeToParamType(typedInputType, rawValue) {
+    if (typedInputType === "num") return "number";
+    if (typedInputType === "bool") return "boolean";
+    if (typedInputType === "json") {
+      try {
+        var parsed = JSON.parse(rawValue);
+        if (Array.isArray(parsed)) return "array";
+      } catch (e) {
+      }
+      return "object";
+    }
+    return "string";
+  }
+  function parseTypedInputValue(typedInputType, rawValue) {
+    if (typedInputType === "num") {
+      return parseFloat(rawValue) || 0;
+    }
+    if (typedInputType === "bool") {
+      return rawValue === "true" || rawValue === true || rawValue === "1";
+    }
+    if (typedInputType === "json") {
+      try {
+        return JSON.parse(rawValue);
+      } catch (e) {
+        return rawValue;
+      }
+    }
+    return rawValue;
+  }
+  function buildTypedInputWidget(container, initialType, initialValue, onChange) {
     var input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(container);
-    var typeOptions = [
-      { value: "string", label: "string", icon: "fa fa-font" },
-      { value: "number", label: "number", icon: "fa fa-hashtag" },
-      { value: "boolean", label: "boolean", icon: "fa fa-toggle-on" },
-      { value: "object", label: "object", icon: "fa fa-code" },
-      { value: "array", label: "array", icon: "fa fa-list" },
-      { value: "color", label: "color", icon: "fa fa-paint-brush" }
-    ];
+    var tiType = mapParamTypeToTypedInputType(initialType);
+    var types = ["str", "num", "bool", "json"];
+    var initialText = "";
+    if (initialValue !== void 0 && initialValue !== null) {
+      if (typeof initialValue === "object") {
+        try {
+          initialText = JSON.stringify(initialValue);
+        } catch (e) {
+          initialText = "";
+        }
+      } else {
+        initialText = String(initialValue);
+      }
+    }
     if (typeof input.typedInput === "function") {
       input.typedInput({
-        types: [
-          {
-            value: "type",
-            icon: "fa fa-sliders",
-            options: typeOptions
-          }
-        ]
+        default: tiType,
+        types
       });
-      input.typedInput("value", normType);
+      input.typedInput("type", tiType);
+      input.typedInput("value", initialText);
       input.on("change", function() {
-        var val = input.typedInput("value");
-        onChange(val);
-      });
-    } else {
-      var select = window.$("<select>").css({ width: "100%", "box-sizing": "border-box" }).appendTo(container);
-      PARAM_TYPES.forEach(function(t) {
-        window.$("<option>", { value: t }).text(t).prop("selected", normType === t).appendTo(select);
-      });
-      select.on("change", function() {
-        onChange(select.val());
-      });
-    }
-    return input;
-  }
-  function buildTypedWidget(row, type, currentValue, onChange) {
-    var t = normalizeParamType(type);
-    var input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
-    if (typeof input.typedInput === "function") {
-      var defType = "str";
-      if (t === "number") defType = "num";
-      else if (t === "boolean") defType = "bool";
-      else if (t === "object" || t === "array") defType = "json";
-      var types = [defType, "str", "json"];
-      if (defType === "json") types = ["json", "str"];
-      input.typedInput({ types });
-      input.typedInput("type", defType);
-      var initialVal = "";
-      if (currentValue !== void 0 && currentValue !== null) {
-        if (typeof currentValue === "object") {
-          try {
-            initialVal = JSON.stringify(currentValue);
-          } catch (e) {
-            initialVal = "";
-          }
-        } else {
-          initialVal = String(currentValue);
-        }
-      }
-      input.typedInput("value", initialVal);
-      input.on("change", function() {
-        var cType = input.typedInput("type");
+        var chosenTiType = input.typedInput("type");
         var raw = input.typedInput("value");
-        var parsedVal = raw;
-        if (cType === "num") {
-          parsedVal = parseFloat(raw) || 0;
-        } else if (cType === "bool") {
-          parsedVal = raw === "true" || raw === true || raw === "1";
-        } else if (cType === "json") {
-          try {
-            parsedVal = JSON.parse(raw);
-          } catch (e) {
-            parsedVal = raw;
-          }
-        } else {
-          if (typeof raw === "string" && WHOLE_BINDING_RE2.test(raw.trim())) {
-            parsedVal = raw;
-          } else if (t === "number") {
-            parsedVal = parseFloat(raw) || 0;
-          } else if (t === "boolean") {
-            parsedVal = raw === "true" || raw === true;
-          } else {
-            parsedVal = raw;
-          }
-        }
-        onChange(parsedVal);
-      });
-      return input;
-    }
-    if (t === "boolean") {
-      input = window.$("<input>", { type: "checkbox" }).prop("checked", !!currentValue).appendTo(row);
-      input.on("change", function() {
-        onChange(input.is(":checked"));
-      });
-    } else if (t === "object" || t === "array") {
-      var text;
-      try {
-        text = JSON.stringify(currentValue !== void 0 ? currentValue : t === "array" ? [] : {}, null, 2);
-      } catch (e) {
-        text = t === "array" ? "[]" : "{}";
-      }
-      input = window.$("<textarea>", { placeholder: t === "array" ? "[1, 2, 3]" : '{"key": "value"}' }).css({ width: "100%", "box-sizing": "border-box", height: "70px", "font-family": "monospace", "font-size": "11px" }).val(text).appendTo(row);
-      input.on("change", function() {
-        try {
-          var parsed = JSON.parse(input.val());
-          text = input.val();
-          onChange(parsed);
-        } catch (e) {
-          if (window.RED && window.RED.notify) {
-            window.RED.notify("Invalid JSON for this parameter \u2014 keeping the previous value", { type: "warning", timeout: 3e3 });
-          }
-          input.val(text);
-        }
-      });
-    } else if (t === "color") {
-      input = window.$("<input>", { type: "color" }).val(currentValue || "#000000").appendTo(row);
-      input.on("change", function() {
-        onChange(input.val());
-      });
-    } else if (t === "number") {
-      input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(currentValue).appendTo(row);
-      input.on("change", function() {
-        onChange(parseFloat(input.val()) || 0);
+        var parsedVal = parseTypedInputValue(chosenTiType, raw);
+        var determinedParamType = mapTypedInputTypeToParamType(chosenTiType, raw);
+        onChange(parsedVal, determinedParamType, chosenTiType);
       });
     } else {
-      input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(currentValue).appendTo(row);
+      input.val(initialText);
       input.on("change", function() {
-        onChange(input.val());
+        var raw = input.val();
+        var parsed = raw;
+        var detType = initialType || "string";
+        try {
+          if (raw === "true" || raw === "false") {
+            parsed = raw === "true";
+            detType = "boolean";
+          } else if (!isNaN(Number(raw)) && raw.trim() !== "") {
+            parsed = Number(raw);
+            detType = "number";
+          } else if (raw.startsWith("{") || raw.startsWith("[")) {
+            parsed = JSON.parse(raw);
+            detType = Array.isArray(parsed) ? "array" : "object";
+          }
+        } catch (e) {
+        }
+        onChange(parsed, detType, detType);
       });
     }
     return input;
-  }
-  function buildParamValueInput(row, type, currentValue, onChange, allowBinding) {
-    return buildTypedWidget(row, type, currentValue, onChange);
   }
 
   // src/dialogs/lit-code-dialog.js
@@ -1702,7 +1638,7 @@
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
         var current = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
-        buildParamValueInput(row, param.type, current, function(v) {
+        buildTypedInputWidget(row, param.type, current, function(v) {
           comp.paramValues = comp.paramValues || {};
           comp.paramValues[param.name] = v;
           markDirty();
@@ -1730,30 +1666,22 @@
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
       comp.litBindable = comp.litBindable || [];
       comp.litBindable.forEach(function(p, idx) {
-        var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
-        var nameInput = window.$("<input>", { type: "text", placeholder: "name" }).css({ width: "68px", "box-sizing": "border-box" }).val(p.name).appendTo(row);
+        var row = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
+        var nameInput = window.$("<input>", { type: "text", placeholder: "name" }).css({ width: "90px", "flex-shrink": "0", "box-sizing": "border-box" }).val(p.name).appendTo(row);
         nameInput.on("change", function() {
-          p.name = nameInput.val();
+          p.name = nameInput.val().trim();
           markDirty();
           refreshComponentRender(comp);
         });
-        var typeWrap = window.$("<div>").css({ width: "95px", "flex-shrink": "0" }).appendTo(row);
-        buildTypeTypedInput(typeWrap, p.type, function(newType) {
-          p.type = newType;
-          p.defaultValue = defaultValueForType(p.type);
-          if (comp.props) delete comp.props[p.name];
+        var valWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
+        buildTypedInputWidget(valWrap, p.type || "string", p.defaultValue, function(parsedVal, detType) {
+          p.defaultValue = parsedVal;
+          p.type = detType;
+          if (comp.props && comp.props[p.name] === void 0) comp.props[p.name] = parsedVal;
           markDirty();
-          renderPropertiesPanel();
           refreshComponentRender(comp);
         });
-        var defaultWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
-        buildParamValueInput(defaultWrap, p.type, p.defaultValue, function(v) {
-          p.defaultValue = v;
-          if (comp.props[p.name] === void 0) comp.props[p.name] = v;
-          markDirty();
-          refreshComponentRender(comp);
-        }, false);
-        window.$("<button>", { type: "button" }).text("\xD7").css({ width: "20px", "flex-shrink": "0" }).on("click", function() {
+        window.$("<button>", { type: "button", title: "Delete property" }).text("\xD7").css({ width: "22px", "flex-shrink": "0" }).on("click", function() {
           comp.litBindable.splice(idx, 1);
           markDirty();
           renderPropertiesPanel();
@@ -3785,24 +3713,14 @@
     var nameRow = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(addRow);
     var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
     var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
-    var typeRow = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Type").appendTo(typeRow);
-    var selectedType = "string";
     var defaultWrap = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    var pendingDefault;
-    function rebuildDefaultWidget() {
-      defaultWrap.empty();
-      window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
-      pendingDefault = defaultValueForType(selectedType);
-      buildParamValueInput(defaultWrap, selectedType, pendingDefault, function(v) {
-        pendingDefault = v;
-      }, false);
-    }
-    buildTypeTypedInput(typeRow, selectedType, function(newType) {
-      selectedType = newType;
-      rebuildDefaultWidget();
+    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
+    var pendingType = "string";
+    var pendingDefault = "";
+    buildTypedInputWidget(defaultWrap, pendingType, pendingDefault, function(val, detType) {
+      pendingDefault = val;
+      pendingType = detType;
     });
-    rebuildDefaultWidget();
     window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ "margin-top": "4px", width: "100%" }).on("click", function() {
       var name = (nameInput.val() || "").trim();
       if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
@@ -3815,7 +3733,7 @@
         if (window.RED && window.RED.notify) window.RED.notify('A parameter named "' + name + '" already exists on this template', { type: "warning", timeout: 3e3 });
         return;
       }
-      template.params.push({ id: genId(), name, label: labelInput.val() || name, type: selectedType, defaultValue: pendingDefault });
+      template.params.push({ id: genId(), name, label: labelInput.val() || name, type: pendingType, defaultValue: pendingDefault });
       markDirty();
       renderTemplateParamsSection();
     }).appendTo(addRow);

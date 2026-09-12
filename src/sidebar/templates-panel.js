@@ -12,7 +12,7 @@ import { state, genId, markDirty, findTemplate, makeTemplate } from "../state.js
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
-import { PARAM_TYPES, normalizeParamType, defaultValueForType, buildParamValueInput, buildTypeTypedInput } from "../param-types.js";
+import { normalizeParamType, buildTypedInputWidget } from "../param-types.js";
 
 function refreshComponentsPaletteIfVisible() {
     // The Components palette filters out templates that would close a cycle
@@ -226,25 +226,15 @@ function renderTemplateParamsSection() {
     var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
     var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
 
-    var typeRow = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Type").appendTo(typeRow);
-    var selectedType = "string";
-
     var defaultWrap = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    var pendingDefault;
+    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
+    var pendingType = "string";
+    var pendingDefault = "";
 
-    function rebuildDefaultWidget() {
-        defaultWrap.empty();
-        window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
-        pendingDefault = defaultValueForType(selectedType);
-        buildParamValueInput(defaultWrap, selectedType, pendingDefault, function (v) { pendingDefault = v; }, false);
-    }
-
-    buildTypeTypedInput(typeRow, selectedType, function (newType) {
-        selectedType = newType;
-        rebuildDefaultWidget();
+    buildTypedInputWidget(defaultWrap, pendingType, pendingDefault, function (val, detType) {
+        pendingDefault = val;
+        pendingType = detType;
     });
-    rebuildDefaultWidget();
 
     window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ "margin-top": "4px", width: "100%" }).on("click", function () {
         var name = (nameInput.val() || "").trim();
@@ -256,7 +246,7 @@ function renderTemplateParamsSection() {
             if (window.RED && window.RED.notify) window.RED.notify("A parameter named \"" + name + "\" already exists on this template", { type: "warning", timeout: 3000 });
             return;
         }
-        template.params.push({ id: genId(), name: name, label: labelInput.val() || name, type: selectedType, defaultValue: pendingDefault });
+        template.params.push({ id: genId(), name: name, label: labelInput.val() || name, type: pendingType, defaultValue: pendingDefault });
         markDirty();
         renderTemplateParamsSection(); // rebuilds this whole section fresh, including a blank add-row
     }).appendTo(addRow);
