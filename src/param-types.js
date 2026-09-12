@@ -31,12 +31,98 @@ export function defaultValueForType(type) {
     }
 }
 
-// The plain, type-specific widget (no binding awareness) — object/array get
-// a JSON textarea (invalid JSON is rejected with a notify and the field
-// snaps back rather than silently corrupting the param).
+export function buildTypeTypedInput(container, currentType, onChange) {
+    var normType = normalizeParamType(currentType);
+    var input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(container);
+    var typeOptions = [
+        { value: "string", label: "string", icon: "fa fa-font" },
+        { value: "number", label: "number", icon: "fa fa-hashtag" },
+        { value: "boolean", label: "boolean", icon: "fa fa-toggle-on" },
+        { value: "object", label: "object", icon: "fa fa-code" },
+        { value: "array", label: "array", icon: "fa fa-list" },
+        { value: "color", label: "color", icon: "fa fa-paint-brush" }
+    ];
+    if (typeof input.typedInput === "function") {
+        input.typedInput({
+            types: [
+                {
+                    value: "type",
+                    icon: "fa fa-sliders",
+                    options: typeOptions
+                }
+            ]
+        });
+        input.typedInput("value", normType);
+        input.on("change", function () {
+            var val = input.typedInput("value");
+            onChange(val);
+        });
+    } else {
+        var select = window.$("<select>").css({ width: "100%", "box-sizing": "border-box" }).appendTo(container);
+        PARAM_TYPES.forEach(function (t) {
+            window.$("<option>", { value: t }).text(t).prop("selected", normType === t).appendTo(select);
+        });
+        select.on("change", function () { onChange(select.val()); });
+    }
+    return input;
+}
+
+// The type-specific widget backed by Node-RED's native RED.typedInput
+// (matching Asset Manager's standard: single-select type options and typed
+// value input with [type, "str", "json"]).
 function buildTypedWidget(row, type, currentValue, onChange) {
     var t = normalizeParamType(type);
-    var input;
+    var input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
+
+    if (typeof input.typedInput === "function") {
+        var defType = "str";
+        if (t === "number") defType = "num";
+        else if (t === "boolean") defType = "bool";
+        else if (t === "object" || t === "array") defType = "json";
+
+        var types = [defType, "str", "json"];
+        if (defType === "json") types = ["json", "str"];
+
+        input.typedInput({ types: types });
+        input.typedInput("type", defType);
+
+        var initialVal = "";
+        if (currentValue !== undefined && currentValue !== null) {
+            if (typeof currentValue === "object") {
+                try { initialVal = JSON.stringify(currentValue); } catch (e) { initialVal = ""; }
+            } else {
+                initialVal = String(currentValue);
+            }
+        }
+        input.typedInput("value", initialVal);
+
+        input.on("change", function () {
+            var cType = input.typedInput("type");
+            var raw = input.typedInput("value");
+            var parsedVal = raw;
+
+            if (cType === "num") {
+                parsedVal = parseFloat(raw) || 0;
+            } else if (cType === "bool") {
+                parsedVal = raw === "true" || raw === true || raw === "1";
+            } else if (cType === "json") {
+                try { parsedVal = JSON.parse(raw); } catch (e) { parsedVal = raw; }
+            } else {
+                if (typeof raw === "string" && WHOLE_BINDING_RE.test(raw.trim())) {
+                    parsedVal = raw;
+                } else if (t === "number") {
+                    parsedVal = parseFloat(raw) || 0;
+                } else if (t === "boolean") {
+                    parsedVal = raw === "true" || raw === true;
+                } else {
+                    parsedVal = raw;
+                }
+            }
+            onChange(parsedVal);
+        });
+        return input;
+    }
+
     if (t === "boolean") {
         input = window.$("<input>", { type: "checkbox" }).prop("checked", !!currentValue).appendTo(row);
         input.on("change", function () { onChange(input.is(":checked")); });
@@ -77,39 +163,8 @@ function buildTypedWidget(row, type, currentValue, onChange) {
 
 // Renders the value widget for one param field into `row`, seeded with
 // `currentValue`, calling onChange(newValue) whenever the user edits it.
-// When `allowBinding` (default true), adds a small "Bind to another param"
-// checkbox that swaps in a plain text field for typing a {path} expression
-// (e.g. {a} or {a.b[0].c}) instead of the type's normal widget — this is how
-// a nested template instance's param gets declaratively wired to its parent
-// scope's own param (see resolveBindableValue/resolveInstanceParamState in
-// component-renderer.js), no Logic-node wiring required. Declaring a
-// template's own default value (templates-panel.js) passes allowBinding:false
-// — a default is a literal fallback, not something with a parent scope to
-// bind against.
+// Uses Node-RED typedInput for rich type selection and binding path inputs.
 export function buildParamValueInput(row, type, currentValue, onChange, allowBinding) {
-    if (allowBinding === false) {
-        return buildTypedWidget(row, type, currentValue, onChange);
-    }
-    var isBound = typeof currentValue === "string" && WHOLE_BINDING_RE.test(currentValue.trim());
-    var widgetContainer = window.$("<div>").appendTo(row);
-    var bindRow = window.$("<label>", { "class": "nexa-param-bind-toggle" })
-        .css({ display: "flex", "align-items": "center", gap: "4px", "font-size": "10px", color: "#888", "margin-bottom": "3px" })
-        .appendTo(row);
-    var bindCheckbox = window.$("<input>", { type: "checkbox" }).prop("checked", isBound).css({ margin: "0" }).appendTo(bindRow);
-    bindRow.append("Bind to another param (e.g. {a} or {a.b[0].c})");
-
-    function renderWidget(bound) {
-        widgetContainer.empty();
-        if (bound) {
-            var input = window.$("<input>", { type: "text", placeholder: "{paramName.path}" })
-                .css({ width: "100%", "box-sizing": "border-box" })
-                .val(isBound ? currentValue : "").appendTo(widgetContainer);
-            input.on("change", function () { onChange(input.val()); });
-        } else {
-            buildTypedWidget(widgetContainer, type, isBound ? defaultValueForType(type) : currentValue, onChange);
-        }
-    }
-    bindCheckbox.on("change", function () { renderWidget(bindCheckbox.is(":checked")); });
-    renderWidget(isBound);
-    return widgetContainer;
+    return buildTypedWidget(row, type, currentValue, onChange);
 }
+

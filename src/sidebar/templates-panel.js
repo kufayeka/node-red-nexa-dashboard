@@ -12,7 +12,7 @@ import { state, genId, markDirty, findTemplate, makeTemplate } from "../state.js
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
-import { PARAM_TYPES, normalizeParamType, defaultValueForType, buildParamValueInput } from "../param-types.js";
+import { PARAM_TYPES, normalizeParamType, defaultValueForType, buildParamValueInput, buildTypeTypedInput } from "../param-types.js";
 
 function refreshComponentsPaletteIfVisible() {
     // The Components palette filters out templates that would close a cycle
@@ -221,31 +221,32 @@ function renderTemplateParamsSection() {
         window.$("<div>").css({ color: "#999", "font-size": "12px", "margin-bottom": "6px" }).text("No parameters declared yet.").appendTo(listEl);
     }
 
-    var addRow = window.$("<div>").css({ display: "flex", gap: "4px", "margin-top": "6px", "flex-wrap": "wrap" }).appendTo(section);
-    var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1 1 40%", "box-sizing": "border-box" }).appendTo(addRow);
-    var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1 1 40%", "box-sizing": "border-box" }).appendTo(addRow);
-    var typeSelect = window.$("<select>").css({ flex: "1 1 100%" }).appendTo(addRow);
-    PARAM_TYPES.forEach(function (t) { window.$("<option>", { value: t }).text(t).appendTo(typeSelect); });
-    var defaultWrap = window.$("<div>").css({ flex: "1 1 100%" }).appendTo(addRow);
+    var addRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "8px", "flex-direction": "column" }).appendTo(section);
+    var nameRow = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(addRow);
+    var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
+    var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
+
+    var typeRow = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
+    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Type").appendTo(typeRow);
+    var selectedType = "string";
+
+    var defaultWrap = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
     var pendingDefault;
 
-    // object/array need a JSON textarea, boolean a checkbox, color a color
-    // picker — buildParamValueInput() (param-types.js) picks the right one
-    // for whatever type is currently selected, shared with the Properties
-    // panel's per-instance fields so both stay in sync as types are added.
     function rebuildDefaultWidget() {
         defaultWrap.empty();
         window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
-        pendingDefault = defaultValueForType(typeSelect.val());
-        // allowBinding:false — a template's own DECLARED default is a
-        // literal fallback; binding to "a parent scope" doesn't mean
-        // anything at declaration time (there's no instance/parent yet).
-        buildParamValueInput(defaultWrap, typeSelect.val(), pendingDefault, function (v) { pendingDefault = v; }, false);
+        pendingDefault = defaultValueForType(selectedType);
+        buildParamValueInput(defaultWrap, selectedType, pendingDefault, function (v) { pendingDefault = v; }, false);
     }
-    typeSelect.on("change", rebuildDefaultWidget);
+
+    buildTypeTypedInput(typeRow, selectedType, function (newType) {
+        selectedType = newType;
+        rebuildDefaultWidget();
+    });
     rebuildDefaultWidget();
 
-    window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ flex: "1 1 100%" }).on("click", function () {
+    window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ "margin-top": "4px", width: "100%" }).on("click", function () {
         var name = (nameInput.val() || "").trim();
         if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
             if (window.RED && window.RED.notify) window.RED.notify("Parameter name must look like a plain identifier (letters, numbers, _), e.g. \"value\"", { type: "warning", timeout: 3000 });
@@ -255,8 +256,9 @@ function renderTemplateParamsSection() {
             if (window.RED && window.RED.notify) window.RED.notify("A parameter named \"" + name + "\" already exists on this template", { type: "warning", timeout: 3000 });
             return;
         }
-        template.params.push({ id: genId(), name: name, label: labelInput.val() || name, type: typeSelect.val(), defaultValue: pendingDefault });
+        template.params.push({ id: genId(), name: name, label: labelInput.val() || name, type: selectedType, defaultValue: pendingDefault });
         markDirty();
         renderTemplateParamsSection(); // rebuilds this whole section fresh, including a blank add-row
     }).appendTo(addRow);
 }
+
