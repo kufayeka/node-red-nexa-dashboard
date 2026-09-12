@@ -1,5 +1,5 @@
 import { state, findComponent, findTemplate, groupMemberIds, markDirty, genId } from "../state.js";
-import { buildTypedInputWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
+import { buildTypedInputWidget, buildEditableListWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
@@ -173,61 +173,118 @@ export function renderPropertiesPanel() {
             openLitComponentCodeEditor(comp);
         }).appendTo(state.propertiesPane);
 
-        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
+        // Bindable Properties boxed editableList (Write Rules style)
+        window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" })
+            .html('<i class="fa fa-list"></i> Bindable Properties')
+            .appendTo(state.propertiesPane);
+
         comp.litBindable = comp.litBindable || [];
-        comp.litBindable.forEach(function (p, idx) {
-            var row = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
-            var nameInput = window.$("<input>", { type: "text", placeholder: "name" })
-                .css({ width: "90px", "flex-shrink": "0", "box-sizing": "border-box" })
-                .val(p.name)
-                .appendTo(row);
-            nameInput.on("change", function () {
-                p.name = nameInput.val().trim();
-                markDirty();
-                refreshComponentRender(comp);
-            });
 
-            var valWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
-            buildTypedInputWidget(valWrap, p.type || "string", p.defaultValue, function (parsedVal, detType) {
-                p.defaultValue = parsedVal;
-                p.type = detType;
-                if (comp.props && comp.props[p.name] === undefined) comp.props[p.name] = parsedVal;
-                markDirty();
-                refreshComponentRender(comp);
-            });
+        var bindableList = buildEditableListWidget(state.propertiesPane, {
+            minHeight: "120px",
+            removable: true,
+            sortable: true,
+            addItem: function (container, i, opt) {
+                var p = opt || {};
+                if (!p.name) p.name = "prop" + (comp.litBindable.length + 1);
+                if (p.type === undefined) p.type = "string";
+                if (p.defaultValue === undefined) p.defaultValue = "";
 
-            window.$("<button>", { type: "button", title: "Delete property" }).text("×").css({ width: "22px", "flex-shrink": "0" }).on("click", function () {
-                comp.litBindable.splice(idx, 1);
-                markDirty();
-                renderPropertiesPanel();
-                refreshComponentRender(comp);
-            }).appendTo(row);
+                if (comp.litBindable.indexOf(p) === -1) {
+                    comp.litBindable.push(p);
+                    markDirty();
+                }
+
+                var row = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
+
+                // Sub-row 1: Name
+                var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+                window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                    .html('<i class="fa fa-tag"></i> Name')
+                    .appendTo(nameRow);
+                var nameInput = window.$("<input>", { type: "text", "class": "node-input-prop-name", placeholder: "propName" })
+                    .css({ flex: "1" })
+                    .val(p.name)
+                    .appendTo(nameRow);
+                nameInput.on("change", function () {
+                    p.name = nameInput.val().trim();
+                    markDirty();
+                    refreshComponentRender(comp);
+                });
+
+                // Sub-row 2: Value
+                var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+                window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                    .html('<i class="fa fa-arrow-left"></i> Value')
+                    .appendTo(valRow);
+                var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+                buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function (parsedVal, detType) {
+                    p.defaultValue = parsedVal;
+                    p.type = detType;
+                    if (comp.props && comp.props[p.name] === undefined) comp.props[p.name] = parsedVal;
+                    markDirty();
+                    refreshComponentRender(comp);
+                });
+            },
+            removeItem: function (opt) {
+                var idx = comp.litBindable.indexOf(opt);
+                if (idx !== -1) {
+                    comp.litBindable.splice(idx, 1);
+                    markDirty();
+                    refreshComponentRender(comp);
+                }
+            }
         });
-        window.$("<button>", { type: "button" }).text("+ Add Bindable Property").css({ width: "100%", "margin-bottom": "10px" }).on("click", function () {
-            comp.litBindable.push({ name: "prop" + (comp.litBindable.length + 1), type: "string", defaultValue: "" });
-            markDirty();
-            renderPropertiesPanel();
-        }).appendTo(state.propertiesPane);
 
+        comp.litBindable.forEach(function (p) {
+            bindableList.editableList("addItem", p);
+        });
 
+        // Events boxed editableList
+        window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" })
+            .html('<i class="fa fa-bolt"></i> Events')
+            .appendTo(state.propertiesPane);
 
-        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Events").appendTo(state.propertiesPane);
         comp.litEvents = comp.litEvents || [];
-        comp.litEvents.forEach(function (evt, idx) {
-            var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "4px" }).appendTo(state.propertiesPane);
-            var nameInput = window.$("<input>", { type: "text", placeholder: "event name" }).css({ flex: "1" }).val(evt.name).appendTo(row);
-            nameInput.on("change", function () { evt.name = nameInput.val(); markDirty(); });
-            window.$("<button>", { type: "button" }).text("×").css({ width: "20px" }).on("click", function () {
-                comp.litEvents.splice(idx, 1);
-                markDirty();
-                renderPropertiesPanel();
-            }).appendTo(row);
+
+        var eventList = buildEditableListWidget(state.propertiesPane, {
+            minHeight: "80px",
+            removable: true,
+            sortable: true,
+            addItem: function (container, i, opt) {
+                var evt = opt || {};
+                if (!evt.name) evt.name = "myEvent" + (comp.litEvents.length + 1);
+
+                if (comp.litEvents.indexOf(evt) === -1) {
+                    comp.litEvents.push(evt);
+                    markDirty();
+                }
+
+                var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
+                window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                    .html('<i class="fa fa-tag"></i> Name')
+                    .appendTo(row);
+                var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" })
+                    .css({ flex: "1" })
+                    .val(evt.name)
+                    .appendTo(row);
+                nameInput.on("change", function () {
+                    evt.name = nameInput.val().trim();
+                    markDirty();
+                });
+            },
+            removeItem: function (opt) {
+                var idx = comp.litEvents.indexOf(opt);
+                if (idx !== -1) {
+                    comp.litEvents.splice(idx, 1);
+                    markDirty();
+                }
+            }
         });
-        window.$("<button>", { type: "button" }).text("+ Add Event").css({ width: "100%", "margin-bottom": "10px" }).on("click", function () {
-            comp.litEvents.push({ name: "myEvent" + (comp.litEvents.length + 1) });
-            markDirty();
-            renderPropertiesPanel();
-        }).appendTo(state.propertiesPane);
+
+        comp.litEvents.forEach(function (evt) {
+            eventList.editableList("addItem", evt);
+        });
     }
 
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);

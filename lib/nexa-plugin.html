@@ -1494,6 +1494,103 @@
     }
     return input;
   }
+  function buildEditableListWidget(container, options) {
+    options = options || {};
+    var ol = window.$("<ol>").css({
+      "min-height": options.minHeight || "120px",
+      "max-height": options.maxHeight || "280px",
+      "margin-bottom": "8px"
+    }).appendTo(container);
+    if (typeof ol.editableList === "function") {
+      ol.editableList(options);
+      return ol;
+    }
+    ol.css({
+      "overflow-y": "auto",
+      "border": "1px solid var(--red-ui-form-input-border-color, #ccc)",
+      "border-radius": "4px",
+      "background": "var(--red-ui-form-input-background, #fff)",
+      "padding": "0",
+      "list-style": "none"
+    });
+    var items = [];
+    function addItem(data) {
+      var li = window.$("<li>", { "class": "red-ui-editableList-item" }).css({
+        "border-bottom": "1px solid var(--red-ui-form-input-border-color, #eee)",
+        "padding": "6px 8px",
+        "position": "relative",
+        "display": "flex",
+        "gap": "6px",
+        "align-items": "flex-start"
+      }).appendTo(ol);
+      var content = window.$("<div>", { "class": "red-ui-editableList-item-content" }).css({
+        "flex": "1",
+        "min-width": "0"
+      }).appendTo(li);
+      items.push({ li, data });
+      if (options.removable !== false) {
+        var removeBtn = window.$("<button>", {
+          type: "button",
+          "class": "red-ui-editableList-item-remove",
+          title: "Delete item"
+        }).css({
+          "background": "transparent",
+          "border": "none",
+          "color": "#999",
+          "cursor": "pointer",
+          "padding": "2px 6px",
+          "font-size": "14px",
+          "line-height": "1"
+        }).html('<i class="fa fa-remove"></i>').appendTo(li);
+        removeBtn.on("click", function(e) {
+          if (e && e.preventDefault) e.preventDefault();
+          li.remove();
+          var idx = items.findIndex(function(it) {
+            return it.li === li;
+          });
+          if (idx !== -1) items.splice(idx, 1);
+          if (typeof options.removeItem === "function") {
+            options.removeItem(data);
+          }
+        });
+      }
+      if (typeof options.addItem === "function") {
+        options.addItem(content, items.length - 1, data);
+      }
+      return li;
+    }
+    if (options.addButton !== false) {
+      var addBtn = window.$("<button>", {
+        type: "button",
+        "class": "red-ui-editableList-addButton"
+      }).css({
+        "width": "100%",
+        "padding": "4px 8px",
+        "font-size": "11px",
+        "cursor": "pointer",
+        "margin-bottom": "8px"
+      }).html('<i class="fa fa-plus"></i> ' + (typeof options.addButton === "string" ? options.addButton : "add")).appendTo(container);
+      addBtn.on("click", function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        addItem({});
+      });
+    }
+    ol.editableList = function(method, arg) {
+      if (method === "addItem") {
+        return addItem(arg);
+      }
+      if (method === "empty") {
+        ol.empty();
+        items = [];
+        return ol;
+      }
+      if (method === "items") {
+        return ol.find("li");
+      }
+      return ol;
+    };
+    return ol;
+  }
 
   // src/dialogs/lit-code-dialog.js
   function openLitComponentCodeEditor(comp) {
@@ -1663,56 +1760,85 @@
       window.$("<button>", { type: "button" }).text("Edit Code...").css({ width: "100%", "margin-bottom": "12px" }).on("click", function() {
         openLitComponentCodeEditor(comp);
       }).appendTo(state.propertiesPane);
-      window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
+      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-list"></i> Bindable Properties').appendTo(state.propertiesPane);
       comp.litBindable = comp.litBindable || [];
-      comp.litBindable.forEach(function(p, idx) {
-        var row = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px", "align-items": "center" }).appendTo(state.propertiesPane);
-        var nameInput = window.$("<input>", { type: "text", placeholder: "name" }).css({ width: "90px", "flex-shrink": "0", "box-sizing": "border-box" }).val(p.name).appendTo(row);
-        nameInput.on("change", function() {
-          p.name = nameInput.val().trim();
-          markDirty();
-          refreshComponentRender(comp);
-        });
-        var valWrap = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
-        buildTypedInputWidget(valWrap, p.type || "string", p.defaultValue, function(parsedVal, detType) {
-          p.defaultValue = parsedVal;
-          p.type = detType;
-          if (comp.props && comp.props[p.name] === void 0) comp.props[p.name] = parsedVal;
-          markDirty();
-          refreshComponentRender(comp);
-        });
-        window.$("<button>", { type: "button", title: "Delete property" }).text("\xD7").css({ width: "22px", "flex-shrink": "0" }).on("click", function() {
-          comp.litBindable.splice(idx, 1);
-          markDirty();
-          renderPropertiesPanel();
-          refreshComponentRender(comp);
-        }).appendTo(row);
+      var bindableList = buildEditableListWidget(state.propertiesPane, {
+        minHeight: "120px",
+        removable: true,
+        sortable: true,
+        addItem: function(container, i, opt) {
+          var p = opt || {};
+          if (!p.name) p.name = "prop" + (comp.litBindable.length + 1);
+          if (p.type === void 0) p.type = "string";
+          if (p.defaultValue === void 0) p.defaultValue = "";
+          if (comp.litBindable.indexOf(p) === -1) {
+            comp.litBindable.push(p);
+            markDirty();
+          }
+          var row = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
+          var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
+          var nameInput = window.$("<input>", { type: "text", "class": "node-input-prop-name", placeholder: "propName" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
+          nameInput.on("change", function() {
+            p.name = nameInput.val().trim();
+            markDirty();
+            refreshComponentRender(comp);
+          });
+          var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
+          var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+          buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
+            p.defaultValue = parsedVal;
+            p.type = detType;
+            if (comp.props && comp.props[p.name] === void 0) comp.props[p.name] = parsedVal;
+            markDirty();
+            refreshComponentRender(comp);
+          });
+        },
+        removeItem: function(opt) {
+          var idx = comp.litBindable.indexOf(opt);
+          if (idx !== -1) {
+            comp.litBindable.splice(idx, 1);
+            markDirty();
+            refreshComponentRender(comp);
+          }
+        }
       });
-      window.$("<button>", { type: "button" }).text("+ Add Bindable Property").css({ width: "100%", "margin-bottom": "10px" }).on("click", function() {
-        comp.litBindable.push({ name: "prop" + (comp.litBindable.length + 1), type: "string", defaultValue: "" });
-        markDirty();
-        renderPropertiesPanel();
-      }).appendTo(state.propertiesPane);
-      window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Events").appendTo(state.propertiesPane);
+      comp.litBindable.forEach(function(p) {
+        bindableList.editableList("addItem", p);
+      });
+      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-bolt"></i> Events').appendTo(state.propertiesPane);
       comp.litEvents = comp.litEvents || [];
-      comp.litEvents.forEach(function(evt, idx) {
-        var row = window.$("<div>").css({ display: "flex", gap: "4px", "margin-bottom": "4px" }).appendTo(state.propertiesPane);
-        var nameInput = window.$("<input>", { type: "text", placeholder: "event name" }).css({ flex: "1" }).val(evt.name).appendTo(row);
-        nameInput.on("change", function() {
-          evt.name = nameInput.val();
-          markDirty();
-        });
-        window.$("<button>", { type: "button" }).text("\xD7").css({ width: "20px" }).on("click", function() {
-          comp.litEvents.splice(idx, 1);
-          markDirty();
-          renderPropertiesPanel();
-        }).appendTo(row);
+      var eventList = buildEditableListWidget(state.propertiesPane, {
+        minHeight: "80px",
+        removable: true,
+        sortable: true,
+        addItem: function(container, i, opt) {
+          var evt = opt || {};
+          if (!evt.name) evt.name = "myEvent" + (comp.litEvents.length + 1);
+          if (comp.litEvents.indexOf(evt) === -1) {
+            comp.litEvents.push(evt);
+            markDirty();
+          }
+          var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(row);
+          var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" }).css({ flex: "1" }).val(evt.name).appendTo(row);
+          nameInput.on("change", function() {
+            evt.name = nameInput.val().trim();
+            markDirty();
+          });
+        },
+        removeItem: function(opt) {
+          var idx = comp.litEvents.indexOf(opt);
+          if (idx !== -1) {
+            comp.litEvents.splice(idx, 1);
+            markDirty();
+          }
+        }
       });
-      window.$("<button>", { type: "button" }).text("+ Add Event").css({ width: "100%", "margin-bottom": "10px" }).on("click", function() {
-        comp.litEvents.push({ name: "myEvent" + (comp.litEvents.length + 1) });
-        markDirty();
-        renderPropertiesPanel();
-      }).appendTo(state.propertiesPane);
+      comp.litEvents.forEach(function(evt) {
+        eventList.editableList("addItem", evt);
+      });
     }
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair) {
@@ -3674,6 +3800,7 @@
     renderTemplateParamsSection();
   }
   function renderTemplateParamsSection() {
+    if (!state.templateFormEl) return;
     state.templateFormEl.find(".nexa-template-params-section").remove();
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
@@ -3682,61 +3809,60 @@
       "border-top": "1px solid #ddd",
       "padding-top": "10px"
     }).appendTo(state.templateFormEl);
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).text("Parameters").appendTo(section);
-    window.$("<div>").css({ color: "#888", "font-size": "11px", "margin-bottom": "6px" }).text(`Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the "On Params Change" node on this template's own Logic canvas.`).appendTo(section);
-    var listEl = window.$("<div>").appendTo(section);
-    (template.params || []).forEach(function(p) {
-      var row = window.$("<div>").css({
-        display: "flex",
-        "justify-content": "space-between",
-        "align-items": "center",
-        padding: "4px 6px",
-        background: "#f5f5f5",
-        "border-radius": "3px",
-        "margin-bottom": "4px",
-        "font-size": "12px"
-      }).appendTo(listEl);
-      window.$("<span>").text("{" + p.name + "} \u2014 " + p.label + " (" + normalizeParamType(p.type) + ")").appendTo(row);
-      window.$("<a>", { href: "#" }).html('<i class="fa fa-trash"></i>').css({ color: "#999" }).on("click", function(e) {
-        e.preventDefault();
-        template.params = template.params.filter(function(x) {
-          return x.id !== p.id;
+    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "block" }).html('<i class="fa fa-list"></i> Parameters').appendTo(section);
+    window.$("<div>").css({ color: "#888", "font-size": "11px", "margin-bottom": "8px" }).text(`Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the "On Params Change" node on this template's own Logic canvas.`).appendTo(section);
+    template.params = template.params || [];
+    var paramList = buildEditableListWidget(section, {
+      minHeight: "140px",
+      removable: true,
+      sortable: true,
+      addItem: function(container, i, opt) {
+        var p = opt || {};
+        if (!p.id) p.id = genId();
+        if (!p.name) p.name = "param" + (template.params.length + 1);
+        if (!p.label) p.label = p.name;
+        if (p.type === void 0) p.type = "string";
+        if (p.defaultValue === void 0) p.defaultValue = "";
+        if (template.params.indexOf(p) === -1) {
+          template.params.push(p);
+          markDirty();
+        }
+        var row = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "6px", padding: "4px 0" }).appendTo(container);
+        var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text", "class": "node-input-param-name", placeholder: "e.g. speed" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
+        nameInput.on("change", function() {
+          var newName = nameInput.val().trim();
+          p.name = newName;
+          markDirty();
         });
-        markDirty();
-        renderTemplateParamsSection();
-      }).appendTo(row);
-    });
-    if (!template.params.length) {
-      window.$("<div>").css({ color: "#999", "font-size": "12px", "margin-bottom": "6px" }).text("No parameters declared yet.").appendTo(listEl);
-    }
-    var addRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "8px", "flex-direction": "column" }).appendTo(section);
-    var nameRow = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(addRow);
-    var nameInput = window.$("<input>", { type: "text", placeholder: "name, e.g. value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
-    var labelInput = window.$("<input>", { type: "text", placeholder: "label, e.g. Value" }).css({ flex: "1", "box-sizing": "border-box" }).appendTo(nameRow);
-    var defaultWrap = window.$("<div>").css({ display: "flex", gap: "2px", "flex-direction": "column" }).appendTo(addRow);
-    window.$("<label>").css({ display: "block", "font-size": "10px", color: "#888", "margin-bottom": "2px" }).text("Default value").appendTo(defaultWrap);
-    var pendingType = "string";
-    var pendingDefault = "";
-    buildTypedInputWidget(defaultWrap, pendingType, pendingDefault, function(val, detType) {
-      pendingDefault = val;
-      pendingType = detType;
-    });
-    window.$("<button>", { type: "button" }).text("+ Add Parameter").css({ "margin-top": "4px", width: "100%" }).on("click", function() {
-      var name = (nameInput.val() || "").trim();
-      if (!name || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-        if (window.RED && window.RED.notify) window.RED.notify('Parameter name must look like a plain identifier (letters, numbers, _), e.g. "value"', { type: "warning", timeout: 3e3 });
-        return;
+        var labelRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-font"></i> Label').appendTo(labelRow);
+        var labelInput = window.$("<input>", { type: "text", "class": "node-input-param-label", placeholder: "e.g. Motor Speed" }).css({ flex: "1" }).val(p.label).appendTo(labelRow);
+        labelInput.on("change", function() {
+          p.label = labelInput.val();
+          markDirty();
+        });
+        var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
+        var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+        buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
+          p.defaultValue = parsedVal;
+          p.type = detType;
+          markDirty();
+        });
+      },
+      removeItem: function(opt) {
+        var idx = template.params.indexOf(opt);
+        if (idx !== -1) {
+          template.params.splice(idx, 1);
+          markDirty();
+        }
       }
-      if ((template.params || []).some(function(p) {
-        return p.name === name;
-      })) {
-        if (window.RED && window.RED.notify) window.RED.notify('A parameter named "' + name + '" already exists on this template', { type: "warning", timeout: 3e3 });
-        return;
-      }
-      template.params.push({ id: genId(), name, label: labelInput.val() || name, type: pendingType, defaultValue: pendingDefault });
-      markDirty();
-      renderTemplateParamsSection();
-    }).appendTo(addRow);
+    });
+    template.params.forEach(function(p) {
+      paramList.editableList("addItem", p);
+    });
   }
 
   // src/sidebar/sidebar-content.js

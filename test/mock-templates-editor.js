@@ -56,7 +56,11 @@ function fakeJQ(selOrHtml, attrs) {
       if (t === 'Edit Code...') global.__editLitCodeBtn = this;
       return this;
     },
-    html(h) { if (h === undefined) return this._html; this._html = h; return this; },
+    html(h) {
+      if (h === undefined) return this._html;
+      this._html = h;
+      return this;
+    },
     append(c) { this._children.push(c); return this; },
     appendTo(p) {
       p._children.push(this); this._parent = p;
@@ -73,10 +77,11 @@ function fakeJQ(selOrHtml, attrs) {
       if (this._attrs && this._attrs['class'] === 'nexa-template-list') global.__templateListEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-form') global.__templateFormEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-row') (global.__templateRows = global.__templateRows || []).push(this);
-      // Bindable Property rows have no dedicated class hook — detected
-      // structurally instead: the row whose first child is the "name"
-      // text input (properties-panel.js's litBindable list).
-      if (this._attrs && this._attrs.placeholder === 'name' && this._attrs.type === 'text') {
+      if (this._attrs && this._attrs['class'] === 'red-ui-editableList-addButton' && global.__lastLitComponentHeader) {
+        if (!global.__addLitBindableBtn) global.__addLitBindableBtn = this;
+        else if (!global.__addLitEventBtn) global.__addLitEventBtn = this;
+      }
+      if (this._attrs && (this._attrs.placeholder === 'name' || this._attrs.placeholder === 'propName') && this._attrs.type === 'text') {
         (global.__litBindableRows = global.__litBindableRows || []).push(p);
       }
       // properties-panel.js's per-param field rows are the only fields
@@ -332,30 +337,33 @@ changeInput(findFormInput(global.__templateFormEl, 'Width (px)'), '300');
 changeInput(findFormInput(global.__templateFormEl, 'Height (px)'), '150');
 console.log('Width/Height are actually editable (the "aku perlu resize" ask)?', cardTemplate.width === 300 && cardTemplate.height === 150);
 
-console.log('--- Parameters editor: plain name/label/default schema with TypedInput (auto-determined type) ---');
+console.log('--- Parameters editor: boxed editableList with TypedInput (auto-determined type) ---');
 const paramsSection = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
-const addRow = paramsSection._children[paramsSection._children.length - 1]; // the "+ Add Parameter" row is appended last
-const nameRow = addRow._children[0], defaultWrap = addRow._children[1], addBtn = addRow._children[2];
-const nameInput = nameRow._children[0], labelInput = nameRow._children[1];
+const addParamBtn = paramsSection._children.find(c => c._attrs && c._attrs['class'] === 'red-ui-editableList-addButton');
+addParamBtn._handlers.click[0]({ preventDefault() {} });
+
+const paramOl = paramsSection._children.find(c => c._tag === '<ol>');
+const firstItem = paramOl._children[0];
+const rowDiv = firstItem._children[0]._children[0];
+const nameRow = rowDiv._children[0], labelRow = rowDiv._children[1], valRow = rowDiv._children[2];
+const nameInput = nameRow._children[1], labelInput = labelRow._children[1];
 changeInput(nameInput, 'value');
 changeInput(labelInput, 'Value');
-addBtn._handlers.click[0]();
 console.log('one param declared with the right name/label/default type ("string")?', cardTemplate.params.length === 1 && cardTemplate.params[0].name === 'value' && cardTemplate.params[0].label === 'Value' && cardTemplate.params[0].type === 'string');
 
 console.log('--- typed params: typedInput auto-determines type and parses value (e.g. json -> object) ---');
-// renderTemplateParamsSection() rebuilt the whole section (including a fresh
-// add-row) after the add above — re-find it rather than reuse stale refs.
-const paramsSection2 = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
-const addRow2 = paramsSection2._children[paramsSection2._children.length - 1];
-const nameRow2 = addRow2._children[0], defaultWrap2 = addRow2._children[1], addBtn2 = addRow2._children[2];
-const nameInput2 = nameRow2._children[0];
-const objectWidget = defaultWrap2._children[1];
+addParamBtn._handlers.click[0]({ preventDefault() {} });
+const secondItem = paramOl._children[1];
+const rowDiv2 = secondItem._children[0]._children[0];
+const nameRow2 = rowDiv2._children[0], valRow2 = rowDiv2._children[2];
+const nameInput2 = nameRow2._children[1];
+const objectWidget = valRow2._children[1]._children[0];
 console.log('default input is configured with typedInput?', !!objectWidget && typeof objectWidget.typedInput === 'function');
 objectWidget.typedInput('type', 'json');
 objectWidget.typedInput('value', '{"rpm": 1500}');
 if (objectWidget._handlers.change) objectWidget._handlers.change.forEach(fn => fn());
 changeInput(nameInput2, 'info');
-addBtn2._handlers.click[0]();
+
 const infoParam = cardTemplate.params.find(p => p.name === 'info');
 console.log('an "object"-typed param stores the REAL parsed object as defaultValue, not a JSON string?', !!infoParam && typeof infoParam.defaultValue === 'object' && infoParam.defaultValue.rpm === 1500 && infoParam.type === 'object');
 
@@ -431,6 +439,8 @@ console.log('a "@lit-component" instance landed on the screen with default code/
 console.log('litBindable/litEvents start empty?', litComp.litBindable.length === 0 && litComp.litEvents.length === 0);
 
 global.__lastLitComponentHeader = null;
+global.__addLitBindableBtn = null;
+global.__addLitEventBtn = null;
 sidebarTabsApi.activateTab('properties');
 console.log('Properties panel renders the "Lit Component" header without throwing?', !!global.__lastLitComponentHeader);
 
@@ -440,8 +450,9 @@ console.log('"+ Add Bindable Property" appended one entry to litBindable?', litC
 
 console.log('--- switching a Bindable Property\'s TypedInput type correctly parses and sets typed defaultValue ---');
 const bindableRow = (global.__litBindableRows || []).slice(-1)[0];
-const nameInputEl = bindableRow._children[0], valWrapEl = bindableRow._children[1];
-const valInputEl = valWrapEl._children[0];
+const rowContainer = bindableRow._parent || bindableRow;
+const bindableValRow = rowContainer._children[1];
+const valInputEl = bindableValRow._children[1]._children[0];
 valInputEl.typedInput('type', 'bool');
 valInputEl.typedInput('value', 'false');
 if (valInputEl._handlers.change) valInputEl._handlers.change.forEach(fn => fn());
