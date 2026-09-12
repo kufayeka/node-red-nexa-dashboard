@@ -32,17 +32,11 @@ export function renderTemplateList() {
     state.templateListEl.empty();
 
     state.templateListEl.css({
-        border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
-        "border-radius": "4px",
-        background: "var(--red-ui-secondary-background, #fff)",
-        "max-height": "220px",
-        "min-height": "90px",
-        "overflow-y": "auto",
-        "overflow-x": "hidden",
-        padding: "4px",
-        "box-sizing": "border-box",
         width: "100%",
-        "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)"
+        display: "flex",
+        "flex-direction": "column",
+        gap: "3px",
+        "box-sizing": "border-box"
     });
 
     state.templates.forEach(function (t) {
@@ -50,17 +44,17 @@ export function renderTemplateList() {
         var usages = templateUsageCount(t.id);
 
         var row = window.$("<div>", { "class": "nexa-template-row" }).css({
-            padding: "4px 6px",
-            "border-radius": "3px",
-            "margin-bottom": "2px",
+            padding: "5px 8px",
+            "border-radius": "4px",
             display: "flex",
             "align-items": "center",
             cursor: "pointer",
-            background: isActive ? "var(--red-ui-list-item-selected-background, #e3f2fd)" : "transparent",
-            border: isActive ? "1px solid #90caf9" : "1px solid transparent",
+            background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
+            border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+            "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
             "font-size": "12px",
             "user-select": "none",
-            transition: "background 0.15s, border-color 0.15s"
+            transition: "all 0.15s ease"
         }).appendTo(state.templateListEl);
 
         // Icon
@@ -125,7 +119,7 @@ export function renderTemplateList() {
     });
 
     if (!state.templates.length) {
-        window.$("<div>", { style: "padding: 12px; text-align: center; color: #888; font-size: 12px;" })
+        window.$("<div>", { style: "padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 11px;" })
             .text("No templates yet.")
             .appendTo(state.templateListEl);
     }
@@ -195,13 +189,30 @@ function hideEditBar() {
 export function renderTemplateForm() {
     if (!state.templateFormEl) return;
     state.templateFormEl.empty();
-    if (state.editingMode !== "template") return;
+    if (state.editingMode !== "template") {
+        window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" })
+            .html('<i class="fa fa-clone" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select or add a template on the left to edit its properties.')
+            .appendTo(state.templateFormEl);
+        return;
+    }
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
 
+    var header = window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(state.templateFormEl);
+
     function row(label, field, value, type) {
-        var r = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.templateFormEl);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text(label).appendTo(r);
+        var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.templateFormEl);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
         var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
         input.on("change", function () {
             var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
@@ -213,20 +224,19 @@ export function renderTemplateForm() {
         return input;
     }
 
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px", color: "var(--red-ui-primary-text-color, #333)" }).text("Template Settings").appendTo(state.templateFormEl);
     row("Name", "name", template.name);
     row("Identifier", "identifier", template.identifier);
     row("Width (px)", "width", template.width, "number");
     row("Height (px)", "height", template.height, "number");
     row("Grid size (px)", "gridSize", template.gridSize, "number");
 
-    var snapRow = window.$("<div>").appendTo(state.templateFormEl);
+    var snapRow = window.$("<div>").css({ "margin-top": "6px", "margin-bottom": "12px" }).appendTo(state.templateFormEl);
     var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap !== false).css({ "margin-right": "6px" });
     snapInput.on("change", function () {
         template.snap = snapInput.is(":checked");
         markDirty();
     });
-    window.$("<label>").css({ "font-size": "11px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
+    window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
     renderTemplateParamsSection();
 }
