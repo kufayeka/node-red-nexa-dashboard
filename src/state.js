@@ -113,6 +113,15 @@ export function findTemplate(id) {
     return state.templates.find(function (t) { return t.id === id; });
 }
 
+// Author-convenience lookup for a Lit Component's own code calling
+// this.mountTemplate(...) (see component-renderer.js) — template ids are
+// opaque generated strings a Lit-code author has no easy way to see, so
+// this also accepts the Template's own `name` or `identifier` field.
+export function findTemplateByIdOrName(idOrName) {
+    return findTemplate(idOrName) ||
+        state.templates.find(function (t) { return t.name === idOrName || t.identifier === idOrName; });
+}
+
 // Templates and screens share globally-unique ids (genId()), so a history
 // event's screenId can be looked up here without any change to the event
 // shape itself.

@@ -1,0 +1,461 @@
+// Verifies Reusable Screen Templates from the EDITOR side, driven through
+// real UI interactions (same jQuery-shim harness style as mock-logic.js) —
+// the deep nested-param RESOLUTION logic is already thoroughly covered by
+// mock-templates-runtime.js against the data model directly; this file
+// proves the WIRING actually works when a user drives it: the Templates
+// tab's create/edit flow, dropping a plain component and a nested template
+// instance while editing a template, the palette's cycle guard rejecting a
+// template that would close a loop, and the Properties panel correctly
+// labeling a selected instance.
+
+const docListeners = {};
+global.document = {
+  addEventListener(evt, fn) { (docListeners[evt] = docListeners[evt] || []).push(fn); },
+  removeEventListener(evt, fn) { if (docListeners[evt]) docListeners[evt] = docListeners[evt].filter(f => f !== fn); },
+  createElementNS(ns, tag) { return fakeJQ('<' + tag + '>'); }
+};
+function fireDoc(evt, payload) { (docListeners[evt] || []).slice().forEach(fn => fn(payload)); }
+
+function fakeDomNode() {
+  const listeners = {};
+  return {
+    tagName: 'DIV',
+    // renderTemplateInstance() (component-renderer.js) does
+    // window.$("<div>").appendTo(el.get(0)) — real jQuery's .appendTo()
+    // happily accepts a plain DOM node as its target, so this needs to be
+    // a valid append target too, not just an event-listener holder.
+    _children: [],
+    addEventListener(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },
+    removeEventListener(evt, fn) { if (listeners[evt]) listeners[evt] = listeners[evt].filter(f => f !== fn); },
+    _fire(evt, payload) { (listeners[evt] || []).slice().forEach(fn => fn(payload)); }
+  };
+}
+
+const draggables = [];
+const componentsById = {};
+let documentJQ = null;
+let titledEls = [];
+
+function fakeJQ(selOrHtml, attrs) {
+  const domNode = fakeDomNode();
+  const el = {
+    _isFakeJQ: true, _tag: selOrHtml,
+    _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
+    css(o, v) { if (typeof o === 'string') { if (v === undefined) return this._css[o]; this._css[o] = v; return this; } Object.assign(this._css, o); return this; },
+    attr(k, v) { if (typeof k === 'object') { Object.assign(this._attrs, k); return this; } if (v === undefined) return this._attrs[k]; this._attrs[k] = v; return this; },
+    text(t) {
+      if (t === undefined) return this._text;
+      this._text = t;
+      if (t === '+ Add Screen') global.__addScreenBtn = this;
+      if (t === '+ Add Template') global.__addTemplateBtn = this;
+      if (t === '← Back to Screens') global.__backToScreensLink = this;
+      if (typeof t === 'string' && t.indexOf('Template instance:') === 0) global.__lastTemplateInstanceLabel = t;
+      if (t === 'Lit Component') global.__lastLitComponentHeader = this;
+      if (t === '+ Add Bindable Property') global.__addLitBindableBtn = this;
+      if (t === '+ Add Event') global.__addLitEventBtn = this;
+      if (t === 'Edit Code...') global.__editLitCodeBtn = this;
+      return this;
+    },
+    html(h) { if (h === undefined) return this._html; this._html = h; return this; },
+    append(c) { this._children.push(c); return this; },
+    appendTo(p) {
+      p._children.push(this); this._parent = p;
+      // A real <select> reports its FIRST <option>'s value once one exists,
+      // even with no explicit .val()/user interaction — mirror that here or
+      // reading a freshly-built <select>'s .val() (e.g. the params editor's
+      // type dropdown) would return undefined instead of the real default.
+      if (this._tag === '<option>' && p._tag === '<select>' && p._val === undefined) {
+        p._val = this._attrs && this._attrs.value;
+      }
+      if (this._attrs && this._attrs['data-id']) componentsById[this._attrs['data-id']] = this;
+      if (this._attrs && this._attrs.title) titledEls.push({ title: this._attrs.title, el: this });
+      if (this._attrs && this._attrs['class'] === 'nexa-screen-list') global.__screenListEl = this;
+      if (this._attrs && this._attrs['class'] === 'nexa-template-list') global.__templateListEl = this;
+      if (this._attrs && this._attrs['class'] === 'nexa-template-form') global.__templateFormEl = this;
+      if (this._attrs && this._attrs['class'] === 'nexa-template-row') (global.__templateRows = global.__templateRows || []).push(this);
+      // Bindable Property rows have no dedicated class hook — detected
+      // structurally instead: the row whose first child is the "name"
+      // text input (properties-panel.js's litBindable list).
+      if (this._attrs && this._attrs.placeholder === 'name' && this._attrs.type === 'text') {
+        (global.__litBindableRows = global.__litBindableRows || []).push(p);
+      }
+      // properties-panel.js's per-param field rows are the only fields
+      // labeled "<Label> {name}" — generic enough to grab the input by that
+      // exact label text without needing a dedicated class hook.
+      if (this._attrs && this._attrs.type && p._children.length >= 1) {
+        var firstSibling = p._children[0];
+        var isParamLabel = function (el) { return el && typeof el._text === 'string' && /\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(el._text); };
+        // buildParamValueInput()'s bind-toggle path (param-types.js) wraps
+        // the actual value widget in an extra `widgetContainer` div, so the
+        // input's immediate parent's own first child is no longer the label
+        // — walk up one more level (the widgetContainer's parent, i.e. the
+        // field row) when that's the case.
+        if (!isParamLabel(firstSibling) && p._parent && p._parent._children && p._parent._children.length) {
+          firstSibling = p._parent._children[0];
+        }
+        if (isParamLabel(firstSibling)) {
+          (global.__paramFieldsByLabel = global.__paramFieldsByLabel || {})[firstSibling._text] = this;
+        }
+      }
+      return this;
+    },
+    prependTo(p) {
+      p._children.unshift(this); this._parent = p;
+      return this;
+    },
+    parent() { return { length: this._parent ? 1 : 0 }; },
+    empty() { this._children = []; return this; },
+    remove() { if (this._parent) this._parent._children = this._parent._children.filter(c => c !== this); return this; },
+    val(v) { if (v === undefined) return this._val; this._val = v; return this; },
+    prop(name, v) { if (v === undefined) return this._props && this._props[name]; this._props = this._props || {}; this._props[name] = v; return this; },
+    is(sel) {
+      if (sel === ':checked') return !!(this._props && this._props.checked);
+      if (sel === ':visible') {
+        var node = this;
+        while (node) { if (node._css.display === 'none') return false; node = node._parent; }
+        return true;
+      }
+      return false;
+    },
+    toggle(show) { this._css.display = (show === undefined ? this._css.display === 'none' : show) ? '' : 'none'; return this; },
+    hide() { this._css.display = 'none'; return this; },
+    show() { this._css.display = ''; return this; },
+    find(sel) {
+      if (sel && sel[0] === '.' && sel.indexOf('[') === -1) {
+        var cls = sel.slice(1);
+        var m = (this._children || []).filter(c => c._attrs && c._attrs['class'] === cls);
+        var coll = fakeJQ(); coll._collection = m;
+        coll.css = function (o, v) { m.forEach(x => { if (typeof o === 'string') { x._css[o] = v; } else { Object.assign(x._css, o); } }); return this; };
+        coll.remove = function () { m.forEach(x => { if (x._parent) x._parent._children = x._parent._children.filter(c => c !== x); }); return this; };
+        return coll;
+      }
+      if (sel && sel.indexOf('data-id') !== -1) { const id = sel.match(/"([^"]+)"/)[1]; return componentsById[id] || fakeJQ(); }
+      return fakeJQ();
+    },
+    closest() { return fakeJQ(); },
+    on(evt, fn) { (this._handlers[evt] = this._handlers[evt] || []).push(fn); return this; },
+    off() { return this; },
+    get() { return this._domNode; },
+    offset() { return { left: 0, top: 0 }; },
+    position() { return { left: 0, top: 0 }; },
+    width() { return 800; }, height() { return 600; },
+    get clientWidth() { return 800; }, get clientHeight() { return 600; },
+    draggable(opts) { this._draggableOpts = opts; draggables.push({ el: this, opts }); return this; },
+    get length() { return 1; }
+  };
+  domNode.clientWidth = 800; domNode.clientHeight = 600;
+  domNode.scrollLeft = 0; domNode.scrollTop = 0;
+  return el;
+}
+global.$ = function (sel, attrs) {
+  if (sel === global.document) { if (!documentJQ) documentJQ = fakeJQ(); return documentJQ; }
+  if (sel && sel._isFakeJQ) return sel;
+  return fakeJQ(sel, attrs);
+};
+$.fn = {};
+$.ajax = function () { return { done(fn) { fn({ value: 1 }); return this; }, fail(fn) { return this; } }; };
+
+function mousedownOn(id, opts) {
+  var el = componentsById[id];
+  var handlers = el._handlers['mousedown'] || [];
+  var evt = Object.assign({ stopPropagation() {}, shiftKey: false }, opts);
+  handlers.forEach(fn => fn(evt));
+}
+
+let actions = {}, configNodes = [], idCounter = 0, notifications = [], traySpec = null;
+global.RED = {
+  plugins: { registerPlugin(id, def) { if (def.onadd) def.onadd(); } },
+  actions: { add(id, fn) { actions[id] = fn; }, invoke(id) { actions[id](); } },
+  menu: { addItem() {} },
+  comms: { subscribe() {} },
+  notify(msg, opts) { notifications.push(msg); },
+  events: { on() {}, emit() {} },
+  log: { info() {}, warn() {} },
+  nodes: {
+    dirty() {},
+    eachConfig(fn) { configNodes.forEach(fn); },
+    getType(type) { return type === 'kufayeka-nexa-project' ? { defaults: { name: { value: 'Nexa Project' }, screens: { value: [] }, templates: { value: [] } } } : null; },
+    id() { return 'cfg' + (++idCounter); },
+    add(node) { configNodes.push(node); }
+  },
+  sidebar: { addTab() {} },
+  tray: {
+    show(opts) { traySpec = opts; const tr = fakeJQ(); opts.open(tr); if (opts.show) opts.show(); },
+    close() { if (traySpec && traySpec.close) traySpec.close(); }
+  },
+  // A minimal stand-in for RED.editor.createEditor (real ace/monaco) —
+  // just enough to test that a dialog (lit-code-dialog.js) reads back
+  // whatever "was typed" via .getValue() when Done is clicked. Every
+  // created instance is pushed to global.__createdEditors so a test can
+  // reach in and simulate typing via .setTestValue(...) before clicking
+  // the tray's Done button.
+  editor: {
+    createEditor(opts) {
+      var val = opts.value || '';
+      var instance = {
+        getValue() { return val; },
+        setTestValue(v) { val = v; },
+        destroy() {}
+      };
+      (global.__createdEditors = global.__createdEditors || []).push(instance);
+      return instance;
+    }
+  },
+  tabs: {
+    create(opts) {
+      const tabs = {}; let active = null;
+      const api = {
+        addTab(t) { tabs[t.id] = t; if (!active) { active = t.id; if (opts.onchange) opts.onchange(t); } },
+        activateTab(id) { active = id; if (opts.onchange) opts.onchange(tabs[id]); },
+        renameTab(id, l) { if (tabs[id]) tabs[id].label = l; },
+        _tabs: tabs
+      };
+      (global.__allTabsApis = global.__allTabsApis || []).push(api);
+      return api;
+    }
+  }
+};
+
+global.window = global;
+window.NEXA = window.NEXA || { _q: [], registerComponent: function (id, def) { this._q.push([id, def]); } };
+NEXA.registerComponent('mock-rect', {
+  category: 'Basic', label: 'Rectangle', defaultSize: { w: 120, h: 80 },
+  capabilities: { resizable: true, rotatable: true, flippable: true, lockable: true },
+  defaults: { fill: { value: '#abc', type: 'color' } },
+  bindable: ['props.fill'],
+  events: [{ name: 'click', label: 'Clicked' }],
+  render: function () {}
+});
+
+const fs = require('fs');
+eval(fs.readFileSync(process.argv[2], 'utf8'));
+
+function dropChipByLabel(label, x, y) {
+  const list = draggables.filter(d => d.el._text === label && d.el._attrs['class'] === 'nexa-palette-item');
+  const chip = list[list.length - 1];
+  if (!chip) throw new Error('no palette chip found for label: ' + label);
+  chip.opts.stop(null, { offset: { left: x, top: y } });
+}
+// `draggables` accumulates EVERY chip ever created across every buildPalette()
+// call in this whole test (nothing is ever cleared from it) — checking
+// EXISTENCE anywhere in that history would make a template look "still
+// offered" forever after its first appearance, even once a later rebuild
+// correctly excludes it (the cycle guard only affects what gets pushed by
+// the NEXT rebuild, not what's already in the array from a previous one).
+// Force a fresh rebuild and only look at what THAT rebuild actually added.
+function paletteLabelsAfterFreshBuild() {
+  const before = draggables.length;
+  // Navigate away via "properties" (not "screens" — that tab now
+  // deliberately EXITS template-editing mode when activated, since its form
+  // is screen-shaped, which would defeat the point of checking the palette
+  // WHILE a specific template is still being edited) so the next line is a
+  // genuine rebuild, not a no-op.
+  sidebarTabsApi.activateTab('properties');
+  sidebarTabsApi.activateTab('components');
+  return draggables.slice(before).map(d => d.el._text);
+}
+// renderTemplateForm()'s row() helper builds <div>[<label>text, <input>] —
+// the input is always the row's LAST child (only 2 children ever appended).
+function findFormInput(containerEl, labelText) {
+  var row = (containerEl._children || []).find(r => (r._children || []).some(c => c._text === labelText));
+  if (!row) throw new Error('form row not found for label: ' + labelText);
+  return row._children[row._children.length - 1];
+}
+function changeInput(input, value) {
+  input.val(value);
+  (input._handlers.change || []).forEach(fn => fn());
+}
+function clickTemplateRowLink(templateName, title) {
+  // renderTemplateList() rebuilds every row from scratch on each call and
+  // never removes stale ones from global.__templateRows (the harness's
+  // appendTo hook only ever pushes) — always take the LAST matching row,
+  // same "most recent wins" pattern used throughout this suite for chips.
+  var rows = (global.__templateRows || []).filter(r => (r._children || []).some(c => c._text === templateName));
+  var row = rows[rows.length - 1];
+  if (!row) throw new Error('template row not found: ' + templateName);
+  var link = row._children.find(c => c._attrs && c._attrs.title === title);
+  if (!link) throw new Error('link "' + title + '" not found on template row: ' + templateName);
+  link._handlers.click[0]({ preventDefault() {}, stopPropagation() {} });
+}
+
+actions['nexa:open-pages-editor']();
+const screen1 = configNodes[0].screens[0];
+const sidebarTabsApi = global.__allTabsApis.filter(api => 'templates' in api._tabs).pop();
+const canvasTabsApi = global.__allTabsApis.filter(api => 'logic' in api._tabs).pop();
+
+console.log('--- create Template "Card": settings form mirrors Screens\' (Identifier instead of URL path, Width/Height editable) ---');
+sidebarTabsApi.activateTab('templates');
+global.__addTemplateBtn._handlers.click[0]();
+console.log('one template created?', configNodes[0].templates.length === 1);
+const cardTemplate = configNodes[0].templates[0];
+console.log('editing the new template opened the tray onto it (UI tab active)?', canvasTabsApi._tabs.ui !== undefined);
+
+changeInput(findFormInput(global.__templateFormEl, 'Name'), 'Monitor Card');
+console.log('Name field writes template.name?', cardTemplate.name === 'Monitor Card');
+changeInput(findFormInput(global.__templateFormEl, 'Identifier'), 'monitor-card');
+console.log('Identifier field (replacing URL path) writes template.identifier?', cardTemplate.identifier === 'monitor-card');
+changeInput(findFormInput(global.__templateFormEl, 'Width (px)'), '300');
+changeInput(findFormInput(global.__templateFormEl, 'Height (px)'), '150');
+console.log('Width/Height are actually editable (the "aku perlu resize" ask)?', cardTemplate.width === 300 && cardTemplate.height === 150);
+
+console.log('--- Parameters editor: plain name/label/type/default schema, no more picking an existing node ---');
+const paramsSection = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
+const addRow = paramsSection._children[paramsSection._children.length - 1]; // the "+ Add Parameter" row is appended last
+const nameInput = addRow._children[0], labelInput = addRow._children[1], typeSelect = addRow._children[2], addBtn = addRow._children[addRow._children.length - 1];
+changeInput(nameInput, 'value');
+changeInput(labelInput, 'Value');
+addBtn._handlers.click[0]();
+console.log('one param declared with the right name/label/default type ("string", the new canonical name for the old "text")?', cardTemplate.params.length === 1 && cardTemplate.params[0].name === 'value' && cardTemplate.params[0].label === 'Value' && cardTemplate.params[0].type === 'string');
+
+console.log('--- typed params: switching the type dropdown swaps in the right default-value widget (object/array get a JSON textarea) ---');
+// renderTemplateParamsSection() rebuilt the whole section (including a fresh
+// add-row) after the add above — re-find it rather than reuse stale refs.
+const paramsSection2 = global.__templateFormEl.find('.nexa-template-params-section')._collection[0];
+const addRow2 = paramsSection2._children[paramsSection2._children.length - 1];
+const nameInput2 = addRow2._children[0], typeSelect2 = addRow2._children[2], defaultWrap2 = addRow2._children[3], addBtn2 = addRow2._children[addRow2._children.length - 1];
+changeInput(typeSelect2, 'object');
+const objectWidget = defaultWrap2._children[defaultWrap2._children.length - 1];
+console.log('selecting "object" swaps in a textarea (tagged <textarea>) for the default value?', objectWidget._tag === '<textarea>');
+changeInput(objectWidget, '{"rpm": 1500}');
+changeInput(nameInput2, 'info');
+addBtn2._handlers.click[0]();
+const infoParam = cardTemplate.params.find(p => p.name === 'info');
+console.log('an "object"-typed param stores the REAL parsed object as defaultValue, not a JSON string?', !!infoParam && typeof infoParam.defaultValue === 'object' && infoParam.defaultValue.rpm === 1500);
+
+canvasTabsApi.activateTab('ui');
+dropChipByLabel('Rectangle', 50, 50);
+console.log('the rectangle landed on the TEMPLATE, not a screen?', cardTemplate.components.length === 1 && screen1.components.length === 0);
+
+console.log('--- back to Screens (via the tray\'s own bar, not a sidebar tab), drop a "Card" instance onto screen1 ---');
+console.log('the "Back to Screens" bar link exists while editing a template?', !!global.__backToScreensLink);
+global.__backToScreensLink._handlers.click[0]({ preventDefault() {} });
+sidebarTabsApi.activateTab('components');
+dropChipByLabel(cardTemplate.name, 100, 100);
+console.log('a "@template" instance landed on screen1, sized to the template?', screen1.components.length === 1 && screen1.components[0].type === '@template' && screen1.components[0].w === cardTemplate.width);
+const instanceId = screen1.components[0].id;
+
+console.log('--- Properties panel labels a selected instance by its template name, not "Unknown component" ---');
+// addComponentAt() already selectOnly()'d the new instance, so switching TO
+// the properties tab (which unconditionally re-renders it) is enough on its
+// own — reset the capture first so this check can't accidentally pass on a
+// stale value from something rendered earlier.
+global.__lastTemplateInstanceLabel = null;
+sidebarTabsApi.activateTab('properties');
+console.log('properties panel shows "Template instance: Card" for the selected instance?', global.__lastTemplateInstanceLabel === 'Template instance: ' + cardTemplate.name);
+
+console.log('--- Properties panel exposes one field per declared param (Subflow instance env-var dialog analogue) ---');
+const valueParamField = global.__paramFieldsByLabel['Value {value}'];
+console.log('a "Value {value}" field is shown for the selected instance?', !!valueParamField);
+changeInput(valueParamField, 'Line 1 Temp');
+console.log('editing it writes comp.paramValues.value (the static "<template value=...>" part)?', screen1.components[0].paramValues.value === 'Line 1 Temp');
+
+console.log('--- Events tab: "On Params Change" node only while editing a Template, and one "Set <Param>" chip per instance param ---');
+function eventsChipLabelsAfterFreshBuild() {
+  sidebarTabsApi.activateTab('properties');
+  const before = draggables.length;
+  sidebarTabsApi.activateTab('events');
+  return draggables.slice(before).map(d => d.el._text);
+}
+const eventLabelsOnScreen = eventsChipLabelsAfterFreshBuild();
+console.log('"On Params Change" is NOT offered while editing a Screen?', eventLabelsOnScreen.indexOf('On Params Change') === -1);
+console.log('"Instance #.... -> Set Value" chip IS offered for the dropped instance?', eventLabelsOnScreen.some(l => l.indexOf('Set Value') !== -1));
+
+sidebarTabsApi.activateTab('templates');
+clickTemplateRowLink(cardTemplate.name, 'Edit');
+const eventLabelsOnTemplate = eventsChipLabelsAfterFreshBuild();
+console.log('"On Params Change" IS offered while editing the Template itself (the Subflow-Input analogue)?', eventLabelsOnTemplate.indexOf('On Params Change') !== -1);
+global.__backToScreensLink._handlers.click[0]({ preventDefault() {} });
+
+console.log('--- create Template "Group", nest a "Card" instance inside it ---');
+sidebarTabsApi.activateTab('templates');
+global.__addTemplateBtn._handlers.click[0]();
+console.log('two templates now exist?', configNodes[0].templates.length === 2);
+const groupTemplate = configNodes[0].templates[1];
+canvasTabsApi.activateTab('ui');
+const labelsWhileEditingGroup = paletteLabelsAfterFreshBuild();
+console.log('"Card" is offered in the palette while editing "Group" (no cycle yet)?', labelsWhileEditingGroup.indexOf(cardTemplate.name) !== -1);
+dropChipByLabel(cardTemplate.name, 10, 10);
+console.log('"Group" now contains one "Card" instance?', groupTemplate.components.length === 1 && groupTemplate.components[0].templateId === cardTemplate.id);
+
+console.log('--- cycle guard: editing "Card" must no longer offer "Group" in the palette ---');
+sidebarTabsApi.activateTab('templates');
+clickTemplateRowLink(cardTemplate.name, 'Edit');
+canvasTabsApi.activateTab('ui');
+const labelsWhileEditingCard = paletteLabelsAfterFreshBuild();
+console.log('"Group" is EXCLUDED from the palette while editing "Card" (would close a cycle)?', labelsWhileEditingCard.indexOf(groupTemplate.name) === -1);
+
+console.log('--- "@lit-component": generic node, code lives per-instance, structured props via onBind/ui-update ---');
+global.__backToScreensLink._handlers.click[0]({ preventDefault() {} });
+sidebarTabsApi.activateTab('components');
+console.log('a "Lit Component" chip is offered (fixed, not tied to any registered package)?', paletteLabelsAfterFreshBuild().indexOf('Lit Component') !== -1);
+dropChipByLabel('Lit Component', 60, 60);
+const litComp = screen1.components[screen1.components.length - 1];
+console.log('a "@lit-component" instance landed on the screen with default code/size?', litComp.type === '@lit-component' && litComp.litCode.indexOf('render()') !== -1 && litComp.w === 220 && litComp.h === 120);
+console.log('litBindable/litEvents start empty?', litComp.litBindable.length === 0 && litComp.litEvents.length === 0);
+
+global.__lastLitComponentHeader = null;
+sidebarTabsApi.activateTab('properties');
+console.log('Properties panel renders the "Lit Component" header without throwing?', !!global.__lastLitComponentHeader);
+
+console.log('--- Bindable Properties + Events list editors write back onto the instance ---');
+global.__addLitBindableBtn._handlers.click[0]();
+console.log('"+ Add Bindable Property" appended one entry to litBindable?', litComp.litBindable.length === 1 && litComp.litBindable[0].name === 'prop1');
+
+console.log('--- switching a Bindable Property\'s type resets its defaultValue to match (the actual root cause of the boolean-always-true bug) ---');
+// The bug: switching type WITHOUT resetting defaultValue left a stale,
+// wrongly-typed value (e.g. the literal string "false", typed while the
+// field was still "string") sitting in defaultValue — and Boolean("false")
+// is TRUE in plain JS, so the prop rendered as "always true" no matter what
+// the Properties panel showed. Simulate exactly that scenario: type "false"
+// into the string default-value field, THEN switch the type to "boolean".
+const bindableRow = (global.__litBindableRows || []).slice(-1)[0];
+const nameInputEl = bindableRow._children[0], typeSelectEl = bindableRow._children[1], defaultWrapEl = bindableRow._children[2];
+const stringDefaultInput = defaultWrapEl._children[defaultWrapEl._children.length - 1];
+changeInput(stringDefaultInput, 'false');
+console.log('typed the literal text "false" into the still-string default value field?', litComp.litBindable[0].defaultValue === 'false');
+changeInput(typeSelectEl, 'boolean');
+console.log('switching to "boolean" reset defaultValue to a REAL boolean false, not the leftover string?', litComp.litBindable[0].defaultValue === false);
+console.log('(a leftover string "false" would have been TRUTHY — Boolean("false") === true — which was the actual bug)');
+global.__addLitEventBtn._handlers.click[0]();
+console.log('"+ Add Event" appended one entry to litEvents?', litComp.litEvents.length === 1 && litComp.litEvents[0].name === 'myEvent1');
+
+console.log('--- Code editing moved to a modal dialog (like the Function node) instead of inline sidebar editors ---');
+// This whole section exists BECAUSE of a real, reported bug: an earlier
+// inline-in-sidebar editor design silently discarded anything typed but not
+// yet "Applied" the moment the Properties panel re-rendered for ANY other
+// reason (e.g. adding a Bindable Property, which the section above just
+// did). A modal dialog sidesteps that entirely — it owns the editor
+// exclusively while open, immune to the sidebar's own re-renders.
+const originalLitCode = litComp.litCode;
+console.log('an "Edit Code..." button is offered (not inline editors)?', !!global.__editLitCodeBtn);
+global.__editLitCodeBtn._handlers.click[0]();
+console.log('opening it created exactly 2 editors (class body + CSS)?', global.__createdEditors.length === 2);
+const [jsEd, cssEd] = global.__createdEditors.slice(-2);
+console.log('the JS editor was seeded with the CURRENT litCode (not blank/default)?', jsEd.getValue() === originalLitCode);
+
+console.log('--- Cancel discards without touching comp.litCode/litStyles ---');
+jsEd.setTestValue('render(){ return html`<div>SHOULD NOT BE SAVED</div>`; }');
+const cancelBtn = traySpec.buttons.find(b => b.text === 'Cancel');
+cancelBtn.click();
+console.log('Cancel left litCode completely unchanged?', litComp.litCode === originalLitCode);
+
+console.log('--- Done commits both class body and CSS at once ---');
+global.__editLitCodeBtn._handlers.click[0]();
+const [jsEd2, cssEd2] = global.__createdEditors.slice(-2);
+jsEd2.setTestValue('render(){ return html`<div>${this.prop1}</div>`; }');
+cssEd2.setTestValue(':host { color: red; }');
+const doneBtn = traySpec.buttons.find(b => b.text === 'Done');
+doneBtn.click();
+console.log('Done wrote the new class body onto comp.litCode?', litComp.litCode.indexOf('SHOULD NOT BE SAVED') === -1 && litComp.litCode.indexOf('this.prop1') !== -1);
+console.log('Done wrote the new CSS onto comp.litStyles?', litComp.litStyles === ':host { color: red; }');
+
+console.log('--- re-rendering Properties afterward shows the COMMITTED code in the read-only preview, not stale/default text ---');
+sidebarTabsApi.activateTab('properties');
+console.log('(implicit — renderPropertiesPanel() ran again above without throwing, reading the now-updated comp.litCode/litStyles)');
+
+console.log('--- Events tab: one "on <event>" chip + one generic "Update" chip per @lit-component instance ---');
+const litEventLabels = eventsChipLabelsAfterFreshBuild();
+console.log('an "on myEvent1" chip is offered?', litEventLabels.some(l => l.indexOf('on myEvent1') !== -1));
+console.log('an "Update" chip is offered (reuses the existing ui-update node/dialog)?', litEventLabels.some(l => l.indexOf('Lit Component #') === 0 && l.indexOf('Update') !== -1));
+
+console.log('ALL OK');

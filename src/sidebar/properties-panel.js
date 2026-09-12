@@ -1,26 +1,14 @@
 import { state, findComponent, findTemplate, groupMemberIds, markDirty, genId } from "../state.js";
-import { buildParamValueInput, PARAM_TYPES } from "../param-types.js";
+import { buildParamValueInput, PARAM_TYPES, defaultValueForType } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { updateComponentBox } from "../canvas/selection-handles.js";
-
-// RED.editor.createEditor() instances mounted into the panel by the
-// "@lit-component" section below — must be .destroy()ed before the panel's
-// own .empty() rips their DOM out from under them on the next render, or
-// the underlying ace/monaco instance leaks its resize observers/listeners.
-var activeCodeEditors = [];
-function destroyActiveCodeEditors() {
-    activeCodeEditors.forEach(function (editor) {
-        try { editor.destroy(); } catch (e) { /* already gone */ }
-    });
-    activeCodeEditors = [];
-}
+import { openLitComponentCodeEditor } from "../dialogs/lit-code-dialog.js";
 
 export function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
-    destroyActiveCodeEditors();
     state.propertiesPane.empty();
     if (state.selectedIds.length > 1) {
         window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
@@ -148,42 +136,41 @@ export function renderPropertiesPanel() {
     // the user's own code makes.
     if (isLitComponent) {
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" })
-            .text("Class body — write render()/methods here (properties are auto-declared below); call this.emit(name, payload) to fire an event")
-            .appendTo(state.propertiesPane);
 
-        var jsContainerId = "nexa-lit-js-" + comp.id;
-        var cssContainerId = "nexa-lit-css-" + comp.id;
-        var jsContainer = window.$("<div>", { id: jsContainerId }).css({ height: "160px", border: "1px solid #ccc", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" })
-            .text("CSS — scoped to this component only, via Lit's Shadow DOM")
-            .appendTo(state.propertiesPane);
-        var cssContainer = window.$("<div>", { id: cssContainerId }).css({ height: "100px", border: "1px solid #ccc", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-
-        var jsEditor, cssEditor;
-        var hasCodeEditor = window.RED && window.RED.editor && typeof window.RED.editor.createEditor === "function";
-        if (hasCodeEditor) {
-            // RED.editor.createEditor targets its container by DOM id (it
-            // resolves via document, not through our own jQuery reference),
-            // which is why the containers above are given real ids.
-            jsEditor = window.RED.editor.createEditor({ id: jsContainerId, mode: "ace/mode/javascript", value: comp.litCode || "" });
-            cssEditor = window.RED.editor.createEditor({ id: cssContainerId, mode: "ace/mode/css", value: comp.litStyles || "" });
-            activeCodeEditors.push(jsEditor, cssEditor);
-        } else {
-            // Defensive fallback (e.g. a test harness with no RED.editor) —
-            // not the primary authoring path. Appends into the container
-            // jQuery object we already hold, rather than re-querying by id.
-            var jsFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litCode || "").appendTo(jsContainer);
-            var cssFallback = window.$("<textarea>").css({ width: "100%", height: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(comp.litStyles || "").appendTo(cssContainer);
-            jsEditor = { getValue: function () { return jsFallback.val(); } };
-            cssEditor = { getValue: function () { return cssFallback.val(); } };
+        // Read-only PREVIEW fields only — just enough to see at a glance
+        // that code exists (and roughly how much). The actual editing
+        // happens in a modal dialog (openLitComponentCodeEditor), exactly
+        // like the Function Logic node's own code editor — NOT inline here.
+        // An earlier version embedded live ace/monaco editors directly in
+        // this panel; that broke badly because this panel fully rebuilds
+        // (destroy + recreate everything) on almost any interaction
+        // elsewhere in it (editing a Bindable Property row, adding one,
+        // etc.), which silently discarded anything typed but not yet
+        // explicitly "applied" — a real bug, not just an inconvenience. A
+        // modal dialog is immune to that: it owns the editor exclusively
+        // while open, and nothing outside it can tear it down mid-edit.
+        function previewText(code, emptyLabel) {
+            if (!code) return emptyLabel;
+            var firstLine = code.split("\n")[0];
+            return (firstLine.length > 40 ? firstLine.slice(0, 40) + "…" : firstLine) +
+                " (" + code.length + " chars)";
         }
+        var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
+        window.$("<input>", { type: "text", readonly: "readonly" })
+            .css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" })
+            .val(previewText(comp.litCode, "(empty — click Edit Code to write render())"))
+            .appendTo(jsPreviewRow);
 
-        window.$("<button>", { type: "button" }).text("Apply Code").css({ width: "100%", "margin-bottom": "12px" }).on("click", function () {
-            comp.litCode = jsEditor.getValue();
-            comp.litStyles = cssEditor.getValue();
-            refreshComponentRender(comp);
-            markDirty();
+        var cssPreviewRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("CSS").appendTo(cssPreviewRow);
+        window.$("<input>", { type: "text", readonly: "readonly" })
+            .css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" })
+            .val(previewText(comp.litStyles, "(empty)"))
+            .appendTo(cssPreviewRow);
+
+        window.$("<button>", { type: "button" }).text("Edit Code...").css({ width: "100%", "margin-bottom": "12px" }).on("click", function () {
+            openLitComponentCodeEditor(comp);
         }).appendTo(state.propertiesPane);
 
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 8px" }).text("Bindable Properties").appendTo(state.propertiesPane);
@@ -196,6 +183,17 @@ export function renderPropertiesPanel() {
             PARAM_TYPES.forEach(function (t) { window.$("<option>", { value: t }).text(t).prop("selected", p.type === t).appendTo(typeSelect); });
             typeSelect.on("change", function () {
                 p.type = typeSelect.val();
+                // Reset to a correctly-typed default — otherwise a leftover
+                // value from the PREVIOUS type (e.g. the literal string
+                // "false" typed while this was still a "string" field)
+                // silently survives the type switch. That string is
+                // TRUTHY in JS, which is exactly what caused a boolean
+                // Bindable Property to render as "always true" regardless
+                // of what the UI showed — see also the coercion in
+                // renderLitComponentInstance, which defends against any
+                // already-saved data with the same problem.
+                p.defaultValue = defaultValueForType(p.type);
+                if (comp.props) delete comp.props[p.name];
                 markDirty();
                 renderPropertiesPanel();
                 refreshComponentRender(comp);

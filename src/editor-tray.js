@@ -12,9 +12,26 @@ import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogic
 import { removeLogicNodes, renderLogicCanvas } from "./logic/logic-nodes.js";
 import { buildPalette, renderEventsPanel, refreshEventsHighlight } from "./sidebar/palette-events-panel.js";
 
+// Broader than a plain "is this an <input>/<textarea>" check: a real code
+// editor widget (RED.editor.createEditor — ace, monaco, or CodeMirror
+// depending on Node-RED's own configuration) doesn't necessarily put
+// keyboard focus on a bare <input>/<textarea> tag — some route typing
+// through a `contenteditable` surface, or a textarea buried inside the
+// editor's own wrapper. Missing this was a real, reported bug: typing
+// Ctrl+C/Ctrl+V to copy/paste TEXT inside a code-editor dialog (e.g. the
+// Lit Component's "Edit Code..." dialog) instead cloned/copied the
+// currently-selected CANVAS component, because this canvas-wide keydown
+// handler didn't recognize the editor's focused element as "text editing"
+// and went ahead with its own Ctrl+C/Ctrl+V shortcut.
+function isEditableTarget(target) {
+    var $t = window.$(target);
+    if ($t.is("input,textarea")) return true;
+    return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
+}
+
 export function onKeyDown(e) {
     if (!state.trayContent) return;
-    var isTextField = window.$(e.target).is("input,textarea");
+    var isTextField = isEditableTarget(e.target);
     if ((e.key === "Delete" || e.key === "Backspace") && !isTextField) {
         if (state.activeCanvasTab === "logic") {
             if (state.logicSelectedIds.length) {

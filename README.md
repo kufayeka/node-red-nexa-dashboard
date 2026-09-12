@@ -7,7 +7,7 @@
 
 This document describes the **actual current implementation** (verified against the
 source in this package, not aspirational marketing copy). Anything not yet built is
-called out explicitly under [§10 Known Limitations & Roadmap](#10-known-limitations--roadmap)
+called out explicitly under [§13 Known Limitations & Roadmap](#13-known-limitations--roadmap)
 instead of being described as if it already worked.
 
 ---
@@ -20,12 +20,15 @@ instead of being described as if it already worked.
 4. [Data model](#4-data-model)
 5. [The editor (Pages tray)](#5-the-editor-pages-tray)
 6. [The Logic canvas in detail](#6-the-logic-canvas-in-detail)
-7. [The deployed runtime](#7-the-deployed-runtime)
-8. [The component plugin contract (`window.NEXA.registerComponent`)](#8-the-component-plugin-contract-windownexaregistercomponent)
-9. [Writing your own component plugin, step by step](#9-writing-your-own-component-plugin-step-by-step)
-10. [Known limitations & roadmap](#10-known-limitations--roadmap)
-11. [Installation & development workflow](#11-installation--development-workflow)
-12. [License](#12-license)
+7. [Basic Shape Components — practical usage](#7-basic-shape-components--practical-usage)
+8. [Reusable Screen Templates](#8-reusable-screen-templates)
+9. [The Lit Component node](#9-the-lit-component-node)
+10. [The deployed runtime](#10-the-deployed-runtime)
+11. [The component plugin contract (`window.NEXA.registerComponent`)](#11-the-component-plugin-contract-windownexaregistercomponent)
+12. [Writing your own component plugin, step by step](#12-writing-your-own-component-plugin-step-by-step)
+13. [Known limitations & roadmap](#13-known-limitations--roadmap)
+14. [Installation & development workflow](#14-installation--development-workflow)
+15. [License](#15-license)
 
 ---
 
@@ -200,7 +203,14 @@ interface Screen {
 
 interface Component {
   id: string;
-  type: string;               // a registered NEXA component id, e.g. "kufayeka-rect"
+  // A registered NEXA component id (e.g. "kufayeka-rect"), OR one of two
+  // reserved types the runtime special-cases instead of looking up in the
+  // component registry — see §8 and §9:
+  //   "@template"      — a Reusable Screen Template instance (needs `templateId`,
+  //                       `paramValues`)
+  //   "@lit-component" — an inline Lit.js node (needs `litCode`, `litStyles`,
+  //                       `litBindable`, `litEvents`)
+  type: string;
   x: number; y: number; w: number; h: number;
   rotation: number;            // degrees
   flipH?: boolean; flipV?: boolean;
@@ -208,6 +218,20 @@ interface Component {
   g?: string;                  // group id, if this component is grouped
   layerId: string;
   props: Record<string, any>;  // seeded from the component's `defaults`
+
+  // Only present on a "@template" instance (see §8):
+  templateId?: string;               // which Template this instance renders
+  paramValues?: Record<string, any>; // per-instance static override of the template's
+                                       // declared params — a string value that is
+                                       // EXACTLY one "{path}" expression is resolved
+                                       // against the immediately-enclosing scope's own
+                                       // params instead of being used literally
+
+  // Only present on a "@lit-component" instance (see §9):
+  litCode?: string;      // the class BODY text — wrapped as `class extends <base> { <litCode> }`
+  litStyles?: string;    // plain CSS text — wrapped as `static styles = css\`<litStyles>\`;`
+  litBindable?: Array<{ name: string; type: "string"|"number"|"boolean"|"object"|"array"|"color"; defaultValue: any }>;
+  litEvents?: Array<{ name: string }>;
 }
 
 interface Group { id: string; x: number; y: number; w: number; h: number; }
@@ -221,9 +245,30 @@ interface LogicWire { id: string; from: string; to: string; }
 interface LogicNode {
   id: string;
   type: "onload" | "onrender" | "onclose" | "ui-event" | "ui-update"
-      | "function" | "debug" | "inject" | "reload" | "open-url";
+      | "function" | "debug" | "inject" | "reload" | "open-url"
+      // Template-only node types (only offered in the Events tab while
+      // editing a Template — see §8):
+      | "param-input" | "set-template-param";
   x: number; y: number;
   // ...type-specific fields, see §6
+}
+
+// A project's Reusable Screen Templates (see §8) — same shape as Screen
+// minus `path`, plus `params`/`identifier`. Stored alongside `screens` on
+// the SAME kufayeka-nexa-project config node.
+interface ProjectTemplate {
+  id: string;
+  name: string;
+  identifier: string;    // plain user-editable reference field — NOT a routing key
+  width: number; height: number; gridSize: number; snap: boolean;
+  components: Component[];
+  layers: Layer[];
+  logic: { nodes: LogicNode[]; wires: LogicWire[] };
+  params: Array<{
+    id: string; name: string; label: string;
+    type: "string" | "number" | "boolean" | "object" | "array" | "color";
+    defaultValue: any;
+  }>;
 }
 ```
 
@@ -268,7 +313,7 @@ silently doing the wrong thing.
 tray, switching screens, dragging components, and editing Logic node config **does not
 execute anything** — no lifecycle nodes fire, no `ui-event`/`ui-update` wiring runs, and
 no Function node code is evaluated while you are editing. All of that only happens on the
-actual deployed page (§7). This was a deliberate correction during development: an
+actual deployed page (§10). This was a deliberate correction during development: an
 earlier version *did* execute the Logic graph inside the editor tray, which produced
 confusing side effects (and diverged from what actually happens once a page is deployed).
 
@@ -313,13 +358,18 @@ Clicking an existing wire deletes it (hover turns it red first as a warning).
 | `inject` | Inject | — | ✔ | light green | payload type (`json` / `str` / `num` / `date`), payload value, repeat interval in ms (0 = no repeat), "fire once on startup" |
 | `reload` | Reload Page | ✔ | — | gray | none — calls `window.location.reload()` |
 | `open-url` | Open URL | ✔ | — | teal | navigation mode (replace whole URL vs. sub-path/"endpoint" relative to the current screen), URL/endpoint value, open in new tab |
+| `param-input` | On Params Change | — | ✔ | green | none — **only offered while editing a Template** (see §8). Subflow-Input analogue: fires the current instance's full param snapshot as `msg.payload`, once on mount and again every time any of its params change |
+| `set-template-param` | *(e.g. "Instance #xxxx → Set Value")* | ✔ | — | purple | none — dropped from the **Events** tab like `ui-event`/`ui-update`, already bound to one `@template` instance + one declared param name; sets `msg.payload` as that param's new live value and cascades into any bound nested instance (see §8) |
 
 The **Events** sidebar tab is where `ui-event` and `ui-update` node chips come from: for
 every component currently on the screen, it lists one draggable chip per declared event
 (`"<Component> → <event label>"`) and a single consolidated **"<Component> → Update"**
 chip (one `ui-update` node configures *any* combination of that component's properties —
-there is no more one-node-per-property). Selecting a component on the canvas highlights
-its chips here (and vice versa is not implemented — see §10).
+there is no more one-node-per-property). A `@template` instance instead gets one
+**"<Instance> → Set `<Param>`"** chip per param its Template declares (§8); a
+`@lit-component` instance gets one **"<Instance> → on `<event>`"** chip per declared
+event plus the same consolidated **"→ Update"** chip (§9). Selecting a component on the
+canvas highlights its chips here (and vice versa is not implemented — see §13).
 
 ### Execution engine — **only runs on the deployed page**
 
@@ -364,7 +414,22 @@ Execution semantics (verified in the current code):
   always wins. `x`/`y`/`w`/`h`/`rotation`/`flipH`/`flipV` are treated as component
   geometry (moved/resized directly); everything else is written to `comp.props.<key>` and
   applied via the component's `onBind(el, "props.<key>", value)` if it has one, or a full
-  `render()` re-invocation otherwise.
+  `render()` re-invocation otherwise (a `@lit-component` sets the property directly on
+  its mounted custom element — Lit's own reactivity re-renders it, no `onBind` involved).
+  **`msg.properties` must be a whole object you assign, not a nonexistent one you mutate**
+  — this is the single most common Function-node mistake when targeting a *custom*
+  bindable prop name (one that isn't in the recognized top-level-key list above, e.g. a
+  `@lit-component`'s own declared prop):
+  ```js
+  // WRONG — msg.properties is undefined the first time this runs; this throws
+  // "Cannot set properties of undefined (setting 'prop1')"
+  msg.properties.prop1 = msg.payload;
+  return msg;
+
+  // RIGHT — assign the whole object
+  msg.properties = { prop1: msg.payload };
+  return msg;
+  ```
 - **Verbose logging is off by default** on deployed pages (nobody wants a live SCADA
   screen spamming devtools). Run `window.NEXA_LOGIC_VERBOSE = true` in the browser console
   to turn on step-by-step `[nexa-logic] ...` tracing for that page load. `debug` nodes
@@ -372,7 +437,255 @@ Execution semantics (verified in the current code):
 
 ---
 
-## 7. The deployed runtime
+## 7. Basic Shape Components — practical usage
+
+`@kufayeka/nexa-component-basic-shapes` is the bundled reference component package —
+installed alongside Nexa Dashboard, it registers 8 component types under the **"Basic"**
+palette category. This section is the practical "what does each one actually do" guide;
+§11/§12 cover the underlying contract if you want to write your own.
+
+All 8 share the same basic recipe: drag the chip onto the UI canvas, then use the
+**Properties** tab to edit its fields (each maps 1:1 to a key in `comp.props`), and the
+**Events** tab to wire its `click` event and/or drop an **"→ Update"** node targeting it.
+
+| Component id | Palette label | Default size | Key props (`defaults`) | Notes |
+| --- | --- | --- | --- | --- |
+| `kufayeka-rect` | Rectangle | 120×80 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `borderRadius`, `opacity`, `shadowBlur`, `shadowColor` | Plain `<div>` styling (border/background/box-shadow) — no SVG |
+| `kufayeka-ellipse` | Circle / Ellipse | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity`, `shadowBlur`, `shadowColor` | Same as Rectangle with `border-radius: 50%` |
+| `kufayeka-triangle` | Triangle | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `direction` (`up`\|`down`\|`left`\|`right`), `opacity` | Inline SVG `<polygon>`, non-scaling stroke |
+| `kufayeka-diamond` | Diamond | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | Inline SVG `<polygon>` |
+| `kufayeka-star` | Star | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | Inline SVG `<polygon>`, 10-point star |
+| `kufayeka-line` | Line | 140×24 | `stroke`, `strokeWidth`, `strokeStyle`, `arrowStart`, `arrowEnd`, `opacity` | Inline SVG `<line>` with optional arrowhead `<marker>`s |
+| `kufayeka-path` | Freeform Path | 120×80 | `pathData` (raw SVG path `d` string), `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | For any shape the others can't express — edit `pathData` directly (no visual path editor yet) |
+| `kufayeka-text-label` | Text Label | 160×36 | `text`, `color`, `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `textAlign`, `textDecoration`, `lineHeight`, `letterSpacing`, `backgroundColor`, `padding`, `wordWrap` | The one component in this package built as a Lit web component (`<nexa-text-label>`) rather than plain DOM — see §9 for what that pattern looks like when you write your own |
+
+All 8 fire a `click` event and support the geometry every component gets for free
+(x/y/w/h/rotation/lock, flip H/V except Text Label, resize/rotate handles).
+
+### Recipe: change a shape's color when clicked
+
+1. Drop a Rectangle, note its id from the canvas (e.g. `#a1b2`).
+2. **Events** tab → drag **"Rectangle #a1b2 → Clicked"** onto the Logic canvas.
+3. Drag **"Rectangle #a1b2 → Update"** onto the canvas too, double-click it, and set
+   `fill` to a new color in the config form (leave every other field blank).
+4. Wire "Clicked" → "Update". Deploy, open the screen, click the rectangle.
+
+### Recipe: drive `pathData` from live data
+
+`kufayeka-path`'s `pathData` isn't in the recognized top-level `msg` key list (§6), so
+target it via `msg.properties` from a Function node between your data source and the
+`ui-update` node:
+```js
+msg.properties = { pathData: "M 10 " + msg.payload + " L 100 " + msg.payload };
+return msg;
+```
+
+---
+
+## 8. Reusable Screen Templates
+
+A **Template** solves "the same 10-field monitoring card needs to appear on this screen
+15 times, all wired the same way, without hand-copying it 15 times." A Template is
+**data-shape-identical to a Screen** (`components`/`layers`/`logic`, see `ProjectTemplate`
+in §4) — no `path` (it's never deployed directly), plus a declared `params` list. Once
+created, it's droppable from the **Components** palette (under a **"Templates"** section)
+onto a Screen — or onto *another* Template, which is how nesting works — as a `"@template"`
+component instance.
+
+### 8.1 Creating and editing a Template
+
+Sidebar → **Templates** tab → **"+ Add Template"**. Its settings form mirrors the
+Screens tab's (Name / **Identifier** — a free-text reference field, not a routing key,
+replacing the URL-path field a Screen has / Width / Height / Grid size / Snap) — Width
+and Height are real, editable fields here, since a Template's own canvas size is
+otherwise fixed at creation. Clicking **"Edit"** on a Template row opens the *same* Pages
+tray, in **template-editing mode** — a **"← Back to Screens"** bar appears at the top;
+everything else (palette, Properties, Events, both canvases) works exactly as it does for
+a Screen, because the whole editor is generalized over "the currently active surface"
+(a Screen or a Template) rather than forked.
+
+### 8.2 Declaring params
+
+Still on the Templates tab, while editing a Template: the **Parameters** section is a
+plain schema editor — **"+ Add Parameter"** → name, label, type
+(`string`/`number`/`boolean`/`object`/`array`/`color`), default value (the same typed
+widget `buildParamValueInput` in `src/param-types.js` uses for a template-instance's own
+per-param override, minus the "bind to another param" option — a declared default has no
+parent scope to bind against).
+
+### 8.3 Using a param inside the Template — automatic interpolation, zero wiring
+
+Any **string** prop on any component *inside* the Template can reference a declared param
+by name with `{paramName}` — this is resolved automatically on every render/mount, no
+Logic node required:
+```json
+{ "type": "kufayeka-text-label", "props": { "text": "Speed: {speed} RPM" } }
+```
+Deep paths work too, for `object`/`array`-typed params — `{info.specs.rpm}`,
+`{list[0]}`, `{items[1].label}` — via the same `{path}` grammar. A path that doesn't
+resolve (unknown param name, or a missing later segment) is left exactly as literal text,
+never rendered as `"undefined"`.
+
+### 8.4 Reading/writing a param from Logic — the Subflow-Input/env-var analogue
+
+Two node types exist **only** in a Template's own Events tab (§6):
+- **`param-input`** ("On Params Change") — a source node, the Subflow-Input equivalent:
+  fires the instance's current full param snapshot as `msg.payload` once on mount and
+  again every time any param changes. Wire it into a Function/Debug node to react to
+  params from inside the Template's own Logic.
+- **`set-template-param`** — one **"<Instance> → Set `<Param>`"** chip per declared
+  param, for every `@template` instance on the *current* canvas (a Screen, or another
+  Template while nesting). Wire a Function/Inject node into it; `msg.payload` becomes
+  that instance's new live param value, which re-interpolates every prop referencing it,
+  re-fires that instance's own `param-input` node(s), and cascades into any nested
+  instance bound to it (§8.5) — all without touching the Template's own definition.
+
+### 8.5 Per-instance values: static default (Properties panel) or a `{path}` binding
+
+Drop a Template instance onto a Screen (or another Template) and select it — the
+**Properties** panel shows one field per declared param, seeded from the param's
+`defaultValue`. Two ways to set it:
+- **A literal value** — a static per-instance override (`comp.paramValues.<name>`),
+  exactly like a Subflow instance's own env-var dialog.
+- **A `{path}` binding** — check "Bind to another param" next to the field, then type an
+  expression like `{x}` or `{info.specs.rpm}`. This is **declarative, reactive, and needs
+  zero Logic-node wiring**: it's resolved against the *immediately-enclosing* scope's own
+  already-resolved params (the Screen's own param state doesn't exist, so this only makes
+  sense for a NESTED instance — one Template dropped inside another), and re-resolves
+  automatically whenever the outer param changes live via `set-template-param` — the
+  "10 identical monitoring cards, one wired data source" use case this feature exists for.
+  A binding only ever looks at its *direct* parent's params (never grandparent), but
+  composes correctly through any nesting depth because each level re-resolves its own
+  binding the same way, one hop at a time.
+
+### 8.6 Nesting and the cycle guard
+
+A Template dropped inside another Template is mounted/rendered exactly like any other
+component — recursively, scaled from its own intrinsic width/height to the instance's
+actual `w`/`h`. Two independent guards prevent an infinite loop: the **palette**, while
+editing Template A, excludes any Template that already (directly or transitively)
+contains A (so you can't even drop it); a **defensive runtime/editor backstop**
+(`visitedTemplateIds`, threaded through the recursive mount) renders a clear
+`(circular template reference: ...)` box instead of hanging, in case hand-edited or
+future-buggy data ever reaches that far.
+
+### 8.7 Worked example — matches the "why does my second card follow the first card's value" question
+
+Two independent Screen instances of the same "Card" Template, each driven by its own
+Function+`set-template-param` wiring, each with a NESTED instance bound via `{path}`:
+
+```
+Screen
+├─ cardA  (@template → "Card")     ← set-template-param("cardA", "value") = "A-DATA"
+│   └─ leaf (@template → "Leaf", paramValues: { value: "{value}" })
+└─ cardB  (@template → "Card")     ← set-template-param("cardB", "value") = "B-DATA"
+    └─ leaf (@template → "Leaf", paramValues: { value: "{value}" })
+```
+`cardA`'s and `cardB`'s param state is tracked separately (keyed by each instance's own
+full namespaced path — `cardA::leaf` and `cardB::leaf` are always distinct), so `leaf`
+under `cardA` shows `"A-DATA"` and `leaf` under `cardB` shows `"B-DATA"`, independently —
+this is namespace isolation working as designed, not something you need to wire around.
+If you ever see the wrong sibling's value in practice, hard-refresh the deployed page
+first (`_runtime.js` has no cache-busting query string, so a browser can serve a stale
+cached copy from before a fix) before assuming it's a data-modeling bug.
+
+---
+
+## 9. The Lit Component node
+
+A generic, always-available palette entry (under a **"Custom"** section, not tied to any
+installed component package) for writing your **own** inline Lit.js component — the
+JS/CSS live on the dropped instance itself, authored in the Properties panel — analogous
+to Node-RED's own **Function** node (inline code, no separate package needed) or FlowFuse
+Dashboard 2's **`ui-template`** node, but Lit-based instead of Vue-based.
+
+> **This section covers the basics.** For internal functions/state, conditional
+> rendering, loops, embedding an already-made Screen Template from your own code
+> (`this.mountTemplate(...)`), and a full set of worked use cases, see the dedicated
+> **[Lit Component Guide](docs/LIT_COMPONENT_GUIDE.md)**.
+
+### 9.1 Authoring
+
+Drop **"Lit Component"** from the palette, select it, and the Properties panel shows:
+
+- **Class body / CSS preview fields** — read-only, just enough to see at a glance that
+  code exists (a first-line snippet + character count). Click **"Edit Code..."** to
+  actually write/change it — this opens a **modal dialog** (`RED.editor.createEditor`,
+  the same widget the core Function node uses, in the same kind of `RED.tray.show`
+  dialog the Function node's own editor uses — see `src/dialogs/lit-code-dialog.js`),
+  not an inline sidebar editor. This is deliberate, not just a style choice: the
+  Properties panel fully rebuilds on almost any interaction elsewhere in it (adding a
+  Bindable Property, etc.), which would silently discard anything typed but not yet
+  committed if the editor lived inline in the sidebar — a real bug an earlier version
+  had. The dialog owns the editor exclusively while open, immune to that.
+  - **Class body** is the INSIDE of a Lit class: `render()`, any other methods,
+    lifecycle hooks. You do **not** write `class extends LitElement { ... }` yourself —
+    just the members that go inside it.
+    ```js
+    render() {
+      return html`<div>Hello, ${this.label}</div>`;
+    }
+    ```
+  - **CSS** is plain CSS text, wrapped as `static styles = css\`...\`;` — scoped to
+    *this component only*, for free, via Lit's Shadow DOM (no manual `scoped`/BEM-style
+    hacks needed, unlike a plain-DOM component sharing the page's global stylesheet).
+  - **Cancel** discards everything typed in the dialog; **Done** commits both the class
+    body and CSS at once and re-renders the preview.
+- **Bindable Properties** — declare `{ name, type, defaultValue }` rows here rather than
+  in your own code; this list is what actually generates the Lit `static properties`
+  declaration behind the scenes (so `this.label` in `render()` above just works,
+  reactively, once you've declared `label` here) — **and** doubles as this instance's
+  `ui-update`/Properties-panel targets, exactly like `defaults` does for a registered
+  component (§11).
+- **Events** — declare `{ name }` rows for anything your code fires with
+  `this.emit(eventName, payload)` (an `emit` method every Lit Component instance gets for
+  free, wired to the Logic canvas's `ctx.emit` underneath) — each becomes an
+  **"<Instance> → on `<name>`"** chip in the Events tab.
+
+### 9.2 Reading data in — from a Logic node
+
+Exactly the pattern documented in §6/§7: a `@lit-component`'s Bindable Properties are
+NOT in the recognized top-level `msg` key list, so target them via `msg.properties`
+keyed by the bindable prop's name:
+```js
+// A declared Bindable Property named "prop1" —
+msg.properties = { prop1: msg.payload };
+return msg;
+```
+wired into that instance's **"→ Update"** node. Lit's own reactivity re-renders the
+component the moment the property is set — there's no `onBind` to write, unlike a plain
+registered component.
+
+### 9.3 How it actually runs (useful for debugging)
+
+- Your class body is compiled once via `new Function(...)` into
+  `class extends NexaLitBase { <your code> }` (`NexaLitBase` is a thin wrapper around the
+  real `LitElement` adding two methods for free: `emit(name, payload)` and
+  `mountTemplate(hostEl, templateIdOrName, paramValues, opts)` — the latter lets your own
+  code embed an already-authored Screen Template into your shadow DOM, see the
+  [Lit Component Guide](docs/LIT_COMPONENT_GUIDE.md#8-embedding-an-already-made-screen-template--thismounttemplate))
+  and registered as a custom element with an
+  auto-generated tag name (`nexa-lit-<hash of your code+styles+bindable list>`) —
+  **same trust boundary as the Function node**: no sandboxing, this runs with full access,
+  same as everything else in the admin editor.
+- The compiled class is **cached by that hash**, so editing an unrelated instance, or
+  re-rendering the same one with unchanged code, never re-registers a duplicate custom
+  element (the browser's `customElements` registry only allows defining a given tag once).
+  Editing the code/CSS/bindable list *does* produce a new hash → a new tag → a fresh
+  element — the old tag simply stops being used, it isn't cleaned up (an accepted,
+  standard limitation of live-editing custom elements in any browser).
+- Lit itself ships as a plain `<script src>` — `window.NEXA_LIT = { LitElement, html,
+  css, nothing }` — loaded once via `RED.httpAdmin` in the editor and once via
+  `RED.httpNode` on each deployed page (`lib/nexa-lit-vendor.bundle.js`, built from
+  `src/lit-vendor.js` by `build.js`), **not** bundled into the editor's own ES-module
+  pipeline. Lit's module-level code runs real browser feature-detection unconditionally at
+  import time, so folding it into `dist/nexa-editor.bundle.js` would mean paying that cost
+  (and needing a real DOM) the instant the editor bundle loads, whether or not any screen
+  actually uses a Lit Component.
+
+---
+
+## 10. The deployed runtime
 
 `lib/nexa-plugin.js` registers a **second** plugin from the same package
 (`type: "node-red-runtime-plugin"`) that mounts everything under `RED.httpNode` — the
@@ -403,12 +716,12 @@ public HTML page.
 
 On backend startup, `lib/nexa-plugin.js` also subscribes once to Asset Engine changes via
 `getAssetController(RED).subscribe(...)` and republishes every change through
-`RED.comms.publish("nexa/value", meta)` — see §10 for what this is (and isn't) currently
+`RED.comms.publish("nexa/value", meta)` — see §13 for what this is (and isn't) currently
 used for.
 
 ---
 
-## 8. The component plugin contract (`window.NEXA.registerComponent`)
+## 11. The component plugin contract (`window.NEXA.registerComponent`)
 
 Any script that calls `window.NEXA.registerComponent(id, definition)` — from the editor
 bundle, from a component package's own runtime script, or both (the same `def` shape
@@ -456,7 +769,7 @@ interface NexaComponentDefinition {
 
   // Property paths intended for live external (e.g. asset tag) binding.
   // Declared and normalized by the registry today; not yet consumed by any
-  // binding UI — see §10.
+  // binding UI — see §13.
   bindable?: string[];        // e.g. ["props.fill", "props.stroke"]
 
   // Events this component can emit toward the Logic canvas. Both forms are accepted —
@@ -501,7 +814,7 @@ interface NexaRenderContext {
 
 ---
 
-## 9. Writing your own component plugin, step by step
+## 12. Writing your own component plugin, step by step
 
 This mirrors `@kufayeka/nexa-component-basic-shapes` (the bundled example/reference
 package — see its own README for the full shape catalogue it ships).
@@ -547,7 +860,7 @@ module.exports = function (RED) {
     type: "nexa-ui-component-package",
     // Every script listed here is injected, in order, into BOTH the editor's
     // Pages tray (so you can drag it in the palette) and every deployed page
-    // that uses it (so it actually renders once published) — see §7.
+    // that uses it (so it actually renders once published) — see §10.
     runtimeScripts: [
       "/nexa-indicator/client.js"
     ],
@@ -589,7 +902,7 @@ module.exports = function (RED) {
       el.style.width = "100%";   // OK here only because el has no siblings competing
       el.style.height = "100%";  // for its box — for anything with a border/shadow that
                                   // must exactly track comp.w/h, prefer NOT touching
-                                  // el's size at all (see §8's warning).
+                                  // el's size at all (see §11's warning).
       el.style.backgroundColor = props.active ? props.activeColor : props.inactiveColor;
       el.style.boxShadow = props.active ? "0 0 12px " + props.activeColor : "inset 0 1px 3px rgba(0,0,0,0.5)";
       el.style.transition = "background-color 0.2s, box-shadow 0.2s";
@@ -610,7 +923,7 @@ module.exports = function (RED) {
 ### Step 5 — install and verify
 
 Add the package as a dependency the same way you would any other Node-RED node package
-(see §11), restart Node-RED, then:
+(see §14), restart Node-RED, then:
 
 1. Open **Pages** — your component should appear in the **Components** palette under
    category **"Sensors"**.
@@ -624,7 +937,7 @@ Add the package as a dependency the same way you would any other Node-RED node p
 
 ---
 
-## 10. Known limitations & roadmap
+## 13. Known limitations & roadmap
 
 Documented honestly so nobody builds on top of something that isn't really there yet:
 
@@ -658,10 +971,27 @@ Documented honestly so nobody builds on top of something that isn't really there
   (`getCurrentProject()` tracks the most recently loaded `kufayeka-nexa-project` node
   module-globally). Multiple Nexa project config nodes in the same flow file are not a
   supported multi-tenant setup today.
+- **A `@lit-component`'s actual Shadow-DOM rendering has not been verified against a real
+  browser DOM in an automated test** — this codebase's own headless mock-test harness
+  (plain Node.js, no real `HTMLElement`/`customElements`/Shadow DOM) can and does verify
+  the mount/compile/cache/`ui-update` wiring around it, but not whether Lit itself then
+  paints correctly. Boot-test any non-trivial Lit Component by hand before relying on it.
+- **`_registry.js`/`_runtime.js`/`_lit-vendor.js` are served with no cache-busting query
+  string.** If you deploy a fix to this package itself and a previously-opened deployed
+  page still looks wrong, hard-refresh (or open in a private window) before assuming the
+  fix didn't take — the browser may be serving an old cached copy of one of those scripts.
+- **A `set-template-param`/declarative-`{path}`-binding cascade only reaches ONE level of
+  nesting depth from where the change originates** (by design — see §8.5 on why a binding
+  only ever looks at its direct parent, never a grandparent). A chain three or more
+  Templates deep composes correctly on its own (each level re-resolves independently), but
+  a `set-template-param` node itself can currently only target a `@template` instance that
+  is a **direct child of the surface the node is authored on** — there's no picker for
+  reaching a doubly-nested instance from three levels up. Work around it today by putting
+  the `set-template-param` node on the *middle* Template's own canvas instead.
 
 ---
 
-## 11. Installation & development workflow
+## 14. Installation & development workflow
 
 This package follows the same convention as `@kufayeka/node-red-asset-engine` in this
 monorepo — installed as a `file:` dependency from `data/package.json` (the Node-RED user
@@ -693,6 +1023,6 @@ bundle — the plugin `.html` is only read once, at editor load time.
 
 ---
 
-## 12. License
+## 15. License
 
 MIT © Kufayeka Tech
