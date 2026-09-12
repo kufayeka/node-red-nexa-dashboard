@@ -13,7 +13,7 @@
 // mean paying that cost (and needing those globals to exist) the moment the
 // EDITOR bundle loads, whether or not any screen even uses a Lit Component.
 // Instead build.js bundles this file into its OWN standalone
-// lib/nexa-lit-vendor.bundle.js, loaded as a plain <script src> — once by
+// dist/nexa-lit-vendor.bundle.js, loaded as a plain <script src> — once by
 // the editor (RED.httpAdmin, see lib/nexa-plugin.js) and once by each
 // deployed public page (RED.httpNode, under /nexa/_lit-vendor.js) — the same
 // pattern @kufayeka/nexa-component-basic-shapes already uses for its own

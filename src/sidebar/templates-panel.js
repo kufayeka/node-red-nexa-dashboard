@@ -1,13 +1,4 @@
 // --- Reusable Screen Templates: the "Templates" sidebar tab -------------
-// A Template is data-shape-identical to a Screen (see makeTemplate() in
-// state.js) plus a declared `params` list — named, typed values an instance
-// of it exposes outward, modeled directly on Node-RED's own Subflow
-// env-vars + Input port (see logic-nodes.js's "param-input"/
-// "set-template-param" node kinds and component-renderer.js's {name}
-// interpolation for how a param's value actually reaches things). Editing a
-// template reuses the exact same tray canvas used for screens (see
-// getActiveScreen()'s editingMode branch in state.js) rather than a second,
-// parallel canvas implementation.
 import { state, genId, markDirty, findTemplate, makeTemplate } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
@@ -15,11 +6,6 @@ import { buildPalette } from "./palette-events-panel.js";
 import { normalizeParamType, buildTypedInputWidget, buildEditableListWidget } from "../param-types.js";
 
 function refreshComponentsPaletteIfVisible() {
-    // The Components palette filters out templates that would close a cycle
-    // with whichever template is currently being edited (see buildPalette()),
-    // so entering/leaving template-editing mode can change what it should
-    // show — refresh it in place rather than leaving it stale until the user
-    // happens to switch away and back to that tab.
     if (state.componentsPane && state.componentsPane.is(":visible")) {
         buildPalette(state.componentsPane);
     }
@@ -44,27 +30,87 @@ function templateUsageCount(id) {
 export function renderTemplateList() {
     if (!state.templateListEl) return;
     state.templateListEl.empty();
+
+    state.templateListEl.css({
+        border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
+        "border-radius": "4px",
+        background: "var(--red-ui-secondary-background, #fff)",
+        "max-height": "220px",
+        "min-height": "90px",
+        "overflow-y": "auto",
+        "overflow-x": "hidden",
+        padding: "4px",
+        "box-sizing": "border-box",
+        width: "100%",
+        "box-shadow": "inset 0 1px 2px rgba(0,0,0,0.03)"
+    });
+
     state.templates.forEach(function (t) {
         var isActive = state.editingMode === "template" && state.activeTemplateId === t.id;
+        var usages = templateUsageCount(t.id);
+
         var row = window.$("<div>", { "class": "nexa-template-row" }).css({
-            padding: "6px 8px", "border-radius": "3px", "margin-bottom": "4px",
-            display: "flex", "justify-content": "space-between", "align-items": "center",
-            background: isActive ? "#d0e2ff" : "#f5f5f5"
+            padding: "4px 6px",
+            "border-radius": "3px",
+            "margin-bottom": "2px",
+            display: "flex",
+            "align-items": "center",
+            cursor: "pointer",
+            background: isActive ? "var(--red-ui-list-item-selected-background, #e3f2fd)" : "transparent",
+            border: isActive ? "1px solid #90caf9" : "1px solid transparent",
+            "font-size": "12px",
+            "user-select": "none",
+            transition: "background 0.15s, border-color 0.15s"
         }).appendTo(state.templateListEl);
 
-        window.$("<span>").text(t.name).css({ flex: "1", cursor: "pointer" })
-            .on("click", function () { editTemplate(t.id); }).appendTo(row);
+        // Icon
+        window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 6px; flex: 0 0 auto;" }).appendTo(row);
 
-        window.$("<a>", { href: "#", title: "Edit" }).html('<i class="fa fa-pencil"></i>').css({ color: "#555", "margin-right": "6px" })
-            .on("click", function (e) { e.preventDefault(); editTemplate(t.id); }).appendTo(row);
+        // Name
+        window.$("<span>", {
+            style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
+        }).text(t.name).on("click", function () { editTemplate(t.id); }).appendTo(row);
 
-        window.$("<a>", { href: "#", title: "Delete" }).html('<i class="fa fa-trash"></i>').css({ color: "#999" })
+        // Identifier badge
+        if (t.identifier) {
+            window.$("<span>", {
+                style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; margin-right: 4px; flex: 0 0 auto;"
+            }).text("{" + t.identifier + "}").appendTo(row);
+        }
+
+        // Usage count badge
+        window.$("<span>", {
+            style: "font-size: 10px; color: #888; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 8px; margin-right: 4px; flex: 0 0 auto;"
+        }).text(usages + " " + (usages === 1 ? "use" : "uses")).appendTo(row);
+
+        // Edit button
+        window.$("<a>", {
+            href: "#",
+            title: "Edit",
+            class: "red-ui-button red-ui-button-small",
+            style: "padding: 1px 5px; font-size: 10px; color: #555; margin-right: 4px; flex: 0 0 auto;"
+        }).html('<i class="fa fa-pencil"></i>')
             .on("click", function (e) {
-                e.preventDefault();
-                var usages = templateUsageCount(t.id);
-                if (usages > 0) {
+                if (e && e.preventDefault) e.preventDefault();
+                if (e && e.stopPropagation) e.stopPropagation();
+                editTemplate(t.id);
+            })
+            .appendTo(row);
+
+        // Delete button
+        window.$("<a>", {
+            href: "#",
+            title: "Delete",
+            class: "red-ui-button red-ui-button-small",
+            style: "padding: 1px 5px; font-size: 10px; color: #d32f2f; flex: 0 0 auto;"
+        }).html('<i class="fa fa-trash"></i>')
+            .on("click", function (e) {
+                if (e && e.preventDefault) e.preventDefault();
+                if (e && e.stopPropagation) e.stopPropagation();
+                var currentUsages = templateUsageCount(t.id);
+                if (currentUsages > 0) {
                     if (window.RED && window.RED.notify) {
-                        window.RED.notify("This template is used by " + usages + " instance(s) — remove them first.", { type: "warning", timeout: 3000 });
+                        window.RED.notify("This template is used by " + currentUsages + " instance(s) — remove them first.", { type: "warning", timeout: 3000 });
                     }
                     return;
                 }
@@ -72,10 +118,16 @@ export function renderTemplateList() {
                 if (state.activeTemplateId === t.id) exitTemplateEditing();
                 markDirty();
                 renderTemplateList();
-            }).appendTo(row);
+            })
+            .appendTo(row);
+
+        row.on("click", function () { editTemplate(t.id); });
     });
+
     if (!state.templates.length) {
-        window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("No templates yet.").appendTo(state.templateListEl);
+        window.$("<div>", { style: "padding: 12px; text-align: center; color: #888; font-size: 12px;" })
+            .text("No templates yet.")
+            .appendTo(state.templateListEl);
     }
 }
 
@@ -122,9 +174,6 @@ export function exitTemplateEditing() {
 function showEditBar() {
     if (!state.trayContent) return;
     var template = findTemplate(state.activeTemplateId);
-    // The tray body is torn down and rebuilt fresh every time the tray opens
-    // (see editor-tray.js's open handler), so a bar reference surviving a
-    // previous close would be detached — recreate whenever that's the case.
     if (!editBarEl || !editBarEl.parent().length) {
         editBarEl = window.$("<div>", { "class": "nexa-template-edit-bar" }).css({
             flex: "0 0 auto", padding: "6px 12px", background: "#fff3e0",
@@ -143,12 +192,6 @@ function hideEditBar() {
     if (editBarEl) editBarEl.hide();
 }
 
-// Settings form — deliberately mirrors screens-panel.js's renderScreenForm()
-// field-for-field, swapping the routing-specific "URL path" for a plain
-// "Identifier" reference field (see makeTemplate()'s comment: it's not a
-// routing key and not the internal join key, just a readable label the user
-// controls). Width/Height are real, editable fields here — a template's
-// canvas can be resized after creation, unlike before.
 export function renderTemplateForm() {
     if (!state.templateFormEl) return;
     state.templateFormEl.empty();
@@ -158,7 +201,7 @@ export function renderTemplateForm() {
 
     function row(label, field, value, type) {
         var r = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.templateFormEl);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(r);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text(label).appendTo(r);
         var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
         input.on("change", function () {
             var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
@@ -170,7 +213,7 @@ export function renderTemplateForm() {
         return input;
     }
 
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text("Template Settings").appendTo(state.templateFormEl);
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px", color: "var(--red-ui-primary-text-color, #333)" }).text("Template Settings").appendTo(state.templateFormEl);
     row("Name", "name", template.name);
     row("Identifier", "identifier", template.identifier);
     row("Width (px)", "width", template.width, "number");
@@ -178,12 +221,12 @@ export function renderTemplateForm() {
     row("Grid size (px)", "gridSize", template.gridSize, "number");
 
     var snapRow = window.$("<div>").appendTo(state.templateFormEl);
-    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap).css({ "margin-right": "6px" });
+    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap !== false).css({ "margin-right": "6px" });
     snapInput.on("change", function () {
         template.snap = snapInput.is(":checked");
         markDirty();
     });
-    window.$("<label>").css({ "font-size": "11px", color: "#888" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
+    window.$("<label>").css({ "font-size": "11px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
     renderTemplateParamsSection();
 }
@@ -195,21 +238,21 @@ function renderTemplateParamsSection() {
     if (!template) return;
 
     var section = window.$("<div>", { "class": "nexa-template-params-section" }).css({
-        "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px"
+        "margin-top": "14px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px"
     }).appendTo(state.templateFormEl);
 
-    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "block" })
-        .html('<i class="fa fa-list"></i> Parameters')
+    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "flex", "align-items": "center", gap: "6px", color: "var(--red-ui-primary-text-color, #333)" })
+        .html('<i class="fa fa-list" style="color: #2196f3;"></i> Parameters')
         .appendTo(section);
 
-    window.$("<div>").css({ color: "#888", "font-size": "11px", "margin-bottom": "8px" })
+    window.$("<div>").css({ color: "var(--red-ui-secondary-text-color, #888)", "font-size": "11px", "margin-bottom": "8px" })
         .text("Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the \"On Params Change\" node on this template's own Logic canvas.")
         .appendTo(section);
 
     template.params = template.params || [];
 
     var paramList = buildEditableListWidget(section, {
-        minHeight: "300px",
+        minHeight: "260px",
         removable: true,
         sortable: true,
         addItem: function (container, i, opt) {
@@ -281,4 +324,3 @@ function renderTemplateParamsSection() {
         paramList.editableList("addItem", p);
     });
 }
-

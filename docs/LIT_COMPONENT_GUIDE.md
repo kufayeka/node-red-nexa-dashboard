@@ -116,9 +116,9 @@ different handling in Lit:
 
 **The simplest and safest way: declare it as a Bindable Property too**, even if you never
 intend to wire anything to it from the Logic canvas. Properties panel → Bindable
-Properties → **"+ Add Bindable Property"** → give it a name (e.g. `isOpen`, type
-`boolean`). This makes `this.isOpen` a real Lit reactive property — assigning to it
-automatically schedules a re-render, no extra code needed:
+Properties → **"+ add"** → give it a name (e.g. `isOpen`) and set its Value field's
+typedInput type to `bool`. This makes `this.isOpen` a real Lit reactive property —
+assigning to it automatically schedules a re-render, no extra code needed:
 
 ```js
 render() {
@@ -581,8 +581,11 @@ pair from §3.2, combined with a Bindable Property for the reactive display.
 - **Hard-refresh before assuming a fix didn't take** — `_lit-vendor.js`/`_runtime.js` on a
   deployed page have no cache-busting query string (README §13).
 - **A boolean Bindable Property renders as "always true" no matter what default you set**
-  — this was a real, fixed bug: switching a prop's type dropdown (e.g. string → boolean)
-  used to leave its OLD value sitting in `defaultValue` — a leftover string like `"false"`
-  is TRUTHY in plain JS. The type dropdown now resets `defaultValue` to a correctly-typed
-  value on every type change, and the runtime additionally coerces any already-saved bad
-  data — if you still see this, you're on a build from before that fix.
+  — this was a real, fixed bug from an earlier UI: a separate type dropdown let a prop's
+  `defaultValue` get left as a leftover string like `"false"` after switching its type —
+  and `Boolean("false")` is TRUTHY in plain JS. The current Bindable Properties list has
+  no separate type dropdown at all — the type is *derived* from the Value field's own
+  typedInput selection every time it changes, so type and value can no longer drift apart.
+  The runtime still defensively coerces every value to its declared type regardless (see
+  `coerceLitBindableValue`), which also protects any data saved before this UI existed —
+  if you still see this on current code, that coercion path is the first place to check.
