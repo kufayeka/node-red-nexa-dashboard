@@ -110,30 +110,58 @@ module-scoped controller singleton regardless of which plugin's `RED` object ask
 
 ## 3. Package layout & the build pipeline
 
+**Short answer to "is `lib/` still needed now that there's a `src/`?" — yes, both are
+required, and they are not redundant with each other.** `src/` is the editor's ES-module
+*source* — it doesn't run anywhere by itself; it only exists to be bundled. `lib/` is
+where the actual runnable backend artifacts live: the plugin Node-RED loads at startup
+(`package.json`'s `"main"` field points directly at `lib/nexa-plugin.js`), and two files
+served to public deployed pages that are deliberately hand-written and never touch the
+bundler. Deleting `lib/` would break the plugin outright — there is no `src/` equivalent
+for any of these three files.
+
+**`lib/` vs. `dist/`, at a glance: `lib/` is (almost entirely) hand-written source;
+`dist/` is (entirely) generated output** — with exactly one, unavoidable exception.
+Every generated file also carries its own "AUTO-GENERATED, DO NOT EDIT" banner comment
+at the very top, so this is never ambiguous if you're just looking at one file in
+isolation:
+- `lib/nexa-plugin.js`, `lib/nexa-registry-client.js`, `lib/nexa-runtime-client.js` —
+  hand-written. No `src/` file produces these; edit them directly.
+- `lib/nexa-plugin.html` — **generated**, but pinned to `lib/` by a hard external
+  constraint, not a choice: Node-RED's own plugin loader
+  (`@node-red/registry/lib/loader.js`) derives a plugin's `.html` filename by swapping
+  the extension on its exact registered `.js` path (`lib/nexa-plugin.js` →
+  `lib/nexa-plugin.html`) — there's no config for a different location, so this one file
+  can never move to `dist/` no matter how much tidier that would look.
+- `dist/nexa-editor.bundle.js`, `dist/nexa-lit-vendor.bundle.js` — **generated**, and
+  free to live wherever's cleanest since nothing forces their location — both gitignored,
+  both rebuilt by `npm run build`.
+
 ```
 node-red-nexa-dashboard/
-├── package.json              # "node-red": { plugins: {...}, nodes: {...} }
+├── package.json              # "main": "lib/nexa-plugin.js" — the actual Node-RED entry point
 ├── build.js                  # esbuild bundler — see below
 ├── nodes/
 │   ├── nexa-project.js       # kufayeka-nexa-project config node (backend)
 │   └── nexa-project.html     # ...and its (trivial) edit dialog
-├── lib/
-│   ├── nexa-plugin.js        # backend plugin: httpNode routes, Asset Engine bridge
-│   ├── nexa-plugin.html      # ⚠️ AUTO-GENERATED — do not hand-edit, see below
-│   ├── nexa-registry-client.js  # NEXA registry bootstrap, served to deployed pages
-│   └── nexa-runtime-client.js   # deployed-page mount + Logic execution engine
+├── lib/                       # ⚠️ REQUIRED AT RUNTIME, (almost) all hand-written — see above
+│   ├── nexa-plugin.js               # hand-written backend: httpAdmin/httpNode routes, Asset Engine bridge
+│   ├── nexa-plugin.html             # ⚠️ the ONE generated exception — pinned here by Node-RED itself, see above
+│   ├── nexa-registry-client.js      # hand-written: NEXA registry bootstrap, served to deployed pages
+│   └── nexa-runtime-client.js       # hand-written: deployed-page mount + Logic execution engine
 ├── src/                      # editor source — THIS is what you actually edit
 │   ├── index.js               # entry point: registers the editor plugin + sidebar tab
 │   ├── registry.js            # window.NEXA bootstrap (editor copy)
+│   ├── lit-vendor.js           # Lit re-export, bundled standalone into dist/nexa-lit-vendor.bundle.js (§9.3)
+│   ├── param-types.js          # shared typed-param helpers (typedInput/editableList widgets, type coercion)
 │   ├── state.js                # global state object, constants, screen/model helpers
 │   ├── history.js              # undo/redo stack
 │   ├── editor-tray.js          # the "Pages" tray: dual UI/Logic canvas tabs, keybindings
 │   ├── canvas/
 │   │   ├── canvas-ui.js         # UI canvas render/zoom
-│   │   ├── component-renderer.js # renderComponent(), addComponentAt(), drag
+│   │   ├── component-renderer.js # renderComponent(), addComponentAt(), drag, Lit/Template mounting
 │   │   ├── selection.js          # select/marquee/group/ungroup/flip
 │   │   ├── selection-handles.js  # resize/rotate/lock handles
-│   │   ├── layers.js             # layer tree, z-order
+│   │   ├── layers.js             # layer tree, z-order (the "Layers" sidebar tab)
 │   │   └── clipboard.js          # copy/cut/paste for UI components
 │   ├── logic/
 │   │   ├── logic-nodes.js       # Logic node render/drag/add/remove
@@ -141,42 +169,60 @@ node-red-nexa-dashboard/
 │   │   ├── logic-selection.js   # Logic canvas select/marquee/copy/paste
 │   │   └── logic-zoom.js        # Logic canvas zoom/fit (independent of the UI canvas's)
 │   ├── dialogs/
-│   │   ├── function-dialog.js    # Function node code editor (Ace)
+│   │   ├── function-dialog.js    # Function node code editor (RED.editor.createEditor)
 │   │   ├── ui-update-dialog.js   # "Update Component" node config
 │   │   ├── inject-dialog.js      # Inject node config
-│   │   └── open-url-dialog.js    # Open URL node config
+│   │   ├── open-url-dialog.js    # Open URL node config
+│   │   └── lit-code-dialog.js    # Lit Component's class-body/CSS code editor (§9)
 │   └── sidebar/
-│       ├── sidebar-content.js       # the 5-tab "Nexa" sidebar shell
+│       ├── sidebar-content.js       # the 6-tab "Nexa" sidebar shell
 │       ├── screens-panel.js         # Screens tab (add/select/delete/settings)
+│       ├── templates-panel.js       # Templates tab (§8)
 │       ├── properties-panel.js      # Properties tab (per-component inspector)
 │       └── palette-events-panel.js  # Components palette + Events tab (Logic chips)
-└── dist/
-    └── nexa-editor.bundle.js  # ⚠️ AUTO-GENERATED intermediate esbuild output
+├── test/                     # regression test suite — see §14.1
+│   ├── run-all.js             # rebuilds + runs every mock-*.js, prints a PASS/FAIL summary
+│   └── mock-*.js              # one file per area (registry/resize/templates/lit/etc.)
+├── docs/
+│   └── LIT_COMPONENT_GUIDE.md # deep-dive companion to §9
+└── dist/                      # 100% generated, gitignored — nothing here is ever hand-edited
+    ├── nexa-editor.bundle.js      # ⚠️ AUTO-GENERATED — the raw editor bundle (lib/nexa-plugin.html wraps this)
+    └── nexa-lit-vendor.bundle.js  # ⚠️ AUTO-GENERATED from src/lit-vendor.js — Lit runtime for editor + deployed pages
 ```
 
 ### The build step — **`src/` is the source of truth, not `lib/nexa-plugin.html`**
 
-`lib/nexa-plugin.html` is not written by hand. `build.js` bundles the ES module tree
-rooted at `src/index.js` with esbuild (IIFE format, `es2020` target) and writes the
-result twice:
+`lib/nexa-plugin.html` and `dist/nexa-lit-vendor.bundle.js` are not written by hand —
+both carry an "AUTO-GENERATED, DO NOT EDIT" banner at the top of the file itself as a
+second line of defense. `build.js` runs esbuild (IIFE format, `es2020` target) **twice**:
 
-- `dist/nexa-editor.bundle.js` — the raw bundle.
-- `lib/nexa-plugin.html` — the same bundle wrapped in a single `<script>` tag, which is
-  what Node-RED's plugin loader actually serves to the editor (a `.html` sibling of
-  `lib/nexa-plugin.js`'s registered plugin id is loaded automatically, per the standard
-  Node-RED plugin-loader convention).
+1. Bundles the ES module tree rooted at `src/index.js`, writing the result to both
+   `dist/nexa-editor.bundle.js` (the raw bundle) and `lib/nexa-plugin.html` (the same
+   bundle wrapped in a single `<script>` tag, preceded by a `<script src>` for the Lit
+   vendor bundle — see §9.3 for why Lit isn't folded into this same bundle). This
+   `.html` file is what Node-RED's plugin loader actually serves to the editor (a `.html`
+   sibling of `lib/nexa-plugin.js`'s registered plugin id is loaded automatically, per the
+   standard Node-RED plugin-loader convention) — and it's the **one** generated file that
+   is forced to live in `lib/` rather than `dist/`, because that loader convention derives
+   the `.html` path by swapping the extension on the *exact* registered `.js` path, with
+   no way to point it elsewhere.
+2. Bundles `src/lit-vendor.js` standalone into `dist/nexa-lit-vendor.bundle.js`, served as
+   a plain script both to the editor (`RED.httpAdmin`) and to deployed pages
+   (`RED.httpNode`, under `/nexa/_lit-vendor.js`) — nothing forces *this* one's location,
+   so it lives in `dist/` alongside every other generated artifact.
 
 ```bash
-npm run build     # one-shot build
+npm run build     # one-shot build (both bundles above)
 npm run watch      # rebuilds on every change under src/ (fs.watch, recursive)
+npm test           # rebuild + run the full regression suite, see §14.1
 ```
 
-**If you edit `lib/nexa-plugin.html` directly, your changes will be silently
-overwritten the next time anyone runs `npm run build` (or `watch` picks up any other
-change).** Always edit the modular files under `src/` and rebuild. `lib/nexa-plugin.js`,
-`lib/nexa-registry-client.js`, and `lib/nexa-runtime-client.js` are **not** part of the
-build — those three are plain hand-edited files (backend code and public runtime code,
-neither of which benefits from bundling).
+**If you edit `lib/nexa-plugin.html` or anything under `dist/` directly, your changes
+will be silently overwritten the next time anyone runs `npm run build`.** Always edit the
+modular files under `src/` and rebuild. `lib/nexa-plugin.js`, `lib/nexa-registry-client.js`,
+and `lib/nexa-runtime-client.js` are genuinely different — **not** part of the build at
+all — those three are plain hand-edited files (backend code and public runtime code,
+neither of which benefits from bundling) and must be edited directly in `lib/`.
 
 ---
 
@@ -507,11 +553,14 @@ a Screen, because the whole editor is generalized over "the currently active sur
 ### 8.2 Declaring params
 
 Still on the Templates tab, while editing a Template: the **Parameters** section is a
-plain schema editor — **"+ Add Parameter"** → name, label, type
-(`string`/`number`/`boolean`/`object`/`array`/`color`), default value (the same typed
-widget `buildParamValueInput` in `src/param-types.js` uses for a template-instance's own
-per-param override, minus the "bind to another param" option — a declared default has no
-parent scope to bind against).
+boxed, sortable list (`buildEditableListWidget` in `src/param-types.js` — the same
+Node-RED-native list chrome used by core config-node dialogs like `asset-multi-write`'s
+rules). **"+ add"** appends a row with three sub-fields: **Name**, **Label**, and
+**Value** — the Value field is a real Node-RED `typedInput` widget (`str`/`num`/`bool`/
+`json`, via `buildTypedInputWidget`), and the param's `type` (`string`/`number`/
+`boolean`/`object`/`array`) is derived automatically from whichever typedInput type you
+pick — there's no separate type dropdown, so the declared type and the actual value can
+never drift out of sync with each other.
 
 ### 8.3 Using a param inside the Template — automatic interpolation, zero wiring
 
@@ -543,20 +592,21 @@ Two node types exist **only** in a Template's own Events tab (§6):
 ### 8.5 Per-instance values: static default (Properties panel) or a `{path}` binding
 
 Drop a Template instance onto a Screen (or another Template) and select it — the
-**Properties** panel shows one field per declared param, seeded from the param's
-`defaultValue`. Two ways to set it:
-- **A literal value** — a static per-instance override (`comp.paramValues.<name>`),
-  exactly like a Subflow instance's own env-var dialog.
-- **A `{path}` binding** — check "Bind to another param" next to the field, then type an
-  expression like `{x}` or `{info.specs.rpm}`. This is **declarative, reactive, and needs
-  zero Logic-node wiring**: it's resolved against the *immediately-enclosing* scope's own
-  already-resolved params (the Screen's own param state doesn't exist, so this only makes
-  sense for a NESTED instance — one Template dropped inside another), and re-resolves
-  automatically whenever the outer param changes live via `set-template-param` — the
-  "10 identical monitoring cards, one wired data source" use case this feature exists for.
-  A binding only ever looks at its *direct* parent's params (never grandparent), but
-  composes correctly through any nesting depth because each level re-resolves its own
-  binding the same way, one hop at a time.
+**Properties** panel shows one `typedInput` field per declared param, seeded from the
+param's `defaultValue`. Two ways to set it:
+- **A literal value** — pick whichever typedInput type matches (`str`/`num`/`bool`/
+  `json`) and type the value directly. This is a static per-instance override
+  (`comp.paramValues.<name>`), exactly like a Subflow instance's own env-var dialog.
+- **A `{path}` binding** — leave the typedInput on its **`str`** type and type an
+  expression like `{x}` or `{info.specs.rpm}` as the text value. This is **declarative,
+  reactive, and needs zero Logic-node wiring**: it's resolved against the
+  *immediately-enclosing* scope's own already-resolved params (the Screen's own param
+  state doesn't exist, so this only makes sense for a NESTED instance — one Template
+  dropped inside another), and re-resolves automatically whenever the outer param changes
+  live via `set-template-param` — the "10 identical monitoring cards, one wired data
+  source" use case this feature exists for. A binding only ever looks at its *direct*
+  parent's params (never grandparent), but composes correctly through any nesting depth
+  because each level re-resolves its own binding the same way, one hop at a time.
 
 ### 8.6 Nesting and the cycle guard
 
@@ -631,15 +681,18 @@ Drop **"Lit Component"** from the palette, select it, and the Properties panel s
     hacks needed, unlike a plain-DOM component sharing the page's global stylesheet).
   - **Cancel** discards everything typed in the dialog; **Done** commits both the class
     body and CSS at once and re-renders the preview.
-- **Bindable Properties** — declare `{ name, type, defaultValue }` rows here rather than
-  in your own code; this list is what actually generates the Lit `static properties`
-  declaration behind the scenes (so `this.label` in `render()` above just works,
-  reactively, once you've declared `label` here) — **and** doubles as this instance's
-  `ui-update`/Properties-panel targets, exactly like `defaults` does for a registered
-  component (§11).
-- **Events** — declare `{ name }` rows for anything your code fires with
-  `this.emit(eventName, payload)` (an `emit` method every Lit Component instance gets for
-  free, wired to the Logic canvas's `ctx.emit` underneath) — each becomes an
+- **Bindable Properties** — a boxed, sortable list (`buildEditableListWidget`, the same
+  Node-RED-native list chrome used by core config-node dialogs) declaring `{ name,
+  defaultValue }` rows here rather than in your own code; each row's Value field is a
+  real Node-RED `typedInput` (`str`/`num`/`bool`/`json`) — the property's `type` is
+  derived automatically from whichever typedInput type you pick, no separate type
+  dropdown. This list is what actually generates the Lit `static properties` declaration
+  behind the scenes (so `this.label` in `render()` above just works, reactively, once
+  you've declared `label` here) — **and** doubles as this instance's `ui-update`/
+  Properties-panel targets, exactly like `defaults` does for a registered component (§11).
+- **Events** — another boxed list, declaring `{ name }` rows for anything your code fires
+  with `this.emit(eventName, payload)` (an `emit` method every Lit Component instance
+  gets for free, wired to the Logic canvas's `ctx.emit` underneath) — each becomes an
   **"<Instance> → on `<name>`"** chip in the Events tab.
 
 ### 9.2 Reading data in — from a Logic node
@@ -676,7 +729,7 @@ registered component.
   standard limitation of live-editing custom elements in any browser).
 - Lit itself ships as a plain `<script src>` — `window.NEXA_LIT = { LitElement, html,
   css, nothing }` — loaded once via `RED.httpAdmin` in the editor and once via
-  `RED.httpNode` on each deployed page (`lib/nexa-lit-vendor.bundle.js`, built from
+  `RED.httpNode` on each deployed page (`dist/nexa-lit-vendor.bundle.js`, built from
   `src/lit-vendor.js` by `build.js`), **not** bundled into the editor's own ES-module
   pipeline. Lit's module-level code runs real browser feature-detection unconditionally at
   import time, so folding it into `dist/nexa-editor.bundle.js` would mean paying that cost
@@ -1014,12 +1067,40 @@ To work on the editor itself:
 
 ```bash
 cd packages/node_modules/@kufayeka/node-red-nexa-dashboard
-npm install         # esbuild
-npm run watch         # rebuilds lib/nexa-plugin.html on every src/ change
+npm install         # esbuild, lit
+npm run watch         # rebuilds lib/nexa-plugin.html + dist/nexa-lit-vendor.bundle.js on every src/ change
 ```
 
-Restart Node-RED (or reload the editor tab) after each rebuild to pick up the new
-bundle — the plugin `.html` is only read once, at editor load time.
+**Two different kinds of change need two different kinds of restart, and mixing them up
+produces confusing symptoms:**
+
+- **Editor bundle changes** (anything under `src/`, i.e. `lib/nexa-plugin.html` after a
+  rebuild) — a plain **browser reload** of the Node-RED editor tab is enough; the plugin
+  `.html` is fetched fresh on every editor page load.
+- **Backend node/plugin registration changes** (`nodes/nexa-project.js`,
+  `lib/nexa-plugin.js`, or a fresh `npm install` in `data/` after adding this package as a
+  dependency for the first time) — these run **once, at Node-RED process startup**
+  (`RED.nodes.registerType(...)` / `RED.plugins.registerPlugin(...)`). A browser reload
+  does **not** re-run them. If the editor ever reports *"kufayeka-nexa-project node type
+  not found"*, this is almost always the cause — restart the actual Node-RED **process**
+  (not just the browser tab), and confirm `data/node_modules/@kufayeka/
+  node-red-nexa-dashboard` actually resolves (a broken/missing `file:` link after moving
+  the repo, or an `npm install` that never completed in `data/`, produces the identical
+  symptom).
+
+### 14.1 Running the test suite
+
+```bash
+npm test
+```
+
+Rebuilds the editor bundle, then runs every `test/mock-*.js` file (plain hand-written
+Node.js against a minimal DOM/jQuery shim — no `jsdom` in this environment, so anything
+genuinely Shadow-DOM/real-browser-specific is called out as such in the relevant test's
+own header comment rather than silently assumed to be covered) and prints a PASS/FAIL
+summary. Add a new `mock-*.js` file to `test/` and its filename to the appropriate array
+in `test/run-all.js` to extend coverage — see any existing `mock-*.js` file's own header
+comment for the established pattern (what it mocks, what it deliberately does not).
 
 ---
 

@@ -24,12 +24,12 @@ export function buildSidebarContent() {
     state.templatesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
 
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({ "margin-bottom": "8px" }).appendTo(screensPane);
-    window.$("<button>", { type: "button" }).text("+ Add Screen").css({ width: "100%" }).on("click", addScreenFromSidebar).appendTo(screensPane);
-    state.screenFormEl = window.$("<div>").css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(screensPane);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).text("+ Add Screen").css({ width: "100%", "margin-bottom": "10px" }).on("click", addScreenFromSidebar).appendTo(screensPane);
+    state.screenFormEl = window.$("<div>").css({ "margin-top": "10px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px" }).appendTo(screensPane);
 
     state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ "margin-bottom": "8px" }).appendTo(state.templatesPane);
-    window.$("<button>", { type: "button" }).text("+ Add Template").css({ width: "100%" }).on("click", addTemplateFromSidebar).appendTo(state.templatesPane);
-    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).css({ "margin-top": "14px", "border-top": "1px solid #ddd", "padding-top": "10px" }).appendTo(state.templatesPane);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).text("+ Add Template").css({ width: "100%", "margin-bottom": "10px" }).on("click", addTemplateFromSidebar).appendTo(state.templatesPane);
+    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).css({ "margin-top": "10px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px" }).appendTo(state.templatesPane);
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,

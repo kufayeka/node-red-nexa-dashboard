@@ -33,16 +33,6 @@ export function selectOnly(id) {
     refreshSelectionVisuals();
 }
 
-export function addToSelection(id) {
-    if (!isSelected(id)) state.selectedIds.push(id);
-    refreshSelectionVisuals();
-}
-
-export function removeFromSelection(id) {
-    state.selectedIds = state.selectedIds.filter(function (x) { return x !== id; });
-    refreshSelectionVisuals();
-}
-
 export function selectMultiple(ids) {
     state.selectedIds = ids.slice();
     refreshSelectionVisuals();

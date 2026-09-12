@@ -90,11 +90,10 @@ function fakeJQ(selOrHtml, attrs) {
       if (this._attrs && this._attrs.type && p._children.length >= 1) {
         var firstSibling = p._children[0];
         var isParamLabel = function (el) { return el && typeof el._text === 'string' && /\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(el._text); };
-        // buildParamValueInput()'s bind-toggle path (param-types.js) wraps
-        // the actual value widget in an extra `widgetContainer` div, so the
-        // input's immediate parent's own first child is no longer the label
-        // — walk up one more level (the widgetContainer's parent, i.e. the
-        // field row) when that's the case.
+        // Some param-field layouts wrap the actual value widget in an extra
+        // container div, so the input's immediate parent's own first child
+        // is no longer the label — walk up one more level (the wrapper's
+        // parent, i.e. the field row) when that's the case.
         if (!isParamLabel(firstSibling) && p._parent && p._parent._children && p._parent._children.length) {
           firstSibling = p._parent._children[0];
         }

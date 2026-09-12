@@ -4,8 +4,6 @@
 // so the two stay in sync as types are added.
 export var PARAM_TYPES = ["string", "number", "boolean", "object", "array", "color"];
 
-var WHOLE_BINDING_RE = /^\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*\}$/;
-
 export function normalizeParamType(type) {
     if (type === "text") return "string";
     if (type === "checkbox") return "boolean";
@@ -116,12 +114,6 @@ export function buildTypedInputWidget(container, initialType, initialValue, onCh
         });
     }
     return input;
-}
-
-export function buildParamValueInput(row, type, currentValue, onChange) {
-    return buildTypedInputWidget(row, type, currentValue, function (parsedVal, detType) {
-        onChange(parsedVal, detType);
-    });
 }
 
 // Builds a boxed editableList container identical to Node-RED node config dialogs
