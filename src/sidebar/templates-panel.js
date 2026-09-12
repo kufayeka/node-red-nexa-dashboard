@@ -35,7 +35,7 @@ export function renderTemplateList() {
         width: "100%",
         display: "flex",
         "flex-direction": "column",
-        gap: "3px",
+        gap: "6px",
         "box-sizing": "border-box"
     });
 
@@ -44,46 +44,50 @@ export function renderTemplateList() {
         var usages = templateUsageCount(t.id);
 
         var row = window.$("<div>", { "class": "nexa-template-row" }).css({
-            padding: "5px 8px",
-            "border-radius": "4px",
+            padding: "8px 10px",
+            "border-radius": "5px",
             display: "flex",
+            "flex-wrap": "wrap",
             "align-items": "center",
             cursor: "pointer",
             background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
             border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-            "box-shadow": isActive ? "0 1px 2px rgba(2,132,199,0.08)" : "none",
+            "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
             "font-size": "12px",
             "user-select": "none",
+            gap: "4px",
             transition: "all 0.15s ease"
         }).appendTo(state.templateListEl);
 
+        // --- ROW 1: Icon + Template Name + Identifier ---
         // Icon
-        window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 6px; flex: 0 0 auto;" }).appendTo(row);
+        window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
 
         // Name
         window.$("<span>", {
-            style: "flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
+            style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
         }).text(t.name).on("click", function () { editTemplate(t.id); }).appendTo(row);
 
         // Identifier badge
         if (t.identifier) {
             window.$("<span>", {
-                style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; margin-right: 4px; flex: 0 0 auto;"
+                style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; flex: 0 0 auto;"
             }).text("{" + t.identifier + "}").appendTo(row);
         }
 
-        // Usage count badge
-        window.$("<span>", {
-            style: "font-size: 10px; color: #888; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 8px; margin-right: 4px; flex: 0 0 auto;"
-        }).text(usages + " " + (usages === 1 ? "use" : "uses")).appendTo(row);
+        // --- ROW 2: Uses count ---
+        window.$("<div>", {
+            style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0;"
+        }).html('<i class="fa fa-cubes" style="font-size: 10px; color: #94a3b8;"></i> <span>' + usages + " " + (usages === 1 ? "usage" : "usages") + '</span>').appendTo(row);
 
+        // --- ROW 3: Actions (Edit | Delete) ---
         // Edit button
         window.$("<a>", {
             href: "#",
             title: "Edit",
             class: "red-ui-button red-ui-button-small",
-            style: "padding: 1px 5px; font-size: 10px; color: #555; margin-right: 4px; flex: 0 0 auto;"
-        }).html('<i class="fa fa-pencil"></i>')
+            style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #334155; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
+        }).html('<i class="fa fa-pencil"></i> Edit')
             .on("click", function (e) {
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
@@ -96,7 +100,7 @@ export function renderTemplateList() {
             href: "#",
             title: "Delete",
             class: "red-ui-button red-ui-button-small",
-            style: "padding: 1px 5px; font-size: 10px; color: #d32f2f; flex: 0 0 auto;"
+            style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
         }).html('<i class="fa fa-trash"></i>')
             .on("click", function (e) {
                 if (e && e.preventDefault) e.preventDefault();
