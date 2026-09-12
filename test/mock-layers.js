@@ -12,6 +12,18 @@ function fakeDomNode() {
   };
 }
 const draggables = [];
+// Palette chips no longer set their own _text (the label lives on a nested
+// .red-ui-palette-label child) — walk _children the same way instead of
+// reading the chip element's own _text directly.
+function chipText(el) {
+  if (el._text) return el._text;
+  var kids = el._children || [];
+  for (var i = 0; i < kids.length; i++) {
+    var t = chipText(kids[i]);
+    if (t) return t;
+  }
+  return '';
+}
 const componentsById = {};
 let documentJQ = null;
 // Tracks EVERY <a>/<span> created with a `title` attribute, in creation
@@ -114,7 +126,7 @@ eval(fs.readFileSync(process.argv[2], 'utf8'));
 actions['nexa:open-pages-editor']();
 // The sidebar's new "Events" tab also registers draggable chips now, so
 // filter by the known 'Item' label instead of positional index.
-const itemDraggables = draggables.filter(function (d) { return d.el._text === 'Item'; });
+const itemDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Item'; });
 const chip = itemDraggables[itemDraggables.length - 1];
 
 console.log('--- drop 3 items ---');

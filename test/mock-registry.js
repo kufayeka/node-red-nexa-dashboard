@@ -1,6 +1,18 @@
 global.document = {};
 global.window = global;
 const draggables = [];
+// Palette chips no longer set their own _text (the label lives on a nested
+// .red-ui-palette-label child) — walk _children the same way instead of
+// reading the chip element's own _text directly.
+function chipText(el) {
+  if (el._text) return el._text;
+  var kids = el._children || [];
+  for (var i = 0; i < kids.length; i++) {
+    var t = chipText(kids[i]);
+    if (t) return t;
+  }
+  return '';
+}
 function fakeJQ(selOrHtml, attrs) {
   const el = {
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {},
@@ -99,8 +111,8 @@ console.log('total draggables captured so far:', draggables.length);
 // The sidebar's new "Events" tab also registers draggable chips on tray
 // open now (after the components-palette rebuild), so filter by each
 // component's own known label instead of assuming the last two entries.
-const rectDraggables = draggables.filter(function (d) { return d.el._text === 'Rectangle'; });
-const textDraggables = draggables.filter(function (d) { return d.el._text === 'Text Label'; });
+const rectDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Rectangle'; });
+const textDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Text Label'; });
 const rectDrag = rectDraggables[rectDraggables.length - 1];
 const textDrag = textDraggables[textDraggables.length - 1];
 

@@ -2892,7 +2892,12 @@
       display: "flex",
       "align-items": "center",
       width: "120px",
-      margin: "4px auto",
+      // Centered via the flex parent's align-self, NOT "margin: auto" —
+      // see the comment on state.componentsPane's own creation for why an
+      // auto margin here throws jQuery UI draggable's drag-ghost tracking
+      // off by however many px it takes to center a 120px box in this pane.
+      "align-self": "center",
+      margin: "4px 0",
       height: "26px",
       "border-radius": "5px",
       border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
@@ -2902,8 +2907,9 @@
       "user-select": "none",
       "box-sizing": "border-box",
       "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-      transition: "box-shadow 0.15s, border-color 0.15s"
-    }).text(label).appendTo(paletteEl);
+      transition: "box-shadow 0.15s, border-color 0.15s",
+      overflow: "hidden"
+    }).appendTo(paletteEl);
     var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
       position: "absolute",
       left: "0",
@@ -2938,17 +2944,26 @@
     chip.draggable({
       helper: "clone",
       appendTo: "#red-ui-editor",
-      revert: "invalid",
-      revertDuration: 150,
+      // revert:false, not "invalid": with no matching .droppable() target
+      // registered on the artboard, jQuery UI's own drop-detection never
+      // sees a "valid" drop, so "invalid" was true for EVERY drop — even
+      // ones addComponentAt() (in the "stop" handler below) placed fine —
+      // making the ghost always fly back to the palette first and only
+      // disappear after that animation, instead of vanishing where it was
+      // actually released.
+      revert: false,
       zIndex: 1e4,
-      cursorAt: { left: 60, top: 13 },
+      // No cursorAt, and never resize ui.helper here (matching core's own
+      // palette.js draggable): the actual drag-ghost/mouse offset bug
+      // turned out to be the chip's own CSS (see makeComponentChip's
+      // "align-self" comment above, and componentsPane's), not this
+      // config — jQuery UI draggable computes the click offset once, up
+      // front, from the source element's own size/margins.
       start: function(e, ui) {
         if (ui && ui.helper) {
           ui.helper.css({
             "z-index": 1e4,
             opacity: 0.88,
-            width: "120px",
-            height: "26px",
             "pointer-events": "none",
             "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
           });
@@ -3022,7 +3037,10 @@
         display: "flex",
         "align-items": "center",
         width: "120px",
-        margin: "4px auto",
+        // Centered via the flex parent's align-self, NOT "margin: auto"
+        // — see the comment on state.eventsPane's own creation for why.
+        "align-self": "center",
+        margin: "4px 0",
         height: "26px",
         "border-radius": "5px",
         border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
@@ -3032,8 +3050,9 @@
         "user-select": "none",
         "box-sizing": "border-box",
         "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-        transition: "box-shadow 0.15s, border-color 0.15s"
-      }).text(label).appendTo(container);
+        transition: "box-shadow 0.15s, border-color 0.15s",
+        overflow: "hidden"
+      }).appendTo(container);
       if (meta.portIn) {
         window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-input" }).css({
           position: "absolute",
@@ -3097,17 +3116,26 @@
       item.draggable({
         helper: "clone",
         appendTo: "#red-ui-editor",
-        revert: "invalid",
-        revertDuration: 150,
+        // revert:false, not "invalid": with no matching .droppable()
+        // target registered on the Logic canvas, jQuery UI's own drop-
+        // detection never sees a "valid" drop, so "invalid" was true for
+        // EVERY drop — even ones addLogicNode() (in the "stop" handler
+        // below) placed fine — making the ghost always fly back to the
+        // palette first and only disappear after that animation, instead
+        // of vanishing where it was actually released.
+        revert: false,
         zIndex: 1e4,
-        cursorAt: { left: 60, top: 13 },
+        // No cursorAt, and never resize ui.helper here (matching core's
+        // own palette.js draggable): the actual drag-ghost/mouse offset
+        // bug turned out to be this chip's own CSS ("align-self" comment
+        // above, and eventsPane's), not this config — jQuery UI draggable
+        // computes the click offset once, up front, from the source
+        // element's own size/margins.
         start: function(e, ui) {
           if (ui && ui.helper) {
             ui.helper.css({
               "z-index": 1e4,
               opacity: 0.88,
-              width: "120px",
-              height: "26px",
               "pointer-events": "none",
               "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
             });
@@ -3124,8 +3152,8 @@
           var x = dropX / state.logicZoomLevel;
           var y = dropY / state.logicZoomLevel;
           if (x < 0 || y < 0) return;
-          var nodeX = e && e.pageX !== void 0 ? Math.max(0, Math.round(x - 70)) : x;
-          var nodeY = e && e.pageY !== void 0 ? Math.max(0, Math.round(y - 16)) : y;
+          var nodeX = e && e.pageX !== void 0 ? Math.max(0, Math.round(x - LOGIC_NODE_W / 2)) : x;
+          var nodeY = e && e.pageY !== void 0 ? Math.max(0, Math.round(y - LOGIC_NODE_H / 2)) : y;
           addLogicNode(makeNode(), nodeX, nodeY);
         }
       });
@@ -4422,11 +4450,11 @@
     var tabsWrap = window.$("<div>").css({ flex: "0 0 auto" }).appendTo(container);
     var ul = window.$("<ul>").appendTo(tabsWrap);
     var panesWrap = window.$("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
-    state.componentsPane = window.$("<div>").css({ padding: "8px" }).appendTo(panesWrap);
+    state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
     var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
     var screenLeftCol = window.$("<div>").css({
@@ -4506,11 +4534,11 @@
       element: ul,
       onchange: function(tab) {
         if (!tab) return;
-        state.componentsPane.toggle(tab.id === "components");
+        state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
         screensPane.toggle(tab.id === "screens");
         state.propertiesPane.toggle(tab.id === "properties");
         state.layersPane.toggle(tab.id === "layers");
-        state.eventsPane.toggle(tab.id === "events");
+        state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
         state.templatesPane.toggle(tab.id === "templates");
         if (tab.id === "screens") {
           if (state.editingMode === "template") exitTemplateEditing();

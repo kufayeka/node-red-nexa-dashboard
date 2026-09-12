@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains } from "../state.js";
+import { state, getActiveScreen, findTemplate, templateContains, LOGIC_NODE_W, LOGIC_NODE_H } from "../state.js";
 import { addComponentAt } from "../canvas/component-renderer.js";
 import { addLogicNode } from "../logic/logic-nodes.js";
 
@@ -85,7 +85,12 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
         display: "flex",
         "align-items": "center",
         width: "120px",
-        margin: "4px auto",
+        // Centered via the flex parent's align-self, NOT "margin: auto" —
+        // see the comment on state.componentsPane's own creation for why an
+        // auto margin here throws jQuery UI draggable's drag-ghost tracking
+        // off by however many px it takes to center a 120px box in this pane.
+        "align-self": "center",
+        margin: "4px 0",
         height: "26px",
         "border-radius": "5px",
         border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
@@ -95,8 +100,9 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
         "user-select": "none",
         "box-sizing": "border-box",
         "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-        transition: "box-shadow 0.15s, border-color 0.15s"
-    }).text(label).appendTo(paletteEl);
+        transition: "box-shadow 0.15s, border-color 0.15s",
+        overflow: "hidden"
+    }).appendTo(paletteEl);
 
     // Left Icon Container (Node-RED palette style)
     var iconContainer = window.$("<div>", { "class": "red-ui-palette-icon-container" }).css({
@@ -136,17 +142,26 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
     chip.draggable({
         helper: "clone",
         appendTo: "#red-ui-editor",
-        revert: "invalid",
-        revertDuration: 150,
+        // revert:false, not "invalid": with no matching .droppable() target
+        // registered on the artboard, jQuery UI's own drop-detection never
+        // sees a "valid" drop, so "invalid" was true for EVERY drop — even
+        // ones addComponentAt() (in the "stop" handler below) placed fine —
+        // making the ghost always fly back to the palette first and only
+        // disappear after that animation, instead of vanishing where it was
+        // actually released.
+        revert: false,
         zIndex: 10000,
-        cursorAt: { left: 60, top: 13 },
+        // No cursorAt, and never resize ui.helper here (matching core's own
+        // palette.js draggable): the actual drag-ghost/mouse offset bug
+        // turned out to be the chip's own CSS (see makeComponentChip's
+        // "align-self" comment above, and componentsPane's), not this
+        // config — jQuery UI draggable computes the click offset once, up
+        // front, from the source element's own size/margins.
         start: function (e, ui) {
             if (ui && ui.helper) {
                 ui.helper.css({
                     "z-index": 10000,
                     opacity: 0.88,
-                    width: "120px",
-                    height: "26px",
                     "pointer-events": "none",
                     "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
                 });
@@ -230,7 +245,10 @@ export function renderEventsPanel() {
             display: "flex",
             "align-items": "center",
             width: "120px",
-            margin: "4px auto",
+            // Centered via the flex parent's align-self, NOT "margin: auto"
+            // — see the comment on state.eventsPane's own creation for why.
+            "align-self": "center",
+            margin: "4px 0",
             height: "26px",
             "border-radius": "5px",
             border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
@@ -240,8 +258,9 @@ export function renderEventsPanel() {
             "user-select": "none",
             "box-sizing": "border-box",
             "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-            transition: "box-shadow 0.15s, border-color 0.15s"
-        }).text(label).appendTo(container);
+            transition: "box-shadow 0.15s, border-color 0.15s",
+            overflow: "hidden"
+        }).appendTo(container);
 
         // Input Port (Node-RED palette port)
         if (meta.portIn) {
@@ -285,17 +304,26 @@ export function renderEventsPanel() {
         item.draggable({
             helper: "clone",
             appendTo: "#red-ui-editor",
-            revert: "invalid",
-            revertDuration: 150,
+            // revert:false, not "invalid": with no matching .droppable()
+            // target registered on the Logic canvas, jQuery UI's own drop-
+            // detection never sees a "valid" drop, so "invalid" was true for
+            // EVERY drop — even ones addLogicNode() (in the "stop" handler
+            // below) placed fine — making the ghost always fly back to the
+            // palette first and only disappear after that animation, instead
+            // of vanishing where it was actually released.
+            revert: false,
             zIndex: 10000,
-            cursorAt: { left: 60, top: 13 },
+            // No cursorAt, and never resize ui.helper here (matching core's
+            // own palette.js draggable): the actual drag-ghost/mouse offset
+            // bug turned out to be this chip's own CSS ("align-self" comment
+            // above, and eventsPane's), not this config — jQuery UI draggable
+            // computes the click offset once, up front, from the source
+            // element's own size/margins.
             start: function (e, ui) {
                 if (ui && ui.helper) {
                     ui.helper.css({
                         "z-index": 10000,
                         opacity: 0.88,
-                        width: "120px",
-                        height: "26px",
                         "pointer-events": "none",
                         "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
                     });
@@ -312,8 +340,8 @@ export function renderEventsPanel() {
                 var x = dropX / state.logicZoomLevel;
                 var y = dropY / state.logicZoomLevel;
                 if (x < 0 || y < 0) return;
-                var nodeX = (e && e.pageX !== undefined) ? Math.max(0, Math.round(x - 70)) : x;
-                var nodeY = (e && e.pageY !== undefined) ? Math.max(0, Math.round(y - 16)) : y;
+                var nodeX = (e && e.pageX !== undefined) ? Math.max(0, Math.round(x - LOGIC_NODE_W / 2)) : x;
+                var nodeY = (e && e.pageY !== undefined) ? Math.max(0, Math.round(y - LOGIC_NODE_H / 2)) : y;
                 addLogicNode(makeNode(), nodeX, nodeY);
             }
         });
