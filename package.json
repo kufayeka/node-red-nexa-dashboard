@@ -9,8 +9,13 @@
       "kufayeka-nexa-dashboard": "lib/nexa-plugin.js"
     },
     "nodes": {
-      "kufayeka-nexa-project": "nodes/nexa-project.js"
+      "kufayeka-nexa-project": "nodes/nexa-project.js",
+      "kufayeka-nexa-sparkplug": "nodes/nexa-sparkplug.js"
     }
+  },
+  "dependencies": {
+    "mqtt": "^5.15.2",
+    "protobufjs": "^8.8.0"
   },
   "keywords": [
     "node-red",

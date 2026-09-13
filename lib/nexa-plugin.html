@@ -77,6 +77,7 @@
     "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
     "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
     "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" },
+    "layer-control": { label: "Layer Control", hasInput: true, hasOutput: false, color: "#c78a3a" },
     // Subflow-style parameter passing (see plan "Phase 3 revision"):
     // param-input is a SOURCE, like onload/onrender — only meaningful while
     // editing a Template, outputs that instance's current param snapshot.
@@ -174,7 +175,7 @@
       snap: opts ? opts.snap !== false : true,
       components: opts && opts.components || [],
       groups: opts && opts.groups || [],
-      layers: opts && opts.layers || [{ id: "default", name: "Default Layer", parentId: null, visible: true }],
+      layers: opts && opts.layers || [{ id: "default", name: "Default Layer", parentId: null, state: "show" }],
       logic: opts && opts.logic || { nodes: [], wires: [] }
     };
   }
@@ -244,7 +245,13 @@
   }
   function backfillSurface(s) {
     if (!s.groups) s.groups = [];
-    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, visible: true }];
+    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, state: "show" }];
+    s.layers.forEach(function(l) {
+      if (!l.state) {
+        l.state = l.visible === false ? "hide" : "show";
+        delete l.visible;
+      }
+    });
     s.components.forEach(function(c) {
       if (!c.layerId) c.layerId = s.layers[0].id;
     });
@@ -313,13 +320,25 @@
       return l.parentId === parentId;
     });
   }
-  function isLayerVisible(layerId) {
+  var LAYER_STATE_RANK = { show: 0, hide: 1, remove: 2 };
+  function getLayerRenderState(layerId) {
     var layer = findLayer(layerId);
+    var effective = "show";
     while (layer) {
-      if (!layer.visible) return false;
+      var layerState = layer.state || "show";
+      if (LAYER_STATE_RANK[layerState] > LAYER_STATE_RANK[effective]) effective = layerState;
       layer = layer.parentId ? findLayer(layer.parentId) : null;
     }
-    return true;
+    return effective;
+  }
+  function isLayerVisible(layerId) {
+    return getLayerRenderState(layerId) === "show";
+  }
+  function shouldRenderLayer(layerId) {
+    return getLayerRenderState(layerId) !== "remove";
+  }
+  function isLayerInteractable(layerId) {
+    return getLayerRenderState(layerId) === "show";
   }
   function getComponentsInLayer(layerId) {
     var screen = getActiveScreen();
@@ -542,6 +561,7 @@
   }
 
   // src/canvas/layers.js
+  var LAYER_STATE_CYCLE = ["show", "hide", "remove"];
   var collapsedLayers = /* @__PURE__ */ new Set();
   var activeTreeWidget = null;
   function isExpanded(layerId) {
@@ -554,7 +574,7 @@
   function addLayer(parentId) {
     var screen = getActiveScreen();
     if (!screen) return;
-    var layer = { id: genId(), name: "New Layer", parentId: parentId || null, visible: true };
+    var layer = { id: genId(), name: "New Layer", parentId: parentId || null, state: "show" };
     screen.layers.push(layer);
     setExpanded(layer.id, true);
     if (parentId) setExpanded(parentId, true);
@@ -568,10 +588,15 @@
     layer.name = name || layer.name;
     markDirty();
   }
-  function toggleLayerVisibility(id) {
+  function setLayerState(id, next) {
     var layer = findLayer(id);
     if (!layer) return;
-    layer.visible = !layer.visible;
+    if (next === void 0) {
+      var cur = LAYER_STATE_CYCLE.indexOf(layer.state || "show");
+      next = LAYER_STATE_CYCLE[(cur + 1) % LAYER_STATE_CYCLE.length];
+    }
+    layer.state = next;
+    deselectAll();
     markDirty();
     renderActiveScreen();
     renderLayersPanel();
@@ -666,12 +691,16 @@
         style: "display: flex; align-items: center; justify-content: space-between; width: calc(100% - 16px); gap: 4px; padding: 2px 0; font-size: 12px; user-select: none;"
       });
       var left = $("<div>", { style: "display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0;" }).appendTo(layerRow);
+      var layerState = layer.state || "show";
+      var STATE_ICON = { show: "fa-eye", hide: "fa-eye-slash", remove: "fa-ban" };
+      var STATE_COLOR = { show: "var(--red-ui-primary-text-color, #333)", hide: "#bbb", remove: "#d32f2f" };
+      var STATE_NEXT_LABEL = { show: "Hide layer (still rendered, locked)", hide: "Remove layer (not rendered)", remove: "Show layer" };
       $("<span>", {
-        style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; color: " + (layer.visible ? "var(--red-ui-primary-text-color, #333)" : "#bbb") + ";",
-        title: layer.visible ? "Hide layer" : "Show layer"
-      }).html(layer.visible ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>').on("click", function(e) {
+        style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; color: " + STATE_COLOR[layerState] + ";",
+        title: STATE_NEXT_LABEL[layerState]
+      }).html('<i class="fa ' + STATE_ICON[layerState] + '"></i>').on("click", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
-        toggleLayerVisibility(layer.id);
+        setLayerState(layer.id);
       }).appendTo(left);
       $("<i>", { class: isExpanded(layer.id) ? "fa fa-folder-open" : "fa fa-folder", style: "color: #f59e0b; flex: 0 0 auto;" }).appendTo(left);
       var nameSpan = $("<span>", {
@@ -845,6 +874,197 @@
     }
   }
 
+  // src/canvas/sparkplug-live.js
+  var SPARKPLUG_BINDING_PREFIX = "sparkplug:";
+  function makeSparkplugBindingPath(ref) {
+    return "{" + SPARKPLUG_BINDING_PREFIX + ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "") + "::" + ref.metricName + "}";
+  }
+  function parseSparkplugBindingPath(raw) {
+    if (typeof raw !== "string") return null;
+    var trimmed = raw.trim();
+    if (trimmed.charAt(0) !== "{" || trimmed.charAt(trimmed.length - 1) !== "}") return null;
+    var inner = trimmed.slice(1, -1);
+    if (inner.indexOf(SPARKPLUG_BINDING_PREFIX) !== 0) return null;
+    var parts = inner.slice(SPARKPLUG_BINDING_PREFIX.length).split("::");
+    if (parts.length < 4) return null;
+    var metricName = parts.slice(3).join("::");
+    if (!parts[0] || !parts[1] || !metricName) return null;
+    return { groupId: parts[0], edgeNodeId: parts[1], deviceId: parts[2] || null, metricName };
+  }
+  function refKey(ref) {
+    return ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "") + "::" + ref.metricName;
+  }
+  var liveCache = {};
+  var rawTree = {};
+  var updateListeners = [];
+  var commsWired = false;
+  function onSparkplugLiveUpdate(fn) {
+    updateListeners.push(fn);
+  }
+  function notify(changedKeys) {
+    updateListeners.forEach(function(fn) {
+      try {
+        fn(changedKeys);
+      } catch (e) {
+      }
+    });
+  }
+  function ensureRawEdgeNode(groupId, edgeNodeId) {
+    if (!rawTree[groupId]) rawTree[groupId] = {};
+    if (!rawTree[groupId][edgeNodeId]) rawTree[groupId][edgeNodeId] = { online: true, nodeMetrics: {}, devices: {} };
+    return rawTree[groupId][edgeNodeId];
+  }
+  function ensureRawDevice(edgeNode, deviceId) {
+    if (!edgeNode.devices[deviceId]) edgeNode.devices[deviceId] = { online: true, metrics: {} };
+    return edgeNode.devices[deviceId];
+  }
+  function applyDelta(delta) {
+    if (!delta) return;
+    var changed = [];
+    var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
+    var metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
+    if (delta.type === "death") {
+      if (delta.deviceId) {
+        ensureRawDevice(edgeNode, delta.deviceId).online = false;
+      } else {
+        edgeNode.online = false;
+      }
+      var nodePrefix = delta.groupId + "::" + delta.edgeNodeId + "::";
+      var devicePrefix = delta.deviceId ? nodePrefix + delta.deviceId + "::" : null;
+      Object.keys(liveCache).forEach(function(key) {
+        if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
+        if (liveCache[key].online) {
+          liveCache[key] = Object.assign({}, liveCache[key], { online: false });
+          changed.push(key);
+        }
+      });
+    } else {
+      if (delta.type === "birth") {
+        if (delta.deviceId) {
+          ensureRawDevice(edgeNode, delta.deviceId).online = true;
+        } else {
+          edgeNode.online = true;
+        }
+      }
+      (delta.metrics || []).forEach(function(m) {
+        var entry = { value: m.value, type: m.type, isNull: m.isNull, timestamp: m.timestamp };
+        metricsTarget[m.name] = entry;
+        var key = delta.groupId + "::" + delta.edgeNodeId + "::" + (delta.deviceId || "") + "::" + m.name;
+        liveCache[key] = { value: m.value, type: m.type, isNull: m.isNull, online: true };
+        changed.push(key);
+      });
+    }
+    if (changed.length) notify(changed);
+  }
+  function getSparkplugEntry(ref) {
+    return liveCache[refKey(ref)];
+  }
+  function getRawTree() {
+    return rawTree;
+  }
+  function formatSparkplugValue(ref) {
+    var entry = getSparkplugEntry(ref);
+    if (!entry || !entry.online || entry.isNull || entry.value === void 0 || entry.value === null) return "???";
+    return String(entry.value);
+  }
+  function resolveSparkplugProps(props) {
+    var out = null;
+    Object.keys(props || {}).forEach(function(k) {
+      var v = props[k];
+      if (typeof v !== "string") return;
+      var ref = parseSparkplugBindingPath(v);
+      if (!ref) return;
+      if (!out) out = Object.assign({}, props);
+      out[k] = formatSparkplugValue(ref);
+    });
+    return out || props;
+  }
+  function absorbSnapshotTree(tree) {
+    rawTree = tree || {};
+    liveCache = {};
+    Object.keys(tree || {}).forEach(function(groupId) {
+      Object.keys(tree[groupId]).forEach(function(edgeNodeId) {
+        var edgeNode = tree[groupId][edgeNodeId];
+        Object.keys(edgeNode.nodeMetrics || {}).forEach(function(name) {
+          var m = edgeNode.nodeMetrics[name];
+          liveCache[groupId + "::" + edgeNodeId + "::::" + name] = { value: m.value, type: m.type, isNull: m.isNull, online: edgeNode.online };
+        });
+        Object.keys(edgeNode.devices || {}).forEach(function(deviceId) {
+          var device = edgeNode.devices[deviceId];
+          Object.keys(device.metrics || {}).forEach(function(name) {
+            var m = device.metrics[name];
+            liveCache[groupId + "::" + edgeNodeId + "::" + deviceId + "::" + name] = { value: m.value, type: m.type, isNull: m.isNull, online: edgeNode.online && device.online };
+          });
+        });
+      });
+    });
+  }
+  function loadSparkplugSnapshot(onDone) {
+    if (!window.$ || typeof window.$.getJSON !== "function") {
+      if (typeof onDone === "function") onDone(null);
+      return;
+    }
+    window.$.getJSON("nexa-dashboard/_sparkplug-tree", function(tree) {
+      absorbSnapshotTree(tree);
+      notify(Object.keys(liveCache));
+      if (typeof onDone === "function") onDone(tree);
+    }).fail(function() {
+      if (typeof onDone === "function") onDone(null);
+    });
+  }
+  function ensureSparkplugCommsWired() {
+    if (commsWired) return;
+    commsWired = true;
+    loadSparkplugSnapshot();
+    if (window.RED && window.RED.comms && window.RED.comms.subscribe) {
+      window.RED.comms.subscribe("nexa/sparkplug/delta", function(topic, delta) {
+        applyDelta(delta);
+      });
+    }
+    if (window.RED && window.RED.comms && typeof window.RED.comms.on === "function") {
+      window.RED.comms.on("connect", loadSparkplugSnapshot);
+    }
+    if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
+      window.RED.events.on("deploy", function() {
+        loadSparkplugSnapshot();
+        setTimeout(loadSparkplugSnapshot, 1500);
+      });
+    }
+  }
+  function getOrCreateSparkplugConfigNode() {
+    var RED2 = window.RED;
+    var existing = null;
+    RED2.nodes.eachConfig(function(n) {
+      if (n.type === "kufayeka-nexa-sparkplug") existing = n;
+    });
+    if (existing) return existing;
+    var node_def = RED2.nodes.getType("kufayeka-nexa-sparkplug");
+    if (!node_def) {
+      RED2.notify("Nexa Dashboard: kufayeka-nexa-sparkplug node type not found \u2014 is the package installed correctly?", { type: "error" });
+      return null;
+    }
+    var node = {
+      id: RED2.nodes.id(),
+      _def: node_def,
+      type: "kufayeka-nexa-sparkplug",
+      z: "",
+      users: []
+    };
+    for (var d in node_def.defaults) {
+      if (node[d] === void 0 && node_def.defaults[d].value !== void 0) {
+        node[d] = JSON.parse(JSON.stringify(node_def.defaults[d].value));
+      }
+    }
+    RED2.nodes.add(node);
+    RED2.nodes.dirty(true);
+    return node;
+  }
+  function openSparkplugConnectionSettings() {
+    var node = getOrCreateSparkplugConfigNode();
+    if (!node) return;
+    window.RED.editor.editConfig("", "kufayeka-nexa-sparkplug", node.id);
+  }
+
   // src/canvas/component-renderer.js
   function refreshComponentRender(comp) {
     if (!state.artboardEl) return;
@@ -856,19 +1076,40 @@
       // top-level selection, so the raw id IS the full namespace
       emit: function(eventName, payload) {
         if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+      },
+      setBindableValue: function(name, value) {
+        comp.props = comp.props || {};
+        comp.props[name] = value;
+        markDirty();
       }
     };
     if (comp.type === "@lit-component") {
-      renderLitComponentInstance(node, comp, comp.props || {}, ctx);
+      renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, comp.__paramState), ctx);
       return;
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (!typeDef || typeof typeDef.render !== "function") return;
     try {
-      typeDef.render(node, comp.props || {}, ctx);
+      typeDef.render(node, interpolateProps(comp.props || {}, comp.__paramState), ctx);
     } catch (e) {
       el.text("(render error: " + e.message + ")");
     }
+  }
+  var sparkplugLiveRenderWired = false;
+  function ensureSparkplugLiveRenderWired() {
+    if (sparkplugLiveRenderWired) return;
+    sparkplugLiveRenderWired = true;
+    onSparkplugLiveUpdate(function() {
+      var screen = getActiveScreen();
+      if (!screen) return;
+      screen.components.forEach(function(comp) {
+        var props = comp.props || {};
+        var isBound = Object.keys(props).some(function(k) {
+          return typeof props[k] === "string" && parseSparkplugBindingPath(props[k]);
+        });
+        if (isBound) refreshComponentRender(comp);
+      });
+    });
   }
   function removeComponents(ids) {
     var screen = getActiveScreen();
@@ -939,13 +1180,16 @@
     });
   }
   function interpolateProps(props, paramState) {
-    if (!paramState) return props;
-    var out = {};
-    Object.keys(props || {}).forEach(function(k) {
-      var v = props[k];
-      out[k] = typeof v === "string" && v.indexOf("{") !== -1 ? resolveBindableValue(v, paramState) : v;
-    });
-    return out;
+    var withTemplateBindings = props;
+    if (paramState) {
+      var out = {};
+      Object.keys(props || {}).forEach(function(k) {
+        var v = props[k];
+        out[k] = typeof v === "string" && v.indexOf("{") !== -1 ? resolveBindableValue(v, paramState) : v;
+      });
+      withTemplateBindings = out;
+    }
+    return resolveSparkplugProps(withTemplateBindings);
   }
   function resolveInstanceParamState(comp, template, enclosingParamState) {
     var paramState = {};
@@ -998,6 +1242,26 @@
           var fakeComp = { templateId: template.id, w, h, paramValues: paramValues || {} };
           renderTemplateInstance(wrapper, fakeComp, namespace, [], void 0);
         }
+        // Backs the Bindable Properties list's "Two-way binding" checkbox
+        // (properties-panel.js) — compileLitComponentClass attaches
+        // `static __nexaTwoWayProps` (a plain array of property names) to
+        // each generated subclass; this base-class updated() is the one
+        // place that has to exist for ALL of them, so a user's own code
+        // never has to remember to call ctx.setBindableValue by hand the
+        // way they still do for emit(). NOTE: if the user's own litCode
+        // ALSO defines updated(...), theirs silently wins (same class-body
+        // override behavior as the static properties/styles caveat
+        // already documented above compileLitComponentClass) — call
+        // super.updated(changedProps) from theirs to keep this working.
+        updated(changedProps) {
+          var twoWay = this.constructor.__nexaTwoWayProps;
+          if (twoWay && twoWay.length && this.__nexaCtx && typeof this.__nexaCtx.setBindableValue === "function") {
+            var self = this;
+            twoWay.forEach(function(name) {
+              if (changedProps.has(name)) self.__nexaCtx.setBindableValue(name, self[name]);
+            });
+          }
+        }
       };
     }
     return window.__nexaLitBase;
@@ -1023,17 +1287,24 @@
     if (!Base) return { error: new Error("Lit runtime not loaded (window.NEXA_LIT missing)") };
     var cacheKey = hashLitSource(
       (litCode || "") + "||" + (litStyles || "") + "||" + (bindable || []).map(function(p) {
-        return p.name + ":" + p.type;
+        return p.name + ":" + p.type + ":" + (p.twoWay ? "1" : "0");
       }).join(",")
     );
     if (litClassCache[cacheKey]) return litClassCache[cacheKey];
     var propsDecl = "static properties = {" + (bindable || []).map(function(p) {
       return JSON.stringify(p.name) + ": { type: " + litPropertyCtor(p.type) + " }";
     }).join(",") + "};";
+    var twoWayDecl = "static __nexaTwoWayProps = " + JSON.stringify(
+      (bindable || []).filter(function(p) {
+        return p.twoWay;
+      }).map(function(p) {
+        return p.name;
+      })
+    ) + ";";
     var safeStyles = String(litStyles || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
     var stylesDecl = litStyles ? "static styles = css`" + safeStyles + "`;" : "";
     var defaultRender = 'render(){ return html`<div style="color:#999;font-size:11px;padding:6px;">(empty Lit component \u2014 write render() in the Properties panel)</div>`; }';
-    var classBody = propsDecl + "\n" + stylesDecl + "\n" + (litCode || defaultRender);
+    var classBody = propsDecl + "\n" + twoWayDecl + "\n" + stylesDecl + "\n" + (litCode || defaultRender);
     var tagName = "nexa-lit-" + cacheKey;
     var Klass;
     try {
@@ -1157,6 +1428,8 @@
   function renderComponent(comp) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
+    if (!shouldRenderLayer(comp.layerId)) return;
+    var interactable = isLayerInteractable(comp.layerId);
     var dragStart = null;
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
       position: "absolute",
@@ -1166,8 +1439,9 @@
       height: comp.h + "px",
       transform: getComponentTransform(comp),
       "box-sizing": "border-box",
-      cursor: comp.locked ? "default" : "move",
+      cursor: comp.locked || !interactable ? "default" : "move",
       "user-select": "none",
+      "pointer-events": interactable ? "" : "none",
       display: isLayerVisible(comp.layerId) ? "" : "none"
     }).appendTo(state.artboardEl);
     renderComponentContent(el.get(0), comp, {
@@ -1175,8 +1449,14 @@
       // top-level, so the raw id IS the full namespace
       emit: function(eventName, payload) {
         if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+      },
+      setBindableValue: function(name, value) {
+        comp.props = comp.props || {};
+        comp.props[name] = value;
+        markDirty();
       }
     }, comp.id, []);
+    if (!interactable) return;
     el.on("mousedown", function(e) {
       e.stopPropagation();
       var targetIds = comp.g ? groupMemberIds(comp.g) : [comp.id];
@@ -1341,6 +1621,41 @@
     var comp = {
       id: genId(),
       type,
+      x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
+      y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
+      w: size.w,
+      h: size.h,
+      rotation: 0,
+      locked: false,
+      layerId: (screen.layers[0] || {}).id,
+      props
+    };
+    screen.components.push(comp);
+    renderComponent(comp);
+    selectOnly(comp.id);
+    pushHistory({ t: "add", screenId: screen.id, comp });
+    markDirty();
+  }
+  var SPARKPLUG_TEXT_COMPONENT_TYPE = "kufayeka-text-label";
+  function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var def = window.NEXA.getComponent(SPARKPLUG_TEXT_COMPONENT_TYPE);
+    if (!def) {
+      if (window.RED && window.RED.notify) {
+        window.RED.notify(`Can't create a bound Text component \u2014 "` + SPARKPLUG_TEXT_COMPONENT_TYPE + `" isn't registered (is @kufayeka/nexa-component-basic-shapes installed?)`, { type: "error", timeout: 4e3 });
+      }
+      return;
+    }
+    var size = def.defaultSize || { w: 160, h: 36 };
+    var props = {};
+    Object.keys(def.defaults || {}).forEach(function(k) {
+      props[k] = def.defaults[k].value;
+    });
+    props.text = makeSparkplugBindingPath(ref);
+    var comp = {
+      id: genId(),
+      type: SPARKPLUG_TEXT_COMPONENT_TYPE,
       x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
       y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
       w: size.w,
@@ -1976,6 +2291,15 @@
             markDirty();
             refreshComponentRender(comp);
           });
+          var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-exchange"></i> 2-way').appendTo(twoWayRow);
+          var twoWayInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!p.twoWay).appendTo(twoWayRow);
+          window.$("<span>").css({ "font-size": "11px", color: "#888" }).text("Sync this." + p.name + " changes back to comp.props").appendTo(twoWayRow);
+          twoWayInput.on("change", function() {
+            p.twoWay = twoWayInput.is(":checked");
+            markDirty();
+            refreshComponentRender(comp);
+          });
         },
         removeItem: function(opt) {
           var idx = comp.litBindable.indexOf(opt);
@@ -2110,6 +2434,9 @@
     }
     if (type === "ui-update" || type === "set-template-param") {
       return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
+    }
+    if (type === "layer-control") {
+      return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
     }
     return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
   }
@@ -2420,6 +2747,9 @@
     chip(state.eventsPane, "Open URL", function() {
       return { type: "open-url", url: "", mode: "replace", newTab: false };
     }, "", "open-url");
+    chip(state.eventsPane, "Layer Control", function() {
+      return { type: "layer-control", states: [] };
+    }, "", "layer-control");
     if (screen && screen.components.length) {
       sectionHeader(state.eventsPane, "Components on this screen");
       screen.components.forEach(function(comp) {
@@ -2553,14 +2883,16 @@
     renderPropertiesPanel();
   }
   function groupSelection() {
-    if (state.selectedIds.length < 2) {
-      RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2e3 });
-      return;
-    }
     var screen = getActiveScreen();
     if (!screen) return;
     screen.groups = screen.groups || [];
-    var members = state.selectedIds.map(findComponent).filter(Boolean);
+    var members = state.selectedIds.map(findComponent).filter(Boolean).filter(function(c) {
+      return isLayerInteractable(c.layerId);
+    });
+    if (members.length < 2) {
+      RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2e3 });
+      return;
+    }
     if (members.some(function(c) {
       return c.g;
     })) {
@@ -2661,6 +2993,7 @@
       var screen = getActiveScreen();
       if (!screen) return;
       var hits = screen.components.filter(function(c) {
+        if (!isLayerInteractable(c.layerId)) return false;
         return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
       }).map(function(c) {
         return c.id;
@@ -2683,6 +3016,8 @@
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
+    ensureSparkplugCommsWired();
+    ensureSparkplugLiveRenderWired();
     state.selectedIds = [];
     state.selectionHandlesEl = null;
     renderPropertiesPanel();
@@ -3307,6 +3642,52 @@
     });
   }
 
+  // src/dialogs/layer-control-dialog.js
+  function openLayerControlNodeEditor(node) {
+    var statesInput;
+    window.RED.tray.show({
+      id: "nexa-logic-layercontrol-editor",
+      title: "Configure Layer Control Node",
+      width: 450,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var raw = typeof statesInput.typedInput === "function" ? statesInput.typedInput("value") : statesInput.val();
+            try {
+              var parsed = JSON.parse(raw);
+              node.states = Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+              node.states = [];
+            }
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Sets one or more layers' state by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.").appendTo(body);
+        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Layer states (JSON array)").appendTo(row);
+        var initialText = JSON.stringify(node.states && node.states.length ? node.states : [{ name: "Default Layer", state: "show" }], null, 2);
+        statesInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
+        if (typeof statesInput.typedInput === "function") {
+          statesInput.typedInput({ default: "json", types: ["json"] });
+          statesInput.typedInput("value", initialText);
+        } else {
+          statesInput.val(initialText);
+        }
+        window.$("<div>").css({ "font-size": "11px", color: "#aaa", "margin-top": "6px" }).html('Example: <code>[{"name":"Default Layer","state":"hide"}]</code> &mdash; state is one of "show", "hide", "remove".').appendTo(body);
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -3328,6 +3709,10 @@
     }
     if (node.type === "open-url") {
       return "Open URL" + (node.url ? " (" + node.url + ")" : "");
+    }
+    if (node.type === "layer-control") {
+      var n = (node.states || []).length;
+      return "Layer Control" + (n ? " (" + n + ")" : "");
     }
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
@@ -3449,6 +3834,12 @@
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openOpenUrlNodeEditor(node);
+      });
+    }
+    if (node.type === "layer-control") {
+      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openLayerControlNodeEditor(node);
       });
     }
     if (kind.hasOutput) {
@@ -3843,17 +4234,20 @@
       startMarqueeSelect(e);
     });
     state.artboardEl.droppable({
-      accept: "[data-type-id]",
+      accept: "[data-type-id], [data-sparkplug-metric]",
       tolerance: "pointer",
       drop: function(event, ui) {
-        var dropTypeId = ui.draggable.attr("data-type-id");
-        if (!dropTypeId) return;
         var offset = state.artboardEl.offset();
         var x = (event.pageX - offset.left) / state.zoomLevel;
         var y = (event.pageY - offset.top) / state.zoomLevel;
-        if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
-          addComponentAt(dropTypeId, x, y);
+        if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
+        var metricRef = ui.draggable.data("nexaSparkplugMetric");
+        if (metricRef) {
+          addSparkplugMetricComponentAt(metricRef, x, y);
+          return;
         }
+        var dropTypeId = ui.draggable.attr("data-type-id");
+        if (dropTypeId) addComponentAt(dropTypeId, x, y);
       }
     });
     state.viewportEl.on("wheel", function(e) {
@@ -4451,6 +4845,176 @@
     });
   }
 
+  // src/sidebar/sparkplug-panel.js
+  var liveWired = false;
+  function collapsibleHeader(parentEl, label, iconClass, extra) {
+    var header = window.$("<div>", { "class": "nexa-sparkplug-node-header" }).css({
+      display: "flex",
+      "align-items": "center",
+      gap: "6px",
+      padding: "5px 8px",
+      cursor: "pointer",
+      "user-select": "none",
+      "font-size": "12px",
+      "font-weight": "600",
+      background: "var(--red-ui-tertiary-background, #f8fafc)",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)"
+    }).appendTo(parentEl);
+    window.$("<i>", { "class": "fa fa-angle-down" }).css({ width: "12px" }).appendTo(header);
+    window.$("<i>", { "class": "fa " + iconClass }).appendTo(header);
+    window.$("<span>").css({ flex: "1 1 auto", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }).text(label).appendTo(header);
+    if (extra) extra(header);
+    return header;
+  }
+  function onlineDot(online) {
+    return window.$("<span>").css({
+      width: "7px",
+      height: "7px",
+      "border-radius": "50%",
+      "flex": "0 0 auto",
+      background: online ? "#22c55e" : "#cbd5e1"
+    }).attr("title", online ? "online" : "offline");
+  }
+  function metricChip(container, ref, name) {
+    var row = window.$("<div>", { "class": "nexa-sparkplug-metric-row" }).css({
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "space-between",
+      gap: "8px",
+      padding: "3px 8px 3px 30px",
+      cursor: "grab",
+      "user-select": "none",
+      "font-size": "11px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f5f5f5)"
+    }).appendTo(container);
+    window.$("<span>").css({
+      overflow: "hidden",
+      "text-overflow": "ellipsis",
+      "white-space": "nowrap",
+      flex: "1 1 auto"
+    }).text(name).appendTo(row);
+    window.$("<span>", { "class": "nexa-sparkplug-value" }).css({
+      "font-family": "monospace",
+      color: "var(--red-ui-secondary-text-color, #475569)",
+      flex: "0 0 auto",
+      "max-width": "40%",
+      overflow: "hidden",
+      "text-overflow": "ellipsis",
+      "white-space": "nowrap"
+    }).text(formatSparkplugValue(ref)).appendTo(row);
+    row.attr("data-sparkplug-metric", "1");
+    row.data("nexaSparkplugMetric", ref);
+    row.draggable({
+      helper: "clone",
+      appendTo: "#red-ui-editor",
+      revert: "invalid",
+      zIndex: 1e4,
+      start: function(e, ui) {
+        if (ui && ui.helper) {
+          ui.helper.css({
+            "z-index": 1e4,
+            opacity: 0.88,
+            "pointer-events": "none",
+            "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
+          });
+        }
+      },
+      stop: function() {
+        if (!state.artboardEl) {
+          if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas first (menu \u2192 Pages)", { type: "warning", timeout: 2e3 });
+          return;
+        }
+        if (state.activeCanvasTab !== "ui") {
+          if (window.RED && window.RED.notify) window.RED.notify("Switch to the UI tab first", { type: "warning", timeout: 2e3 });
+        }
+      }
+    });
+    return row;
+  }
+  function drawTree(container) {
+    container.empty();
+    var tree = getRawTree();
+    var groupIds = Object.keys(tree);
+    if (!groupIds.length) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "16px", "text-align": "center" }).text("No Sparkplug data seen yet. Check the connection settings and make sure an Edge Node is publishing.").appendTo(container);
+      return;
+    }
+    function bindToggle(header, body) {
+      header.on("click", function() {
+        body.toggle();
+        header.find("> i.fa-angle-down, > i.fa-angle-right").toggleClass("fa-angle-down fa-angle-right");
+      });
+    }
+    groupIds.sort().forEach(function(groupId) {
+      var groupHeader = collapsibleHeader(container, groupId, "fa-object-group");
+      var groupBody = window.$("<div>").appendTo(container);
+      bindToggle(groupHeader, groupBody);
+      var edgeNodes = tree[groupId];
+      Object.keys(edgeNodes).sort().forEach(function(edgeNodeId) {
+        var edgeNode = edgeNodes[edgeNodeId];
+        var edgeHeader = collapsibleHeader(groupBody, edgeNodeId, "fa-microchip", function(header) {
+          onlineDot(edgeNode.online).appendTo(header);
+        });
+        edgeHeader.css({ "padding-left": "22px", background: "transparent", "font-weight": "500" });
+        var edgeBody = window.$("<div>").appendTo(groupBody);
+        bindToggle(edgeHeader, edgeBody);
+        var nodeMetricNames = Object.keys(edgeNode.nodeMetrics || {});
+        if (nodeMetricNames.length) {
+          var nodeMetricsWrap = window.$("<div>").appendTo(edgeBody);
+          nodeMetricNames.sort().forEach(function(name) {
+            metricChip(nodeMetricsWrap, { groupId, edgeNodeId, deviceId: null, metricName: name }, name);
+          });
+        }
+        Object.keys(edgeNode.devices || {}).sort().forEach(function(deviceId) {
+          var device = edgeNode.devices[deviceId];
+          var deviceHeader = collapsibleHeader(edgeBody, deviceId, "fa-cube", function(header) {
+            onlineDot(device.online && edgeNode.online).appendTo(header);
+          });
+          deviceHeader.css({ "padding-left": "34px", background: "transparent", "font-weight": "400" });
+          var deviceBody = window.$("<div>").appendTo(edgeBody);
+          bindToggle(deviceHeader, deviceBody);
+          Object.keys(device.metrics || {}).sort().forEach(function(name) {
+            metricChip(deviceBody, { groupId, edgeNodeId, deviceId, metricName: name }, name);
+          });
+        });
+      });
+    });
+  }
+  function renderSparkplugPanel() {
+    if (!state.sparkplugPane) return;
+    ensureSparkplugCommsWired();
+    var pane = state.sparkplugPane;
+    pane.empty();
+    var toolbar = window.$("<div>").css({
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "space-between",
+      padding: "8px 10px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
+      background: "var(--red-ui-tertiary-background, #f8fafc)",
+      "flex-shrink": "0"
+    }).appendTo(pane);
+    window.$("<span>").css({
+      "font-size": "11px",
+      "font-weight": "bold",
+      "text-transform": "uppercase",
+      color: "var(--red-ui-secondary-text-color, #64748b)"
+    }).text("MQTT Sparkplug").appendTo(toolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).text("Configure Connection...").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" }).on("click", function() {
+      openSparkplugConnectionSettings();
+    }).appendTo(toolbar);
+    var treeWrap = window.$("<div>", { "class": "nexa-sparkplug-tree" }).css({ flex: "1 1 auto", "overflow-y": "auto" }).appendTo(pane);
+    drawTree(treeWrap);
+    if (!liveWired) {
+      liveWired = true;
+      onSparkplugLiveUpdate(function() {
+        if (state.sparkplugPane && state.sparkplugPane.is(":visible")) {
+          drawTree(treeWrap);
+        }
+      });
+    }
+  }
+
   // src/sidebar/sidebar-content.js
   function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -4466,6 +5030,7 @@
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
     var screenLeftCol = window.$("<div>").css({
       flex: "0 0 240px",
@@ -4550,6 +5115,7 @@
         state.layersPane.toggle(tab.id === "layers");
         state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
         state.templatesPane.toggle(tab.id === "templates");
+        state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
           if (state.editingMode === "template") exitTemplateEditing();
           ensureScreensLoaded(function() {
@@ -4567,6 +5133,7 @@
         if (tab.id === "properties") renderPropertiesPanel();
         if (tab.id === "layers") renderLayersPanel();
         if (tab.id === "events") renderEventsPanel();
+        if (tab.id === "sparkplug") renderSparkplugPanel();
       }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
@@ -4575,6 +5142,7 @@
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
       window.NEXA.onRegister(function() {
         if (state.componentsPane) {

@@ -5,7 +5,7 @@ import {
 import { undo, redo } from "./history.js";
 import { groupSelection, ungroupSelection, deselectAll, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
-import { removeComponents, addComponentAt } from "./canvas/component-renderer.js";
+import { removeComponents, addComponentAt, addSparkplugMetricComponentAt } from "./canvas/component-renderer.js";
 import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
 import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect } from "./logic/logic-selection.js";
@@ -132,18 +132,27 @@ export function buildCanvasArea(trayBody) {
     // rather than reverting on every drop because nothing was ever "valid".
     // [data-type-id] (set by makeComponentChip, but not by the Events tab's
     // logic-node chips) is what tells this apart from those.
+    // "[data-sparkplug-metric]" (set by sparkplug-panel.js's metric chip) is
+    // the SAME "marker attribute for accept(), rich payload via .data()"
+    // split the Events tab's logic-node chips already use — a metric
+    // reference (group/edge/device/name) doesn't reduce to a bare type-id
+    // string the way a plain component drop does.
     state.artboardEl.droppable({
-        accept: "[data-type-id]",
+        accept: "[data-type-id], [data-sparkplug-metric]",
         tolerance: "pointer",
         drop: function (event, ui) {
-            var dropTypeId = ui.draggable.attr("data-type-id");
-            if (!dropTypeId) return;
             var offset = state.artboardEl.offset();
             var x = (event.pageX - offset.left) / state.zoomLevel;
             var y = (event.pageY - offset.top) / state.zoomLevel;
-            if (x >= 0 && y >= 0 && x <= state.artboardEl.width() && y <= state.artboardEl.height()) {
-                addComponentAt(dropTypeId, x, y);
+            if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
+
+            var metricRef = ui.draggable.data("nexaSparkplugMetric");
+            if (metricRef) {
+                addSparkplugMetricComponentAt(metricRef, x, y);
+                return;
             }
+            var dropTypeId = ui.draggable.attr("data-type-id");
+            if (dropTypeId) addComponentAt(dropTypeId, x, y);
         }
     });
 

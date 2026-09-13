@@ -1,5 +1,6 @@
 // --- Canvas Component Selection & Grouping -----------------------------
 import { state, genId, markDirty, getActiveScreen, findComponent, findGroup, groupMemberIds } from "../state.js";
+import { isLayerInteractable } from "./layers.js";
 import { pushHistory } from "../history.js";
 import { clearSelectionHandles, renderSelectionHandles, updateComponentBox } from "./selection-handles.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
@@ -82,14 +83,18 @@ export function toggleFlipForSelection(axis) {
 }
 
 export function groupSelection() {
-    if (state.selectedIds.length < 2) {
-        RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2000 });
-        return;
-    }
     var screen = getActiveScreen();
     if (!screen) return;
     screen.groups = screen.groups || [];
-    var members = state.selectedIds.map(findComponent).filter(Boolean);
+    // Defensive, not just belt-and-suspenders: state.selectedIds can be set
+    // through paths other than the canvas's own click/marquee handlers
+    // (e.g. the Layers panel's "See" button), which don't all know to
+    // reject a "hide"/"remove" layer's components the way those two do.
+    var members = state.selectedIds.map(findComponent).filter(Boolean).filter(function (c) { return isLayerInteractable(c.layerId); });
+    if (members.length < 2) {
+        RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2000 });
+        return;
+    }
     if (members.some(function (c) { return c.g; })) {
         RED.notify("One or more selected components are already in a group — ungroup first", { type: "warning", timeout: 2500 });
         return;
@@ -170,6 +175,12 @@ export function startMarqueeSelect(e) {
         var screen = getActiveScreen();
         if (!screen) return;
         var hits = screen.components.filter(function (c) {
+            // Marquee-select is pure geometry (never touches the DOM), so a
+            // "hide"/"remove" layer's display:none never protected it here
+            // the way it incidentally does for a direct click — has to be
+            // checked explicitly, or a rubber-band drag over a locked layer
+            // would happily select components the user can't even see.
+            if (!isLayerInteractable(c.layerId)) return false;
             return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
         }).map(function (c) { return c.id; });
         if (shiftHeld) {

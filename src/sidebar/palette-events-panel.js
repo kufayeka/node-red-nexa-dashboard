@@ -50,6 +50,9 @@ function getLogicNodeMeta(type) {
     if (type === "ui-update" || type === "set-template-param") {
         return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
     }
+    if (type === "layer-control") {
+        return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
+    }
     return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
 }
 
@@ -347,6 +350,7 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; }, "", "inject");
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
+    chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
 
     if (screen && screen.components.length) {
         sectionHeader(state.eventsPane, "Components on this screen");

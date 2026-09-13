@@ -4,6 +4,7 @@ import { renderPropertiesPanel } from "./properties-panel.js";
 import { renderLayersPanel } from "../canvas/layers.js";
 import { renderScreenList, renderScreenForm, addScreenFromSidebar } from "./screens-panel.js";
 import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTemplateEditing } from "./templates-panel.js";
+import { renderSparkplugPanel } from "./sparkplug-panel.js";
 
 export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -32,6 +33,11 @@ export function buildSidebarContent() {
     state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    // Same flex/column reasoning as componentsPane/eventsPane above (see
+    // that comment) — the metric rows dragged out of this pane go through
+    // the identical jQuery UI draggable path, so the same margin:auto
+    // pitfall applies here too.
+    state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
 
     // --- Screens Tab: 2-Column Layout (List on Left, Properties on Right) ---
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
@@ -104,6 +110,7 @@ export function buildSidebarContent() {
             state.layersPane.toggle(tab.id === "layers");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
             state.templatesPane.toggle(tab.id === "templates");
+            state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
             if (tab.id === "screens") {
                 // The Screens form (name/URL path/width/height/grid/snap) is
                 // screen-shaped, not template-shaped (no `path` on a
@@ -124,6 +131,7 @@ export function buildSidebarContent() {
             if (tab.id === "properties") renderPropertiesPanel();
             if (tab.id === "layers") renderLayersPanel();
             if (tab.id === "events") renderEventsPanel();
+            if (tab.id === "sparkplug") renderSparkplugPanel();
         }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
@@ -132,6 +140,7 @@ export function buildSidebarContent() {
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
         window.NEXA.onRegister(function () {

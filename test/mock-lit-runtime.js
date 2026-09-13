@@ -35,7 +35,25 @@ function makeEl(tag) {
 const artboard = makeEl("div");
 artboard.id = "nexa-runtime-artboard";
 global.document = {
-    createElement(tag) { return makeEl(tag); },
+    // A REAL browser's document.createElement("nexa-lit-xxx") upgrades the
+    // element to whatever class customElements.define() registered for that
+    // tag (Custom Elements v1) — needed so a compiled component's OWN class
+    // methods (emit/mountTemplate/updated, not just its bindable properties,
+    // which plain property assignment onto ANY object would already satisfy)
+    // are actually reachable on the object other tests here interact with.
+    createElement(tag) {
+        const Klass = global.customElements && global.customElements.get(tag);
+        if (!Klass) return makeEl(tag);
+        const instance = new Klass();
+        instance.tag = tag;
+        instance.style = instance.style || {};
+        instance.attrs = instance.attrs || {};
+        instance.children = instance.children || [];
+        instance.setAttribute = function (k, v) { this.attrs[k] = v; };
+        instance.appendChild = function (child) { this.children.push(child); };
+        elements.push(instance);
+        return instance;
+    },
     getElementById(id) { return id === "nexa-runtime-artboard" ? artboard : null; },
     querySelector(sel) {
         const m = /\[data-id="([^"]+)"\]/.exec(sel);
@@ -208,6 +226,44 @@ const tick = () => new Promise(r => setTimeout(r, 30));
     await tick();
     const customEl5 = document.querySelector('[data-id="lit5"]').firstElementChild;
     console.log("a stale string \"false\" defaultValue is coerced to real boolean false, not left truthy?", customEl5.active === false);
+
+    console.log("--- \"Two-way binding\" checkbox: a flagged bindable property's changes sync back to comp.props ---");
+    // FakeLitElement above doesn't implement real Lit reactivity (no
+    // requestUpdate()/updated() auto-firing from a plain property write —
+    // that's Lit's own internal machinery, out of scope for this file, same
+    // as the rest of it), so this calls updated(changedProps) directly,
+    // exactly the way Lit's own lifecycle would right after committing a
+    // reactive property change — i.e. testing the REAL updated() method
+    // added to getNexaLitBase, not a re-implementation of it.
+    const screen6 = {
+        width: 220, height: 120,
+        layers: [{ id: "default", name: "Default", parentId: null, visible: true }],
+        components: [{
+            id: "lit6", type: "@lit-component", x: 0, y: 0, w: 220, h: 120, rotation: 0, locked: false, layerId: "default",
+            props: { count: 0, other: "untouched" },
+            litCode: "render(){ return html`<div>${this.count}</div>`; }",
+            litStyles: "",
+            litBindable: [
+                { name: "count", type: "number", defaultValue: 0, twoWay: true },
+                { name: "other", type: "string", defaultValue: "untouched" } // NOT two-way — must stay untouched
+            ],
+            litEvents: []
+        }],
+        logic: { nodes: [], wires: [] }
+    };
+    window.__NEXA_SCREEN__ = screen6;
+    window.__NEXA_TEMPLATES__ = [];
+    eval(fs.readFileSync(process.argv[3], "utf8"));
+    await tick();
+    const customEl6 = document.querySelector('[data-id="lit6"]').firstElementChild;
+    console.log("compiled class carries the two-way prop list (just \"count\", not \"other\")?", JSON.stringify(customEl6.constructor.__nexaTwoWayProps) === JSON.stringify(["count"]));
+
+    customEl6.count = 42; // as if the component's own code (e.g. an @input handler) just set it
+    customEl6.other = "changed-locally";
+    customEl6.updated(new Map([["count", 0], ["other", "untouched"]])); // simulates Lit's own post-render lifecycle call
+
+    console.log("two-way property's new value was written back to comp.props?", screen6.components[0].props.count === 42);
+    console.log("non-two-way property was NOT written back (still its original comp.props value)?", screen6.components[0].props.other === "untouched");
 
     console.log("ALL OK");
     process.exit(0);

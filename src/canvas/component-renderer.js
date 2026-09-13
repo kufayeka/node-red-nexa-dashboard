@@ -1,8 +1,9 @@
 import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, groupMemberIds } from "../state.js";
-import { isLayerVisible } from "./layers.js";
+import { isLayerVisible, isLayerInteractable, shouldRenderLayer } from "./layers.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { pushHistory } from "../history.js";
+import { resolveSparkplugProps, parseSparkplugBindingPath, makeSparkplugBindingPath, onSparkplugLiveUpdate } from "./sparkplug-live.js";
 
 // Re-invokes just one component's render() with its current props
 export function refreshComponentRender(comp) {
@@ -14,19 +15,63 @@ export function refreshComponentRender(comp) {
         namespace: comp.id, // top-level selection, so the raw id IS the full namespace
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+        },
+        setBindableValue: function (name, value) {
+            comp.props = comp.props || {};
+            comp.props[name] = value;
+            markDirty();
         }
     };
+    // Goes through interpolateProps (template-param substitution, THEN
+    // sparkplug resolution), not resolveSparkplugProps alone — matching
+    // the fix in nexa-runtime-client.js's own refreshComponentRender.
+    // comp.__paramState is undefined for every component this is currently
+    // ever called on (the editor's live-bound-component scan only walks
+    // top-level screen.components, never recursing into a "@template"
+    // instance's nested ones), so this is a no-op today — kept consistent
+    // anyway so the same "{sparkplug:...::{param}/...}" corruption bug
+    // nexa-runtime-client.js had can't resurface here the moment that scan
+    // is ever extended to reach nested components too.
     if (comp.type === "@lit-component") {
-        renderLitComponentInstance(node, comp, comp.props || {}, ctx);
+        renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, comp.__paramState), ctx);
         return;
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (!typeDef || typeof typeDef.render !== "function") return;
     try {
-        typeDef.render(node, comp.props || {}, ctx);
+        typeDef.render(node, interpolateProps(comp.props || {}, comp.__paramState), ctx);
     } catch (e) {
         el.text("(render error: " + e.message + ")");
     }
+}
+
+// Called once, lazily, the first time anything asks the live Sparkplug
+// cache to start pushing updates (see ensureSparkplugCommsWired) — re-runs
+// refreshComponentRender for every on-screen component whose refKey just
+// changed, so a bound Text label's value actually updates as new DDATA
+// arrives instead of only reflecting whatever was live at the moment it was
+// first rendered. Registered once per page load (module-level), not once
+// per component — cheap even with many bound components on screen.
+var sparkplugLiveRenderWired = false;
+export function ensureSparkplugLiveRenderWired() {
+    if (sparkplugLiveRenderWired) return;
+    sparkplugLiveRenderWired = true;
+    onSparkplugLiveUpdate(function () {
+        var screen = getActiveScreen();
+        if (!screen) return;
+        // Brute-force "re-render every bound component on any change" rather
+        // than precisely matching each changed refKey to the ONE component
+        // that owns it — simpler, and cheap enough for an HMI screen's
+        // typical component/metric counts; revisit only if a real project's
+        // scale ever makes this measurably slow.
+        screen.components.forEach(function (comp) {
+            var props = comp.props || {};
+            var isBound = Object.keys(props).some(function (k) {
+                return typeof props[k] === "string" && parseSparkplugBindingPath(props[k]);
+            });
+            if (isBound) refreshComponentRender(comp);
+        });
+    });
 }
 
 export function removeComponents(ids) {
@@ -114,14 +159,23 @@ export function resolveBindableValue(raw, scope) {
 // name isn't a declared param, or a later segment doesn't exist) is left
 // exactly as-is, so a literal brace in an unrelated prop, or a typo, can
 // never silently render as "undefined" or corrupt the string.
+//
+// "{sparkplug:...}" bindings are ALSO always resolved here, regardless of
+// paramState — a top-level screen component (paramState undefined) can
+// still be bound to a live Sparkplug metric; that binding doesn't live in
+// any per-template-instance scope the way {path} params do, it comes from
+// sparkplug-live.js's own global cache.
 export function interpolateProps(props, paramState) {
-    if (!paramState) return props;
-    var out = {};
-    Object.keys(props || {}).forEach(function (k) {
-        var v = props[k];
-        out[k] = (typeof v === "string" && v.indexOf("{") !== -1) ? resolveBindableValue(v, paramState) : v;
-    });
-    return out;
+    var withTemplateBindings = props;
+    if (paramState) {
+        var out = {};
+        Object.keys(props || {}).forEach(function (k) {
+            var v = props[k];
+            out[k] = (typeof v === "string" && v.indexOf("{") !== -1) ? resolveBindableValue(v, paramState) : v;
+        });
+        withTemplateBindings = out;
+    }
+    return resolveSparkplugProps(withTemplateBindings);
 }
 
 // A "@template" instance's per-instance param state (Subflow env-vars
@@ -219,6 +273,26 @@ function getNexaLitBase() {
                 var fakeComp = { templateId: template.id, w: w, h: h, paramValues: paramValues || {} };
                 renderTemplateInstance(wrapper, fakeComp, namespace, [], undefined);
             }
+            // Backs the Bindable Properties list's "Two-way binding" checkbox
+            // (properties-panel.js) — compileLitComponentClass attaches
+            // `static __nexaTwoWayProps` (a plain array of property names) to
+            // each generated subclass; this base-class updated() is the one
+            // place that has to exist for ALL of them, so a user's own code
+            // never has to remember to call ctx.setBindableValue by hand the
+            // way they still do for emit(). NOTE: if the user's own litCode
+            // ALSO defines updated(...), theirs silently wins (same class-body
+            // override behavior as the static properties/styles caveat
+            // already documented above compileLitComponentClass) — call
+            // super.updated(changedProps) from theirs to keep this working.
+            updated(changedProps) {
+                var twoWay = this.constructor.__nexaTwoWayProps;
+                if (twoWay && twoWay.length && this.__nexaCtx && typeof this.__nexaCtx.setBindableValue === "function") {
+                    var self = this;
+                    twoWay.forEach(function (name) {
+                        if (changedProps.has(name)) self.__nexaCtx.setBindableValue(name, self[name]);
+                    });
+                }
+            }
         };
     }
     return window.__nexaLitBase;
@@ -273,19 +347,22 @@ export function compileLitComponentClass(litCode, litStyles, bindable) {
     if (!Base) return { error: new Error("Lit runtime not loaded (window.NEXA_LIT missing)") };
     var cacheKey = hashLitSource(
         (litCode || "") + "||" + (litStyles || "") + "||" +
-        (bindable || []).map(function (p) { return p.name + ":" + p.type; }).join(",")
+        (bindable || []).map(function (p) { return p.name + ":" + p.type + ":" + (p.twoWay ? "1" : "0"); }).join(",")
     );
     if (litClassCache[cacheKey]) return litClassCache[cacheKey];
 
     var propsDecl = "static properties = {" + (bindable || []).map(function (p) {
         return JSON.stringify(p.name) + ": { type: " + litPropertyCtor(p.type) + " }";
     }).join(",") + "};";
+    var twoWayDecl = "static __nexaTwoWayProps = " + JSON.stringify(
+        (bindable || []).filter(function (p) { return p.twoWay; }).map(function (p) { return p.name; })
+    ) + ";";
     // Backtick/${ in user CSS text would otherwise be interpreted as JS
     // template-literal syntax by the very `new Function` call compiling it.
     var safeStyles = String(litStyles || "").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
     var stylesDecl = litStyles ? ("static styles = css`" + safeStyles + "`;") : "";
     var defaultRender = "render(){ return html`<div style=\"color:#999;font-size:11px;padding:6px;\">(empty Lit component — write render() in the Properties panel)</div>`; }";
-    var classBody = propsDecl + "\n" + stylesDecl + "\n" + (litCode || defaultRender);
+    var classBody = propsDecl + "\n" + twoWayDecl + "\n" + stylesDecl + "\n" + (litCode || defaultRender);
     var tagName = "nexa-lit-" + cacheKey;
 
     var Klass;
@@ -439,6 +516,18 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
 export function renderComponent(comp) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
+    // A "remove"-state layer's components get no DOM node at all — coming
+    // back out of it (via the Layers panel or a Layer Control node setting
+    // the layer back to show/hide) just means the NEXT renderActiveScreen()
+    // (which always rebuilds every component from scratch — see canvas-ui.js)
+    // naturally draws this one fresh, so no separate "remount" path is needed.
+    if (!shouldRenderLayer(comp.layerId)) return;
+    // "hide" still renders (so toggling back to "show" is instant) but must
+    // be locked out of selection/dragging exactly like "remove" is —
+    // display:none already blocks clicks, but NOT geometry-based marquee
+    // select (see selection.js), so this also has to gate the mousedown/
+    // draggable wiring below, not just the CSS.
+    var interactable = isLayerInteractable(comp.layerId);
     var dragStart = null;
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
         position: "absolute",
@@ -448,8 +537,9 @@ export function renderComponent(comp) {
         height: comp.h + "px",
         transform: getComponentTransform(comp),
         "box-sizing": "border-box",
-        cursor: comp.locked ? "default" : "move",
+        cursor: (comp.locked || !interactable) ? "default" : "move",
         "user-select": "none",
+        "pointer-events": interactable ? "" : "none",
         display: isLayerVisible(comp.layerId) ? "" : "none"
     }).appendTo(state.artboardEl);
 
@@ -457,8 +547,15 @@ export function renderComponent(comp) {
         namespace: comp.id, // top-level, so the raw id IS the full namespace
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+        },
+        setBindableValue: function (name, value) {
+            comp.props = comp.props || {};
+            comp.props[name] = value;
+            markDirty();
         }
     }, comp.id, []);
+
+    if (!interactable) return;
 
     el.on("mousedown", function (e) {
         e.stopPropagation();
@@ -627,6 +724,51 @@ export function addComponentAt(type, artboardX, artboardY) {
     var comp = {
         id: genId(),
         type: type,
+        x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
+        y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
+        w: size.w,
+        h: size.h,
+        rotation: 0,
+        locked: false,
+        layerId: (screen.layers[0] || {}).id,
+        props: props
+    };
+    screen.components.push(comp);
+    renderComponent(comp);
+    selectOnly(comp.id);
+    pushHistory({ t: "add", screenId: screen.id, comp: comp });
+    markDirty();
+}
+
+// Drop target for a metric row dragged out of the "MQTT Sparkplug" sidebar
+// tab (see src/sidebar/sparkplug-panel.js and the extended droppable() in
+// editor-tray.js) — builds a "kufayeka-text-label" component with its
+// `props.text` pre-seeded to a live "{sparkplug:...}" binding (see
+// sparkplug-live.js's makeSparkplugBindingPath), rather than the component's
+// own registered default text. Everything else about the component (size,
+// selection, history, dirty-tracking) matches the generic branch of
+// addComponentAt() above exactly — this is NOT a second component-creation
+// path, just a different initial `props`.
+var SPARKPLUG_TEXT_COMPONENT_TYPE = "kufayeka-text-label";
+export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var def = window.NEXA.getComponent(SPARKPLUG_TEXT_COMPONENT_TYPE);
+    if (!def) {
+        if (window.RED && window.RED.notify) {
+            window.RED.notify("Can't create a bound Text component — \"" + SPARKPLUG_TEXT_COMPONENT_TYPE + "\" isn't registered (is @kufayeka/nexa-component-basic-shapes installed?)", { type: "error", timeout: 4000 });
+        }
+        return;
+    }
+    var size = def.defaultSize || { w: 160, h: 36 };
+    var props = {};
+    Object.keys(def.defaults || {}).forEach(function (k) {
+        props[k] = def.defaults[k].value;
+    });
+    props.text = makeSparkplugBindingPath(ref);
+    var comp = {
+        id: genId(),
+        type: SPARKPLUG_TEXT_COMPONENT_TYPE,
         x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
         y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
         w: size.w,
