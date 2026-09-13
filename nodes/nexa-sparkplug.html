@@ -1,0 +1,64 @@
+<script type="text/javascript">
+    RED.nodes.registerType('kufayeka-nexa-sparkplug', {
+        category: 'config',
+        defaults: {
+            name: { value: "Nexa Sparkplug Connection" },
+            brokerUrl: { value: "mqtt://localhost:1883", required: true },
+            groupFilter: { value: "+" },
+            edgeNodeFilter: { value: "+" }
+        },
+        credentials: {
+            username: { type: "text" },
+            password: { type: "password" }
+        },
+        label: function () {
+            return this.name || "Nexa Sparkplug Connection";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="kufayeka-nexa-sparkplug">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="Nexa Sparkplug Connection">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-brokerUrl"><i class="fa fa-server"></i> Broker URL</label>
+        <input type="text" id="node-config-input-brokerUrl" placeholder="mqtt://localhost:1883">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-username"><i class="fa fa-user"></i> Username</label>
+        <input type="text" id="node-config-input-username" placeholder="(optional)">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-password"><i class="fa fa-lock"></i> Password</label>
+        <input type="password" id="node-config-input-password" placeholder="(optional)">
+    </div>
+    <hr>
+    <div class="form-row">
+        <label for="node-config-input-groupFilter"><i class="fa fa-object-group"></i> Group ID</label>
+        <input type="text" id="node-config-input-groupFilter" placeholder="+ (any group)">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-edgeNodeFilter"><i class="fa fa-microchip"></i> Edge Node ID</label>
+        <input type="text" id="node-config-input-edgeNodeFilter" placeholder="+ (any edge node)">
+    </div>
+    <div class="form-tips">
+        <p>Connects to an MQTT broker and listens (read-only — never publishes) to
+        <code>spBv1.0/&lt;Group ID&gt;/+/&lt;Edge Node ID&gt;[/+]</code>, building the live tree shown
+        in the <b>MQTT Sparkplug</b> sidebar tab. Leave Group ID / Edge Node ID as
+        <code>+</code> to discover everything on the bus.</p>
+        <p>This node is created and managed automatically by Nexa Dashboard (sidebar →
+        MQTT Sparkplug → Configure Connection). It is independent of
+        <code>@kufayeka/node-red-asset-engine</code>'s own Sparkplug nodes, if installed —
+        Nexa Dashboard works standalone.</p>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="kufayeka-nexa-sparkplug">
+    <p>Nexa Dashboard's own MQTT Sparkplug B connection — a passive listener used to
+    populate the <b>MQTT Sparkplug</b> sidebar tab's live explorer tree, and to feed
+    live values into any canvas component bound to a Sparkplug metric.</p>
+    <p>Created and managed automatically; edit via the sidebar tab's "Configure
+    Connection" button rather than dragging this node type directly.</p>
+</script>

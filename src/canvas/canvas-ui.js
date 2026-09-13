@@ -1,12 +1,20 @@
 import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen } from "../state.js";
 import { refreshSelectionVisuals } from "./selection.js";
-import { renderComponent } from "./component-renderer.js";
+import { renderComponent, ensureSparkplugLiveRenderWired } from "./component-renderer.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
+import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
 
 export function renderActiveScreen() {
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
+    // Idempotent — safe to call on every render. Ensures any component
+    // already bound to a Sparkplug metric (props containing "{sparkplug:
+    // ...}") gets its live value updated, not just whatever was live at
+    // first render, without requiring the user to have opened the "MQTT
+    // Sparkplug" sidebar tab first.
+    ensureSparkplugCommsWired();
+    ensureSparkplugLiveRenderWired();
     state.selectedIds = [];
     state.selectionHandlesEl = null; // artboardEl.empty() below discards its DOM node too
     renderPropertiesPanel();

@@ -232,6 +232,24 @@ export function renderPropertiesPanel() {
                     markDirty();
                     refreshComponentRender(comp);
                 });
+
+                // Sub-row 3: Two-way binding — when checked, this.<name>
+                // assignments inside the component's own render()/handlers
+                // (e.g. from an @input listener) automatically write back
+                // into comp.props (see getNexaLitBase's updated() and this
+                // panel's own imports), instead of the user having to wire
+                // that persistence up by hand for every field.
+                var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+                window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
+                    .html('<i class="fa fa-exchange"></i> 2-way')
+                    .appendTo(twoWayRow);
+                var twoWayInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!p.twoWay).appendTo(twoWayRow);
+                window.$("<span>").css({ "font-size": "11px", color: "#888" }).text("Sync this." + p.name + " changes back to comp.props").appendTo(twoWayRow);
+                twoWayInput.on("change", function () {
+                    p.twoWay = twoWayInput.is(":checked");
+                    markDirty();
+                    refreshComponentRender(comp);
+                });
             },
             removeItem: function (opt) {
                 var idx = comp.litBindable.indexOf(opt);

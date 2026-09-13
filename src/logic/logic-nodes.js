@@ -9,6 +9,7 @@ import { openFunctionNodeEditor } from "../dialogs/function-dialog.js";
 import { openUiUpdateNodeEditor } from "../dialogs/ui-update-dialog.js";
 import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
 import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
+import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -28,6 +29,10 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "open-url") {
         return "Open URL" + (node.url ? (" (" + node.url + ")") : "");
+    }
+    if (node.type === "layer-control") {
+        var n = (node.states || []).length;
+        return "Layer Control" + (n ? (" (" + n + ")") : "");
     }
     if (node.type === "set-template-param") {
         var instComp = findComponent(node.instanceId);
@@ -124,6 +129,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openOpenUrlNodeEditor(node);
+        });
+    }
+    if (node.type === "layer-control") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openLayerControlNodeEditor(node);
         });
     }
 

@@ -216,4 +216,46 @@ clickTitled('Delete layer', 1);
 console.log('screen.layers back to 1 entry?', screen.layers.length === 1);
 console.log('targetComp reassigned to default?', targetComp.layerId === 'default');
 
+console.log('--- 3-state layers: a fresh layer + component, cycling show -> hide -> remove -> show ---');
+openLayersTab();
+clickTitled('Add Layer', 0); // top-toolbar "+ Layer" button, adds a ROOT layer
+var stateLayer = screen.layers.find(l => l.id !== 'default');
+console.log('new layer defaults to state "show"?', stateLayer.state === 'show');
+
+dropOnArtboard(700, 100);
+var stateComp = screen.components[screen.components.length - 1];
+stateComp.layerId = stateLayer.id; // reassigning layerId itself doesn't force a redraw — the very
+// next setLayerState click below does (renderActiveScreen runs inside it), same as reassigning a
+// component's layer via the Properties panel <select> wouldn't visibly move it either until
+// SOMETHING re-renders the artboard.
+function artboardHasDom(compId) {
+  return (global.__artboardEl._children || []).some(c => c._attrs && c._attrs['data-id'] === compId);
+}
+function artboardDisplay(compId) {
+  var el = (global.__artboardEl._children || []).find(c => c._attrs && c._attrs['data-id'] === compId);
+  return el && el._css && el._css.display;
+}
+
+openLayersTab();
+// index 1, not 0: "default" is STILL in "show" state too at this point (its
+// own raw `.visible` mutations further up in this file are dead — the real
+// getLayerRenderState/isLayerVisible only ever read `.state`), so it renders
+// the exact same "Hide layer (still rendered, locked)" title as our new
+// layer does — "default" is root index 0 (created first, via makeScreen),
+// our new layer is root index 1 (pushed after, via addLayer). Every
+// following click's title is unique to our layer once it's out of "show",
+// since "default" never moves off it.
+clickTitled('Hide layer (still rendered, locked)', 1); // show -> hide
+console.log('"hide": component STILL in the artboard DOM (no rebuild needed)?', artboardHasDom(stateComp.id) === true);
+console.log('"hide": display is "none"?', artboardDisplay(stateComp.id) === 'none');
+
+openLayersTab();
+clickTitled('Remove layer (not rendered)', 0); // hide -> remove
+console.log('"remove": component has NO DOM node at all?', artboardHasDom(stateComp.id) === false);
+
+openLayersTab();
+clickTitled('Show layer', 0); // remove -> show (cycles back around)
+console.log('back to "show": component is freshly drawn again?', artboardHasDom(stateComp.id) === true);
+console.log('back to "show": display is visible ("") again?', artboardDisplay(stateComp.id) === '');
+
 console.log('ALL OK');

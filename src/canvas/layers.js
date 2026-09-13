@@ -1,8 +1,13 @@
-import { state, genId, markDirty, getActiveScreen, findLayer, findTemplate, findComponent, getLayerChildren, getComponentsInLayer, isLayerVisible } from "../state.js";
-import { selectOnly } from "./selection.js";
+import { state, genId, markDirty, getActiveScreen, findLayer, findTemplate, findComponent, getLayerChildren, getComponentsInLayer, isLayerVisible, isLayerInteractable, shouldRenderLayer, getLayerRenderState } from "../state.js";
+import { selectOnly, deselectAll } from "./selection.js";
 import { renderActiveScreen } from "./canvas-ui.js";
 
-export { isLayerVisible, getLayerChildren, getComponentsInLayer };
+export { isLayerVisible, isLayerInteractable, shouldRenderLayer, getLayerRenderState, getLayerChildren, getComponentsInLayer };
+
+// Cycle order for the Layers panel's one-click toggle — show -> hide ->
+// remove -> show. "remove" is the last stop (not the first past "show")
+// since it's the most destructive/least-common choice.
+var LAYER_STATE_CYCLE = ["show", "hide", "remove"];
 
 // Layers are expanded by default unless explicitly collapsed
 var collapsedLayers = new Set();
@@ -20,7 +25,7 @@ function setExpanded(layerId, val) {
 export function addLayer(parentId) {
     var screen = getActiveScreen();
     if (!screen) return;
-    var layer = { id: genId(), name: "New Layer", parentId: parentId || null, visible: true };
+    var layer = { id: genId(), name: "New Layer", parentId: parentId || null, state: "show" };
     screen.layers.push(layer);
     setExpanded(layer.id, true);
     if (parentId) setExpanded(parentId, true);
@@ -36,10 +41,26 @@ export function renameLayer(id, name) {
     markDirty();
 }
 
-export function toggleLayerVisibility(id) {
+// Replaces the old boolean toggleLayerVisibility — a layer now has 3
+// states (see state.js's getLayerRenderState/LAYER_STATE_RANK): "show" is
+// normal; "hide" still renders but is invisible+locked out of selection;
+// "remove" isn't rendered at all. setLayerState(id) with no explicit
+// `next` cycles show -> hide -> remove -> show (used by the panel's
+// one-click toggle); pass `next` directly for the Layer Control logic
+// node, which sets an exact state by name instead of cycling.
+export function setLayerState(id, next) {
     var layer = findLayer(id);
     if (!layer) return;
-    layer.visible = !layer.visible;
+    if (next === undefined) {
+        var cur = LAYER_STATE_CYCLE.indexOf(layer.state || "show");
+        next = LAYER_STATE_CYCLE[(cur + 1) % LAYER_STATE_CYCLE.length];
+    }
+    layer.state = next;
+    // Anything selected may have just become non-interactable (hide/remove
+    // lock a layer's components out of selection) — drop the stale
+    // selection rather than leave selectedIds pointing at components the
+    // user can no longer click, drag, or group.
+    deselectAll();
     markDirty();
     renderActiveScreen();
     renderLayersPanel();
@@ -135,15 +156,19 @@ export function renderLayersPanel() {
 
         var left = $("<div>", { style: "display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0;" }).appendTo(layerRow);
 
-        // Visibility Toggle
+        // State toggle — cycles show -> hide -> remove -> show on click.
+        var layerState = layer.state || "show";
+        var STATE_ICON = { show: "fa-eye", hide: "fa-eye-slash", remove: "fa-ban" };
+        var STATE_COLOR = { show: "var(--red-ui-primary-text-color, #333)", hide: "#bbb", remove: "#d32f2f" };
+        var STATE_NEXT_LABEL = { show: "Hide layer (still rendered, locked)", hide: "Remove layer (not rendered)", remove: "Show layer" };
         $("<span>", {
-            style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; color: " + (layer.visible ? "var(--red-ui-primary-text-color, #333)" : "#bbb") + ";",
-            title: layer.visible ? "Hide layer" : "Show layer"
+            style: "cursor: pointer; width: 16px; text-align: center; flex: 0 0 16px; color: " + STATE_COLOR[layerState] + ";",
+            title: STATE_NEXT_LABEL[layerState]
         })
-            .html(layer.visible ? '<i class="fa fa-eye"></i>' : '<i class="fa fa-eye-slash"></i>')
+            .html('<i class="fa ' + STATE_ICON[layerState] + '"></i>')
             .on("click", function (e) {
                 if (e && e.stopPropagation) e.stopPropagation();
-                toggleLayerVisibility(layer.id);
+                setLayerState(layer.id);
             }).appendTo(left);
 
         // Folder Icon

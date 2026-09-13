@@ -224,4 +224,23 @@ console.log('after: ', after2);
 var marqueeSelectedCorrectPair = (after2[0].x - before2[0].x === 20) && (after2[1].x - before2[1].x === 20) && (after2[2].x - before2[2].x === 0);
 console.log('marquee correctly selected only item[0]+item[1], not item[2]?', marqueeSelectedCorrectPair);
 
+console.log('--- reported gap: a "hide"/"remove" layer must also lock its components OUT of marquee-select (pure geometry, never touched the DOM before) ---');
+var screenForLayers = configNodes[0].screens[0];
+screenForLayers.layers.push({ id: 'locked-layer', name: 'Locked', parentId: null, state: 'hide' });
+comps[1].layerId = 'locked-layer'; // comps[1] sits at x=280 (w=60) — still well inside the same 0-350 marquee box used above
+var beforeLock = comps.map(c => ({ id: c.id, x: c.x }));
+artboardHandlers.forEach(fn => fn({ target: global.__artboardEl._domNode, shiftKey: false, pageX: 0, pageY: 0 }));
+fireDoc('mousemove', { pageX: 350, pageY: 200 });
+fireDoc('mouseup', {});
+var d2 = dragOf(comps[0].id);
+d2.opts.start({ pageX: 0, pageY: 0 });
+d2.opts.drag({ pageX: 30, pageY: 0 }, { position: {} });
+d2.opts.stop({ pageX: 30, pageY: 0 });
+var afterLock = comps.map(c => ({ id: c.id, x: c.x }));
+// afterLock[0]'s exact delta isn't 30 (grid-snap rounds it, same as every
+// other drag in this suite) — what actually matters here is that the
+// dragged comp moved AT ALL while the geometrically-inside-the-marquee but
+// layer-locked comps[1] did not move by even one px.
+console.log('geometrically-inside but LOCKED comps[1] did NOT move with the marquee-selected drag?', (afterLock[0].x !== beforeLock[0].x) && (afterLock[1].x === beforeLock[1].x));
+
 console.log('ALL OK');

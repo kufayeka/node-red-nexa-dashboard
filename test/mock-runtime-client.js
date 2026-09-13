@@ -4,9 +4,17 @@
 const elements = [];
 function makeEl(tag) {
   const el = {
-    tag: tag, style: {}, children: [], attrs: {},
+    tag: tag, style: {}, children: [], attrs: {}, parentNode: null,
     setAttribute(k, v) { this.attrs[k] = v; },
-    appendChild(child) { this.children.push(child); },
+    appendChild(child) { child.parentNode = this; this.children.push(child); },
+    // Real DOM's removeChild — needed by the Layer Control node's "remove"
+    // state (reconcileTopLevelLayerRender in nexa-runtime-client.js actually
+    // tears a component's DOM node out, not just css-hides it).
+    removeChild(child) {
+      child.parentNode = null;
+      this.children = this.children.filter(c => c !== child);
+      elements.splice(elements.indexOf(child), 1);
+    },
     querySelector(sel) {
       // very small subset: only supports tag-name selectors, which is all
       // the components here use (e.g. "nexa-text-label")
@@ -275,6 +283,51 @@ async function runNewNodeTypeTests() {
   const sink3 = window.__NEXA_SCREEN__.components.find(c => c.id === 'sink3');
   await new Promise(resolve => setTimeout(resolve, 250)); // >= 2 ticks at the enforced 100ms floor
   console.log('Inject node fired on its own interval, without any ctx.emit/lifecycle trigger?', /^TICK-\d+$/.test(sink3.props.text), '(actual: ' + JSON.stringify(sink3.props.text) + ')');
+
+  console.log('--- Layer Control node: 3-state layers reconciled live on a deployed page (no re-mount pass to rely on, unlike the editor) ---');
+  const artboard6 = makeEl('div');
+  global.document.getElementById = (id) => id === 'nexa-runtime-artboard' ? artboard6 : null;
+  window.__NEXA_SCREEN__ = {
+    id: 's5', width: 400, height: 300,
+    layers: [
+      { id: 'default', name: 'Default', parentId: null, state: 'show' },
+      { id: 'panel', name: 'Panel', parentId: null, state: 'show' }
+    ],
+    components: [
+      { id: 'trigger', type: 'mock-button2', x: 0, y: 0, w: 50, h: 50, layerId: 'default', props: {} },
+      { id: 'panelComp', type: 'mock-sink2', x: 100, y: 0, w: 50, h: 50, layerId: 'panel', props: {} }
+    ],
+    logic: {
+      nodes: [
+        { id: 'evtHide', type: 'ui-event', compId: 'trigger', event: 'hidePanel' },
+        { id: 'lcHide', type: 'layer-control', states: [{ name: 'Panel', state: 'hide' }] },
+        { id: 'evtRemove', type: 'ui-event', compId: 'trigger', event: 'removePanel' },
+        { id: 'lcRemove', type: 'layer-control', states: [{ name: 'Panel', state: 'remove' }] },
+        { id: 'evtShow', type: 'ui-event', compId: 'trigger', event: 'showPanel' },
+        { id: 'lcShow', type: 'layer-control', states: [{ name: 'Panel', state: 'show' }] }
+      ],
+      wires: [
+        { id: 'w1', from: 'evtHide', to: 'lcHide' },
+        { id: 'w2', from: 'evtRemove', to: 'lcRemove' },
+        { id: 'w3', from: 'evtShow', to: 'lcShow' }
+      ]
+    }
+  };
+  eval(fs.readFileSync(process.argv[3], 'utf8'));
+
+  function panelEl() { return artboard6.children.find(e => e.attrs['data-id'] === 'panelComp'); }
+  console.log('initially mounted (state "show")?', !!panelEl() && panelEl().style.display === '');
+
+  lastCtx.emit('hidePanel', null);
+  console.log('"hide": still mounted (not torn down)?', !!panelEl());
+  console.log('"hide": display is "none"?', panelEl() && panelEl().style.display === 'none');
+
+  lastCtx.emit('removePanel', null);
+  console.log('"remove": DOM node actually torn out?', !panelEl());
+
+  lastCtx.emit('showPanel', null);
+  console.log('back to "show": freshly re-mounted?', !!panelEl() && panelEl().style.display === '');
+
   console.log('ALL OK');
   // The Inject nodes started above are real setInterval timers that are
   // never cleared (same as a real deployed page — they're meant to run for

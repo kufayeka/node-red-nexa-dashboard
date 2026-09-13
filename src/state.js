@@ -22,6 +22,7 @@ export const LOGIC_NODE_KINDS = {
     "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
     "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
     "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" },
+    "layer-control": { label: "Layer Control", hasInput: true, hasOutput: false, color: "#c78a3a" },
     // Subflow-style parameter passing (see plan "Phase 3 revision"):
     // param-input is a SOURCE, like onload/onrender — only meaningful while
     // editing a Template, outputs that instance's current param snapshot.
@@ -138,7 +139,7 @@ function makeSurfaceBase(opts) {
         snap: opts ? opts.snap !== false : true,
         components: (opts && opts.components) || [],
         groups: (opts && opts.groups) || [],
-        layers: (opts && opts.layers) || [{ id: "default", name: "Default Layer", parentId: null, visible: true }],
+        layers: (opts && opts.layers) || [{ id: "default", name: "Default Layer", parentId: null, state: "show" }],
         logic: (opts && opts.logic) || { nodes: [], wires: [] }
     };
 }
@@ -233,7 +234,17 @@ export function getOrCreateProjectConfigNode() {
 
 function backfillSurface(s) {
     if (!s.groups) s.groups = [];
-    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, visible: true }];
+    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, state: "show" }];
+    // Pre-3-state saves only ever had a boolean `visible` — migrate it to
+    // the new `state` field (true -> "show", false -> "hide") instead of
+    // leaving both fields around for isLayerRenderState() to have to
+    // understand two competing shapes forever.
+    s.layers.forEach(function (l) {
+        if (!l.state) {
+            l.state = l.visible === false ? "hide" : "show";
+            delete l.visible;
+        }
+    });
     s.components.forEach(function (c) { if (!c.layerId) c.layerId = s.layers[0].id; });
     if (!s.logic) s.logic = { nodes: [], wires: [] };
 }
@@ -297,13 +308,46 @@ export function getLayerChildren(parentId) {
     return (screen.layers || []).filter(function (l) { return l.parentId === parentId; });
 }
 
-export function isLayerVisible(layerId) {
+// A layer's OWN state is "show"/"hide"/"remove", but its EFFECTIVE state (the
+// one that actually governs a component in it) is the most restrictive one
+// anywhere up its parentId chain — a "show" sub-layer inside a "remove"
+// parent is still removed, exactly like isLayerVisible's old ancestor-walk
+// already did for plain visible/hidden.
+var LAYER_STATE_RANK = { show: 0, hide: 1, remove: 2 };
+export function getLayerRenderState(layerId) {
     var layer = findLayer(layerId);
+    var effective = "show";
     while (layer) {
-        if (!layer.visible) return false;
+        var layerState = layer.state || "show";
+        if (LAYER_STATE_RANK[layerState] > LAYER_STATE_RANK[effective]) effective = layerState;
         layer = layer.parentId ? findLayer(layer.parentId) : null;
     }
-    return true;
+    return effective;
+}
+
+// CSS-visible: true only for "show" — "hide" is still mounted (see
+// shouldRenderLayer) but must not paint or be interactable.
+export function isLayerVisible(layerId) {
+    return getLayerRenderState(layerId) === "show";
+}
+
+// Whether a component in this layer should have a DOM node at all —
+// false only for "remove". "hide" still renders (isLayerVisible above
+// handles hiding it), so toggling back to "show" is instant, no rebuild
+// needed; "remove" doesn't exist in the DOM, so coming back out of it
+// requires a fresh render (see renderComponent in component-renderer.js).
+export function shouldRenderLayer(layerId) {
+    return getLayerRenderState(layerId) !== "remove";
+}
+
+// "hide" and "remove" both lock their components out of selection/marquee/
+// grouping — only a "show" component is interactable. Kept as its own name
+// (rather than reusing isLayerVisible) since "interactable" and "visible"
+// are different questions even though they coincide today (both are
+// simply "=== show"): a future state that's visible-but-locked, or
+// interactable-but-dimmed, wouldn't collapse into one boolean.
+export function isLayerInteractable(layerId) {
+    return getLayerRenderState(layerId) === "show";
 }
 
 export function getComponentsInLayer(layerId) {

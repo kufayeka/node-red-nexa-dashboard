@@ -33,7 +33,7 @@ const RUNTIME_TESTS = [
     "mock-lit-runtime.js", "mock-lit-mount-template.js"
 ];
 // Standalone: no args, no DOM at all.
-const STANDALONE_TESTS = ["mock-lit-compile.js"];
+const STANDALONE_TESTS = ["mock-lit-compile.js", "mock-sparkplug-tree.js"];
 
 function runBuild() {
     console.log("[test] Building editor bundle (npm run build)...");
