@@ -43,6 +43,17 @@ function refKey(ref) {
     return ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "") + "::" + ref.metricName;
 }
 
+// One-shot "is this prop string a sparkplug binding, and if so what's its
+// refKey" — the exact same key format applyDelta's own `changed` array uses
+// (see notify() below), so a caller building a tag->component reverse index
+// (component-renderer.js's ensureSparkplugLiveRenderWired) can match a
+// changed key straight back to a component's binding without re-deriving
+// the key format itself and risking the two drifting apart.
+export function refKeyOfBindingString(raw) {
+    var ref = parseSparkplugBindingPath(raw);
+    return ref ? refKey(ref) : null;
+}
+
 var liveCache = {}; // refKey(ref) -> {value, type, isNull, online}
 // Mirrors lib/sparkplug/sparkplugTree.js's own shape exactly (group ->
 // edge node -> device -> metric) — duplicated here rather than shared,
