@@ -34,7 +34,10 @@ const RUNTIME_TESTS = [
     "mock-sparkplug-render-perf.js", "mock-sparkplug-template-param-regression.js"
 ];
 // Standalone: no args, no DOM at all.
-const STANDALONE_TESTS = ["mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js"];
+const STANDALONE_TESTS = [
+    "mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-properties.js",
+    "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js"
+];
 
 function runBuild() {
     console.log("[test] Building editor bundle (npm run build)...");

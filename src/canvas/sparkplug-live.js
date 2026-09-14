@@ -134,10 +134,31 @@ function applyDelta(delta) {
             metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
         }
         (delta.metrics || []).forEach(function (m) {
-            var entry = { value: m.value, type: m.type, isNull: m.isNull, timestamp: m.timestamp };
+            var entry = {
+                value: m.value,
+                type: m.type,
+                isNull: m.isNull,
+                timestamp: m.timestamp,
+                properties: m.properties || null,
+                metadata: m.metadata || null,
+                engUnit: m.engUnit || null,
+                isHistorical: !!m.isHistorical,
+                isTransient: !!m.isTransient
+            };
             metricsTarget[m.name] = entry;
             var key = delta.groupId + "::" + delta.edgeNodeId + "::" + (delta.deviceId || "") + "::" + m.name;
-            liveCache[key] = { value: m.value, type: m.type, isNull: m.isNull, online: true };
+            liveCache[key] = {
+                value: m.value,
+                type: m.type,
+                isNull: m.isNull,
+                online: true,
+                timestamp: m.timestamp,
+                properties: m.properties || null,
+                metadata: m.metadata || null,
+                engUnit: m.engUnit || null,
+                isHistorical: !!m.isHistorical,
+                isTransient: !!m.isTransient
+            };
             changed.push(key);
         });
     }
@@ -146,6 +167,27 @@ function applyDelta(delta) {
 
 export function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
+}
+
+// Formats epoch timestamp into SCADA-standard "YYYY-MM-DD h:mm:ss A" (matching Ignition Tag Browser)
+export function formatSparkplugTimestamp(ts) {
+    if (!ts) return "";
+    var d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return String(ts);
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1);
+    if (mm.length < 2) mm = "0" + mm;
+    var dd = String(d.getDate());
+    if (dd.length < 2) dd = "0" + dd;
+    var hours = d.getHours();
+    var minutes = String(d.getMinutes());
+    if (minutes.length < 2) minutes = "0" + minutes;
+    var seconds = String(d.getSeconds());
+    if (seconds.length < 2) seconds = "0" + seconds;
+    var ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return yyyy + "-" + mm + "-" + dd + " " + hours + ":" + minutes + ":" + seconds + " " + ampm;
 }
 
 // The full Group -> Edge Node -> Device -> Metric structure, for the
@@ -192,19 +234,39 @@ function absorbSnapshotTree(tree) {
     rawTree = tree || {};
     liveCache = {};
     Object.keys(tree || {}).forEach(function (groupId) {
-        Object.keys(tree[groupId]).forEach(function (edgeNodeId) {
+        Object.keys(tree[groupId] || {}).forEach(function (edgeNodeId) {
             var edgeNode = tree[groupId][edgeNodeId];
             Object.keys(edgeNode.nodeMetrics || {}).forEach(function (name) {
-                var m = edgeNode.nodeMetrics[name];
-                liveCache[groupId + "::" + edgeNodeId + "::" + "::" + name] =
-                    { value: m.value, type: m.type, isNull: m.isNull, online: edgeNode.online };
+                var m = edgeNode.nodeMetrics[name] || {};
+                liveCache[groupId + "::" + edgeNodeId + "::" + "::" + name] = {
+                    value: m.value,
+                    type: m.type,
+                    isNull: m.isNull,
+                    online: edgeNode.online,
+                    timestamp: m.timestamp,
+                    properties: m.properties || null,
+                    metadata: m.metadata || null,
+                    engUnit: m.engUnit || null,
+                    isHistorical: !!m.isHistorical,
+                    isTransient: !!m.isTransient
+                };
             });
             Object.keys(edgeNode.devices || {}).forEach(function (deviceId) {
                 var device = edgeNode.devices[deviceId];
                 Object.keys(device.metrics || {}).forEach(function (name) {
-                    var m = device.metrics[name];
-                    liveCache[groupId + "::" + edgeNodeId + "::" + deviceId + "::" + name] =
-                        { value: m.value, type: m.type, isNull: m.isNull, online: edgeNode.online && device.online };
+                    var m = device.metrics[name] || {};
+                    liveCache[groupId + "::" + edgeNodeId + "::" + deviceId + "::" + name] = {
+                        value: m.value,
+                        type: m.type,
+                        isNull: m.isNull,
+                        online: edgeNode.online && device.online,
+                        timestamp: m.timestamp,
+                        properties: m.properties || null,
+                        metadata: m.metadata || null,
+                        engUnit: m.engUnit || null,
+                        isHistorical: !!m.isHistorical,
+                        isTransient: !!m.isTransient
+                    };
                 });
             });
         });
