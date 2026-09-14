@@ -922,7 +922,7 @@
     if (!delta) return;
     var changed = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
-    var metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
+    var metricsTarget;
     if (delta.type === "death") {
       if (delta.deviceId) {
         ensureRawDevice(edgeNode, delta.deviceId).online = false;
@@ -941,10 +941,17 @@
     } else {
       if (delta.type === "birth") {
         if (delta.deviceId) {
-          ensureRawDevice(edgeNode, delta.deviceId).online = true;
+          var dev = ensureRawDevice(edgeNode, delta.deviceId);
+          dev.online = true;
+          dev.metrics = {};
+          metricsTarget = dev.metrics;
         } else {
           edgeNode.online = true;
+          edgeNode.nodeMetrics = {};
+          metricsTarget = edgeNode.nodeMetrics;
         }
+      } else {
+        metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
       }
       (delta.metrics || []).forEach(function(m) {
         var entry = { value: m.value, type: m.type, isNull: m.isNull, timestamp: m.timestamp };
@@ -1063,6 +1070,22 @@
     var node = getOrCreateSparkplugConfigNode();
     if (!node) return;
     window.RED.editor.editConfig("", "kufayeka-nexa-sparkplug", node.id);
+  }
+  function requestSparkplugRebirth() {
+    if (!window.$ || typeof window.$.ajax !== "function") return;
+    window.$.ajax({ url: "nexa-dashboard/_sparkplug-rebirth", type: "POST" }).done(function(resp) {
+      var count = resp && resp.requested || 0;
+      if (window.RED && window.RED.notify) {
+        window.RED.notify(
+          count > 0 ? "Requested Rebirth from " + count + " Edge Node" + (count === 1 ? "" : "s") : "No Edge Node known yet to request a Rebirth from \u2014 check the connection settings.",
+          { type: count > 0 ? "success" : "warning", timeout: 3e3 }
+        );
+      }
+    }).fail(function() {
+      if (window.RED && window.RED.notify) {
+        window.RED.notify("Failed to request Rebirth \u2014 is the Nexa Sparkplug connection configured?", { type: "error", timeout: 3e3 });
+      }
+    });
   }
 
   // src/canvas/component-renderer.js
@@ -5000,16 +5023,23 @@
       "text-transform": "uppercase",
       color: "var(--red-ui-secondary-text-color, #64748b)"
     }).text("MQTT Sparkplug").appendTo(toolbar);
+    var toolbarButtons = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "4px" }).appendTo(toolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: `Ask every known Edge Node to re-send its NBIRTH/DBIRTH \u2014 NBIRTH/DBIRTH are only ever published once and aren't retained by the broker, so anything that connected after an Edge Node already birthed (or a metric only ever sent by alias) can otherwise stay invisible or stuck at "???" forever.` }).html('<i class="fa fa-refresh"></i> Rebirth / Refresh').css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" }).on("click", function() {
+      requestSparkplugRebirth();
+    }).appendTo(toolbarButtons);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).text("Configure Connection...").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" }).on("click", function() {
       openSparkplugConnectionSettings();
-    }).appendTo(toolbar);
+    }).appendTo(toolbarButtons);
     var treeWrap = window.$("<div>", { "class": "nexa-sparkplug-tree" }).css({ flex: "1 1 auto", "overflow-y": "auto" }).appendTo(pane);
     drawTree(treeWrap);
     if (!liveWired) {
       liveWired = true;
       onSparkplugLiveUpdate(function() {
         if (state.sparkplugPane && state.sparkplugPane.is(":visible")) {
-          drawTree(treeWrap);
+          var currentWrap = state.sparkplugPane.find(".nexa-sparkplug-tree");
+          if (currentWrap.length) {
+            drawTree(currentWrap);
+          }
         }
       });
     }

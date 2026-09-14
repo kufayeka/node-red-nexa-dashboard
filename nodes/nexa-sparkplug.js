@@ -1,7 +1,12 @@
 // Config node backing Nexa Dashboard's own "MQTT Sparkplug" sidebar tab —
-// a passive Sparkplug B LISTENER (never publishes anything), maintaining a
-// live Group -> Edge Node -> Device -> Metric tree (lib/sparkplug/
-// sparkplugTree.js) from NBIRTH/DBIRTH/NDATA/DDATA/NDEATH/DDEATH messages.
+// mostly a passive Sparkplug B LISTENER, maintaining a live Group -> Edge
+// Node -> Device -> Metric tree (lib/sparkplug/sparkplugTree.js) from
+// NBIRTH/DBIRTH/NDATA/DDATA/NDEATH/DDEATH messages. It ALSO publishes one
+// specific, spec-standard message — a "Node Control/Rebirth" NCMD request —
+// see requestRebirth()'s own comment for exactly why that's unavoidable:
+// NBIRTH/DBIRTH are one-shot and not broker-retained, so a listener that
+// starts after an Edge Node already birthed has no other way to ever see
+// its tag definitions/current values.
 //
 // Deliberately its OWN independent MQTT connection, not a reuse of
 // @kufayeka/node-red-asset-engine's kufayeka-sparkplug-in/-edge-node nodes —
@@ -16,8 +21,10 @@
 const mqtt = require("mqtt");
 const sparkplug = require("../lib/sparkplug/sparkplugCodec");
 const tree = require("../lib/sparkplug/sparkplugTree");
+const { RebirthTracker } = require("../lib/sparkplug/sparkplugRebirth");
 
 const NAMESPACE = "spBv1.0";
+const REBIRTH_COOLDOWN_MS = 10000;
 
 // Module-level (not inside the RED-scoped export below), same reasoning as
 // nexa-project.js's own currentProject: a DIFFERENT file (lib/nexa-plugin.js)
@@ -64,6 +71,7 @@ module.exports = function (RED) {
     var connected = false;
     var dataTree = {};
     var listeners = [];
+    var rebirthTracker = new RebirthTracker(REBIRTH_COOLDOWN_MS);
 
     function emitDelta(delta) {
       listeners.forEach(function (fn) {
@@ -96,6 +104,55 @@ module.exports = function (RED) {
       return connected;
     };
 
+    // [tck-id-payloads-ncmd-qos]: MUST be QoS 0, not retained — matches
+    // @kufayeka/node-red-asset-engine's own sparkplug-out.js, which
+    // publishes this exact same request from the opposite side (a Host
+    // Application requesting an Edge Node rebirth itself).
+    function requestRebirth(groupId, edgeNodeId) {
+      if (!client || !connected) return;
+      var topic = NAMESPACE + "/" + groupId + "/NCMD/" + edgeNodeId;
+      var payload;
+      try {
+        payload = sparkplug.encodePayload({
+          timestamp: Date.now(),
+          metrics: [{ name: "Node Control/Rebirth", type: "Boolean", value: true }]
+        });
+      } catch (e) {
+        node.warn("Nexa Sparkplug: failed to encode a Rebirth request for \"" + groupId + "/" + edgeNodeId + "\": " + describeError(e));
+        return;
+      }
+      client.publish(topic, payload, { qos: 0, retain: false }, function (err) {
+        if (err) node.warn("Nexa Sparkplug: failed to publish Rebirth request to \"" + topic + "\": " + describeError(err));
+      });
+    }
+
+    // Manual "Rebirth / Refresh" trigger (sidebar button + REST endpoint,
+    // see lib/nexa-plugin.js) — unlike the automatic trigger below, this
+    // bypasses the tracker's "already birthed"/cooldown checks entirely: a
+    // user explicitly asking for a refresh should always get one, even if
+    // this listener already believes everything is up to date. Requests a
+    // rebirth from every Edge Node currently known (from the tree built up
+    // so far), plus the configured filter pair itself if it's concrete and
+    // we haven't seen anything from it yet. Returns how many requests were
+    // actually sent, purely so the REST endpoint/UI can report something
+    // meaningful ("no Edge Node known yet" vs "asked N Edge Nodes").
+    node.requestRebirthAll = function () {
+      var seen = {};
+      var count = 0;
+      Object.keys(dataTree).forEach(function (groupId) {
+        Object.keys(dataTree[groupId]).forEach(function (edgeNodeId) {
+          seen[groupId + "::" + edgeNodeId] = true;
+          requestRebirth(groupId, edgeNodeId);
+          count++;
+        });
+      });
+      if (groupFilter !== "+" && edgeNodeFilter !== "+" && !seen[groupFilter + "::" + edgeNodeFilter]) {
+        requestRebirth(groupFilter, edgeNodeFilter);
+        count++;
+      }
+      return count;
+    };
+
     function onMessage(topic, buf) {
       var parts = topic.split("/");
       if (parts[0] !== NAMESPACE) return;
@@ -112,6 +169,28 @@ module.exports = function (RED) {
       }
       var delta = tree.applyMessage(dataTree, groupId, msgType, edgeNodeId, deviceId, payload);
       if (delta) emitDelta(delta);
+
+      // Auto-recovery for the actual root cause reported: NBIRTH/DBIRTH are
+      // published exactly once and are NOT broker-retained (spec: only the
+      // Death Certificate/Will and Host STATE messages are), so a listener
+      // that starts (or a browser tab that opens) AFTER an Edge Node's birth
+      // already happened would otherwise never see its tag definitions or
+      // current values — only whatever changes to arrive AFTER it started
+      // watching. Seeing NDATA/DDATA/DBIRTH for an Edge Node we've never
+      // seen an NBIRTH from means exactly that: ask it to rebirth, so its
+      // full definition (and every metric alias — see sparkplugTree.js)
+      // becomes available. RebirthTracker's cooldown keeps this from
+      // spamming an Edge Node that's slow to respond or doesn't support it.
+      if (msgType === "NBIRTH") {
+        rebirthTracker.markBirthed(groupId, edgeNodeId);
+      } else if (msgType === "NDEATH") {
+        rebirthTracker.markDead(groupId, edgeNodeId);
+      } else if (msgType === "NDATA" || msgType === "DDATA" || msgType === "DBIRTH") {
+        if (rebirthTracker.shouldRequest(groupId, edgeNodeId, Date.now())) {
+          node.log("Nexa Sparkplug: requesting Rebirth from \"" + groupId + "/" + edgeNodeId + "\" (its own NBIRTH was never seen)");
+          requestRebirth(groupId, edgeNodeId);
+        }
+      }
     }
 
     function connect() {
@@ -119,9 +198,10 @@ module.exports = function (RED) {
       client = mqtt.connect(brokerUrl, {
         username: username,
         password: password,
-        // No identity to protect (this node never publishes anything, only
-        // listens) — a unique-per-node id is fine, unlike an Edge Node's own
-        // stable clientId requirement.
+        // No CONTROL-PLANE identity to protect (this listener publishes
+        // only the one standard, harmless Rebirth request above, never a
+        // Will/Death Certificate of its own) — a unique-per-node id is
+        // fine, unlike an Edge Node's own stable clientId requirement.
         clientId: "kufayeka-nexa-sparkplug-" + node.id
       });
 
@@ -132,6 +212,15 @@ module.exports = function (RED) {
         client.subscribe([nodeTopicFilter, deviceTopicFilter], { qos: 0 }, function (err) {
           if (err) node.warn("Nexa Sparkplug: failed to subscribe: " + describeError(err));
         });
+        // A wildcard filter ("+") has no single concrete Edge Node to ask
+        // yet — MQTT publish topics can't themselves contain a wildcard, so
+        // the best this can do there is wait for onMessage's own per-message
+        // trigger above. A fully concrete group+edge node filter, though, IS
+        // one specific Edge Node we already know we want — no reason to
+        // wait for its first message before asking.
+        if (groupFilter !== "+" && edgeNodeFilter !== "+") {
+          requestRebirth(groupFilter, edgeNodeFilter);
+        }
       });
       client.on("message", onMessage);
       client.on("reconnect", function () {
@@ -158,8 +247,9 @@ module.exports = function (RED) {
       closing = true;
       if (currentSparkplugNode === node) currentSparkplugNode = null;
       if (!client) { done(); return; }
-      // This node never publishes anything (no Will, no graceful death
-      // publish needed) — just tear the connection down.
+      // This node registers no Will/Death Certificate of its own (it's not
+      // an Edge Node — no graceful death publish needed on shutdown) — just
+      // tear the connection down.
       client.end(true, {}, function () { done(); });
     });
   }

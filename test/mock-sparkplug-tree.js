@@ -70,4 +70,29 @@ console.log("--- a DDATA/DBIRTH/DDEATH with NO device segment is ignored, not mi
 var d3 = tree.applyMessage({}, "G1", "DDATA", "Edge1", null, { timestamp: 1, metrics: [{ name: "X", type: "Double", value: 1 }] });
 console.log("device-type message without a deviceId produces no delta?", d3 === null);
 
+console.log("--- metric alias resolution (spec p.46: an alias is unique per EDGE NODE, shared by NBIRTH + every DBIRTH under it) ---");
+var t2 = {};
+tree.applyMessage(t2, "G2", "NBIRTH", "Edge2", null, {
+    timestamp: 1, metrics: [{ name: "bdSeq", alias: 0, type: "Int64", value: 1 }]
+});
+tree.applyMessage(t2, "G2", "DBIRTH", "Edge2", "Motor1", {
+    timestamp: 2, metrics: [{ name: "Speed", alias: 1, type: "Double", value: 10 }]
+});
+var aliasOnly = tree.applyMessage(t2, "G2", "DDATA", "Edge2", "Motor1", {
+    timestamp: 3, metrics: [{ name: undefined, alias: 1, type: "Double", value: 42 }]
+});
+console.log("a DDATA carrying ONLY an alias (no name) still resolves via the DBIRTH's own alias table?", aliasOnly && aliasOnly.metrics[0].name === "Speed");
+console.log("...and actually updates the right metric's value?", tree.getMetricEntry(t2, "G2", "Edge2", "Motor1", "Speed").value === 42);
+
+var unresolvable = tree.applyMessage(t2, "G2", "DDATA", "Edge2", "Motor1", {
+    timestamp: 4, metrics: [{ name: undefined, alias: 999, type: "Double", value: 1 }]
+});
+console.log("an alias with NO matching birth is dropped (returns null, not a synthetic name)?", unresolvable === null);
+
+var t3 = {};
+tree.applyMessage(t3, "G3", "NBIRTH", "Edge3", null, { timestamp: 1, metrics: [{ name: "A", alias: 5, type: "Double", value: 1 }] });
+tree.applyMessage(t3, "G3", "NBIRTH", "Edge3", null, { timestamp: 2, metrics: [{ name: "B", alias: 5, type: "Double", value: 2 }] });
+var afterRebirth = tree.applyMessage(t3, "G3", "NDATA", "Edge3", null, { timestamp: 3, metrics: [{ name: undefined, alias: 5, type: "Double", value: 99 }] });
+console.log("a fresh NBIRTH invalidates the PREVIOUS session's alias mapping (alias 5 now means \"B\", not the old \"A\")?", afterRebirth && afterRebirth.metrics[0].name === "B");
+
 console.log("ALL OK");
