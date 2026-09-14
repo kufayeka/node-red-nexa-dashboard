@@ -359,6 +359,56 @@ function updateOnlineStatus(container, tree) {
     });
 }
 
+function buildMetricHierarchy(metricsMap) {
+    var root = { folders: {}, metrics: [] };
+    var names = Object.keys(metricsMap || {}).sort();
+    names.forEach(function (fullName) {
+        var parts = fullName.split("/");
+        var current = root;
+        for (var i = 0; i < parts.length - 1; i++) {
+            var folderName = parts[i];
+            if (!current.folders[folderName]) {
+                current.folders[folderName] = { folders: {}, metrics: [] };
+            }
+            current = current.folders[folderName];
+        }
+        var leafName = parts[parts.length - 1];
+        current.metrics.push({
+            name: leafName,
+            fullName: fullName,
+            entry: metricsMap[fullName]
+        });
+    });
+    return root;
+}
+
+function renderMetricHierarchy(parentEl, hierarchy, basePathPrefix, refBase, bindToggle) {
+    // 1. Render Subfolders (e.g. "Lantai_1", "tambahan")
+    Object.keys(hierarchy.folders).sort().forEach(function (folderName) {
+        var subTree = hierarchy.folders[folderName];
+        var folderKey = basePathPrefix + "/f::" + folderName;
+        var folderHeader = collapsibleHeader(parentEl, folderName, "fa-folder-o", folderKey);
+        folderHeader.css({ background: "transparent" });
+        var folderBody = window.$("<div>", { "class": "nexa-sparkplug-subfolder-body" }).css({
+            "margin-left": "10px",
+            "padding-left": "6px",
+            "border-left": "1px dotted #cbd5e1",
+            "margin-bottom": "2px"
+        }).appendTo(parentEl);
+
+        bindToggle(folderHeader, folderBody, folderKey, function () {
+            renderMetricHierarchy(folderBody, subTree, folderKey, refBase, bindToggle);
+        });
+    });
+
+    // 2. Render Tags in this folder level
+    hierarchy.metrics.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+    }).forEach(function (m) {
+        tagNode(parentEl, Object.assign({}, refBase, { metricName: m.fullName }), m.name);
+    });
+}
+
 function drawTree(container, tree) {
     container.empty();
     tree = tree || getRawTree();
@@ -426,12 +476,11 @@ function drawTree(container, tree) {
                 }).appendTo(groupBody);
 
                 bindToggle(edgeHeader, edgeBody, edgeKey, function () {
-                    var nodeMetricNames = Object.keys(edgeNode.nodeMetrics || {});
-                    if (nodeMetricNames.length) {
+                    var nodeMetrics = edgeNode.nodeMetrics || {};
+                    if (Object.keys(nodeMetrics).length) {
                         var nodeMetricsWrap = window.$("<div>", { "class": "nexa-sparkplug-nodemetrics-wrap" }).appendTo(edgeBody);
-                        nodeMetricNames.sort().forEach(function (name) {
-                            tagNode(nodeMetricsWrap, { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: null, metricName: name }, name);
-                        });
+                        var nodeHierarchy = buildMetricHierarchy(nodeMetrics);
+                        renderMetricHierarchy(nodeMetricsWrap, nodeHierarchy, edgeKey + "/nm", { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: null }, bindToggle);
                     }
 
                     Object.keys(edgeNode.devices || {}).sort().forEach(function (deviceId) {
@@ -450,9 +499,8 @@ function drawTree(container, tree) {
                         }).appendTo(edgeBody);
 
                         bindToggle(deviceHeader, deviceBody, deviceKey, function () {
-                            Object.keys(device.metrics || {}).sort().forEach(function (name) {
-                                tagNode(deviceBody, { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: deviceId, metricName: name }, name);
-                            });
+                            var deviceHierarchy = buildMetricHierarchy(device.metrics || {});
+                            renderMetricHierarchy(deviceBody, deviceHierarchy, deviceKey, { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: deviceId }, bindToggle);
                         });
                     });
                 });
