@@ -85,7 +85,7 @@ function applyDelta(delta) {
     if (!delta) return;
     var changed = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
-    var metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
+    var metricsTarget;
 
     if (delta.type === "death") {
         // A death delta carries no metrics array -- mark the whole edge
@@ -109,8 +109,18 @@ function applyDelta(delta) {
         });
     } else {
         if (delta.type === "birth") {
-            if (delta.deviceId) { ensureRawDevice(edgeNode, delta.deviceId).online = true; }
-            else { edgeNode.online = true; }
+            if (delta.deviceId) {
+                var dev = ensureRawDevice(edgeNode, delta.deviceId);
+                dev.online = true;
+                dev.metrics = {};
+                metricsTarget = dev.metrics;
+            } else {
+                edgeNode.online = true;
+                edgeNode.nodeMetrics = {};
+                metricsTarget = edgeNode.nodeMetrics;
+            }
+        } else {
+            metricsTarget = delta.deviceId ? ensureRawDevice(edgeNode, delta.deviceId).metrics : edgeNode.nodeMetrics;
         }
         (delta.metrics || []).forEach(function (m) {
             var entry = { value: m.value, type: m.type, isNull: m.isNull, timestamp: m.timestamp };
@@ -306,4 +316,32 @@ export function openSparkplugConnectionSettings() {
     var node = getOrCreateSparkplugConfigNode();
     if (!node) return;
     window.RED.editor.editConfig("", "kufayeka-nexa-sparkplug", node.id);
+}
+
+// Manual "Rebirth / Refresh" trigger (src/sidebar/sparkplug-panel.js's
+// toolbar button) — see nodes/nexa-sparkplug.js's requestRebirthAll() for
+// why this exists even though missing births are also recovered from
+// automatically: NBIRTH/DBIRTH are one-shot and not broker-retained, so a
+// user should always be able to force a fresh one on demand rather than
+// only ever wait on the automatic path (which itself waits for at least
+// one DATA message, or a concrete non-wildcard filter, before it acts).
+export function requestSparkplugRebirth() {
+    if (!window.$ || typeof window.$.ajax !== "function") return;
+    window.$.ajax({ url: "nexa-dashboard/_sparkplug-rebirth", type: "POST" })
+        .done(function (resp) {
+            var count = (resp && resp.requested) || 0;
+            if (window.RED && window.RED.notify) {
+                window.RED.notify(
+                    count > 0
+                        ? "Requested Rebirth from " + count + " Edge Node" + (count === 1 ? "" : "s")
+                        : "No Edge Node known yet to request a Rebirth from — check the connection settings.",
+                    { type: count > 0 ? "success" : "warning", timeout: 3000 }
+                );
+            }
+        })
+        .fail(function () {
+            if (window.RED && window.RED.notify) {
+                window.RED.notify("Failed to request Rebirth — is the Nexa Sparkplug connection configured?", { type: "error", timeout: 3000 });
+            }
+        });
 }

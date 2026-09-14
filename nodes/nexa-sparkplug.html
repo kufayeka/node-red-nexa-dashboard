@@ -44,10 +44,16 @@
         <input type="text" id="node-config-input-edgeNodeFilter" placeholder="+ (any edge node)">
     </div>
     <div class="form-tips">
-        <p>Connects to an MQTT broker and listens (read-only — never publishes) to
+        <p>Connects to an MQTT broker and listens to
         <code>spBv1.0/&lt;Group ID&gt;/+/&lt;Edge Node ID&gt;[/+]</code>, building the live tree shown
         in the <b>MQTT Sparkplug</b> sidebar tab. Leave Group ID / Edge Node ID as
         <code>+</code> to discover everything on the bus.</p>
+        <p>Since NBIRTH/DBIRTH are only published once (and not retained by the
+        broker), this node also sends a standard "Node Control/Rebirth" request — to a
+        concrete Group/Edge Node ID immediately on connect, or automatically the first
+        time it sees data from an Edge Node whose own birth it never saw — so tags that
+        never change, or that use metric aliasing, don't stay stuck at "???" forever.
+        This is the only thing it ever publishes.</p>
         <p>This node is created and managed automatically by Nexa Dashboard (sidebar →
         MQTT Sparkplug → Configure Connection). It is independent of
         <code>@kufayeka/node-red-asset-engine</code>'s own Sparkplug nodes, if installed —
@@ -56,9 +62,13 @@
 </script>
 
 <script type="text/html" data-help-name="kufayeka-nexa-sparkplug">
-    <p>Nexa Dashboard's own MQTT Sparkplug B connection — a passive listener used to
-    populate the <b>MQTT Sparkplug</b> sidebar tab's live explorer tree, and to feed
-    live values into any canvas component bound to a Sparkplug metric.</p>
+    <p>Nexa Dashboard's own MQTT Sparkplug B connection — used to populate the
+    <b>MQTT Sparkplug</b> sidebar tab's live explorer tree, and to feed live values
+    into any canvas component bound to a Sparkplug metric. It also sends
+    "Node Control/Rebirth" requests (the only thing it ever publishes) so tags that
+    never change, or an Edge Node that birthed before this connected, aren't
+    invisible forever — use the sidebar tab's "Rebirth / Refresh" button to force one
+    manually at any time.</p>
     <p>Created and managed automatically; edit via the sidebar tab's "Configure
     Connection" button rather than dragging this node type directly.</p>
 </script>

@@ -1,7 +1,7 @@
 import { state } from "../state.js";
 import {
     ensureSparkplugCommsWired, onSparkplugLiveUpdate, getRawTree,
-    formatSparkplugValue, openSparkplugConnectionSettings
+    formatSparkplugValue, openSparkplugConnectionSettings, requestSparkplugRebirth
 } from "../canvas/sparkplug-live.js";
 
 var liveWired = false;
@@ -149,10 +149,15 @@ export function renderSparkplugPanel() {
         "font-size": "11px", "font-weight": "bold", "text-transform": "uppercase",
         color: "var(--red-ui-secondary-text-color, #64748b)"
     }).text("MQTT Sparkplug").appendTo(toolbar);
+    var toolbarButtons = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "4px" }).appendTo(toolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Ask every known Edge Node to re-send its NBIRTH/DBIRTH — NBIRTH/DBIRTH are only ever published once and aren't retained by the broker, so anything that connected after an Edge Node already birthed (or a metric only ever sent by alias) can otherwise stay invisible or stuck at \"???\" forever." })
+        .html('<i class="fa fa-refresh"></i> Rebirth / Refresh').css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
+        .on("click", function () { requestSparkplugRebirth(); })
+        .appendTo(toolbarButtons);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" })
         .text("Configure Connection...").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
         .on("click", function () { openSparkplugConnectionSettings(); })
-        .appendTo(toolbar);
+        .appendTo(toolbarButtons);
 
     var treeWrap = window.$("<div>", { "class": "nexa-sparkplug-tree" }).css({ flex: "1 1 auto", "overflow-y": "auto" }).appendTo(pane);
     drawTree(treeWrap);
@@ -169,8 +174,12 @@ export function renderSparkplugPanel() {
         // this tab is the visible one.
         onSparkplugLiveUpdate(function () {
             if (state.sparkplugPane && state.sparkplugPane.is(":visible")) {
-                drawTree(treeWrap);
+                var currentWrap = state.sparkplugPane.find(".nexa-sparkplug-tree");
+                if (currentWrap.length) {
+                    drawTree(currentWrap);
+                }
             }
         });
     }
 }
+
