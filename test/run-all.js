@@ -30,7 +30,8 @@ const EDITOR_TESTS = [
 // Runtime-side tests: take two args (registry client, runtime client).
 const RUNTIME_TESTS = [
     "mock-runtime-client.js", "mock-templates-runtime.js",
-    "mock-lit-runtime.js", "mock-lit-mount-template.js"
+    "mock-lit-runtime.js", "mock-lit-mount-template.js",
+    "mock-sparkplug-render-perf.js", "mock-sparkplug-template-param-regression.js"
 ];
 // Standalone: no args, no DOM at all.
 const STANDALONE_TESTS = ["mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js"];

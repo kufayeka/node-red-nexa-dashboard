@@ -3,7 +3,7 @@ import { isLayerVisible, isLayerInteractable, shouldRenderLayer } from "./layers
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { pushHistory } from "../history.js";
-import { resolveSparkplugProps, parseSparkplugBindingPath, makeSparkplugBindingPath, onSparkplugLiveUpdate } from "./sparkplug-live.js";
+import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeyOfBindingString } from "./sparkplug-live.js";
 
 // Re-invokes just one component's render() with its current props
 export function refreshComponentRender(comp) {
@@ -45,32 +45,85 @@ export function refreshComponentRender(comp) {
     }
 }
 
+// Tag (sparkplug refKey) -> [component, ...] currently bound to it, for the
+// CURRENTLY ACTIVE screen only — rebuilt fresh inside flushDirtySparkplugRenders
+// below rather than incrementally maintained, so it's always correct
+// regardless of which screen is active or how its components were just
+// edited (add/remove/rebind), at the cost of one O(components) scan per
+// animation frame that actually has pending changes — cheap (string
+// comparisons, no DOM) compared to the render() calls it lets us skip.
+// Only scans TOP-LEVEL screen.components, same scope this live-render path
+// has always had (a "@template" instance's nested components aren't
+// reached — see refreshComponentRender's own comment on why that's fine
+// today).
+function buildSparkplugBindingIndex(screen) {
+    var index = {};
+    screen.components.forEach(function (comp) {
+        var props = comp.props || {};
+        Object.keys(props).forEach(function (k) {
+            var v = props[k];
+            if (typeof v !== "string") return;
+            var key = refKeyOfBindingString(v);
+            if (!key) return;
+            if (!index[key]) index[key] = [];
+            index[key].push(comp);
+        });
+    });
+    return index;
+}
+
+// Accumulates refKeys across possibly several onSparkplugLiveUpdate
+// notifications (a burst of MQTT deltas arriving within the same tick),
+// then does ONE index build + ONE render pass per animation frame instead
+// of a synchronous re-render per individual delta — see
+// ensureSparkplugLiveRenderWired's own comment for why a burst of deltas
+// would otherwise cause repeated, avoidable browser reflow/repaint.
+var dirtySparkplugKeys = null; // plain object used as a set: key -> true
+var sparkplugFlushScheduled = false;
+
+function flushDirtySparkplugRenders() {
+    sparkplugFlushScheduled = false;
+    var keys = dirtySparkplugKeys;
+    dirtySparkplugKeys = null;
+    if (!keys) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var index = buildSparkplugBindingIndex(screen);
+    var refreshedIds = {}; // a component bound to >1 changed tag only re-renders once
+    Object.keys(keys).forEach(function (key) {
+        (index[key] || []).forEach(function (comp) {
+            if (refreshedIds[comp.id]) return;
+            refreshedIds[comp.id] = true;
+            refreshComponentRender(comp);
+        });
+    });
+}
+
+function scheduleSparkplugFlush() {
+    if (sparkplugFlushScheduled) return;
+    sparkplugFlushScheduled = true;
+    var raf = window.requestAnimationFrame || function (fn) { return setTimeout(fn, 16); };
+    raf(flushDirtySparkplugRenders);
+}
+
 // Called once, lazily, the first time anything asks the live Sparkplug
 // cache to start pushing updates (see ensureSparkplugCommsWired) — re-runs
-// refreshComponentRender for every on-screen component whose refKey just
-// changed, so a bound Text label's value actually updates as new DDATA
-// arrives instead of only reflecting whatever was live at the moment it was
-// first rendered. Registered once per page load (module-level), not once
-// per component — cheap even with many bound components on screen.
+// refreshComponentRender for just the on-screen component(s) whose refKey
+// actually changed (via the reverse index above), batched to once per
+// animation frame, so a bound Text label's value updates as new DDATA
+// arrives without re-checking or re-rendering every OTHER bound component
+// on the screen, and without one synchronous DOM write per individual
+// delta in a burst. Registered once per page load (module-level), not once
+// per component.
 var sparkplugLiveRenderWired = false;
 export function ensureSparkplugLiveRenderWired() {
     if (sparkplugLiveRenderWired) return;
     sparkplugLiveRenderWired = true;
-    onSparkplugLiveUpdate(function () {
-        var screen = getActiveScreen();
-        if (!screen) return;
-        // Brute-force "re-render every bound component on any change" rather
-        // than precisely matching each changed refKey to the ONE component
-        // that owns it — simpler, and cheap enough for an HMI screen's
-        // typical component/metric counts; revisit only if a real project's
-        // scale ever makes this measurably slow.
-        screen.components.forEach(function (comp) {
-            var props = comp.props || {};
-            var isBound = Object.keys(props).some(function (k) {
-                return typeof props[k] === "string" && parseSparkplugBindingPath(props[k]);
-            });
-            if (isBound) refreshComponentRender(comp);
-        });
+    onSparkplugLiveUpdate(function (changedKeys) {
+        if (!changedKeys || !changedKeys.length) return;
+        if (!dirtySparkplugKeys) dirtySparkplugKeys = {};
+        changedKeys.forEach(function (key) { dirtySparkplugKeys[key] = true; });
+        scheduleSparkplugFlush();
     });
 }
 
