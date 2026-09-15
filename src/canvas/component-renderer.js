@@ -58,15 +58,23 @@ export function refreshComponentRender(comp) {
 // today).
 function buildSparkplugBindingIndex(screen) {
     var index = {};
-    screen.components.forEach(function (comp) {
+    (screen.components || []).forEach(function (comp) {
+        var list = [];
+        if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
+            list.push(comp.sparkplugBinding);
+        }
         var props = comp.props || {};
         Object.keys(props).forEach(function (k) {
             var v = props[k];
-            if (typeof v !== "string") return;
+            if (typeof v === "string") list.push(v);
+        });
+        list.forEach(function (v) {
             var key = refKeyOfBindingString(v);
             if (!key) return;
             if (!index[key]) index[key] = [];
-            index[key].push(comp);
+            if (index[key].indexOf(comp) === -1) {
+                index[key].push(comp);
+            }
         });
     });
     return index;
@@ -818,7 +826,8 @@ export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
     Object.keys(def.defaults || {}).forEach(function (k) {
         props[k] = def.defaults[k].value;
     });
-    props.text = makeSparkplugBindingPath(ref);
+    var bindingPath = makeSparkplugBindingPath(ref);
+    props.text = bindingPath;
     var comp = {
         id: genId(),
         type: SPARKPLUG_TEXT_COMPONENT_TYPE,
@@ -829,6 +838,7 @@ export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
         rotation: 0,
         locked: false,
         layerId: (screen.layers[0] || {}).id,
+        sparkplugBinding: bindingPath,
         props: props
     };
     screen.components.push(comp);

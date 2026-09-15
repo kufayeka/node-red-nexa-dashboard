@@ -273,8 +273,25 @@ function tagNode(container, ref, name) {
                 });
             }
         },
+        drag: function (e, ui) {
+            if (!state.artboardEl) return;
+            state.artboardEl.find(".nexa-sparkplug-drop-hover").removeClass("nexa-sparkplug-drop-hover").css({ outline: "", "box-shadow": "" });
+            var el = (document.elementFromPoint && e.clientX !== undefined) ? document.elementFromPoint(e.clientX, e.clientY) : null;
+            if (el) {
+                var $compEl = window.$(el).closest("#nexa-artboard [data-id]");
+                if ($compEl.length) {
+                    $compEl.addClass("nexa-sparkplug-drop-hover").css({
+                        outline: "2px dashed #007acc",
+                        "box-shadow": "0 0 10px rgba(0,122,204,0.5)"
+                    });
+                }
+            }
+        },
         stop: function () {
             isDragging = false;
+            if (state.artboardEl) {
+                state.artboardEl.find(".nexa-sparkplug-drop-hover").removeClass("nexa-sparkplug-drop-hover").css({ outline: "", "box-shadow": "" });
+            }
             if (pendingTreeRebuild) {
                 pendingTreeRebuild = false;
                 var wrap = state.sparkplugPane && state.sparkplugPane.find(".nexa-sparkplug-tree");

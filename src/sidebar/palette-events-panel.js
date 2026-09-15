@@ -352,6 +352,18 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
 
+    function hasSparkplugBinding(comp) {
+        if (!comp) return false;
+        if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") return true;
+        var props = comp.props || {};
+        var keys = Object.keys(props);
+        for (var i = 0; i < keys.length; i++) {
+            var v = props[keys[i]];
+            if (typeof v === "string" && v.indexOf("{sparkplug:") !== -1) return true;
+        }
+        return false;
+    }
+
     if (screen && screen.components.length) {
         sectionHeader(state.eventsPane, "Components on this screen");
         screen.components.forEach(function (comp) {
@@ -359,6 +371,11 @@ export function renderEventsPanel() {
             if (comp.type === "@template") {
                 var template = findTemplate(comp.templateId);
                 var instanceName = "Instance #" + shortId + (template ? (" (" + template.name + ")") : "");
+                if (hasSparkplugBinding(comp)) {
+                    chip(state.eventsPane, instanceName + " → on Sparkplug Update", function () {
+                        return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
+                    }, comp.id, "ui-event");
+                }
                 (template && template.params || []).forEach(function (param) {
                     chip(state.eventsPane, instanceName + " → Set " + param.label, function () {
                         return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
@@ -368,6 +385,11 @@ export function renderEventsPanel() {
             }
             if (comp.type === "@lit-component") {
                 var litName = "Lit Component #" + shortId;
+                if (hasSparkplugBinding(comp)) {
+                    chip(state.eventsPane, litName + " → on Sparkplug Update", function () {
+                        return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
+                    }, comp.id, "ui-event");
+                }
                 (comp.litEvents || []).forEach(function (evt) {
                     chip(state.eventsPane, litName + " → on " + evt.name, function () {
                         return { type: "ui-event", compId: comp.id, event: evt.name };
@@ -379,13 +401,19 @@ export function renderEventsPanel() {
                 return;
             }
             var typeDef = window.NEXA.getComponent(comp.type);
-            if (!typeDef) return;
-            var name = (typeDef.label || comp.type) + " #" + shortId;
-            (typeDef.events || []).forEach(function (evtDef) {
-                chip(state.eventsPane, name + " → " + evtDef.label, function () {
-                    return { type: "ui-event", compId: comp.id, event: evtDef.name };
+            var name = (typeDef ? typeDef.label : comp.type) + " #" + shortId;
+            if (hasSparkplugBinding(comp)) {
+                chip(state.eventsPane, name + " → on Sparkplug Update", function () {
+                    return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
                 }, comp.id, "ui-event");
-            });
+            }
+            if (typeDef) {
+                (typeDef.events || []).forEach(function (evtDef) {
+                    chip(state.eventsPane, name + " → " + evtDef.label, function () {
+                        return { type: "ui-event", compId: comp.id, event: evtDef.name };
+                    }, comp.id, "ui-event");
+                });
+            }
             chip(state.eventsPane, name + " → Update", function () {
                 return { type: "ui-update", compId: comp.id, config: {} };
             }, comp.id, "ui-update");
