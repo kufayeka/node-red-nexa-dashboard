@@ -1,16 +1,18 @@
 import {
     state, ZOOM_STEP, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_GRID_SIZE,
-    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded
+    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty
 } from "./state.js";
-import { undo, redo } from "./history.js";
-import { groupSelection, ungroupSelection, deselectAll, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
+import { undo, redo, pushHistory } from "./history.js";
+import { groupSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
-import { removeComponents, addComponentAt, addSparkplugMetricComponentAt } from "./canvas/component-renderer.js";
+import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refreshComponentRender } from "./canvas/component-renderer.js";
+import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
 import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
 import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect } from "./logic/logic-selection.js";
 import { removeLogicNodes, renderLogicCanvas, addLogicNode } from "./logic/logic-nodes.js";
 import { buildPalette, renderEventsPanel, refreshEventsHighlight } from "./sidebar/palette-events-panel.js";
+import { renderPropertiesPanel } from "./sidebar/properties-panel.js";
 
 // Broader than a plain "is this an <input>/<textarea>" check: a real code
 // editor widget (RED.editor.createEditor — ace, monaco, or CodeMirror
@@ -148,6 +150,46 @@ export function buildCanvasArea(trayBody) {
 
             var metricRef = ui.draggable.data("nexaSparkplugMetric");
             if (metricRef) {
+                var screen = getActiveScreen();
+                var targetComp = null;
+                var hitEl = (document.elementFromPoint && event.clientX !== undefined) ? document.elementFromPoint(event.clientX, event.clientY) : null;
+                if (hitEl) {
+                    var $compEl = window.$(hitEl).closest("#nexa-artboard [data-id]");
+                    if ($compEl.length) {
+                        var compId = $compEl.attr("data-id");
+                        targetComp = findComponent(compId);
+                    }
+                }
+                if (!targetComp && screen && screen.components) {
+                    for (var i = screen.components.length - 1; i >= 0; i--) {
+                        var c = screen.components[i];
+                        if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+                            targetComp = c;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetComp) {
+                    var bindingPath = makeSparkplugBindingPath(metricRef);
+                    targetComp.sparkplugBinding = bindingPath;
+                    if (targetComp.props && (targetComp.props.text !== undefined || targetComp.type === "kufayeka-text-label")) {
+                        targetComp.props.text = bindingPath;
+                    }
+                    selectOnly(targetComp.id);
+                    refreshComponentRender(targetComp);
+                    renderPropertiesPanel();
+                    renderEventsPanel();
+                    pushHistory({ t: "edit", screenId: screen.id, compId: targetComp.id, sparkplugBinding: bindingPath });
+                    markDirty();
+                    if (window.RED && window.RED.notify) {
+                        var typeDef = window.NEXA ? window.NEXA.getComponent(targetComp.type) : null;
+                        var compName = (typeDef ? typeDef.label : targetComp.type) + " #" + targetComp.id.slice(-4);
+                        window.RED.notify("Assigned Sparkplug metric to " + compName + ": " + metricRef.metricName, { type: "success", timeout: 2500 });
+                    }
+                    return;
+                }
+
                 addSparkplugMetricComponentAt(metricRef, x, y);
                 return;
             }

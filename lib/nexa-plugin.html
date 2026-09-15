@@ -1186,15 +1186,23 @@
   }
   function buildSparkplugBindingIndex(screen) {
     var index = {};
-    screen.components.forEach(function(comp) {
+    (screen.components || []).forEach(function(comp) {
+      var list = [];
+      if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
+        list.push(comp.sparkplugBinding);
+      }
       var props = comp.props || {};
       Object.keys(props).forEach(function(k) {
         var v = props[k];
-        if (typeof v !== "string") return;
+        if (typeof v === "string") list.push(v);
+      });
+      list.forEach(function(v) {
         var key = refKeyOfBindingString(v);
         if (!key) return;
         if (!index[key]) index[key] = [];
-        index[key].push(comp);
+        if (index[key].indexOf(comp) === -1) {
+          index[key].push(comp);
+        }
       });
     });
     return index;
@@ -1780,7 +1788,8 @@
     Object.keys(def.defaults || {}).forEach(function(k) {
       props[k] = def.defaults[k].value;
     });
-    props.text = makeSparkplugBindingPath(ref);
+    var bindingPath = makeSparkplugBindingPath(ref);
+    props.text = bindingPath;
     var comp = {
       id: genId(),
       type: SPARKPLUG_TEXT_COMPONENT_TYPE,
@@ -1791,6 +1800,7 @@
       rotation: 0,
       locked: false,
       layerId: (screen.layers[0] || {}).id,
+      sparkplugBinding: bindingPath,
       props
     };
     screen.components.push(comp);
@@ -2257,263 +2267,6 @@
     });
   }
 
-  // src/sidebar/properties-panel.js
-  function renderPropertiesPanel() {
-    if (!state.propertiesPane) return;
-    state.propertiesPane.empty();
-    if (state.selectedIds.length > 1) {
-      window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
-      var isOneWholeGroup = (function() {
-        var first = findComponent(state.selectedIds[0]);
-        if (!first || !first.g) return false;
-        var members = groupMemberIds(first.g);
-        return members.length === state.selectedIds.length && members.every(isSelected);
-      })();
-      var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      if (isOneWholeGroup) {
-        window.$("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
-      } else {
-        window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
-      }
-      var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" }).on("click", function() {
-        setLockedForSelection(true);
-      }).appendTo(lockRow);
-      window.$("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" }).on("click", function() {
-        setLockedForSelection(false);
-      }).appendTo(lockRow);
-      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
-      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).html('<i class="fa fa-arrows-h"></i> Flip H').css({ flex: "1" }).on("click", function() {
-        toggleFlipForSelection("h");
-      }).appendTo(flipRow);
-      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).html('<i class="fa fa-arrows-v"></i> Flip V').css({ flex: "1" }).on("click", function() {
-        toggleFlipForSelection("v");
-      }).appendTo(flipRow);
-      return;
-    }
-    var comp = state.selectedIds.length === 1 ? findComponent(state.selectedIds[0]) : null;
-    if (!comp) {
-      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
-      return;
-    }
-    var isTemplateInstance = comp.type === "@template";
-    var isLitComponent = comp.type === "@lit-component";
-    var typeDef = isTemplateInstance || isLitComponent ? null : window.NEXA.getComponent(comp.type);
-    if (!isTemplateInstance && !isLitComponent && !typeDef) {
-      window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
-      return;
-    }
-    var templateRef = isTemplateInstance ? findTemplate(comp.templateId) : null;
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(isTemplateInstance ? "Template instance: " + (templateRef ? templateRef.name : "(missing)") : isLitComponent ? "Lit Component" : typeDef.label || comp.type).appendTo(state.propertiesPane);
-    var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
-    var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
-    lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked"));
-    lockInput.on("change", function() {
-      setLockedForSelection(lockInput.is(":checked"), [comp.id]);
-    });
-    var layerRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
-    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
-    var layerSelect = window.$("<select>").css({ width: "100%" }).appendTo(layerRow);
-    (function buildLayerOptions(parentId, depth) {
-      getLayerChildren(parentId).forEach(function(layer) {
-        window.$("<option>", { value: layer.id }).text(new Array(depth + 1).join("\u2014 ") + layer.name).prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
-        buildLayerOptions(layer.id, depth + 1);
-      });
-    })(null, 0);
-    layerSelect.on("change", function() {
-      comp.layerId = layerSelect.val();
-      markDirty();
-      renderActiveScreen();
-      selectOnly(comp.id);
-    });
-    var defaults = typeDef && typeDef.defaults || {};
-    Object.keys(defaults).forEach(function(key) {
-      var fieldDef = defaults[key] || {};
-      var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
-      var input;
-      if (inputType === "checkbox") {
-        input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
-      } else {
-        input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
-      }
-      input.on("change", function() {
-        var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
-        comp.props[key] = v;
-        refreshComponentRender(comp);
-        markDirty();
-      });
-    });
-    if (isTemplateInstance && templateRef) {
-      if ((templateRef.params || []).length) {
-        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Parameters").appendTo(state.propertiesPane);
-      }
-      (templateRef.params || []).forEach(function(param) {
-        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
-        var current = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
-        buildTypedInputWidget(row, param.type, current, function(v) {
-          comp.paramValues = comp.paramValues || {};
-          comp.paramValues[param.name] = v;
-          markDirty();
-          renderActiveScreen();
-          selectOnly(comp.id);
-        });
-      });
-    }
-    if (isLitComponent) {
-      let previewText = function(code, emptyLabel) {
-        if (!code) return emptyLabel;
-        var firstLine = code.split("\n")[0];
-        return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code.length + " chars)";
-      };
-      window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
-      var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
-      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litCode, "(empty \u2014 click Edit Code to write render())")).appendTo(jsPreviewRow);
-      var cssPreviewRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("CSS").appendTo(cssPreviewRow);
-      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litStyles, "(empty)")).appendTo(cssPreviewRow);
-      window.$("<button>", { type: "button" }).text("Edit Code...").css({ width: "100%", "margin-bottom": "12px" }).on("click", function() {
-        openLitComponentCodeEditor(comp);
-      }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-list"></i> Bindable Properties').appendTo(state.propertiesPane);
-      comp.litBindable = comp.litBindable || [];
-      var bindableList = buildEditableListWidget(state.propertiesPane, {
-        minHeight: "300px",
-        removable: true,
-        sortable: true,
-        addItem: function(container, i, opt) {
-          var p = opt || {};
-          if (!p.name) p.name = "prop" + (comp.litBindable.length + 1);
-          if (p.type === void 0) p.type = "string";
-          if (p.defaultValue === void 0) p.defaultValue = "";
-          if (comp.litBindable.indexOf(p) === -1) {
-            comp.litBindable.push(p);
-            markDirty();
-          }
-          var row = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
-          var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
-          var nameInput = window.$("<input>", { type: "text", "class": "node-input-prop-name", placeholder: "propName" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
-          nameInput.on("change input", function() {
-            var oldName = p.name;
-            var newName = nameInput.val().trim();
-            p.name = newName;
-            if (comp.props && oldName !== newName && comp.props[oldName] !== void 0) {
-              comp.props[newName] = comp.props[oldName];
-              delete comp.props[oldName];
-            }
-            markDirty();
-            refreshComponentRender(comp);
-          });
-          var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
-          var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
-          buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
-            p.defaultValue = parsedVal;
-            p.type = detType;
-            comp.props = comp.props || {};
-            comp.props[p.name] = parsedVal;
-            markDirty();
-            refreshComponentRender(comp);
-          });
-          var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-exchange"></i> 2-way').appendTo(twoWayRow);
-          var twoWayInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!p.twoWay).appendTo(twoWayRow);
-          window.$("<span>").css({ "font-size": "11px", color: "#888" }).text("Sync this." + p.name + " changes back to comp.props").appendTo(twoWayRow);
-          twoWayInput.on("change", function() {
-            p.twoWay = twoWayInput.is(":checked");
-            markDirty();
-            refreshComponentRender(comp);
-          });
-        },
-        removeItem: function(opt) {
-          var idx = comp.litBindable.indexOf(opt);
-          if (idx !== -1) {
-            comp.litBindable.splice(idx, 1);
-            markDirty();
-            refreshComponentRender(comp);
-          }
-        }
-      });
-      comp.litBindable.forEach(function(p) {
-        bindableList.editableList("addItem", p);
-      });
-      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-bolt"></i> Events').appendTo(state.propertiesPane);
-      comp.litEvents = comp.litEvents || [];
-      var eventList = buildEditableListWidget(state.propertiesPane, {
-        minHeight: "300px",
-        removable: true,
-        sortable: true,
-        addItem: function(container, i, opt) {
-          var evt = opt || {};
-          if (!evt.name) evt.name = "myEvent" + (comp.litEvents.length + 1);
-          if (comp.litEvents.indexOf(evt) === -1) {
-            comp.litEvents.push(evt);
-            markDirty();
-          }
-          var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
-          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(row);
-          var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" }).css({ flex: "1" }).val(evt.name).appendTo(row);
-          nameInput.on("change", function() {
-            evt.name = nameInput.val().trim();
-            markDirty();
-          });
-        },
-        removeItem: function(opt) {
-          var idx = comp.litEvents.indexOf(opt);
-          if (idx !== -1) {
-            comp.litEvents.splice(idx, 1);
-            markDirty();
-          }
-        }
-      });
-      comp.litEvents.forEach(function(evt) {
-        eventList.editableList("addItem", evt);
-      });
-    }
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
-    [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair) {
-      var field = pair[0], label = pair[1];
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
-      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
-      input.on("change", function() {
-        comp[field] = parseFloat(input.val()) || 0;
-        updateComponentBox(comp);
-        markDirty();
-      });
-    });
-    var caps = typeDef && typeDef.capabilities || {};
-    if (caps.flippable !== false) {
-      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "6px", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).css({
-        flex: "1",
-        padding: "5px 8px",
-        "font-size": "11px",
-        cursor: comp.locked ? "default" : "pointer",
-        background: comp.flipH ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
-        border: comp.flipH ? "1px solid #2196f3" : "1px solid #ccc",
-        "font-weight": comp.flipH ? "bold" : "normal"
-      }).html('<i class="fa fa-arrows-h"></i> Flip H').prop("disabled", comp.locked).on("click", function() {
-        toggleFlipForSelection("h");
-      }).appendTo(flipRow);
-      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).css({
-        flex: "1",
-        padding: "5px 8px",
-        "font-size": "11px",
-        cursor: comp.locked ? "default" : "pointer",
-        background: comp.flipV ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
-        border: comp.flipV ? "1px solid #2196f3" : "1px solid #ccc",
-        "font-weight": comp.flipV ? "bold" : "normal"
-      }).html('<i class="fa fa-arrows-v"></i> Flip V').prop("disabled", comp.locked).on("click", function() {
-        toggleFlipForSelection("v");
-      }).appendTo(flipRow);
-    }
-  }
-
   // src/sidebar/palette-events-panel.js
   function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -2878,6 +2631,17 @@
     chip(state.eventsPane, "Layer Control", function() {
       return { type: "layer-control", states: [] };
     }, "", "layer-control");
+    function hasSparkplugBinding(comp) {
+      if (!comp) return false;
+      if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") return true;
+      var props = comp.props || {};
+      var keys = Object.keys(props);
+      for (var i = 0; i < keys.length; i++) {
+        var v = props[keys[i]];
+        if (typeof v === "string" && v.indexOf("{sparkplug:") !== -1) return true;
+      }
+      return false;
+    }
     if (screen && screen.components.length) {
       sectionHeader(state.eventsPane, "Components on this screen");
       screen.components.forEach(function(comp) {
@@ -2885,6 +2649,11 @@
         if (comp.type === "@template") {
           var template = findTemplate(comp.templateId);
           var instanceName = "Instance #" + shortId + (template ? " (" + template.name + ")" : "");
+          if (hasSparkplugBinding(comp)) {
+            chip(state.eventsPane, instanceName + " \u2192 on Sparkplug Update", function() {
+              return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
+            }, comp.id, "ui-event");
+          }
           (template && template.params || []).forEach(function(param) {
             chip(state.eventsPane, instanceName + " \u2192 Set " + param.label, function() {
               return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
@@ -2894,6 +2663,11 @@
         }
         if (comp.type === "@lit-component") {
           var litName = "Lit Component #" + shortId;
+          if (hasSparkplugBinding(comp)) {
+            chip(state.eventsPane, litName + " \u2192 on Sparkplug Update", function() {
+              return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
+            }, comp.id, "ui-event");
+          }
           (comp.litEvents || []).forEach(function(evt) {
             chip(state.eventsPane, litName + " \u2192 on " + evt.name, function() {
               return { type: "ui-event", compId: comp.id, event: evt.name };
@@ -2905,13 +2679,19 @@
           return;
         }
         var typeDef = window.NEXA.getComponent(comp.type);
-        if (!typeDef) return;
-        var name = (typeDef.label || comp.type) + " #" + shortId;
-        (typeDef.events || []).forEach(function(evtDef) {
-          chip(state.eventsPane, name + " \u2192 " + evtDef.label, function() {
-            return { type: "ui-event", compId: comp.id, event: evtDef.name };
+        var name = (typeDef ? typeDef.label : comp.type) + " #" + shortId;
+        if (hasSparkplugBinding(comp)) {
+          chip(state.eventsPane, name + " \u2192 on Sparkplug Update", function() {
+            return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
           }, comp.id, "ui-event");
-        });
+        }
+        if (typeDef) {
+          (typeDef.events || []).forEach(function(evtDef) {
+            chip(state.eventsPane, name + " \u2192 " + evtDef.label, function() {
+              return { type: "ui-event", compId: comp.id, event: evtDef.name };
+            }, comp.id, "ui-event");
+          });
+        }
         chip(state.eventsPane, name + " \u2192 Update", function() {
           return { type: "ui-update", compId: comp.id, config: {} };
         }, comp.id, "ui-update");
@@ -2936,6 +2716,311 @@
         "box-shadow": "0 0 0 2px #ff5722"
       });
     });
+  }
+
+  // src/sidebar/properties-panel.js
+  function renderPropertiesPanel() {
+    if (!state.propertiesPane) return;
+    state.propertiesPane.empty();
+    if (state.selectedIds.length > 1) {
+      window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
+      var isOneWholeGroup = (function() {
+        var first = findComponent(state.selectedIds[0]);
+        if (!first || !first.g) return false;
+        var members = groupMemberIds(first.g);
+        return members.length === state.selectedIds.length && members.every(isSelected);
+      })();
+      var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      if (isOneWholeGroup) {
+        window.$("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
+      } else {
+        window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
+      }
+      var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" }).on("click", function() {
+        setLockedForSelection(true);
+      }).appendTo(lockRow);
+      window.$("<button>", { type: "button" }).text("Unlock all").css({ flex: "1" }).on("click", function() {
+        setLockedForSelection(false);
+      }).appendTo(lockRow);
+      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).html('<i class="fa fa-arrows-h"></i> Flip H').css({ flex: "1" }).on("click", function() {
+        toggleFlipForSelection("h");
+      }).appendTo(flipRow);
+      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).html('<i class="fa fa-arrows-v"></i> Flip V').css({ flex: "1" }).on("click", function() {
+        toggleFlipForSelection("v");
+      }).appendTo(flipRow);
+      return;
+    }
+    var comp = state.selectedIds.length === 1 ? findComponent(state.selectedIds[0]) : null;
+    if (!comp) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
+      return;
+    }
+    var isTemplateInstance = comp.type === "@template";
+    var isLitComponent = comp.type === "@lit-component";
+    var typeDef = isTemplateInstance || isLitComponent ? null : window.NEXA.getComponent(comp.type);
+    if (!isTemplateInstance && !isLitComponent && !typeDef) {
+      window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
+      return;
+    }
+    var templateRef = isTemplateInstance ? findTemplate(comp.templateId) : null;
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text(isTemplateInstance ? "Template instance: " + (templateRef ? templateRef.name : "(missing)") : isLitComponent ? "Lit Component" : typeDef.label || comp.type).appendTo(state.propertiesPane);
+    var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
+    var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
+    lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked"));
+    lockInput.on("change", function() {
+      setLockedForSelection(lockInput.is(":checked"), [comp.id]);
+    });
+    var layerRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
+    var layerSelect = window.$("<select>").css({ width: "100%" }).appendTo(layerRow);
+    (function buildLayerOptions(parentId, depth) {
+      getLayerChildren(parentId).forEach(function(layer) {
+        window.$("<option>", { value: layer.id }).text(new Array(depth + 1).join("\u2014 ") + layer.name).prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
+        buildLayerOptions(layer.id, depth + 1);
+      });
+    })(null, 0);
+    layerSelect.on("change", function() {
+      comp.layerId = layerSelect.val();
+      markDirty();
+      renderActiveScreen();
+      selectOnly(comp.id);
+    });
+    var defaults = typeDef && typeDef.defaults || {};
+    Object.keys(defaults).forEach(function(key) {
+      var fieldDef = defaults[key] || {};
+      var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+      var input;
+      if (inputType === "checkbox") {
+        input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+      } else {
+        input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+      }
+      input.on("change", function() {
+        var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
+        comp.props[key] = v;
+        refreshComponentRender(comp);
+        markDirty();
+      });
+    });
+    if (isTemplateInstance && templateRef) {
+      if ((templateRef.params || []).length) {
+        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Parameters").appendTo(state.propertiesPane);
+      }
+      (templateRef.params || []).forEach(function(param) {
+        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
+        var current = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
+        buildTypedInputWidget(row, param.type, current, function(v) {
+          comp.paramValues = comp.paramValues || {};
+          comp.paramValues[param.name] = v;
+          markDirty();
+          renderActiveScreen();
+          selectOnly(comp.id);
+        });
+      });
+    }
+    if (isLitComponent) {
+      let previewText = function(code, emptyLabel) {
+        if (!code) return emptyLabel;
+        var firstLine = code.split("\n")[0];
+        return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code.length + " chars)";
+      };
+      window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
+      var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
+      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litCode, "(empty \u2014 click Edit Code to write render())")).appendTo(jsPreviewRow);
+      var cssPreviewRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("CSS").appendTo(cssPreviewRow);
+      window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7" }).val(previewText(comp.litStyles, "(empty)")).appendTo(cssPreviewRow);
+      window.$("<button>", { type: "button" }).text("Edit Code...").css({ width: "100%", "margin-bottom": "12px" }).on("click", function() {
+        openLitComponentCodeEditor(comp);
+      }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-list"></i> Bindable Properties').appendTo(state.propertiesPane);
+      comp.litBindable = comp.litBindable || [];
+      var bindableList = buildEditableListWidget(state.propertiesPane, {
+        minHeight: "300px",
+        removable: true,
+        sortable: true,
+        addItem: function(container, i, opt) {
+          var p = opt || {};
+          if (!p.name) p.name = "prop" + (comp.litBindable.length + 1);
+          if (p.type === void 0) p.type = "string";
+          if (p.defaultValue === void 0) p.defaultValue = "";
+          if (comp.litBindable.indexOf(p) === -1) {
+            comp.litBindable.push(p);
+            markDirty();
+          }
+          var row = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
+          var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
+          var nameInput = window.$("<input>", { type: "text", "class": "node-input-prop-name", placeholder: "propName" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
+          nameInput.on("change input", function() {
+            var oldName = p.name;
+            var newName = nameInput.val().trim();
+            p.name = newName;
+            if (comp.props && oldName !== newName && comp.props[oldName] !== void 0) {
+              comp.props[newName] = comp.props[oldName];
+              delete comp.props[oldName];
+            }
+            markDirty();
+            refreshComponentRender(comp);
+          });
+          var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
+          var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+          buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
+            p.defaultValue = parsedVal;
+            p.type = detType;
+            comp.props = comp.props || {};
+            comp.props[p.name] = parsedVal;
+            markDirty();
+            refreshComponentRender(comp);
+          });
+          var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-exchange"></i> 2-way').appendTo(twoWayRow);
+          var twoWayInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!p.twoWay).appendTo(twoWayRow);
+          window.$("<span>").css({ "font-size": "11px", color: "#888" }).text("Sync this." + p.name + " changes back to comp.props").appendTo(twoWayRow);
+          twoWayInput.on("change", function() {
+            p.twoWay = twoWayInput.is(":checked");
+            markDirty();
+            refreshComponentRender(comp);
+          });
+        },
+        removeItem: function(opt) {
+          var idx = comp.litBindable.indexOf(opt);
+          if (idx !== -1) {
+            comp.litBindable.splice(idx, 1);
+            markDirty();
+            refreshComponentRender(comp);
+          }
+        }
+      });
+      comp.litBindable.forEach(function(p) {
+        bindableList.editableList("addItem", p);
+      });
+      window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", margin: "10px 0 4px", display: "block" }).html('<i class="fa fa-bolt"></i> Events').appendTo(state.propertiesPane);
+      comp.litEvents = comp.litEvents || [];
+      var eventList = buildEditableListWidget(state.propertiesPane, {
+        minHeight: "300px",
+        removable: true,
+        sortable: true,
+        addItem: function(container, i, opt) {
+          var evt = opt || {};
+          if (!evt.name) evt.name = "myEvent" + (comp.litEvents.length + 1);
+          if (comp.litEvents.indexOf(evt) === -1) {
+            comp.litEvents.push(evt);
+            markDirty();
+          }
+          var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(row);
+          var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" }).css({ flex: "1" }).val(evt.name).appendTo(row);
+          nameInput.on("change", function() {
+            evt.name = nameInput.val().trim();
+            markDirty();
+          });
+        },
+        removeItem: function(opt) {
+          var idx = comp.litEvents.indexOf(opt);
+          if (idx !== -1) {
+            comp.litEvents.splice(idx, 1);
+            markDirty();
+          }
+        }
+      });
+      comp.litEvents.forEach(function(evt) {
+        eventList.editableList("addItem", evt);
+      });
+    }
+    var spRow = window.$("<div>").css({
+      margin: "14px 0 8px",
+      "border-top": "1px solid #ddd",
+      "padding-top": "10px"
+    }).appendTo(state.propertiesPane);
+    window.$("<label>").css({
+      display: "block",
+      "font-weight": "bold",
+      "font-size": "12px",
+      "margin-bottom": "4px",
+      color: "var(--red-ui-secondary-text-color, #475569)"
+    }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
+    var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
+    var spInput = window.$("<input>", {
+      type: "text",
+      placeholder: "{sparkplug:Group::Node::Device::Metric}"
+    }).css({
+      flex: "1",
+      "font-size": "11px",
+      "font-family": "monospace",
+      "box-sizing": "border-box"
+    }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
+    var spClearBtn = window.$("<button>", {
+      type: "button",
+      title: "Clear Sparkplug Watch"
+    }).css({
+      padding: "3px 8px",
+      "font-size": "11px",
+      cursor: "pointer"
+    }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
+    function onSparkplugBindingChanged(newVal) {
+      var trimmed = (newVal || "").trim();
+      if (trimmed) {
+        comp.sparkplugBinding = trimmed;
+      } else {
+        delete comp.sparkplugBinding;
+      }
+      markDirty();
+      refreshComponentRender(comp);
+      if (typeof renderEventsPanel === "function") renderEventsPanel();
+    }
+    spInput.on("change", function() {
+      onSparkplugBindingChanged(spInput.val());
+    });
+    spClearBtn.on("click", function() {
+      spInput.val("");
+      onSparkplugBindingChanged("");
+    });
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
+    [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair) {
+      var field = pair[0], label = pair[1];
+      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
+      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
+      input.on("change", function() {
+        comp[field] = parseFloat(input.val()) || 0;
+        updateComponentBox(comp);
+        markDirty();
+      });
+    });
+    var caps = typeDef && typeDef.capabilities || {};
+    if (caps.flippable !== false) {
+      var flipRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "6px", "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<button>", { type: "button", title: "Flip Horizontal (Shift+H)" }).css({
+        flex: "1",
+        padding: "5px 8px",
+        "font-size": "11px",
+        cursor: comp.locked ? "default" : "pointer",
+        background: comp.flipH ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+        border: comp.flipH ? "1px solid #2196f3" : "1px solid #ccc",
+        "font-weight": comp.flipH ? "bold" : "normal"
+      }).html('<i class="fa fa-arrows-h"></i> Flip H').prop("disabled", comp.locked).on("click", function() {
+        toggleFlipForSelection("h");
+      }).appendTo(flipRow);
+      window.$("<button>", { type: "button", title: "Flip Vertical (Shift+V)" }).css({
+        flex: "1",
+        padding: "5px 8px",
+        "font-size": "11px",
+        cursor: comp.locked ? "default" : "pointer",
+        background: comp.flipV ? "var(--red-ui-secondary-background-selected, #cfe0ff)" : "",
+        border: comp.flipV ? "1px solid #2196f3" : "1px solid #ccc",
+        "font-weight": comp.flipV ? "bold" : "normal"
+      }).html('<i class="fa fa-arrows-v"></i> Flip V').prop("disabled", comp.locked).on("click", function() {
+        toggleFlipForSelection("v");
+      }).appendTo(flipRow);
+    }
   }
 
   // src/canvas/selection.js
@@ -3822,8 +3907,12 @@
     if (node.type === "ui-event" || node.type === "ui-update") {
       var comp = findComponent(node.compId);
       var typeDef = comp && window.NEXA.getComponent(comp.type);
-      var name = (typeDef ? typeDef.label : "?") + " #" + (comp ? comp.id.slice(-4) : "?");
+      var typeLabel = comp ? comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : typeDef ? typeDef.label : comp.type : "?";
+      var name = typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
       if (node.type === "ui-event") {
+        if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
+          return name + " on Sparkplug Update";
+        }
         var evtDef = typeDef && typeDef.events && typeDef.events.find(function(e) {
           return e.name === node.event;
         });
@@ -4371,6 +4460,44 @@
         if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
         var metricRef = ui.draggable.data("nexaSparkplugMetric");
         if (metricRef) {
+          var screen = getActiveScreen();
+          var targetComp = null;
+          var hitEl = document.elementFromPoint && event.clientX !== void 0 ? document.elementFromPoint(event.clientX, event.clientY) : null;
+          if (hitEl) {
+            var $compEl = window.$(hitEl).closest("#nexa-artboard [data-id]");
+            if ($compEl.length) {
+              var compId = $compEl.attr("data-id");
+              targetComp = findComponent(compId);
+            }
+          }
+          if (!targetComp && screen && screen.components) {
+            for (var i = screen.components.length - 1; i >= 0; i--) {
+              var c = screen.components[i];
+              if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+                targetComp = c;
+                break;
+              }
+            }
+          }
+          if (targetComp) {
+            var bindingPath = makeSparkplugBindingPath(metricRef);
+            targetComp.sparkplugBinding = bindingPath;
+            if (targetComp.props && (targetComp.props.text !== void 0 || targetComp.type === "kufayeka-text-label")) {
+              targetComp.props.text = bindingPath;
+            }
+            selectOnly(targetComp.id);
+            refreshComponentRender(targetComp);
+            renderPropertiesPanel();
+            renderEventsPanel();
+            pushHistory({ t: "edit", screenId: screen.id, compId: targetComp.id, sparkplugBinding: bindingPath });
+            markDirty();
+            if (window.RED && window.RED.notify) {
+              var typeDef = window.NEXA ? window.NEXA.getComponent(targetComp.type) : null;
+              var compName = (typeDef ? typeDef.label : targetComp.type) + " #" + targetComp.id.slice(-4);
+              window.RED.notify("Assigned Sparkplug metric to " + compName + ": " + metricRef.metricName, { type: "success", timeout: 2500 });
+            }
+            return;
+          }
           addSparkplugMetricComponentAt(metricRef, x, y);
           return;
         }
@@ -5273,8 +5400,25 @@
           });
         }
       },
+      drag: function(e, ui) {
+        if (!state.artboardEl) return;
+        state.artboardEl.find(".nexa-sparkplug-drop-hover").removeClass("nexa-sparkplug-drop-hover").css({ outline: "", "box-shadow": "" });
+        var el = document.elementFromPoint && e.clientX !== void 0 ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        if (el) {
+          var $compEl = window.$(el).closest("#nexa-artboard [data-id]");
+          if ($compEl.length) {
+            $compEl.addClass("nexa-sparkplug-drop-hover").css({
+              outline: "2px dashed #007acc",
+              "box-shadow": "0 0 10px rgba(0,122,204,0.5)"
+            });
+          }
+        }
+      },
       stop: function() {
         isDragging = false;
+        if (state.artboardEl) {
+          state.artboardEl.find(".nexa-sparkplug-drop-hover").removeClass("nexa-sparkplug-drop-hover").css({ outline: "", "box-shadow": "" });
+        }
         if (pendingTreeRebuild) {
           pendingTreeRebuild = false;
           var wrap = state.sparkplugPane && state.sparkplugPane.find(".nexa-sparkplug-tree");

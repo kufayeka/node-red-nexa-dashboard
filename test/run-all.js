@@ -36,7 +36,7 @@ const RUNTIME_TESTS = [
 // Standalone: no args, no DOM at all.
 const STANDALONE_TESTS = [
     "mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-properties.js",
-    "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js"
+    "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js", "mock-sparkplug-drag-binding.js"
 ];
 
 function runBuild() {
