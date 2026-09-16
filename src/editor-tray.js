@@ -237,19 +237,32 @@ export function buildCanvasArea(trayBody) {
     // since what a logic-node chip produces isn't just a type name — e.g.
     // "Instance #1234 -> Set Value" needs its own captured instanceId/param).
     // [data-palette-type] (set by that same chip(), but not by component
-    // chips) is what tells this apart from those.
+    // chips) is what tells this apart from those. A sidebar Sparkplug
+    // metric chip (src/sidebar/sparkplug-panel.js's metricChip, the SAME
+    // draggable a "live value" text label drop uses — see
+    // component-renderer.js's addSparkplugMetricComponentAt) is ALSO
+    // accepted here: dropped onto the Logic canvas instead of the UI
+    // artboard, it creates a pre-filled "Sparkplug Write" node for that
+    // exact tag rather than a bound read-only label — same tag reference,
+    // same drag gesture, symmetric with the read-side DX.
     state.logicArtboardEl.droppable({
-        accept: "[data-palette-type]",
+        accept: "[data-palette-type], [data-sparkplug-metric]",
         tolerance: "pointer",
         drop: function (event, ui) {
-            var makeNode = ui.draggable.data("nexaMakeNode");
-            if (typeof makeNode !== "function") return;
             var offset = state.logicArtboardEl.offset();
             var x = (event.pageX - offset.left) / state.logicZoomLevel;
             var y = (event.pageY - offset.top) / state.logicZoomLevel;
             if (x < 0 || y < 0) return;
             var nodeX = Math.max(0, Math.round(x - LOGIC_NODE_W / 2));
             var nodeY = Math.max(0, Math.round(y - LOGIC_NODE_H / 2));
+
+            var metricRef = ui.draggable.data("nexaSparkplugMetric");
+            if (metricRef) {
+                addLogicNode({ type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) }, nodeX, nodeY);
+                return;
+            }
+            var makeNode = ui.draggable.data("nexaMakeNode");
+            if (typeof makeNode !== "function") return;
             addLogicNode(makeNode(), nodeX, nodeY);
         }
     });

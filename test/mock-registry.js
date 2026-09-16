@@ -1,4 +1,9 @@
-global.document = {};
+// documentElement.style stub: @codemirror/view's browser-environment
+// detection (bundled into the editor script now) runs at module-load time
+// and reads doc.documentElement.style unconditionally whenever `document`
+// is defined at all (its own SSR fallback only kicks in if `document` is
+// fully undefined) — every editor-side test's fake `document` needs this.
+global.document = { documentElement: { style: {} } };
 global.window = global;
 const draggables = [];
 // Palette chips no longer set their own _text (the label lives on a nested

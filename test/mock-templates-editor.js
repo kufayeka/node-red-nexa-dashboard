@@ -9,7 +9,13 @@
 // labeling a selected instance.
 
 const docListeners = {};
+// documentElement.style stub: @codemirror/view's browser-environment
+// detection (bundled into the editor script now) runs at module-load time
+// and reads doc.documentElement.style unconditionally whenever `document`
+// is defined at all (its own SSR fallback only kicks in if `document` is
+// fully undefined).
 global.document = {
+  documentElement: { style: {} },
   addEventListener(evt, fn) { (docListeners[evt] = docListeners[evt] || []).push(fn); },
   removeEventListener(evt, fn) { if (docListeners[evt]) docListeners[evt] = docListeners[evt].filter(f => f !== fn); },
   createElementNS(ns, tag) { return fakeJQ('<' + tag + '>'); }
@@ -56,6 +62,8 @@ function fakeJQ(selOrHtml, attrs) {
       if (t === '+ Add Bindable Property') global.__addLitBindableBtn = this;
       if (t === '+ Add Event') global.__addLitEventBtn = this;
       if (t === 'Edit Code...') global.__editLitCodeBtn = this;
+      if (t === 'JavaScript') global.__litJsTabBtn = this;
+      if (t === 'CSS') global.__litCssTabBtn = this;
       return this;
     },
     html(h) {
@@ -84,6 +92,9 @@ function fakeJQ(selOrHtml, attrs) {
       // where drag-drop placement now actually happens (moved out of the
       // palette chip's own draggable "stop").
       if (this._attrs && this._attrs.id === 'nexa-artboard') global.__artboardEl = this;
+      if (this._attrs && this._attrs.id === 'nexa-lit-js-editor') global.__litJsEditorMount = this;
+      if (this._attrs && this._attrs.id === 'nexa-lit-css-editor') global.__litCssEditorMount = this;
+      if (this._attrs && this._attrs.id === 'nexa-logic-function-editor-mount') global.__functionEditorMount = this;
       if (this._attrs && this._attrs['class'] === 'red-ui-editableList-addButton' && global.__lastLitComponentHeader) {
         if (!global.__addLitBindableBtn) global.__addLitBindableBtn = this;
         else if (!global.__addLitEventBtn) global.__addLitEventBtn = this;
@@ -241,7 +252,16 @@ global.RED = {
       var instance = {
         getValue() { return val; },
         setTestValue(v) { val = v; },
-        destroy() {}
+        destroyed: false,
+        // Real bug this is here to catch: lit-code-dialog.js used to keep
+        // TWO of these (JS + CSS) alive simultaneously, which is a
+        // documented class of real ace/monaco bug (unscoped keybindings
+        // cross-talking between live instances, and a focus-steal between
+        // an editor and a sibling element recursing forever inside the
+        // editor's own event dispatcher) that could hang the whole browser
+        // tab on a keyboard paste. `destroyed` lets a test assert "at most
+        // one alive at any moment" directly, not just "eventually cleaned up".
+        destroy() { this.destroyed = true; }
       };
       (global.__createdEditors = global.__createdEditors || []).push(instance);
       return instance;
@@ -263,6 +283,29 @@ global.RED = {
 };
 
 global.window = global;
+
+// A minimal stand-in for the real CM6 wrapper (src/editor/cm6-code-editor.js)
+// — CM6 needs a real DOM (layout, ResizeObserver, selection APIs) and can't
+// run against this hand-rolled fake-jQuery harness, so cm6-code-editor.js
+// exposes exactly this override seam for tests. Every created instance is
+// pushed to global.__createdEditors so a test can reach in and simulate
+// typing via .setTestValue(...) before clicking the tray's Done button —
+// same shape/spirit as the old real-Monaco-mock this replaces.
+window.__kufayekaCreateCM6EditorOverride = function (opts) {
+  var val = opts.value || '';
+  var instance = {
+    getValue() { return val; },
+    setValue(v) { val = v; },
+    setTestValue(v) { val = v; },
+    focus() { },
+    resize() { },
+    destroyed: false,
+    destroy() { this.destroyed = true; }
+  };
+  (global.__createdEditors = global.__createdEditors || []).push(instance);
+  return instance;
+};
+
 window.NEXA = window.NEXA || { _q: [], registerComponent: function (id, def) { this._q.push([id, def]); } };
 NEXA.registerComponent('mock-rect', {
   category: 'Basic', label: 'Rectangle', defaultSize: { w: 120, h: 80 },
@@ -496,30 +539,55 @@ console.log('--- Code editing moved to a modal dialog (like the Function node) i
 // inline-in-sidebar editor design silently discarded anything typed but not
 // yet "Applied" the moment the Properties panel re-rendered for ANY other
 // reason (e.g. adding a Bindable Property, which the section above just
-// did). A modal dialog sidesteps that entirely — it owns the editor
+// did). A modal dialog sidesteps that entirely — it owns the fields
 // exclusively while open, immune to the sidebar's own re-renders.
+//
+// CodeMirror 6 (src/editor/cm6-code-editor.js) — this is the FOURTH revision
+// of this dialog: two targeted Monaco fixes, then a plain-<textarea>
+// guaranteed-safe fallback (confirmed working live), all preceded this. CM6
+// brings syntax highlighting and custom autocomplete back without Monaco's
+// architecture (no shared global mutable compiler-options state, no
+// language-service worker). Unlike the old Monaco version, BOTH the JS and
+// CSS editors are now created together, up front, and stay alive
+// simultaneously for as long as the dialog is open (switching tabs only
+// toggles CSS visibility) — deliberately different from the old "at most
+// one alive at a time" Monaco-era rule, since that rule existed to dodge a
+// documented ace/monaco-specific multi-instance bug (unscoped keybinding
+// cross-talk, focus-steal recursion) that CM6 doesn't share.
 const originalLitCode = litComp.litCode;
+const editorsBeforeOpen = (global.__createdEditors || []).length;
 console.log('an "Edit Code..." button is offered (not inline editors)?', !!global.__editLitCodeBtn);
 global.__editLitCodeBtn._handlers.click[0]();
-console.log('opening it created exactly 2 editors (class body + CSS)?', global.__createdEditors.length === 2);
-const [jsEd, cssEd] = global.__createdEditors.slice(-2);
+console.log('opening it creates BOTH the JS and CSS CM6 editors up front (not lazily per tab)?', global.__createdEditors.length === editorsBeforeOpen + 2);
+const jsEd = global.__createdEditors[editorsBeforeOpen];
+const cssEd = global.__createdEditors[editorsBeforeOpen + 1];
 console.log('the JS editor was seeded with the CURRENT litCode (not blank/default)?', jsEd.getValue() === originalLitCode);
+console.log('a "JavaScript"/"CSS" tab switcher is offered?', !!global.__litJsTabBtn && !!global.__litCssTabBtn);
 
-console.log('--- Cancel discards without touching comp.litCode/litStyles ---');
-jsEd.setTestValue('render(){ return html`<div>SHOULD NOT BE SAVED</div>`; }');
+console.log('--- switching tabs keeps both editors alive (CM6 is not subject to the old Monaco multi-instance bug) ---');
+global.__litCssTabBtn._handlers.click[0]();
+console.log('the JS editor is still alive after switching tabs (not destroyed)?', jsEd.destroyed === false);
+console.log('the CSS editor is a genuinely different instance than the JS one?', cssEd !== jsEd);
+
+console.log('--- Cancel discards without touching comp.litCode/litStyles, even after switching tabs, and destroys both editors ---');
+cssEd.setTestValue('SHOULD NOT BE SAVED { color: red; }');
 const cancelBtn = traySpec.buttons.find(b => b.text === 'Cancel');
 cancelBtn.click();
-console.log('Cancel left litCode completely unchanged?', litComp.litCode === originalLitCode);
+console.log('Cancel left litCode/litStyles completely unchanged?', litComp.litCode === originalLitCode && litComp.litStyles !== 'SHOULD NOT BE SAVED { color: red; }');
+console.log('Cancel destroyed both editors (tray close hook)?', jsEd.destroyed === true && cssEd.destroyed === true);
 
-console.log('--- Done commits both class body and CSS at once ---');
+console.log('--- Done commits both class body and CSS at once, switching tabs between edits ---');
 global.__editLitCodeBtn._handlers.click[0]();
-const [jsEd2, cssEd2] = global.__createdEditors.slice(-2);
+const jsEd2 = global.__createdEditors[global.__createdEditors.length - 2];
+const cssEd2 = global.__createdEditors[global.__createdEditors.length - 1];
 jsEd2.setTestValue('render(){ return html`<div>${this.prop1}</div>`; }');
+global.__litCssTabBtn._handlers.click[0]();
 cssEd2.setTestValue(':host { color: red; }');
 const doneBtn = traySpec.buttons.find(b => b.text === 'Done');
 doneBtn.click();
 console.log('Done wrote the new class body onto comp.litCode?', litComp.litCode.indexOf('SHOULD NOT BE SAVED') === -1 && litComp.litCode.indexOf('this.prop1') !== -1);
 console.log('Done wrote the new CSS onto comp.litStyles?', litComp.litStyles === ':host { color: red; }');
+console.log('Done also destroyed both editors (tray close hook)?', jsEd2.destroyed === true && cssEd2.destroyed === true);
 
 console.log('--- re-rendering Properties afterward shows the COMMITTED code in the read-only preview, not stale/default text ---');
 sidebarTabsApi.activateTab('properties');
