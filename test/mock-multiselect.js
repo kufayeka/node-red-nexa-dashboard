@@ -1,5 +1,11 @@
 const docListeners = {};
+// documentElement.style stub: @codemirror/view's browser-environment
+// detection (bundled into the editor script now) runs at module-load time
+// and reads doc.documentElement.style unconditionally whenever `document`
+// is defined at all (its own SSR fallback only kicks in if `document` is
+// fully undefined).
 global.document = {
+  documentElement: { style: {} },
   addEventListener(evt, fn) { (docListeners[evt] = docListeners[evt] || []).push(fn); },
   removeEventListener(evt, fn) {
     if (!docListeners[evt]) return;

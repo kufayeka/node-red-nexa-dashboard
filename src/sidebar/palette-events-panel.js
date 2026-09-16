@@ -53,6 +53,9 @@ function getLogicNodeMeta(type) {
     if (type === "layer-control") {
         return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
     }
+    if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
+        return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
+    }
     return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
 }
 
@@ -351,6 +354,10 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
+
+    sectionHeader(state.eventsPane, "Sparkplug");
+    chip(state.eventsPane, "Sparkplug Write", function () { return { type: "sparkplug-write", tag: "" }; }, "", "sparkplug-write");
+    chip(state.eventsPane, "Sparkplug Write Multi", function () { return { type: "sparkplug-write-multi" }; }, "", "sparkplug-write-multi");
 
     function hasSparkplugBinding(comp) {
         if (!comp) return false;

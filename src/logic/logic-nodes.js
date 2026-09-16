@@ -10,6 +10,8 @@ import { openUiUpdateNodeEditor } from "../dialogs/ui-update-dialog.js";
 import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
 import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
+import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
+import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -33,6 +35,10 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "open-url") {
         return "Open URL" + (node.url ? (" (" + node.url + ")") : "");
+    }
+    if (node.type === "sparkplug-write") {
+        var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
+        return "Sparkplug Write" + (tagRef ? (" (" + tagRef + ")") : "");
     }
     if (node.type === "layer-control") {
         var n = (node.states || []).length;
@@ -139,6 +145,18 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openLayerControlNodeEditor(node);
+        });
+    }
+    if (node.type === "sparkplug-write") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSparkplugWriteNodeEditor(node);
+        });
+    }
+    if (node.type === "sparkplug-write-multi") {
+        box.attr("title", "Double-click for usage").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSparkplugWriteMultiNodeEditor(node);
         });
     }
 

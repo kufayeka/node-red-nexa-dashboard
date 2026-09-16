@@ -200,6 +200,34 @@ export function getRawTree() {
     return rawTree;
 }
 
+// Every metric currently known (from any NBIRTH/DBIRTH/NDATA/DDATA seen so
+// far), as {ref, binding, label} — used by the "Sparkplug Write"/"Sparkplug
+// Write Multi" Logic node dialogs (src/dialogs/) to offer a pick-from-list
+// autocomplete instead of requiring the exact "{sparkplug:...}" syntax to
+// be typed by hand, the same DX asset-write.html's own path autocomplete
+// gives for a plain asset attribute path.
+export function listKnownSparkplugBindings() {
+    var out = [];
+    Object.keys(rawTree).forEach(function (groupId) {
+        var edgeNodes = rawTree[groupId];
+        Object.keys(edgeNodes).forEach(function (edgeNodeId) {
+            var edgeNode = edgeNodes[edgeNodeId];
+            Object.keys(edgeNode.nodeMetrics || {}).forEach(function (name) {
+                var ref = { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: null, metricName: name };
+                out.push({ ref: ref, binding: makeSparkplugBindingPath(ref), label: groupId + "/" + edgeNodeId + "/" + name });
+            });
+            Object.keys(edgeNode.devices || {}).forEach(function (deviceId) {
+                var device = edgeNode.devices[deviceId];
+                Object.keys(device.metrics || {}).forEach(function (name) {
+                    var ref = { groupId: groupId, edgeNodeId: edgeNodeId, deviceId: deviceId, metricName: name };
+                    out.push({ ref: ref, binding: makeSparkplugBindingPath(ref), label: groupId + "/" + edgeNodeId + "/" + deviceId + "/" + name });
+                });
+            });
+        });
+    });
+    return out.sort(function (a, b) { return a.label.localeCompare(b.label); });
+}
+
 // The single shared "no real value yet" formatter — used by both the
 // drag-drop default text and the live render path, so a freshly-dropped
 // component and one whose Edge Node just went offline can never show two

@@ -29,7 +29,14 @@ export const LOGIC_NODE_KINDS = {
     // set-template-param is a SINK placed on any canvas that can see a
     // "@template" instance, setting ONE of its declared params by name.
     "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" }
+    "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
+    // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
+    // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
+    // "function", they're asynchronous (an HTTP round-trip) and only
+    // continue the wire once the write is actually published; see
+    // lib/nexa-runtime-client.js's runLogicGraph.
+    "sparkplug-write": { hasInput: true, hasOutput: true, color: "#2f8f6f" },
+    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" }
 };
 
 export const state = {

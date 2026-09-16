@@ -1,12 +1,14 @@
 // Config node backing Nexa Dashboard's own "MQTT Sparkplug" sidebar tab —
 // mostly a passive Sparkplug B LISTENER, maintaining a live Group -> Edge
 // Node -> Device -> Metric tree (lib/sparkplug/sparkplugTree.js) from
-// NBIRTH/DBIRTH/NDATA/DDATA/NDEATH/DDEATH messages. It ALSO publishes one
-// specific, spec-standard message — a "Node Control/Rebirth" NCMD request —
-// see requestRebirth()'s own comment for exactly why that's unavoidable:
-// NBIRTH/DBIRTH are one-shot and not broker-retained, so a listener that
-// starts after an Edge Node already birthed has no other way to ever see
-// its tag definitions/current values.
+// NBIRTH/DBIRTH/NDATA/DDATA/NDEATH/DDEATH messages. It ALSO publishes two
+// kinds of standard Sparkplug command message: a "Node Control/Rebirth"
+// NCMD request (see requestRebirth()'s own comment for exactly why that's
+// unavoidable — NBIRTH/DBIRTH are one-shot and not broker-retained, so a
+// listener that starts after an Edge Node already birthed has no other way
+// to ever see its tag definitions/current values), and arbitrary
+// NCMD/DCMD value writes (see writeMetrics()), backing the Screen Logic
+// graph's "Sparkplug Write"/"Sparkplug Write Multi" nodes.
 //
 // Deliberately its OWN independent MQTT connection, not a reuse of
 // @kufayeka/node-red-asset-engine's kufayeka-sparkplug-in/-edge-node nodes —
@@ -125,6 +127,49 @@ module.exports = function (RED) {
         if (err) node.warn("Nexa Sparkplug: failed to publish Rebirth request to \"" + topic + "\": " + describeError(err));
       });
     }
+
+    // Value write-back (Screen Logic's "Sparkplug Write"/"Sparkplug Write
+    // Multi" nodes, via the public REST endpoint in lib/nexa-plugin.js — a
+    // deployed page can't hold this node's own MQTT client directly, only
+    // reach it over HTTP). Publishes a DCMD (deviceId given) or NCMD
+    // (deviceId falsy — a node-scoped write), the exact same shape/QoS as
+    // requestRebirth's own NCMD above and as
+    // @kufayeka/node-red-asset-engine's sparkplug-out.js — this is not a
+    // second write mechanism, just this package's own client publishing the
+    // same standard Sparkplug command message.
+    // `metrics`: [{ name, value }, ...] — the wire DataType isn't something
+    // a browser-side Logic node has any reason to know or declare, so each
+    // value's type is inferred from its own JS typeof, same convention
+    // sparkplugCodec.js's encodeProperties already uses for the (also
+    // generic, caller-supplied-value) `properties` map.
+    function inferMetricType(value) {
+      if (typeof value === "boolean") return "Boolean";
+      if (typeof value === "number") return "Double";
+      return "String";
+    }
+    node.writeMetrics = function (groupId, edgeNodeId, deviceId, metrics) {
+      if (!client || !connected) return false;
+      if (!groupId || !edgeNodeId || !Array.isArray(metrics) || !metrics.length) return false;
+      var topic = deviceId
+        ? NAMESPACE + "/" + groupId + "/DCMD/" + edgeNodeId + "/" + deviceId
+        : NAMESPACE + "/" + groupId + "/NCMD/" + edgeNodeId;
+      var payload;
+      try {
+        payload = sparkplug.encodePayload({
+          timestamp: Date.now(),
+          metrics: metrics.map(function (m) {
+            return { name: m.name, type: inferMetricType(m.value), value: m.value };
+          })
+        });
+      } catch (e) {
+        node.warn("Nexa Sparkplug: failed to encode a write for \"" + topic + "\": " + describeError(e));
+        return false;
+      }
+      client.publish(topic, payload, { qos: 0, retain: false }, function (err) {
+        if (err) node.warn("Nexa Sparkplug: failed to publish write to \"" + topic + "\": " + describeError(err));
+      });
+      return true;
+    };
 
     // Manual "Rebirth / Refresh" trigger (sidebar button + REST endpoint,
     // see lib/nexa-plugin.js) — unlike the automatic trigger below, this

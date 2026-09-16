@@ -144,4 +144,63 @@ console.log("--- requestRebirthAll() (the manual \"Refresh\" trigger) asks every
   console.log("actually published to both known Edge Nodes?", JSON.stringify(topics) === JSON.stringify(["spBv1.0/G3/NCMD/Edge3", "spBv1.0/G4/NCMD/Edge4"]));
 })();
 
+console.log("--- writeMetrics() publishes a DCMD (device given) with the right topic/metrics, backing the \"Sparkplug Write\" Logic node ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "n5", brokerUrl: "mqtt://fake" });
+  lastFakeClient.simulateConnect();
+  lastFakeClient.published = [];
+
+  var ok = node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 42 }]);
+  assert.strictEqual(ok, true, "writeMetrics should report success when connected");
+  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/DCMD/Edge1/Motor1"; });
+  assert.strictEqual(writes.length, 1, "expected exactly one DCMD publish");
+  console.log("published to the right DCMD topic with the right metric/value?", writes[0].payload.metrics[0].name === "Speed" && writes[0].payload.metrics[0].value === 42);
+})();
+
+console.log("--- writeMetrics() with NO deviceId publishes a node-scoped NCMD instead ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "n6", brokerUrl: "mqtt://fake" });
+  lastFakeClient.simulateConnect();
+  lastFakeClient.published = [];
+
+  node.writeMetrics("G1", "Edge1", null, [{ name: "SomeNodeAttr", value: "hello" }]);
+  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/NCMD/Edge1"; });
+  console.log("published to a node-scoped NCMD topic (no device segment)?", writes.length === 1 && writes[0].payload.metrics[0].value === "hello");
+})();
+
+console.log("--- writeMetrics() batches MULTIPLE metrics for the same device into ONE publish, backing \"Sparkplug Write Multi\" ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "n7", brokerUrl: "mqtt://fake" });
+  lastFakeClient.simulateConnect();
+  lastFakeClient.published = [];
+
+  node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 10 }, { name: "Torque", value: 5 }]);
+  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/DCMD/Edge1/Motor1"; });
+  console.log("exactly one publish carrying BOTH metrics?", writes.length === 1 && writes[0].payload.metrics.length === 2);
+})();
+
+console.log("--- writeMetrics() refuses to publish when not connected (returns false, no throw) ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "n8", brokerUrl: "mqtt://fake" });
+  // deliberately NOT calling simulateConnect() -- client exists but isn't "connected" yet
+  var ok = node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 1 }]);
+  console.log("returns false instead of throwing/publishing while disconnected?", ok === false);
+})();
+
 console.log("ALL OK");
