@@ -3,6 +3,7 @@
 // sidebar's "MQTT Sparkplug" explorer tab (src/sidebar/sparkplug-panel.js)
 // and by component rendering (src/canvas/component-renderer.js) — both need
 // the exact same live value cache and "???" fallback rule.
+import { getOrCreateProjectConfigNode } from "../state.js";
 //
 // Binding syntax a dropped component's prop carries, e.g. props.text:
 //   "{sparkplug:<groupId>::<edgeNodeId>::<deviceId>::<metricName>}"
@@ -377,46 +378,31 @@ export function ensureSparkplugCommsWired() {
     }
 }
 
-// --- Config node lifecycle: same "auto-create on first use, edit via a
-// custom UI rather than a dragged canvas node" pattern as
-// getOrCreateProjectConfigNode() in ../state.js, for kufayeka-nexa-project.
-export function getOrCreateSparkplugConfigNode() {
-    var RED = window.RED;
-    var existing = null;
-    RED.nodes.eachConfig(function (n) {
-        if (n.type === "kufayeka-nexa-sparkplug") existing = n;
-    });
-    if (existing) return existing;
-
-    var node_def = RED.nodes.getType("kufayeka-nexa-sparkplug");
-    if (!node_def) {
-        RED.notify("Nexa Dashboard: kufayeka-nexa-sparkplug node type not found — is the package installed correctly?", { type: "error" });
-        return null;
-    }
-    var node = {
-        id: RED.nodes.id(),
-        _def: node_def,
-        type: "kufayeka-nexa-sparkplug",
-        z: "",
-        users: []
-    };
-    for (var d in node_def.defaults) {
-        if (node[d] === undefined && node_def.defaults[d].value !== undefined) {
-            node[d] = JSON.parse(JSON.stringify(node_def.defaults[d].value));
-        }
-    }
-    RED.nodes.add(node);
-    RED.nodes.dirty(true);
-    return node;
-}
-
-// Opens Node-RED's own built-in, auto-generated (defaults/credentials-driven)
-// edit dialog for the connection config node — reuses its credential
-// handling/encryption for free, rather than hand-rolling a settings tray.
+// kufayeka-nexa-sparkplug is a REAL, multi-instance Node-RED config node
+// (like @kufayeka/node-red-asset-engine's kufayeka-sparkplug-edge-node) —
+// several can exist (e.g. pointed at different brokers), each independently
+// connected. WHICH one is active for the current project is just a normal
+// config-node reference, picked via the project's own "Sparkplug Connection"
+// field (nodes/nexa-project.js/.html) — there's no "the one" connection to
+// auto-create/reuse anymore (that used to silently collapse multiple
+// connections to a last-one-wins singleton).
+//
+// Opens the project's chosen connection's own edit dialog if one is set, or
+// the PROJECT's edit dialog (which has the "Sparkplug Connection" picker —
+// pick an existing kufayeka-nexa-sparkplug instance, or "Add new
+// kufayeka-nexa-sparkplug...") if none is set yet. Both reuse Node-RED's
+// own built-in, auto-generated (defaults/credentials-driven) edit trays —
+// their credential handling/encryption for free, rather than hand-rolling a
+// settings dialog.
 export function openSparkplugConnectionSettings() {
-    var node = getOrCreateSparkplugConfigNode();
-    if (!node) return;
-    window.RED.editor.editConfig("", "kufayeka-nexa-sparkplug", node.id);
+    var RED = window.RED;
+    var project = getOrCreateProjectConfigNode();
+    if (!project) return;
+    if (project.sparkplugConnection && RED.nodes.node(project.sparkplugConnection)) {
+        RED.editor.editConfig("", "kufayeka-nexa-sparkplug", project.sparkplugConnection);
+        return;
+    }
+    RED.editor.editConfig("", "kufayeka-nexa-project", project.id);
 }
 
 // Manual "Rebirth / Refresh" trigger (src/sidebar/sparkplug-panel.js's

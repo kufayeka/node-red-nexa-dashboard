@@ -6,6 +6,19 @@ export function refreshLogicCanvasIfActive() {
     if (state.activeCanvasTab === "logic") renderLogicCanvas();
 }
 
+// Deployed screens now live on lib/screen-worker.js's own dedicated port
+// (see lib/nexa-plugin.js), not this admin page's own origin — cached after
+// the first "Open" click since it never changes without a Node-RED restart.
+var cachedScreenWorkerPort = null;
+function fetchScreenWorkerPort(cb) {
+    if (cachedScreenWorkerPort !== null) { cb(cachedScreenWorkerPort); return; }
+    if (!window.$ || typeof window.$.getJSON !== "function") { cb(null); return; }
+    window.$.getJSON("nexa-dashboard/_screen-port", function (data) {
+        cachedScreenWorkerPort = (data && data.port) || null;
+        cb(cachedScreenWorkerPort);
+    }).fail(function () { cb(null); });
+}
+
 export function renderScreenList() {
     if (!state.screenListEl) return;
     state.screenListEl.empty();
@@ -80,11 +93,19 @@ export function renderScreenList() {
             .on("click", function (e) {
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
-                var baseUrl = (window.RED && window.RED.settings && window.RED.settings.httpNodeRoot) || "/";
-                if (!baseUrl.endsWith("/")) baseUrl += "/";
-                var cleanPath = (screen.path || "").replace(/^\/+/, "");
-                var fullUrl = baseUrl + "nexa/" + cleanPath;
-                window.open(fullUrl, "_blank");
+                // Deployed screens live on lib/screen-worker.js's own
+                // dedicated port now, not this admin page's origin — open
+                // the tab SYNCHRONOUSLY (within this click's own call stack,
+                // so popup blockers allow it) and redirect it once the port
+                // fetch resolves, rather than fetching first and calling
+                // window.open() asynchronously (which most browsers block).
+                var tab = window.open("", "_blank");
+                fetchScreenWorkerPort(function (port) {
+                    var cleanPath = (screen.path || "").replace(/^\/+/, "");
+                    var hostname = window.location.hostname || "localhost";
+                    var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
+                    if (tab) tab.location.href = fullUrl;
+                });
             })
             .appendTo(row);
 

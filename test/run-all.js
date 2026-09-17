@@ -38,7 +38,8 @@ const RUNTIME_TESTS = [
 const STANDALONE_TESTS = [
     "mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-properties.js",
     "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js", "mock-sparkplug-drag-binding.js",
-    "mock-nexa-plugin-write-endpoint.js"
+    "mock-nexa-plugin-screen-worker-relay.js", "mock-sparkplug-worker.js", "mock-sparkplug-worker-integration.js",
+    "mock-screen-worker.js", "mock-screen-worker-integration.js"
 ];
 
 function runBuild() {
