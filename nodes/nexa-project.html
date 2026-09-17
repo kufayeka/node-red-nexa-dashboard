@@ -4,7 +4,8 @@
         defaults: {
             name: { value: "Nexa Project" },
             screens: { value: [] },
-            templates: { value: [] }
+            templates: { value: [] },
+            sparkplugConnection: { value: "", type: "kufayeka-nexa-sparkplug" }
         },
         label: function () {
             return this.name || "Nexa Project";
@@ -24,6 +25,18 @@
     </div>
     <div class="form-row">
         <span id="node-config-input-info" style="color:#888;font-size:12px;"></span>
+    </div>
+    <hr>
+    <div class="form-row">
+        <label for="node-config-input-sparkplugConnection"><i class="fa fa-plug"></i> Sparkplug Connection</label>
+        <input type="text" id="node-config-input-sparkplugConnection">
+    </div>
+    <div class="form-tips">
+        <p>Pick which <b>MQTT Sparkplug</b> connection this project's canvas bindings,
+        live SSE stream, and "Sparkplug Write" Logic nodes use. Several connections can
+        exist (e.g. pointed at different brokers) — use "Add new
+        kufayeka-nexa-sparkplug..." to create another, and switch back here at any
+        time.</p>
     </div>
 </script>
 

@@ -4,41 +4,38 @@
 // was the whole point of adding a publish path to what used to be a purely
 // passive listener. Run standalone: `node test/mock-nexa-sparkplug-node.js`.
 //
-// No node-red-node-test-helper here (this package doesn't depend on it) —
-// a hand-rolled minimal fake `RED`/`mqtt` is enough, same spirit as this
-// package's other mock-*.js tests and as @kufayeka/node-red-asset-engine's
-// test/helpers/fakeMqtt.js (this file's fake mqtt client is a smaller,
-// single-purpose copy of that same technique: replace require.cache's
-// "mqtt" entry BEFORE nodes/nexa-sparkplug.js's own top-level `require`
-// evaluates it).
+// The actual mqtt.connect()/Protobuf codec now lives in a worker_thread
+// (lib/sparkplug-worker.js), which a real worker_threads.Worker runs in its
+// own isolated module registry — faking require("mqtt") in THIS test process
+// (the old technique, still used by lib/sparkplug-worker.js's own tests)
+// can't reach into it. So this test instead substitutes the worker itself,
+// via nodes/nexa-sparkplug.js's _setWorkerFactoryForTests seam — the same
+// spirit as the CM6 editor's window.__kufayekaCreateCM6EditorOverride. A
+// FakeWorker below stands in for the real worker_threads.Worker: it records
+// every {type:"publish",...} message posted to it (what used to be a real
+// mqtt client's .publish() call, one layer further out now), and lets the
+// test simulate the worker's own postMessage("message", ...) events
+// (connected/status changes, already-decoded incoming Sparkplug payloads)
+// without ever touching a real MQTT broker or a real OS thread.
 const { EventEmitter } = require("events");
 const assert = require("assert");
-const sparkplug = require("../lib/sparkplug/sparkplugCodec.js");
 
-class FakeMqttClient extends EventEmitter {
-  constructor(url, opts) {
+class FakeWorker extends EventEmitter {
+  constructor(workerData) {
     super();
-    this.url = url;
-    this.options = opts;
-    this.connected = false;
-    this.published = []; // [{topic, payload (Buffer), opts}]
+    this.workerData = workerData;
+    this.posted = []; // [{type:"publish", groupId, edgeNodeId, deviceId, metrics}, ...]
   }
-  publish(topic, payload, opts, cb) {
-    this.published.push({ topic: topic, payload: payload, opts: opts });
-    if (typeof cb === "function") cb();
+  postMessage(msg) {
+    if (msg.type === "publish") this.posted.push(msg);
+    if (msg.type === "close") this.emit("message", { type: "closed" });
   }
-  subscribe(topics, opts, cb) { if (typeof cb === "function") cb(null); }
-  end(force, opts, cb) { if (typeof cb === "function") cb(); }
-  simulateConnect() { this.connected = true; this.emit("connect"); }
-  simulateMessage(topic, buffer) { this.emit("message", topic, buffer); }
+  terminate() { return Promise.resolve(); }
+  simulateConnect() { this.emit("message", { type: "status", status: "connected" }); }
+  simulateMessage(topic, payload) { this.emit("message", { type: "message", topic: topic, payload: payload }); }
 }
 
-var lastFakeClient = null;
-const mqttModulePath = require.resolve("mqtt");
-require.cache[mqttModulePath] = {
-  id: mqttModulePath, filename: mqttModulePath, loaded: true,
-  exports: { connect: function (url, opts) { lastFakeClient = new FakeMqttClient(url, opts); return lastFakeClient; } }
-};
+var lastFakeWorker = null;
 
 // Minimal fake RED — just enough of the surface nodes/nexa-sparkplug.js
 // actually touches: RED.nodes.createNode/registerType, and on the node
@@ -65,11 +62,18 @@ function makeFakeRED() {
 
 function loadFreshNode() {
   delete require.cache[require.resolve("../nodes/nexa-sparkplug.js")];
-  return require("../nodes/nexa-sparkplug.js");
+  var mod = require("../nodes/nexa-sparkplug.js");
+  mod._setWorkerFactoryForTests(function (workerData) {
+    lastFakeWorker = new FakeWorker(workerData);
+    return lastFakeWorker;
+  });
+  return mod;
 }
 
-function decodedPublishesOf(client) {
-  return client.published.map(function (p) { return { topic: p.topic, payload: sparkplug.decodePayload(p.payload) }; });
+function publishedTo(worker, groupId, edgeNodeId, deviceId) {
+  return worker.posted.filter(function (p) {
+    return p.groupId === groupId && p.edgeNodeId === edgeNodeId && (p.deviceId || null) === (deviceId || null);
+  });
 }
 
 console.log("--- a CONCRETE group+edge node filter requests a Rebirth immediately on connect (no need to wait for its first message) ---");
@@ -79,12 +83,12 @@ console.log("--- a CONCRETE group+edge node filter requests a Rebirth immediatel
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n1", brokerUrl: "mqtt://fake", groupFilter: "G1", edgeNodeFilter: "Edge1" });
-  lastFakeClient.simulateConnect();
+  lastFakeWorker.simulateConnect();
 
-  var rebirths = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/NCMD/Edge1"; });
+  var rebirths = publishedTo(lastFakeWorker, "G1", "Edge1", null);
   assert.strictEqual(rebirths.length, 1, "expected exactly one immediate Rebirth request on connect");
-  assert.strictEqual(rebirths[0].payload.metrics[0].name, "Node Control/Rebirth");
-  assert.strictEqual(rebirths[0].payload.metrics[0].value, true);
+  assert.strictEqual(rebirths[0].metrics[0].name, "Node Control/Rebirth");
+  assert.strictEqual(rebirths[0].metrics[0].value, true);
   console.log("immediate Rebirth request sent on connect for a concrete filter?", true);
 })();
 
@@ -95,8 +99,8 @@ console.log("--- a WILDCARD filter sends NO rebirth request on connect (there's 
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n2", brokerUrl: "mqtt://fake" }); // groupFilter/edgeNodeFilter default to "+"
-  lastFakeClient.simulateConnect();
-  console.log("no rebirth published yet?", lastFakeClient.published.length === 0);
+  lastFakeWorker.simulateConnect();
+  console.log("no rebirth published yet?", lastFakeWorker.posted.length === 0);
 })();
 
 console.log("--- receiving DDATA for an Edge Node whose NBIRTH was never seen triggers an automatic Rebirth request ---");
@@ -106,20 +110,18 @@ console.log("--- receiving DDATA for an Edge Node whose NBIRTH was never seen tr
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n3", brokerUrl: "mqtt://fake" }); // wildcard -- no rebirth on connect
-  lastFakeClient.simulateConnect();
+  lastFakeWorker.simulateConnect();
 
-  var ddata = sparkplug.encodePayload({ timestamp: 1, metrics: [{ name: "Speed", type: "Double", value: 10 }] });
-  lastFakeClient.simulateMessage("spBv1.0/G2/DDATA/Edge2/Motor1", ddata);
+  lastFakeWorker.simulateMessage("spBv1.0/G2/DDATA/Edge2/Motor1", { timestamp: 1, metrics: [{ name: "Speed", value: 10 }] });
 
-  var rebirths = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G2/NCMD/Edge2"; });
+  var rebirths = publishedTo(lastFakeWorker, "G2", "Edge2", null);
   console.log("auto-rebirth requested after a DDATA arrived with no prior NBIRTH?", rebirths.length === 1);
 
   console.log("--- ...but once that Edge Node's real NBIRTH arrives, no further rebirth requests are sent for more DDATA ---");
-  var nbirth = sparkplug.encodePayload({ timestamp: 2, metrics: [{ name: "bdSeq", type: "Int64", value: 0 }] });
-  lastFakeClient.simulateMessage("spBv1.0/G2/NBIRTH/Edge2", nbirth);
-  lastFakeClient.published = []; // reset -- only care about what happens AFTER the birth
-  lastFakeClient.simulateMessage("spBv1.0/G2/DDATA/Edge2/Motor1", ddata);
-  var rebirths2 = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G2/NCMD/Edge2"; });
+  lastFakeWorker.simulateMessage("spBv1.0/G2/NBIRTH/Edge2", { timestamp: 2, metrics: [{ name: "bdSeq", value: 0 }] });
+  lastFakeWorker.posted = []; // reset -- only care about what happens AFTER the birth
+  lastFakeWorker.simulateMessage("spBv1.0/G2/DDATA/Edge2/Motor1", { timestamp: 3, metrics: [{ name: "Speed", value: 11 }] });
+  var rebirths2 = publishedTo(lastFakeWorker, "G2", "Edge2", null);
   console.log("no further auto-rebirth once the Edge Node's NBIRTH has actually been seen?", rebirths2.length === 0);
 })();
 
@@ -130,18 +132,16 @@ console.log("--- requestRebirthAll() (the manual \"Refresh\" trigger) asks every
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n4", brokerUrl: "mqtt://fake" });
-  lastFakeClient.simulateConnect();
+  lastFakeWorker.simulateConnect();
 
-  var nbirth1 = sparkplug.encodePayload({ timestamp: 1, metrics: [{ name: "bdSeq", type: "Int64", value: 0 }] });
-  var nbirth2 = sparkplug.encodePayload({ timestamp: 1, metrics: [{ name: "bdSeq", type: "Int64", value: 0 }] });
-  lastFakeClient.simulateMessage("spBv1.0/G3/NBIRTH/Edge3", nbirth1);
-  lastFakeClient.simulateMessage("spBv1.0/G4/NBIRTH/Edge4", nbirth2);
-  lastFakeClient.published = [];
+  lastFakeWorker.simulateMessage("spBv1.0/G3/NBIRTH/Edge3", { timestamp: 1, metrics: [{ name: "bdSeq", value: 0 }] });
+  lastFakeWorker.simulateMessage("spBv1.0/G4/NBIRTH/Edge4", { timestamp: 1, metrics: [{ name: "bdSeq", value: 0 }] });
+  lastFakeWorker.posted = [];
 
   var count = node.requestRebirthAll();
   console.log("reports 2 requests sent (one per known Edge Node)?", count === 2);
-  var topics = lastFakeClient.published.map(function (p) { return p.topic; }).sort();
-  console.log("actually published to both known Edge Nodes?", JSON.stringify(topics) === JSON.stringify(["spBv1.0/G3/NCMD/Edge3", "spBv1.0/G4/NCMD/Edge4"]));
+  var pairs = lastFakeWorker.posted.map(function (p) { return p.groupId + "/" + p.edgeNodeId; }).sort();
+  console.log("actually published to both known Edge Nodes?", JSON.stringify(pairs) === JSON.stringify(["G3/Edge3", "G4/Edge4"]));
 })();
 
 console.log("--- writeMetrics() publishes a DCMD (device given) with the right topic/metrics, backing the \"Sparkplug Write\" Logic node ---");
@@ -151,14 +151,14 @@ console.log("--- writeMetrics() publishes a DCMD (device given) with the right t
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n5", brokerUrl: "mqtt://fake" });
-  lastFakeClient.simulateConnect();
-  lastFakeClient.published = [];
+  lastFakeWorker.simulateConnect();
+  lastFakeWorker.posted = [];
 
   var ok = node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 42 }]);
   assert.strictEqual(ok, true, "writeMetrics should report success when connected");
-  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/DCMD/Edge1/Motor1"; });
+  var writes = publishedTo(lastFakeWorker, "G1", "Edge1", "Motor1");
   assert.strictEqual(writes.length, 1, "expected exactly one DCMD publish");
-  console.log("published to the right DCMD topic with the right metric/value?", writes[0].payload.metrics[0].name === "Speed" && writes[0].payload.metrics[0].value === 42);
+  console.log("published with deviceId set and the right metric/value?", writes[0].metrics[0].name === "Speed" && writes[0].metrics[0].value === 42);
 })();
 
 console.log("--- writeMetrics() with NO deviceId publishes a node-scoped NCMD instead ---");
@@ -168,12 +168,12 @@ console.log("--- writeMetrics() with NO deviceId publishes a node-scoped NCMD in
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n6", brokerUrl: "mqtt://fake" });
-  lastFakeClient.simulateConnect();
-  lastFakeClient.published = [];
+  lastFakeWorker.simulateConnect();
+  lastFakeWorker.posted = [];
 
   node.writeMetrics("G1", "Edge1", null, [{ name: "SomeNodeAttr", value: "hello" }]);
-  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/NCMD/Edge1"; });
-  console.log("published to a node-scoped NCMD topic (no device segment)?", writes.length === 1 && writes[0].payload.metrics[0].value === "hello");
+  var writes = publishedTo(lastFakeWorker, "G1", "Edge1", null);
+  console.log("published with no deviceId (node-scoped)?", writes.length === 1 && writes[0].metrics[0].value === "hello");
 })();
 
 console.log("--- writeMetrics() batches MULTIPLE metrics for the same device into ONE publish, backing \"Sparkplug Write Multi\" ---");
@@ -183,12 +183,12 @@ console.log("--- writeMetrics() batches MULTIPLE metrics for the same device int
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n7", brokerUrl: "mqtt://fake" });
-  lastFakeClient.simulateConnect();
-  lastFakeClient.published = [];
+  lastFakeWorker.simulateConnect();
+  lastFakeWorker.posted = [];
 
   node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 10 }, { name: "Torque", value: 5 }]);
-  var writes = decodedPublishesOf(lastFakeClient).filter(function (p) { return p.topic === "spBv1.0/G1/DCMD/Edge1/Motor1"; });
-  console.log("exactly one publish carrying BOTH metrics?", writes.length === 1 && writes[0].payload.metrics.length === 2);
+  var writes = publishedTo(lastFakeWorker, "G1", "Edge1", "Motor1");
+  console.log("exactly one publish carrying BOTH metrics?", writes.length === 1 && writes[0].metrics.length === 2);
 })();
 
 console.log("--- writeMetrics() refuses to publish when not connected (returns false, no throw) ---");
@@ -198,9 +198,42 @@ console.log("--- writeMetrics() refuses to publish when not connected (returns f
   mod(RED);
   var Ctor = RED.getRegisteredCtor();
   var node = new Ctor({ id: "n8", brokerUrl: "mqtt://fake" });
-  // deliberately NOT calling simulateConnect() -- client exists but isn't "connected" yet
+  // deliberately NOT calling simulateConnect() -- worker exists but isn't "connected" yet
   var ok = node.writeMetrics("G1", "Edge1", "Motor1", [{ name: "Speed", value: 1 }]);
   console.log("returns false instead of throwing/publishing while disconnected?", ok === false);
+})();
+
+console.log("--- the connection config (keepAlive/protocolVersion/reconnectPeriod/connectTimeout/clientId) reaches the worker via workerData ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({
+    id: "n9", brokerUrl: "mqtt://fake",
+    keepAlive: 45, protocolVersion: 5, reconnectPeriod: 2000, connectTimeout: 10000,
+    clientIdOverride: "my-custom-id"
+  });
+  var wd = lastFakeWorker.workerData;
+  console.log("keepAlive/protocolVersion/reconnectPeriod/connectTimeout/clientId all passed through?",
+    wd.keepAlive === 45 && wd.protocolVersion === 5 && wd.reconnectPeriod === 2000 &&
+    wd.connectTimeout === 10000 && wd.clientId === "my-custom-id");
+})();
+
+console.log("--- node close() posts a graceful close message and terminates the worker only after it acknowledges ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "n10", brokerUrl: "mqtt://fake" });
+  lastFakeWorker.simulateConnect();
+  var terminated = false;
+  lastFakeWorker.terminate = function () { terminated = true; return Promise.resolve(); };
+
+  var doneCalled = false;
+  node._onHandlers.close(function () { doneCalled = true; });
+  console.log("close message posted to the worker?", lastFakeWorker.posted.length === 0 && doneCalled === true && terminated === true);
 })();
 
 console.log("ALL OK");
