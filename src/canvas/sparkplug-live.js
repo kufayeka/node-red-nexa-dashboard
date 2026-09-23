@@ -334,8 +334,11 @@ export function ensureSparkplugCommsWired() {
     // connection and we'd never get an initial snapshot at all.
     loadSparkplugSnapshot();
     if (window.RED && window.RED.comms && window.RED.comms.subscribe) {
+        // The runtime batches these (lib/sparkplug/deltaBatcher.js) — an
+        // ARRAY of deltas per message; a single delta is still accepted.
         window.RED.comms.subscribe("nexa/sparkplug/delta", function (topic, delta) {
-            applyDelta(delta);
+            if (Array.isArray(delta)) delta.forEach(applyDelta);
+            else applyDelta(delta);
         });
     }
     // ...but "connect" ALSO fires again after every subsequent automatic
