@@ -32,14 +32,15 @@ const RUNTIME_TESTS = [
     "mock-runtime-client.js", "mock-templates-runtime.js",
     "mock-lit-runtime.js", "mock-lit-mount-template.js",
     "mock-sparkplug-render-perf.js", "mock-sparkplug-template-param-regression.js",
-    "mock-sparkplug-write-logic.js", "mock-button-logic.js"
+    "mock-sparkplug-write-logic.js", "mock-button-logic.js", "mock-io-runtime-client.js"
 ];
 // Standalone: no args, no DOM at all.
 const STANDALONE_TESTS = [
     "mock-lit-compile.js", "mock-sparkplug-tree.js", "mock-sparkplug-properties.js",
     "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js", "mock-sparkplug-drag-binding.js",
     "mock-nexa-plugin-screen-worker-relay.js", "mock-sparkplug-worker.js", "mock-sparkplug-worker-integration.js",
-    "mock-screen-worker.js", "mock-screen-worker-integration.js", "mock-delta-batcher.js"
+    "mock-screen-worker.js", "mock-screen-worker-integration.js", "mock-delta-batcher.js",
+    "mock-io-hub.js", "mock-io-worker-integration.js"
 ];
 
 function runBuild() {

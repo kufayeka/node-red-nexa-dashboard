@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "mqtt": "^5.15.2",
-    "protobufjs": "^8.8.0"
+    "protobufjs": "^8.8.0",
+    "ws": "^8.21.0"
   },
   "keywords": [
     "node-red",
