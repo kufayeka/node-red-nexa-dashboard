@@ -33,6 +33,9 @@ global.document = {
   }
 };
 global.window = global;
+// This test exercises the SSE live-binding path: Node >= 22 has a global
+// WebSocket, which would otherwise make the runtime pick Nexa IO instead.
+global.WebSocket = undefined;
 global.console = console;
 global.window.addEventListener = function () {};
 
