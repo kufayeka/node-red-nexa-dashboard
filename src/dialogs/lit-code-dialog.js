@@ -107,3 +107,44 @@ export function openLitComponentCodeEditor(comp) {
         }
     });
 }
+
+export function openCssCodeEditor(comp, propKey, title) {
+    var key = propKey || "css";
+    comp.props = comp.props || {};
+    var cssValue = comp.props[key] !== undefined ? comp.props[key] : "";
+    var cssEditor;
+
+    window.RED.tray.show({
+        id: "nexa-css-editor",
+        title: title || "Edit CSS (" + key + ")",
+        width: 700,
+        buttons: [
+            { text: "Cancel", click: function () { window.RED.tray.close(); } },
+            {
+                text: "Done", "class": "primary",
+                click: function () {
+                    if (cssEditor) {
+                        comp.props[key] = cssEditor.getValue();
+                    }
+                    refreshComponentRender(comp);
+                    markDirty();
+                    window.RED.tray.close();
+                }
+            }
+        ],
+        open: function (tray) {
+            var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+            var cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
+            window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" })
+                .text("CSS — scoped to this component's shadow DOM. Target :host, button, button.active, etc.")
+                .appendTo(cssPane);
+            var cssEditorContainer = window.$("<div>", { id: "nexa-comp-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
+            cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue, language: "css" });
+            if (cssEditor) cssEditor.focus();
+        },
+        close: function () {
+            if (cssEditor) cssEditor.destroy();
+        }
+    });
+}
+
