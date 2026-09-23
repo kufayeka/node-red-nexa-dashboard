@@ -5,8 +5,16 @@ import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { updateComponentBox } from "../canvas/selection-handles.js";
-import { openLitComponentCodeEditor } from "../dialogs/lit-code-dialog.js";
+import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-code-dialog.js";
 import { renderEventsPanel } from "./palette-events-panel.js";
+import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
+
+function previewText(code, emptyLabel) {
+    if (!code) return emptyLabel;
+    var firstLine = code.split("\n")[0];
+    return (firstLine.length > 40 ? firstLine.slice(0, 40) + "…" : firstLine) +
+        " (" + code.length + " chars)";
+}
 
 export function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
@@ -82,26 +90,50 @@ export function renderPropertiesPanel() {
         selectOnly(comp.id);
     });
 
-    var defaults = (typeDef && typeDef.defaults) || {};
-    Object.keys(defaults).forEach(function (key) {
-        var fieldDef = defaults[key] || {};
-        var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
-
-        var input;
-        if (inputType === "checkbox") {
-            input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
-        } else {
-            input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
-        }
-        input.on("change", function () {
-            var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? (parseFloat(input.val()) || 0) : input.val();
-            comp.props[key] = v;
-            refreshComponentRender(comp);
-            markDirty();
+    if (typeDef && typeof typeDef.renderProperties === "function") {
+        typeDef.renderProperties(state.propertiesPane, comp, {
+            refreshComponentRender: refreshComponentRender,
+            markDirty: markDirty,
+            openCssCodeEditor: openCssCodeEditor,
+            listKnownSparkplugBindings: listKnownSparkplugBindings,
+            parseSparkplugBindingPath: parseSparkplugBindingPath,
+            previewText: previewText
         });
-    });
+    } else {
+        var defaults = (typeDef && typeDef.defaults) || {};
+        Object.keys(defaults).forEach(function (key) {
+            var fieldDef = defaults[key] || {};
+            if (fieldDef.type === "css") {
+                var cssRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+                window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(cssRow);
+                window.$("<input>", { type: "text", readonly: "readonly" })
+                    .css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7", "margin-bottom": "4px" })
+                    .val(previewText(comp.props[key], "(empty — click Edit CSS)"))
+                    .appendTo(cssRow);
+                window.$("<button>", { type: "button" }).text("Edit CSS...").css({ width: "100%" }).on("click", function () {
+                    openCssCodeEditor(comp, key, "Edit CSS (" + (typeDef.label || comp.type) + ")");
+                }).appendTo(cssRow);
+                return;
+            }
+
+            var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+            var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+            window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+
+            var input;
+            if (inputType === "checkbox") {
+                input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+            } else {
+                input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+            }
+            input.on("change", function () {
+                var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? (parseFloat(input.val()) || 0) : input.val();
+                comp.props[key] = v;
+                refreshComponentRender(comp);
+                markDirty();
+            });
+        });
+    }
 
     // One field per param this instance's template declares — like a
     // Subflow instance's own env-var dialog: sets this ONE instance's
@@ -150,12 +182,6 @@ export function renderPropertiesPanel() {
         // explicitly "applied" — a real bug, not just an inconvenience. A
         // modal dialog is immune to that: it owns the editor exclusively
         // while open, and nothing outside it can tear it down mid-edit.
-        function previewText(code, emptyLabel) {
-            if (!code) return emptyLabel;
-            var firstLine = code.split("\n")[0];
-            return (firstLine.length > 40 ? firstLine.slice(0, 40) + "…" : firstLine) +
-                " (" + code.length + " chars)";
-        }
         var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
         window.$("<input>", { type: "text", readonly: "readonly" })
@@ -313,48 +339,50 @@ export function renderPropertiesPanel() {
         });
     }
 
-    // Sparkplug Tag Watch field — available on ALL components
-    var spRow = window.$("<div>").css({
-        margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px"
-    }).appendTo(state.propertiesPane);
-    window.$("<label>").css({
-        display: "block", "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)"
-    }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
+    // Sparkplug Tag Watch field — available on components unless explicitly opted out (e.g. Buttons with dedicated Read/Write tags)
+    if (!typeDef || !typeDef.hideSparkplugWatch) {
+        var spRow = window.$("<div>").css({
+            margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px"
+        }).appendTo(state.propertiesPane);
+        window.$("<label>").css({
+            display: "block", "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)"
+        }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
 
-    var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
-    var spInput = window.$("<input>", {
-        type: "text",
-        placeholder: "{sparkplug:Group::Node::Device::Metric}"
-    }).css({
-        flex: "1", "font-size": "11px", "font-family": "monospace", "box-sizing": "border-box"
-    }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
+        var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
+        var spInput = window.$("<input>", {
+            type: "text",
+            placeholder: "{sparkplug:Group::Node::Device::Metric}"
+        }).css({
+            flex: "1", "font-size": "11px", "font-family": "monospace", "box-sizing": "border-box"
+        }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
 
-    var spClearBtn = window.$("<button>", {
-        type: "button",
-        title: "Clear Sparkplug Watch"
-    }).css({
-        padding: "3px 8px", "font-size": "11px", cursor: "pointer"
-    }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
+        var spClearBtn = window.$("<button>", {
+            type: "button",
+            title: "Clear Sparkplug Watch"
+        }).css({
+            padding: "3px 8px", "font-size": "11px", cursor: "pointer"
+        }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
 
-    function onSparkplugBindingChanged(newVal) {
-        var trimmed = (newVal || "").trim();
-        if (trimmed) {
-            comp.sparkplugBinding = trimmed;
-        } else {
-            delete comp.sparkplugBinding;
+        function onSparkplugBindingChanged(newVal) {
+            var trimmed = (newVal || "").trim();
+            if (trimmed) {
+                comp.sparkplugBinding = trimmed;
+            } else {
+                delete comp.sparkplugBinding;
+            }
+            markDirty();
+            refreshComponentRender(comp);
+            if (typeof renderEventsPanel === "function") renderEventsPanel();
         }
-        markDirty();
-        refreshComponentRender(comp);
-        if (typeof renderEventsPanel === "function") renderEventsPanel();
-    }
 
-    spInput.on("change", function () {
-        onSparkplugBindingChanged(spInput.val());
-    });
-    spClearBtn.on("click", function () {
-        spInput.val("");
-        onSparkplugBindingChanged("");
-    });
+        spInput.on("change", function () {
+            onSparkplugBindingChanged(spInput.val());
+        });
+        spClearBtn.on("click", function () {
+            spInput.val("");
+            onSparkplugBindingChanged("");
+        });
+    }
 
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function (pair) {

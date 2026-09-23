@@ -375,12 +375,16 @@
   // src/history.js
   var _renderActiveScreenFn = null;
   var _renderLogicCanvasFn = null;
+  var MAX_HISTORY = 20;
   function registerHistoryRenderers(renderActiveScreen2, renderLogicCanvas2) {
     _renderActiveScreenFn = renderActiveScreen2;
     _renderLogicCanvasFn = renderLogicCanvas2;
   }
   function pushHistory(ev) {
     state.undoStack.push(ev);
+    if (state.undoStack.length > MAX_HISTORY) {
+      state.undoStack.splice(0, state.undoStack.length - MAX_HISTORY);
+    }
     state.redoStack = [];
   }
   function applyHistoryMutation(ev, direction) {
@@ -1121,7 +1125,8 @@
     loadSparkplugSnapshot();
     if (window.RED && window.RED.comms && window.RED.comms.subscribe) {
       window.RED.comms.subscribe("nexa/sparkplug/delta", function(topic, delta) {
-        applyDelta(delta);
+        if (Array.isArray(delta)) delta.forEach(applyDelta);
+        else applyDelta(delta);
       });
     }
     if (window.RED && window.RED.comms && typeof window.RED.comms.on === "function") {
@@ -25281,6 +25286,45 @@
       }
     });
   }
+  function openCssCodeEditor(comp, propKey, title) {
+    var key = propKey || "css";
+    comp.props = comp.props || {};
+    var cssValue = comp.props[key] !== void 0 ? comp.props[key] : "";
+    var cssEditor;
+    window.RED.tray.show({
+      id: "nexa-css-editor",
+      title: title || "Edit CSS (" + key + ")",
+      width: 700,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Done",
+          "class": "primary",
+          click: function() {
+            if (cssEditor) {
+              comp.props[key] = cssEditor.getValue();
+            }
+            refreshComponentRender(comp);
+            markDirty();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+        var cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" }).text("CSS \u2014 scoped to this component's shadow DOM. Target :host, button, button.active, etc.").appendTo(cssPane);
+        var cssEditorContainer = window.$("<div>", { id: "nexa-comp-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
+        cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue, language: "css" });
+        if (cssEditor) cssEditor.focus();
+      },
+      close: function() {
+        if (cssEditor) cssEditor.destroy();
+      }
+    });
+  }
 
   // src/sidebar/palette-events-panel.js
   function getComponentColor(category, typeId) {
@@ -25744,6 +25788,11 @@
   }
 
   // src/sidebar/properties-panel.js
+  function previewText(code2, emptyLabel) {
+    if (!code2) return emptyLabel;
+    var firstLine = code2.split("\n")[0];
+    return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code2.length + " chars)";
+  }
   function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
     state.propertiesPane.empty();
@@ -25812,25 +25861,45 @@
       renderActiveScreen();
       selectOnly(comp.id);
     });
-    var defaults2 = typeDef && typeDef.defaults || {};
-    Object.keys(defaults2).forEach(function(key) {
-      var fieldDef = defaults2[key] || {};
-      var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
-      var input;
-      if (inputType === "checkbox") {
-        input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
-      } else {
-        input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
-      }
-      input.on("change", function() {
-        var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
-        comp.props[key] = v;
-        refreshComponentRender(comp);
-        markDirty();
+    if (typeDef && typeof typeDef.renderProperties === "function") {
+      typeDef.renderProperties(state.propertiesPane, comp, {
+        refreshComponentRender,
+        markDirty,
+        openCssCodeEditor,
+        listKnownSparkplugBindings,
+        parseSparkplugBindingPath,
+        previewText
       });
-    });
+    } else {
+      var defaults2 = typeDef && typeDef.defaults || {};
+      Object.keys(defaults2).forEach(function(key) {
+        var fieldDef = defaults2[key] || {};
+        if (fieldDef.type === "css") {
+          var cssRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+          window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(cssRow);
+          window.$("<input>", { type: "text", readonly: "readonly" }).css({ width: "100%", "box-sizing": "border-box", color: "#888", background: "#f7f7f7", "margin-bottom": "4px" }).val(previewText(comp.props[key], "(empty \u2014 click Edit CSS)")).appendTo(cssRow);
+          window.$("<button>", { type: "button" }).text("Edit CSS...").css({ width: "100%" }).on("click", function() {
+            openCssCodeEditor(comp, key, "Edit CSS (" + (typeDef.label || comp.type) + ")");
+          }).appendTo(cssRow);
+          return;
+        }
+        var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
+        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+        var input;
+        if (inputType === "checkbox") {
+          input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+        } else {
+          input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+        }
+        input.on("change", function() {
+          var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
+          comp.props[key] = v;
+          refreshComponentRender(comp);
+          markDirty();
+        });
+      });
+    }
     if (isTemplateInstance && templateRef) {
       if ((templateRef.params || []).length) {
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Parameters").appendTo(state.propertiesPane);
@@ -25849,11 +25918,6 @@
       });
     }
     if (isLitComponent) {
-      let previewText = function(code2, emptyLabel) {
-        if (!code2) return emptyLabel;
-        var firstLine = code2.split("\n")[0];
-        return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code2.length + " chars)";
-      };
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Lit Code").appendTo(state.propertiesPane);
       var jsPreviewRow = window.$("<div>").css({ "margin-bottom": "6px" }).appendTo(state.propertiesPane);
       window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Class body").appendTo(jsPreviewRow);
@@ -25960,54 +26024,56 @@
         eventList.editableList("addItem", evt);
       });
     }
-    var spRow = window.$("<div>").css({
-      margin: "14px 0 8px",
-      "border-top": "1px solid #ddd",
-      "padding-top": "10px"
-    }).appendTo(state.propertiesPane);
-    window.$("<label>").css({
-      display: "block",
-      "font-weight": "bold",
-      "font-size": "12px",
-      "margin-bottom": "4px",
-      color: "var(--red-ui-secondary-text-color, #475569)"
-    }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
-    var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
-    var spInput = window.$("<input>", {
-      type: "text",
-      placeholder: "{sparkplug:Group::Node::Device::Metric}"
-    }).css({
-      flex: "1",
-      "font-size": "11px",
-      "font-family": "monospace",
-      "box-sizing": "border-box"
-    }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
-    var spClearBtn = window.$("<button>", {
-      type: "button",
-      title: "Clear Sparkplug Watch"
-    }).css({
-      padding: "3px 8px",
-      "font-size": "11px",
-      cursor: "pointer"
-    }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
-    function onSparkplugBindingChanged(newVal) {
-      var trimmed = (newVal || "").trim();
-      if (trimmed) {
-        comp.sparkplugBinding = trimmed;
-      } else {
-        delete comp.sparkplugBinding;
-      }
-      markDirty();
-      refreshComponentRender(comp);
-      if (typeof renderEventsPanel === "function") renderEventsPanel();
+    if (!typeDef || !typeDef.hideSparkplugWatch) {
+      let onSparkplugBindingChanged = function(newVal) {
+        var trimmed = (newVal || "").trim();
+        if (trimmed) {
+          comp.sparkplugBinding = trimmed;
+        } else {
+          delete comp.sparkplugBinding;
+        }
+        markDirty();
+        refreshComponentRender(comp);
+        if (typeof renderEventsPanel === "function") renderEventsPanel();
+      };
+      var spRow = window.$("<div>").css({
+        margin: "14px 0 8px",
+        "border-top": "1px solid #ddd",
+        "padding-top": "10px"
+      }).appendTo(state.propertiesPane);
+      window.$("<label>").css({
+        display: "block",
+        "font-weight": "bold",
+        "font-size": "12px",
+        "margin-bottom": "4px",
+        color: "var(--red-ui-secondary-text-color, #475569)"
+      }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
+      var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
+      var spInput = window.$("<input>", {
+        type: "text",
+        placeholder: "{sparkplug:Group::Node::Device::Metric}"
+      }).css({
+        flex: "1",
+        "font-size": "11px",
+        "font-family": "monospace",
+        "box-sizing": "border-box"
+      }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
+      var spClearBtn = window.$("<button>", {
+        type: "button",
+        title: "Clear Sparkplug Watch"
+      }).css({
+        padding: "3px 8px",
+        "font-size": "11px",
+        cursor: "pointer"
+      }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
+      spInput.on("change", function() {
+        onSparkplugBindingChanged(spInput.val());
+      });
+      spClearBtn.on("click", function() {
+        spInput.val("");
+        onSparkplugBindingChanged("");
+      });
     }
-    spInput.on("change", function() {
-      onSparkplugBindingChanged(spInput.val());
-    });
-    spClearBtn.on("click", function() {
-      spInput.val("");
-      onSparkplugBindingChanged("");
-    });
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair2) {
       var field = pair2[0], label = pair2[1];
@@ -27631,7 +27697,9 @@
           if (targetComp) {
             var bindingPath = makeSparkplugBindingPath(metricRef);
             targetComp.sparkplugBinding = bindingPath;
-            if (targetComp.props && (targetComp.props.text !== void 0 || targetComp.type === "kufayeka-text-label")) {
+            if (targetComp.props && targetComp.props.stateValue !== void 0) {
+              targetComp.props.stateValue = bindingPath;
+            } else if (targetComp.props && (targetComp.props.text !== void 0 || targetComp.type === "kufayeka-text-label")) {
               targetComp.props.text = bindingPath;
             }
             selectOnly(targetComp.id);

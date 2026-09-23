@@ -4,6 +4,11 @@ import { state, markDirty, findSurfaceById, getActiveScreen } from "./state.js";
 let _renderActiveScreenFn = null;
 let _renderLogicCanvasFn = null;
 
+// Custom stack (not RED.history) -- previously unbounded, so a long editing
+// session grows both arrays forever. Capped to the most recent 20 changes,
+// same as most editors' default undo depth.
+export const MAX_HISTORY = 20;
+
 export function registerHistoryRenderers(renderActiveScreen, renderLogicCanvas) {
     _renderActiveScreenFn = renderActiveScreen;
     _renderLogicCanvasFn = renderLogicCanvas;
@@ -11,6 +16,9 @@ export function registerHistoryRenderers(renderActiveScreen, renderLogicCanvas) 
 
 export function pushHistory(ev) {
     state.undoStack.push(ev);
+    if (state.undoStack.length > MAX_HISTORY) {
+        state.undoStack.splice(0, state.undoStack.length - MAX_HISTORY);
+    }
     state.redoStack = [];
 }
 

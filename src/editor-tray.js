@@ -173,7 +173,12 @@ export function buildCanvasArea(trayBody) {
                 if (targetComp) {
                     var bindingPath = makeSparkplugBindingPath(metricRef);
                     targetComp.sparkplugBinding = bindingPath;
-                    if (targetComp.props && (targetComp.props.text !== undefined || targetComp.type === "kufayeka-text-label")) {
+                    if (targetComp.props && targetComp.props.stateValue !== undefined) {
+                        // Action buttons (Momentary/Latch Button): the dropped tag drives
+                        // ONLY the active/inactive visual (props.stateValue), never the
+                        // button's own label text -- unlike the text-seeding branch below.
+                        targetComp.props.stateValue = bindingPath;
+                    } else if (targetComp.props && (targetComp.props.text !== undefined || targetComp.type === "kufayeka-text-label")) {
                         targetComp.props.text = bindingPath;
                     }
                     selectOnly(targetComp.id);
