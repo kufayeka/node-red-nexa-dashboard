@@ -767,10 +767,10 @@ The screen JSON embedded in that inline `<script>` block is escaped against a cl
 because component `props` are free-text editor input that ends up embedded verbatim in a
 public HTML page.
 
-On backend startup, `lib/nexa-plugin.js` also subscribes once to Asset Engine changes via
-`getAssetController(RED).subscribe(...)` and republishes every change through
-`RED.comms.publish("nexa/value", meta)` — see §13 for what this is (and isn't) currently
-used for.
+Live Sparkplug values reach the editor as `RED.comms.publish("nexa/sparkplug/delta", [deltas])`
+— batched every 75ms (`lib/sparkplug/deltaBatcher.js`: data metrics merged per device, last
+value wins; birth/death kept in order). Deployed pages are not batched: they get every delta
+over the screen worker's SSE stream.
 
 ---
 
@@ -994,11 +994,9 @@ Add the package as a dependency the same way you would any other Node-RED node p
 
 Documented honestly so nobody builds on top of something that isn't really there yet:
 
-- **Asset Engine live tag-binding is not wired up end-to-end.** The backend
-  (`lib/nexa-plugin.js`) *does* subscribe to `@kufayeka/node-red-asset-engine` and
-  republish every change via `RED.comms.publish("nexa/value", meta)` — but nothing
-  currently subscribes to that channel, on either the editor side or the deployed-page
-  side. The `bindable` field on a component definition is a real, normalized part of the
+- **Asset Engine live tag-binding is not wired up end-to-end.** There is no direct
+  asset-path binding (an earlier unused `nexa/value` comms republish was removed) — bind
+  through Sparkplug (`{sparkplug:...}`) instead. The `bindable` field on a component definition is a real, normalized part of the
   contract, but there is no picker UI anywhere to actually bind a component property to
   an asset tag path yet. Practically, if you need a Nexa screen to react to live data
   today, the only two ways are: (a) an `inject` Logic node polling on an interval, driven
