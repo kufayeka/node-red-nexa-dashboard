@@ -42,6 +42,14 @@ async function main() {
                 assert.deepStrictEqual(await box('hug'), [20, 200, 120, 65], '100 + 2*10 wide, 10 + 20 + 5 + 20 + 10 high');
                 assert.deepStrictEqual(await box('h2'), [50, 235, 60, 20], 'centred across');
             });
+            await ok('constraints: children of a frame that is wider live than designed keep to its edges', async () => {
+                // inner: designed 100 wide, fills 400 (at x 120)
+                assert.deepStrictEqual(await box('inner'), [120, 320, 400, 100]);
+                assert.deepStrictEqual(await box('k-right'), [490, 320, 20, 20], 'right: 10 from the right edge');
+                assert.deepStrictEqual(await box('k-lr'), [130, 350, 380, 20], 'left & right: 10 from both edges');
+                assert.deepStrictEqual(await box('k-center'), [310, 380, 20, 20], 'center: 10 left of the middle');
+                assert.deepStrictEqual(await box('k-scale'), [220, 405, 200, 10], 'scale: 25% / 50%');
+            });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;
         }, { ready: "!!document.querySelector('[data-id=\"b\"]')", readyTries: 60 });

@@ -5,6 +5,7 @@ import { setLockedForSelection, selectOnly } from "./selection.js";
 import { nodeCss } from "./component-renderer.js";
 import { renderActiveScreen } from "./canvas-ui.js";
 import { readbackLayout } from "./layout-readback.js";
+import { snapshotBoxes, constrainFrameChildren } from "./constraints.js";
 
 // The handles live on the artboard, so they need the node's box in surface
 // coordinates (a nested node's x / y are relative to its parent).
@@ -77,6 +78,7 @@ export function wireResizeHandle(handle, comp, handleName) {
         var minSize = 20;
         var start = { x: e.clientX, y: e.clientY };
         var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+        var origKids = comp.type === "@frame" ? snapshotBoxes(comp) : null;
         var before = screen ? treeSnapshot(screen) : null;
         var inGroup = screen && Tree.ancestors(screen, comp.id).some(function (a) { return a.type === "@group"; });
         // A frame, or a node its parent's auto layout places: resizing an axis
@@ -120,6 +122,11 @@ export function wireResizeHandle(handle, comp, handleName) {
             comp.x = nx; comp.y = ny;
             comp.w = Math.max(minSize, nw); comp.h = Math.max(minSize, nh);
             updateComponentBox(comp);
+            // a frame's children keep to its edges (constraints)
+            if (origKids) {
+                Object.keys(origKids).forEach(function (id) { var n = Tree.find(screen, id); if (n) { n.x = origKids[id].x; n.y = origKids[id].y; n.w = origKids[id].w; n.h = origKids[id].h; } });
+                constrainFrameChildren(comp, orig, origKids).forEach(function (id) { var n = Tree.find(screen, id); if (n) updateComponentBox(n); });
+            }
         }
         function onUp() {
             document.removeEventListener("mousemove", onMove);

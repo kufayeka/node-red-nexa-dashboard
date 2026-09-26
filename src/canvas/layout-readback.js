@@ -6,6 +6,7 @@
 // node (Figma does the same: a node in auto layout still has a position).
 // Derived values: no history, not "dirty" on their own.
 import { state, getActiveScreen, Tree, Layout } from "../state.js";
+import { constrainFrameChildren } from "./constraints.js";
 
 function elementOf(id) {
     if (!state.artboardEl) return null;
@@ -21,6 +22,7 @@ function elementOf(id) {
 export function readbackLayout(screen) {
     screen = screen || getActiveScreen();
     var changed = [];
+    var redraw = false;
     if (!screen) return changed;
     Tree.walk(screen, function (node, parent) {
         var inFlow = Layout.isInFlow(node, parent);
@@ -33,11 +35,19 @@ export function readbackLayout(screen) {
         if (inFlow || hugW) box.w = el.offsetWidth;
         if (inFlow || hugH) box.h = el.offsetHeight;
         if (box.x !== node.x || box.y !== node.y || box.w !== node.w || box.h !== node.h) {
+            var old = { w: node.w, h: node.h };
             node.x = box.x; node.y = box.y; node.w = box.w; node.h = box.h;
             changed.push(node.id);
+            // a frame the layout resized: what it holds keeps to its edges (drawn from data: redraw)
+            var moved = constrainFrameChildren(node, old);
+            if (moved.length) { redraw = true; changed = changed.concat(moved); }
         }
     });
     // a group hugs its children: one whose child changed size re-fits
-    changed.forEach(function (id) { Tree.refitGroupsUp(screen, id); });
+    changed.forEach(function (id) {
+        if (Tree.ancestors(screen, id).some(function (a) { return a.type === "@group"; })) redraw = true;
+        Tree.refitGroupsUp(screen, id);
+    });
+    changed.redraw = redraw; // drawn from stale values: the caller draws once more
     return changed;
 }

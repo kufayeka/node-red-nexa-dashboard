@@ -38,7 +38,7 @@ export function renderActiveScreen() {
     // boxes placed by auto layout back into the nodes; when that re-fitted a
     // group (its children's x / y shift), draw once more with the new values
     var changed = readbackLayout(screen);
-    if (changed.length && changed.some(function (id) { return Tree.ancestors(screen, id).some(function (a) { return a.type === "@group"; }); }) && !renderActiveScreen._again) {
+    if (changed.redraw && !renderActiveScreen._again) {
         renderActiveScreen._again = true;
         try { renderActiveScreen(); } finally { renderActiveScreen._again = false; }
     }

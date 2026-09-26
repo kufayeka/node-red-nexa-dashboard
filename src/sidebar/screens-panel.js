@@ -1,5 +1,6 @@
 import { state, getActiveScreen, makeScreen, markDirty } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
+import { applyConstraints } from "../canvas/constraints.js";
 import { renderLogicCanvas } from "../logic/logic-nodes.js";
 
 export function refreshLogicCanvasIfActive() {
@@ -162,7 +163,10 @@ export function renderScreenForm() {
         var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
         input.on("change", function () {
             var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
+            var oldSize = { w: screen.width, h: screen.height };
             screen[field] = v;
+            // the root's children keep to the screen's edges (constraints)
+            if (field === "width" || field === "height") applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
             if (field === "name" || field === "path") renderScreenList();
             markDirty();
             renderActiveScreen();
