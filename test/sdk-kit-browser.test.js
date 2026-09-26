@@ -275,6 +275,69 @@ async function main() {
             assert.deepStrictEqual(r, [1, 1, '["a"]']);
         });
 
+        await ok('nx-tree: nested rows, select, collapse, actions, rename, drag & drop (never into itself)', async () => {
+            const r = await js(`(async function () {
+                var t = document.createElement("nx-tree"); document.body.appendChild(t);
+                var ev = [];
+                ["nx-tree-select", "nx-tree-action", "nx-tree-rename", "nx-tree-move", "nx-tree-open"].forEach(function (n) {
+                    t.addEventListener(n, function (e) { ev.push([n.slice(8), e.detail]); });
+                });
+                t.nodes = [
+                    { id: "g", label: "Group 1", container: true, actions: [{ id: "vis", icon: "fa fa-eye", on: true }], children: [
+                        { id: "a", label: "Rect" }, { id: "g2", label: "Inner", container: true, children: [{ id: "b", label: "Text" }] }] },
+                    { id: "c", label: "Button", muted: true }];
+                t.selected = ["a"];
+                await NexaTest.wait();
+                var row = function (id) { return t.querySelector('.nx-tree-row[data-id="' + id + '"]'); };
+                var out = {};
+                out.rows = Array.from(t.querySelectorAll(".nx-tree-row")).map(function (e) { return e.dataset.id; });
+                out.indentB = row("b").querySelector(".nx-tree-indent").style.width;
+                out.sel = row("a").classList.contains("nx-on") && !row("c").classList.contains("nx-on");
+                out.muted = row("c").classList.contains("nx-muted");
+                row("c").dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+                row("g").querySelector(".nx-tree-caret").click(); await NexaTest.wait();
+                out.collapsed = !row("a") && !!row("g") && row("g").getAttribute("aria-expanded") === "false";
+                row("g").querySelector(".nx-tree-caret").click(); await NexaTest.wait();
+                row("g").querySelector(".nx-tree-actions button").click();
+                row("a").querySelector(".nx-tree-label").dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+                await NexaTest.wait();
+                var input = t.querySelector(".nx-tree-rename"); out.renameFocused = document.activeElement === input;
+                input.value = "  Big rect "; input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                await NexaTest.wait();
+                function drag(id, targetId, frac) {
+                    var dt = new DataTransfer(), target = row(targetId), rect = target.getBoundingClientRect();
+                    var y = rect.top + rect.height * frac;
+                    row(id).dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt }));
+                    target.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt, clientY: y }));
+                    return NexaTest.wait().then(function () {
+                        var shown = target.className.match(/nx-drop-(\\w+)/);
+                        target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt, clientY: y }));
+                        row(id) && row(id).dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: dt }));
+                        return shown ? shown[1] : null;
+                    });
+                }
+                out.dropInside = await drag("c", "g2", 0.5);
+                out.dropBefore = await drag("c", "a", 0.1);
+                out.dropLeafMiddle = await drag("c", "a", 0.6);
+                out.dropIntoOwnChild = await drag("g", "b", 0.5);
+                t.remove();
+                out.ev = ev;
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.rows, ['g', 'a', 'g2', 'b', 'c'], 'rows start expanded, depth first');
+            assert.strictEqual(r.indentB, '28px');
+            assert.ok(r.sel && r.muted && r.collapsed && r.renameFocused);
+            assert.deepStrictEqual([r.dropInside, r.dropBefore, r.dropLeafMiddle, r.dropIntoOwnChild], ['inside', 'before', 'after', null]);
+            assert.deepStrictEqual(r.ev, [
+                ['select', { id: 'c', additive: true }],
+                ['action', { id: 'g', action: 'vis' }],
+                ['rename', { id: 'a', name: 'Big rect' }],
+                ['move', { id: 'c', targetId: 'g2', position: 'inside' }],
+                ['move', { id: 'c', targetId: 'a', position: 'before' }],
+                ['move', { id: 'c', targetId: 'a', position: 'after' }]
+            ]);
+        });
+
         await ok('no JavaScript errors or warnings in the page', async () => {
             assert.deepStrictEqual(quiet(logs), []);
         });

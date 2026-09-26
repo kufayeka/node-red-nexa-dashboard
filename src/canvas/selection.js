@@ -33,7 +33,10 @@ export function refreshSelectionVisuals() {
     renderPropertiesPanel();
     refreshEventsHighlight();
     hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
-    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+    // (not away from the Hierarchy: selecting there — or arranging the tree —
+    // must keep the tree in view)
+    var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
+    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
         state.sidebarTabs.activateTab("properties");
     }
 }

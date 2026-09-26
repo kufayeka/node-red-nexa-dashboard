@@ -69,7 +69,8 @@ function rows(screen, list, orphan) {
 // Moves a node under parentId at a DATA index, keeping its place on screen.
 function moveKeepingPlace(screen, id, parentId, dataIndex) {
     var loc = Tree.locate(screen, id);
-    var abs = loc && !loc.orphan ? Tree.absBox(screen, id) : null;
+    // (an orphan's x / y are already surface coordinates)
+    var abs = !loc ? null : loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : Tree.absBox(screen, id);
     var oldParent = loc && loc.parent ? loc.parent.id : null;
     if (loc && loc.orphan) Tree.placeOrphan(screen, id, parentId, dataIndex);
     else Tree.move(screen, id, parentId, dataIndex);
@@ -79,8 +80,8 @@ function moveKeepingPlace(screen, id, parentId, dataIndex) {
         node.x = abs.x - p.x;
         node.y = abs.y - p.y;
     }
-    if (oldParent) { var op = Tree.find(screen, oldParent); if (op && op.type === "@group") { Tree.fitGroup(op); Tree.refitGroupsUp(screen, oldParent); } }
-    if (parentId) { var np = Tree.find(screen, parentId); if (np && np.type === "@group") { Tree.fitGroup(np); Tree.refitGroupsUp(screen, parentId); } }
+    if (parentId) Tree.tidyContainer(screen, parentId);   // the new group hugs it
+    if (oldParent && oldParent !== parentId) Tree.tidyContainer(screen, oldParent); // the old one hugs the rest, or goes when empty
 }
 
 function onMove(e) {
@@ -91,12 +92,13 @@ function onMove(e) {
     try {
         if (d.targetId === UNPLACED_ID) {
             // dropped on "Unplaced": out of the tree, not deleted
+            var abs = Tree.locate(screen, d.id) && !Tree.locate(screen, d.id).orphan ? Tree.absBox(screen, d.id) : null;
             var node = Tree.detach(screen, d.id);
-            if (node && !node.orphan) {
+            if (node) {
+                // an orphan keeps its place on screen for when it comes back
+                if (abs) { node.node.x = abs.x; node.node.y = abs.y; }
                 (screen.orphans = screen.orphans || []).push(node.node);
-                if (node.parentId) { var p = Tree.find(screen, node.parentId); if (p && p.type === "@group") { Tree.fitGroup(p); Tree.refitGroupsUp(screen, node.parentId); } }
-            } else if (node) {
-                screen.orphans.push(node.node);
+                if (!node.orphan) Tree.tidyContainer(screen, node.parentId);
             }
         } else {
             var target = Tree.locate(screen, d.targetId);

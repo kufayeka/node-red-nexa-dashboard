@@ -128,6 +128,7 @@
     placeOrphan: () => placeOrphan,
     refitGroupsUp: () => refitGroupsUp,
     remove: () => remove,
+    tidyContainer: () => tidyContainer,
     unwrap: () => unwrap,
     walk: () => walk,
     wrapInGroup: () => wrapInGroup
@@ -228,11 +229,15 @@
     return d.node;
   }
   function remove(surface, id2) {
+    var loc = locate(surface, id2);
+    var origin = loc && !loc.orphan ? absBox(surface, id2) : { x: loc && loc.node.x || 0, y: loc && loc.node.y || 0 };
     var d = detach(surface, id2);
     if (!d) return null;
     if (isContainer(d.node) && d.node.children && d.node.children.length) {
       surface.orphans = surface.orphans || [];
       d.node.children.forEach(function(c) {
+        c.x = (c.x || 0) + origin.x;
+        c.y = (c.y || 0) + origin.y;
         surface.orphans.push(c);
       });
       d.node.children = [];
@@ -303,6 +308,21 @@
     ancestors(surface, id2).reverse().forEach(function(a) {
       if (a.type === "@group") fitGroup(a);
     });
+  }
+  function tidyContainer(surface, id2) {
+    var dropped = [];
+    var loc = id2 ? locate(surface, id2) : null;
+    while (loc && !loc.orphan && loc.node.type === "@group" && !kids(loc.node).length) {
+      var parentId = loc.parent ? loc.parent.id : null;
+      loc.list.splice(loc.index, 1);
+      dropped.push(loc.node.id);
+      loc = parentId ? locate(surface, parentId) : null;
+    }
+    if (loc && !loc.orphan) {
+      fitGroup(loc.node);
+      refitGroupsUp(surface, loc.node.id);
+    }
+    return dropped;
   }
   function wrapInGroup(surface, ids, group) {
     var locs = ids.map(function(id2) {
@@ -1318,11 +1338,7 @@
       if (state.artboardEl) state.artboardEl.find('[data-id="' + id2 + '"]').remove();
     });
     Object.keys(parents).forEach(function(pid) {
-      var p = tree_exports.find(screen, pid);
-      if (p && p.type === "@group") {
-        tree_exports.fitGroup(p);
-        tree_exports.refitGroupsUp(screen, pid);
-      }
+      tree_exports.tidyContainer(screen, pid);
     });
     state.selectedIds = state.selectedIds.filter(function(id2) {
       return !!tree_exports.find(screen, id2) && !tree_exports.locate(screen, id2).orphan;
@@ -26390,7 +26406,8 @@
       } catch (e) {
       }
     });
-    if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+    var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
+    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
       state.sidebarTabs.activateTab("properties");
     }
   }
@@ -28157,7 +28174,7 @@
   }
   function moveKeepingPlace(screen, id2, parentId, dataIndex) {
     var loc = tree_exports.locate(screen, id2);
-    var abs = loc && !loc.orphan ? tree_exports.absBox(screen, id2) : null;
+    var abs = !loc ? null : loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen, id2);
     var oldParent = loc && loc.parent ? loc.parent.id : null;
     if (loc && loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, dataIndex);
     else tree_exports.move(screen, id2, parentId, dataIndex);
@@ -28167,20 +28184,8 @@
       node.x = abs.x - p.x;
       node.y = abs.y - p.y;
     }
-    if (oldParent) {
-      var op = tree_exports.find(screen, oldParent);
-      if (op && op.type === "@group") {
-        tree_exports.fitGroup(op);
-        tree_exports.refitGroupsUp(screen, oldParent);
-      }
-    }
-    if (parentId) {
-      var np = tree_exports.find(screen, parentId);
-      if (np && np.type === "@group") {
-        tree_exports.fitGroup(np);
-        tree_exports.refitGroupsUp(screen, parentId);
-      }
-    }
+    if (parentId) tree_exports.tidyContainer(screen, parentId);
+    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen, oldParent);
   }
   function onMove(e) {
     var screen = getActiveScreen();
@@ -28189,18 +28194,15 @@
     var before = treeSnapshot(screen);
     try {
       if (d.targetId === UNPLACED_ID) {
+        var abs = tree_exports.locate(screen, d.id) && !tree_exports.locate(screen, d.id).orphan ? tree_exports.absBox(screen, d.id) : null;
         var node = tree_exports.detach(screen, d.id);
-        if (node && !node.orphan) {
-          (screen.orphans = screen.orphans || []).push(node.node);
-          if (node.parentId) {
-            var p = tree_exports.find(screen, node.parentId);
-            if (p && p.type === "@group") {
-              tree_exports.fitGroup(p);
-              tree_exports.refitGroupsUp(screen, node.parentId);
-            }
+        if (node) {
+          if (abs) {
+            node.node.x = abs.x;
+            node.node.y = abs.y;
           }
-        } else if (node) {
-          screen.orphans.push(node.node);
+          (screen.orphans = screen.orphans || []).push(node.node);
+          if (!node.orphan) tree_exports.tidyContainer(screen, node.parentId);
         }
       } else {
         var target = tree_exports.locate(screen, d.targetId);

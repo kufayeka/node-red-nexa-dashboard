@@ -62,6 +62,25 @@ ok('deleting a container orphans its children; an orphan can be placed again', (
     assert.deepStrictEqual(ids(s.components), ['b'], 'a plain component is simply deleted');
 });
 
+ok('orphans keep their place on screen (surface coordinates)', () => {
+    const s = { components: [{ id: 'g', type: '@group', x: 100, y: 50, w: 20, h: 20, children: [leaf('a', 5, 5)] }] };
+    T.remove(s, 'g');
+    assert.deepStrictEqual([s.orphans[0].x, s.orphans[0].y], [105, 55]);
+});
+
+ok('tidyContainer: a group left empty goes (and so on up), the groups around re-hug', () => {
+    const s = { components: [{ id: 'outer', type: '@group', x: 0, y: 0, w: 100, h: 100, children: [
+        leaf('keep', 0, 0, 10, 10),
+        { id: 'inner', type: '@group', x: 50, y: 50, w: 50, h: 50, children: [{ id: 'innermost', type: '@group', x: 0, y: 0, w: 50, h: 50, children: [leaf('x', 0, 0, 50, 50)] }] }] }] };
+    T.move(s, 'x', null, null);
+    assert.deepStrictEqual(T.tidyContainer(s, 'innermost'), ['innermost', 'inner']);
+    const outer = T.find(s, 'outer');
+    assert.deepStrictEqual([ids(outer.children), outer.w, outer.h], [['keep'], 10, 10], 'outer hugs what is left');
+    assert.deepStrictEqual(T.tidyContainer(s, null), [], 'the root is left alone');
+    const f = { components: [{ id: 'fr', type: '@frame', x: 0, y: 0, w: 80, h: 80, children: [] }] };
+    assert.deepStrictEqual([T.tidyContainer(f, 'fr'), ids(f.components)], [[], ['fr']], 'an empty frame stays (it is a box of its own)');
+});
+
 ok('wrap in a group keeps everything in place; the group hugs; unwrap restores', () => {
     const s = { components: [leaf('a', 100, 100, 50, 20), leaf('b', 0, 0), leaf('c', 200, 150, 30, 30)] };
     const g = T.wrapInGroup(s, ['c', 'a'], { id: 'g', name: 'G' });
