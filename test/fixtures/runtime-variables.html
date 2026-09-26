@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>variables</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Variables and their lexical scope chain on a deployed page (see
+     test/runtime-variables-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = p.text; } });
+function label(id, text) { return { id: id, type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: text } }; }
+function v(name, value) { return { id: "v-" + name, name: name, type: typeof value === "number" ? "number" : "string", defaultValue: value }; }
+window.__NEXA_TEMPLATES__ = [{ id: "T", name: "Card", width: 200, height: 40, params: [{ id: "p1", name: "who", label: "Who", type: "string", defaultValue: "nobody" }],
+  components: [label("inT", "{who}/{line}")], logic: { nodes: [], wires: [] } }];
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orphans: [],
+  variables: [v("line", "L1"), v("count", 3)],
+  components: [
+    label("root", "{line}:{count}:{label}"),
+    { id: "panel", type: "@frame", name: "Panel", x: 0, y: 40, w: 400, h: 200, variables: [v("label", "outer")], children: [
+      { id: "g", type: "@group", name: "G", x: 0, y: 0, w: 200, h: 20, children: [label("deep", "{line}/{label}")] },
+      { id: "inner", type: "@frame", name: "Inner", x: 0, y: 40, w: 200, h: 60, variables: [v("label", "shadow")], children: [label("shadowed", "{line}/{label}")] },
+      { id: "card", type: "@template", templateId: "T", x: 0, y: 120, w: 200, h: 40, paramValues: { who: "{label}@{line}" } }
+    ] }
+  ],
+  logic: { nodes: [
+    { id: "t1", type: "inject", once: true, onceDelay: 400, intervalMs: 0 },
+    { id: "set1", type: "set-variable", scope: "panel", name: "label", valueSource: "static", value: "changed" },
+    { id: "t2", type: "inject", once: true, onceDelay: 700, intervalMs: 0, payloadType: "str", payload: "L2" },
+    { id: "set2", type: "set-variable", scope: "", name: "line", valueSource: "payload" }
+  ], wires: [{ id: "w1", from: "t1", to: "set1" }, { id: "w2", from: "t2", to: "set2" }] } };
+window.__NEXA_PARAMS__ = {}; window.__NEXA_QUERY__ = {};
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
@@ -7,6 +7,19 @@ import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeyOfBindingString } from "./sparkplug-live.js";
 
 // Re-invokes just one component's render() with its current props
+// The variable scope each drawn node was rendered with (src/model/scope.js) —
+// kept beside the node, never on it (it would be saved with the flow).
+var nodeScopes = new WeakMap();
+
+/** The scope chain a node sees on the canvas: the surface (screen / template), then its containers. */
+export function editorScopeFor(comp) {
+    var screen = getActiveScreen();
+    if (!screen) return undefined;
+    var scope = Scope.surfaceScope(screen, state.editingMode === "template");
+    Tree.ancestors(screen, comp.id).forEach(function (a) { if (Scope.hasVariables(a)) scope = Scope.makeScope(scope, a.variables); });
+    return scope;
+}
+
 export function refreshComponentRender(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
@@ -25,24 +38,19 @@ export function refreshComponentRender(comp) {
             markDirty();
         }
     };
-    // Goes through interpolateProps (template-param substitution, THEN
-    // sparkplug resolution), not resolveSparkplugProps alone — matching
-    // the fix in nexa-runtime-client.js's own refreshComponentRender.
-    // comp.__paramState is undefined for every component this is currently
-    // ever called on (the editor's live-bound-component scan only walks
-    // top-level screen.components, never recursing into a "@template"
-    // instance's nested ones), so this is a no-op today — kept consistent
-    // anyway so the same "{sparkplug:...::{param}/...}" corruption bug
-    // nexa-runtime-client.js had can't resurface here the moment that scan
-    // is ever extended to reach nested components too.
+    // Goes through interpolateProps ({variable} / {param} substitution in the
+    // node's scope chain, THEN sparkplug resolution), not resolveSparkplugProps
+    // alone — matching the fix in nexa-runtime-client.js's own
+    // refreshComponentRender: "{sparkplug:...::{line}/...}" needs {line} first.
+    var scope = nodeScopes.has(comp) ? nodeScopes.get(comp) : editorScopeFor(comp);
     if (comp.type === "@lit-component") {
-        renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, comp.__paramState), ctx);
+        renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, scope), ctx);
         return;
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (!typeDef || typeof typeDef.render !== "function") return;
     try {
-        typeDef.render(node, interpolateProps(comp.props || {}, comp.__paramState), ctx);
+        typeDef.render(node, interpolateProps(comp.props || {}, scope), ctx);
     } catch (e) {
         el.text("(render error: " + e.message + ")");
     }
@@ -621,11 +629,13 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
 // `parentEl` — the artboard for a top-level node, the container's own element
 // for a child. Every container is a coordinate space: left / top are the
 // node's x / y relative to its parent.
-export function renderComponent(comp, parentEl, parentNode) {
+export function renderComponent(comp, parentEl, parentNode, scope) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
     if (parentNode === undefined) parentNode = Tree.parentOf(screen, comp.id);
+    // the variables it sees: {name} in its props shows the value on the canvas
+    if (scope === undefined) scope = editorScopeFor(comp);
     var inFlow = Layout.isInFlow(comp, parentNode);
     // "remove": no DOM node at all (the next full render draws it again when it
     // comes back); "hide": rendered but invisible and not interactable.
@@ -640,8 +650,11 @@ export function renderComponent(comp, parentEl, parentNode) {
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css).appendTo(parentEl);
 
     if (container) {
-        Tree.kids(comp).forEach(function (child) { renderComponent(child, el, comp); });
+        // a container with variables opens a scope for what is inside it
+        var inner = Scope.hasVariables(comp) ? Scope.makeScope(scope, comp.variables) : scope;
+        Tree.kids(comp).forEach(function (child) { renderComponent(child, el, comp, inner); });
     } else {
+        nodeScopes.set(comp, scope);
         renderComponentContent(el.get(0), comp, {
             namespace: comp.id, // node ids are unique in a surface, so the raw id IS the full namespace
             mode: "editor",
@@ -654,7 +667,7 @@ export function renderComponent(comp, parentEl, parentNode) {
                 comp.props[name] = value;
                 markDirty();
             }
-        }, comp.id, []);
+        }, comp.id, [], scope);
     }
 
     if (!interactable) return;

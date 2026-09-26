@@ -4,7 +4,7 @@
 // is only the editor's side of it: where a change goes (the comp's props,
 // undo history, dirty flag, canvas re-render) and what the kit's widgets may
 // ask the editor for (the code tray, the known Sparkplug tags).
-import { state, getActiveScreen, markDirty } from "../state.js";
+import { state, getActiveScreen, markDirty, Tree, Scope } from "../state.js";
 import { pushHistory } from "../history.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { openCodeEditorTray } from "../dialogs/lit-code-dialog.js";
@@ -17,7 +17,17 @@ var hostReady = false;
 function ensureKitHost() {
     if (hostReady || !window.NexaKit) return;
     hostReady = true;
-    window.NexaKit.setHost({ openCode: openCodeEditorTray });
+    window.NexaKit.setHost({
+        openCode: openCodeEditorTray,
+        // what the selected node can bind to as {name}: its containers' variables,
+        // the screen's (a template: its params and variables), nearest first
+        listVariables: function () {
+            var screen = getActiveScreen();
+            var id = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
+            if (!screen || !id) return [];
+            return Scope.visibleVariables(screen, Tree.ancestors(screen, id), state.editingMode === "template", Tree.find(screen, id));
+        }
+    });
     // The tag picker's suggestions come from the tag PROVIDER; the editor
     // knows the live Sparkplug tree, so it fills in that provider's list().
     // (Other providers — OPC UA, SQL, UDT — add their own when they register.)

@@ -1,6 +1,7 @@
 import { state, getActiveScreen, makeScreen, markDirty } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { applyConstraints } from "../canvas/constraints.js";
+import { renderVariablesInspector } from "./variables-inspector.js";
 import { renderLogicCanvas } from "../logic/logic-nodes.js";
 
 export function refreshLogicCanvasIfActive() {
@@ -179,6 +180,9 @@ export function renderScreenForm() {
     row("Width (px)", "width", screen.width, "number");
     row("Height (px)", "height", screen.height, "number");
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
+
+    // the screen's variables: the root of every {name} binding on it
+    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
 
     var checksWrap = window.$("<div>").css({
         "margin-top": "12px",
