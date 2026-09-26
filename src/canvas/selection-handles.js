@@ -184,6 +184,38 @@ export function wireRotateHandle(handle, comp) {
     });
 }
 
+// A selected frame with an auto layout shows its padding and the gaps between
+// its children (Figma's pink bands), inside the selection box.
+function renderLayoutOverlay(comp, box) {
+    if (!Layout.hasAutoLayout(comp)) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var l = Layout.layoutOf(comp), bw = Number(Layout.styleOf(comp).strokeWidth) > 0 && Layout.styleOf(comp).stroke ? Number(Layout.styleOf(comp).strokeWidth) : 0;
+    var band = function (x, y, w, h, cls) {
+        if (w <= 0 || h <= 0) return;
+        $("<div>", { "class": "nexa-layout-band " + cls }).css({
+            position: "absolute", left: x + "px", top: y + "px", width: w + "px", height: h + "px",
+            background: "rgba(255, 64, 129, 0.18)", "pointer-events": "none"
+        }).appendTo(state.selectionHandlesEl);
+    };
+    var inner = { x: bw, y: bw, w: box.w - 2 * bw, h: box.h - 2 * bw };
+    var p = l.padding;
+    band(inner.x, inner.y, inner.w, p.t, "nexa-pad-t");
+    band(inner.x, inner.y + inner.h - p.b, inner.w, p.b, "nexa-pad-b");
+    band(inner.x, inner.y + p.t, p.l, inner.h - p.t - p.b, "nexa-pad-l");
+    band(inner.x + inner.w - p.r, inner.y + p.t, p.r, inner.h - p.t - p.b, "nexa-pad-r");
+    if (l.mode === "grid" || (l.mode === "horizontal" && l.wrap)) return;
+    var kids = Tree.kids(comp).filter(function (c) { return Layout.isInFlow(c, comp); }).map(function (c) {
+        var b = Tree.absBox(screen, c.id);
+        return { x: b.x - box.x, y: b.y - box.y, w: b.w, h: b.h };
+    });
+    for (var i = 1; i < kids.length; i++) {
+        var a = kids[i - 1], b = kids[i];
+        if (l.mode === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
+        else band(inner.x + p.l, a.y + a.h, inner.w - p.l - p.r, b.y - a.y - a.h, "nexa-gap");
+    }
+}
+
 export function renderSelectionHandles(comp) {
     clearSelectionHandles();
     var caps = capabilitiesOf(comp);
@@ -197,6 +229,7 @@ export function renderSelectionHandles(comp) {
         "pointer-events": "none",
         transform: "rotate(" + (comp.rotation || 0) + "deg)"
     }).appendTo(state.artboardEl);
+    renderLayoutOverlay(comp, box);
 
     if (!locked) {
         if (caps.resizable) {
