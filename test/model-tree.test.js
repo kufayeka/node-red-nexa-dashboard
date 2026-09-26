@@ -210,4 +210,31 @@ ok('layout: frame style (fill, stroke, radius, clip); wrapIn a frame keeps posit
     assert.strictEqual(fr.x, 100, 'fitGroup leaves a frame alone');
 });
 
+ok('constraints: CSS per mode (left / right / left & right / center / scale), top-left = the plain box', () => {
+    const n = (c) => Object.assign(leaf('n', 10, 20, 30, 40), { constraints: c });
+    const P = { w: 100, h: 200 };
+    const pick = (css, keys) => keys.map((k) => css[k]);
+    assert.deepStrictEqual(pick(L.constraintCss(n({ h: 'right', v: 'bottom' }), P), ['left', 'right', 'width', 'top', 'bottom', 'height']), ['auto', '60px', '30px', 'auto', '140px', '40px']);
+    assert.deepStrictEqual(pick(L.constraintCss(n({ h: 'leftRight', v: 'topBottom' }), P), ['left', 'right', 'width', 'top', 'bottom', 'height']), ['10px', '60px', 'auto', '20px', '140px', 'auto']);
+    assert.deepStrictEqual(pick(L.constraintCss(n({ h: 'center', v: 'scale' }), P), ['left', 'width', 'top', 'height']), ['calc(50% + -40px)', '30px', '10%', '20%']);
+    const f = { id: 'f', type: '@frame', w: 102, h: 202, style: { stroke: '#000', strokeWidth: 1 } };
+    assert.deepStrictEqual(L.innerSize(f), { w: 100, h: 200 }, 'inside the border');
+    const css = L.boxCss(n({ h: 'right' }), f, { constraints: true });
+    assert.deepStrictEqual([css.left, css.right], ['auto', '60px']);
+    assert.strictEqual(L.boxCss(n({ h: 'right' }), f).left, '10px', 'the editor draws the plain box');
+    assert.strictEqual(L.boxCss(n({ h: 'right' }), null, { constraints: true, parentSize: P }).right, '60px', 'a root node: the screen');
+    assert.strictEqual(L.hasConstraints(leaf('x', 0, 0), { id: 'g', type: '@group' }), false, 'not inside a group');
+    assert.strictEqual(L.hasConstraints(leaf('x', 0, 0), { id: 'r', type: '@frame', layout: { mode: 'horizontal' } }), false, 'not while a layout places it');
+});
+
+ok('constraints: resizing the parent in the editor (resizeWithConstraints)', () => {
+    const box = { x: 10, y: 20, w: 30, h: 40 };
+    const oldP = { w: 100, h: 200 }, newP = { w: 200, h: 100 };
+    assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'left', v: 'top' }, oldP, newP), box);
+    assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'right', v: 'bottom' }, oldP, newP), { x: 110, y: -80, w: 30, h: 40 });
+    assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'leftRight', v: 'topBottom' }, oldP, newP), { x: 10, y: 20, w: 130, h: 1 });
+    assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'center', v: 'center' }, oldP, newP), { x: 60, y: -30, w: 30, h: 40 });
+    assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'scale', v: 'scale' }, oldP, newP), { x: 20, y: 10, w: 60, h: 20 });
+});
+
 console.log(`\n${passed} passed\nALL OK`);

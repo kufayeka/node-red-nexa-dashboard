@@ -401,16 +401,23 @@
   // src/model/layout.js
   var layout_exports = {};
   __export(layout_exports, {
+    H_CONSTRAINTS: () => H_CONSTRAINTS,
     LAYOUT_MODES: () => LAYOUT_MODES,
+    V_CONSTRAINTS: () => V_CONSTRAINTS,
     boxCss: () => boxCss,
     canRotate: () => canRotate,
     childSizing: () => childSizing,
+    constraintCss: () => constraintCss,
+    constraintsOf: () => constraintsOf,
     frameCss: () => frameCss,
     frameHugs: () => frameHugs,
     hasAutoLayout: () => hasAutoLayout,
+    hasConstraints: () => hasConstraints,
+    innerSize: () => innerSize,
     isInFlow: () => isInFlow,
     layoutOf: () => layoutOf,
     makeFrame: () => makeFrame,
+    resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
     tracksCss: () => tracksCss
   });
@@ -526,13 +533,68 @@
     }
     return css2;
   }
-  function boxCss(node, parent) {
+  var H_CONSTRAINTS = ["left", "right", "leftRight", "center", "scale"];
+  var V_CONSTRAINTS = ["top", "bottom", "topBottom", "center", "scale"];
+  function constraintsOf(node) {
+    var c = node && node.constraints || {};
+    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
+  }
+  function hasConstraints(node, parent) {
+    return (!parent || parent.type === "@frame") && !isInFlow(node, parent);
+  }
+  function innerSize(frame) {
+    var s = styleOf(frame);
+    var bw = num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) : 0;
+    return { w: num(frame.w) - 2 * bw, h: num(frame.h) - 2 * bw };
+  }
+  function axisCss(mode, pos, size, parentSize2, startProp, endProp, sizeProp) {
+    var css2 = {};
+    var end = parentSize2 - pos - size;
+    css2[startProp] = pos + "px";
+    css2[endProp] = "";
+    css2[sizeProp] = size + "px";
+    if (mode === "right" || mode === "bottom") {
+      css2[startProp] = "auto";
+      css2[endProp] = end + "px";
+    } else if (mode === "leftRight" || mode === "topBottom") {
+      css2[endProp] = end + "px";
+      css2[sizeProp] = "auto";
+    } else if (mode === "center") css2[startProp] = "calc(50% + " + (pos - parentSize2 / 2) + "px)";
+    else if (mode === "scale" && parentSize2 > 0) {
+      css2[startProp] = pos / parentSize2 * 100 + "%";
+      css2[sizeProp] = size / parentSize2 * 100 + "%";
+    }
+    return css2;
+  }
+  function constraintCss(node, parentSize2) {
+    var c = constraintsOf(node);
+    var h = axisCss(c.h, num(node.x), num(node.w), parentSize2.w, "left", "right", "width");
+    var v = axisCss(c.v, num(node.y), num(node.h), parentSize2.h, "top", "bottom", "height");
+    return Object.assign(h, v);
+  }
+  function axisResize(mode, pos, size, oldP, newP) {
+    var d = newP - oldP;
+    if (mode === "right" || mode === "bottom") return [pos + d, size];
+    if (mode === "leftRight" || mode === "topBottom") return [pos, Math.max(1, size + d)];
+    if (mode === "center") return [pos + d / 2, size];
+    if (mode === "scale" && oldP > 0) return [pos * newP / oldP, Math.max(1, size * newP / oldP)];
+    return [pos, size];
+  }
+  function resizeWithConstraints(box, constraints, oldP, newP) {
+    var c = constraints || { h: "left", v: "top" };
+    var h = axisResize(c.h, box.x, box.w, oldP.w, newP.w);
+    var v = axisResize(c.v, box.y, box.h, oldP.h, newP.h);
+    return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
+  }
+  function boxCss(node, parent, opts) {
     var css2 = {
       position: "absolute",
       left: num(node.x) + "px",
       top: num(node.y) + "px",
       width: num(node.w) + "px",
       height: num(node.h) + "px",
+      right: "",
+      bottom: "",
       flex: "",
       "align-self": "",
       "justify-self": "",
@@ -543,6 +605,11 @@
       "min-height": node.minH ? num(node.minH) + "px" : "",
       "max-height": node.maxH ? num(node.maxH) + "px" : ""
     };
+    if (opts && opts.constraints && hasConstraints(node, parent)) {
+      var ps = parent ? innerSize(parent) : opts.parentSize;
+      var c = constraintsOf(node);
+      if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css2, constraintCss(node, ps));
+    }
     if (frameHugs(node, "w")) css2.width = "max-content";
     if (frameHugs(node, "h")) css2.height = "max-content";
     if (!isInFlow(node, parent)) return css2;
@@ -551,6 +618,8 @@
     css2.position = "relative";
     css2.left = "auto";
     css2.top = "auto";
+    css2.right = "";
+    css2.bottom = "";
     if (mode === "grid") {
       var lc = node.layoutChild || {};
       if (lc.col) css2["grid-column"] = num(lc.col, 1) + (lc.colSpan > 1 ? " / span " + num(lc.colSpan, 1) : "");
@@ -1135,6 +1204,48 @@
     state.undoStack.push(ev);
   }
 
+  // src/canvas/constraints.js
+  function snapshotBoxes(nodeOrList) {
+    var out = {};
+    (function walk2(list) {
+      list.forEach(function(c) {
+        out[c.id] = { x: c.x, y: c.y, w: c.w, h: c.h };
+        if (c.children) walk2(c.children);
+      });
+    })(Array.isArray(nodeOrList) ? nodeOrList : tree_exports.kids(nodeOrList));
+    return out;
+  }
+  function applyConstraints(parent, list, oldInner, newInner, orig) {
+    var changed = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed;
+    orig = orig || snapshotBoxes(list);
+    list.forEach(function(c) {
+      if (!layout_exports.hasConstraints(c, parent)) return;
+      var o = orig[c.id];
+      if (!o) return;
+      var nb = layout_exports.resizeWithConstraints(o, layout_exports.constraintsOf(c), oldInner, newInner);
+      if (c.type === "@group") {
+        nb.w = o.w;
+        nb.h = o.h;
+      }
+      if (nb.x === c.x && nb.y === c.y && nb.w === c.w && nb.h === c.h) return;
+      var oldChildInner = c.type === "@frame" ? layout_exports.innerSize(Object.assign({}, c, o)) : null;
+      c.x = nb.x;
+      c.y = nb.y;
+      c.w = nb.w;
+      c.h = nb.h;
+      changed.push(c.id);
+      if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
+        changed = changed.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+      }
+    });
+    return changed;
+  }
+  function constrainFrameChildren(frame, oldBox, orig) {
+    if (!frame || frame.type !== "@frame") return [];
+    return applyConstraints(frame, tree_exports.kids(frame), layout_exports.innerSize(Object.assign({}, frame, oldBox)), layout_exports.innerSize(frame), orig);
+  }
+
   // src/canvas/layout-readback.js
   function elementOf(id2) {
     if (!state.artboardEl) return null;
@@ -1144,6 +1255,7 @@
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
     var changed = [];
+    var redraw = false;
     if (!screen) return changed;
     tree_exports.walk(screen, function(node, parent) {
       var inFlow = layout_exports.isInFlow(node, parent);
@@ -1159,16 +1271,26 @@
       if (inFlow || hugW) box.w = el.offsetWidth;
       if (inFlow || hugH) box.h = el.offsetHeight;
       if (box.x !== node.x || box.y !== node.y || box.w !== node.w || box.h !== node.h) {
+        var old = { w: node.w, h: node.h };
         node.x = box.x;
         node.y = box.y;
         node.w = box.w;
         node.h = box.h;
         changed.push(node.id);
+        var moved = constrainFrameChildren(node, old);
+        if (moved.length) {
+          redraw = true;
+          changed = changed.concat(moved);
+        }
       }
     });
     changed.forEach(function(id2) {
+      if (tree_exports.ancestors(screen, id2).some(function(a) {
+        return a.type === "@group";
+      })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
+    changed.redraw = redraw;
     return changed;
   }
 
@@ -2441,6 +2563,7 @@
       var minSize = 20;
       var start = { x: e.clientX, y: e.clientY };
       var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+      var origKids = comp.type === "@frame" ? snapshotBoxes(comp) : null;
       var before = screen ? treeSnapshot(screen) : null;
       var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
         return a.type === "@group";
@@ -2490,6 +2613,21 @@
         comp.w = Math.max(minSize, nw);
         comp.h = Math.max(minSize, nh);
         updateComponentBox(comp);
+        if (origKids) {
+          Object.keys(origKids).forEach(function(id2) {
+            var n = tree_exports.find(screen, id2);
+            if (n) {
+              n.x = origKids[id2].x;
+              n.y = origKids[id2].y;
+              n.w = origKids[id2].w;
+              n.h = origKids[id2].h;
+            }
+          });
+          constrainFrameChildren(comp, orig, origKids).forEach(function(id2) {
+            var n = tree_exports.find(screen, id2);
+            if (n) updateComponentBox(n);
+          });
+        }
       }
       function onUp() {
         document.removeEventListener("mousemove", onMove2);
@@ -26640,10 +26778,15 @@
     switch (key) {
       case "x":
       case "y":
-      case "w":
-      case "h":
         frame[key] = Number(v) || 0;
         return;
+      case "w":
+      case "h": {
+        var old = { w: frame.w, h: frame.h };
+        frame[key] = Math.max(1, Number(v) || 0);
+        constrainFrameChildren(frame, old);
+        return;
+      }
       case "align":
         layout.alignX = v.x;
         layout.alignY = v.y;
@@ -26805,12 +26948,65 @@
     });
     return true;
   }
+  var CONSTRAINT_META = {
+    id: "@constraints",
+    stateList: [],
+    inputs: [],
+    outputs: [],
+    props: {
+      h: prop("h", "enum", "Horizontal", { options: [
+        { value: "left", label: "Left" },
+        { value: "right", label: "Right" },
+        { value: "leftRight", label: "Left & right" },
+        { value: "center", label: "Center" },
+        { value: "scale", label: "Scale" }
+      ] }),
+      v: prop("v", "enum", "Vertical", { options: [
+        { value: "top", label: "Top" },
+        { value: "bottom", label: "Bottom" },
+        { value: "topBottom", label: "Top & bottom" },
+        { value: "center", label: "Center" },
+        { value: "scale", label: "Scale" }
+      ] })
+    }
+  };
+  function renderConstraintsInspector(container, node, parent) {
+    if (!window.NexaKit || !lit() || !layout_exports.hasConstraints(node, parent)) return false;
+    var html = lit().html;
+    var meta2 = Object.assign({}, CONSTRAINT_META, {
+      inspector: function(o) {
+        var bind = o.bind;
+        return html`<nx-section heading="Constraints (${parent ? parent.name || "frame" : "screen"})" persist-key="nexa-constraints">
+                <nx-row><nx-select ${bind("h")}></nx-select><nx-select ${bind("v")}></nx-select></nx-row>
+            </nx-section>`;
+      }
+    });
+    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+      meta: meta2,
+      props: layout_exports.constraintsOf(node),
+      persistKey: "nexa-constraints",
+      set: function(key, v) {
+        commit(node, function() {
+          var c = Object.assign({}, layout_exports.constraintsOf(node));
+          c[key] = v;
+          if (c.h === "left" && c.v === "top") delete node.constraints;
+          else node.constraints = c;
+        });
+      }
+    });
+    return true;
+  }
 
   // src/sidebar/properties-panel.js
   function renderLayoutChildSection(comp) {
     var screen = getActiveScreen();
-    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
-    renderLayoutChildInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, parent);
+    if (!screen) return;
+    var parent = tree_exports.parentOf(screen, comp.id);
+    var host = function() {
+      return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+    };
+    if (layout_exports.hasAutoLayout(parent)) renderLayoutChildInspector(host(), comp, parent);
+    if (layout_exports.hasConstraints(comp, parent)) renderConstraintsInspector(host(), comp, parent);
   }
   function previewText(code2, emptyLabel) {
     if (!code2) return emptyLabel;
@@ -27447,11 +27643,7 @@
       renderComponent(node, null, null);
     });
     var changed = readbackLayout(screen);
-    if (changed.length && changed.some(function(id2) {
-      return tree_exports.ancestors(screen, id2).some(function(a) {
-        return a.type === "@group";
-      });
-    }) && !renderActiveScreen._again) {
+    if (changed.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen();
@@ -29324,7 +29516,9 @@
       var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
       input.on("change", function() {
         var v = type === "number" ? parseInt(input.val(), 10) || 0 : input.val();
+        var oldSize = { w: screen.width, h: screen.height };
         screen[field] = v;
+        if (field === "width" || field === "height") applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
         if (field === "name" || field === "path") renderScreenList();
         markDirty();
         renderActiveScreen();

@@ -12,6 +12,7 @@ import { getActiveScreen, markDirty, Tree, Layout, isNodeLocked } from "../state
 import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { selectOnly } from "../canvas/selection.js";
+import { constrainFrameChildren } from "../canvas/constraints.js";
 
 var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
 var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
@@ -82,7 +83,13 @@ function writeFrame(frame, key, v) {
     var layout = Object.assign({}, frame.layout || {});
     var style = Object.assign({}, frame.style || {});
     switch (key) {
-        case "x": case "y": case "w": case "h": frame[key] = Number(v) || 0; return;
+        case "x": case "y": frame[key] = Number(v) || 0; return;
+        case "w": case "h": {
+            var old = { w: frame.w, h: frame.h };
+            frame[key] = Math.max(1, Number(v) || 0);
+            constrainFrameChildren(frame, old);   // its children keep to its edges
+            return;
+        }
         case "align": layout.alignX = v.x; layout.alignY = v.y; break;
         case "gapAuto": layout.gap = v ? "auto" : 0; break;
         case "gap": layout.gap = Number(v) || 0; break;
@@ -210,6 +217,49 @@ export function renderLayoutChildInspector(container, node, parent) {
         props: childView(node),
         persistKey: "nexa-layout-child",
         set: function (key, v) { commit(node, function () { writeChild(node, key, v); }); }
+    });
+    return true;
+}
+
+var CONSTRAINT_META = {
+    id: "@constraints",
+    stateList: [], inputs: [], outputs: [],
+    props: {
+        h: prop("h", "enum", "Horizontal", { options: [
+            { value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "leftRight", label: "Left & right" },
+            { value: "center", label: "Center" }, { value: "scale", label: "Scale" }] }),
+        v: prop("v", "enum", "Vertical", { options: [
+            { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }, { value: "topBottom", label: "Top & bottom" },
+            { value: "center", label: "Center" }, { value: "scale", label: "Scale" }] })
+    }
+};
+
+/**
+ * Constraints of a node no auto layout places, in a frame or on the root:
+ * how it follows when the parent's size changes (Figma).
+ */
+export function renderConstraintsInspector(container, node, parent) {
+    if (!window.NexaKit || !lit() || !Layout.hasConstraints(node, parent)) return false;
+    var html = lit().html;
+    var meta = Object.assign({}, CONSTRAINT_META, {
+        inspector: function (o) {
+            var bind = o.bind;
+            return html`<nx-section heading="Constraints (${parent ? (parent.name || "frame") : "screen"})" persist-key="nexa-constraints">
+                <nx-row><nx-select ${bind("h")}></nx-select><nx-select ${bind("v")}></nx-select></nx-row>
+            </nx-section>`;
+        }
+    });
+    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+        meta: meta,
+        props: Layout.constraintsOf(node),
+        persistKey: "nexa-constraints",
+        set: function (key, v) {
+            commit(node, function () {
+                var c = Object.assign({}, Layout.constraintsOf(node));
+                c[key] = v;
+                if (c.h === "left" && c.v === "top") delete node.constraints; else node.constraints = c;
+            });
+        }
     });
     return true;
 }

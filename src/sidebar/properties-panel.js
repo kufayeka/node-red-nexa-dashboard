@@ -1,4 +1,4 @@
-import { state, findComponent, findTemplate, markDirty, genId, getActiveScreen, Tree, isNodeLocked } from "../state.js";
+import { state, findComponent, findTemplate, markDirty, genId, getActiveScreen, Tree, Layout, isNodeLocked } from "../state.js";
 import { pushHistory } from "../history.js";
 import { buildTypedInputWidget, buildEditableListWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, frameSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
@@ -9,13 +9,17 @@ import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-co
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
-import { renderFrameInspector, renderLayoutChildInspector } from "./frame-inspector.js";
+import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector } from "./frame-inspector.js";
 
-// Sizing / placement in the parent's auto layout, for any kind of node.
+// Sizing / placement in the parent's auto layout — or, where no layout places
+// it (a frame's / the screen's child, an absolute one), its constraints.
 function renderLayoutChildSection(comp) {
     var screen = getActiveScreen();
-    var parent = screen ? Tree.parentOf(screen, comp.id) : null;
-    renderLayoutChildInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, parent);
+    if (!screen) return;
+    var parent = Tree.parentOf(screen, comp.id);
+    var host = function () { return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane); };
+    if (Layout.hasAutoLayout(parent)) renderLayoutChildInspector(host(), comp, parent);
+    if (Layout.hasConstraints(comp, parent)) renderConstraintsInspector(host(), comp, parent);
 }
 
 function previewText(code, emptyLabel) {

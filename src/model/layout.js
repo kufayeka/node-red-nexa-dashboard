@@ -157,17 +157,89 @@ export function frameCss(frame) {
     return css;
 }
 
+// ---- constraints (Figma) ----------------------------------------------------------
+// A node its parent's layout does NOT place (the root's children, a plain
+// frame's, an "absolute" one) keeps to its parent's edges when the parent's
+// size changes:  node.constraints = { h: "left" | "right" | "leftRight" |
+// "center" | "scale", v: "top" | "bottom" | "topBottom" | "center" | "scale" }.
+// On a deployed page that's CSS (a frame that fills / hugs is a different size
+// there than its design w / h); in the editor, resizing a frame moves the
+// children (resizeWithConstraints).
+
+export var H_CONSTRAINTS = ["left", "right", "leftRight", "center", "scale"];
+export var V_CONSTRAINTS = ["top", "bottom", "topBottom", "center", "scale"];
+
+export function constraintsOf(node) {
+    var c = (node && node.constraints) || {};
+    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
+}
+
+/** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
+export function hasConstraints(node, parent) {
+    return (!parent || parent.type === "@frame") && !isInFlow(node, parent);
+}
+
+/** The box children are positioned in: a frame without its border (the root: the screen). */
+export function innerSize(frame) {
+    var s = styleOf(frame);
+    var bw = num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) : 0;
+    return { w: num(frame.w) - 2 * bw, h: num(frame.h) - 2 * bw };
+}
+
+function axisCss(mode, pos, size, parentSize, startProp, endProp, sizeProp) {
+    var css = {};
+    var end = parentSize - pos - size;
+    css[startProp] = pos + "px"; css[endProp] = ""; css[sizeProp] = size + "px";
+    if (mode === "right" || mode === "bottom") { css[startProp] = "auto"; css[endProp] = end + "px"; }
+    else if (mode === "leftRight" || mode === "topBottom") { css[endProp] = end + "px"; css[sizeProp] = "auto"; }
+    else if (mode === "center") css[startProp] = "calc(50% + " + (pos - parentSize / 2) + "px)";
+    else if (mode === "scale" && parentSize > 0) {
+        css[startProp] = (pos / parentSize * 100) + "%";
+        css[sizeProp] = (size / parentSize * 100) + "%";
+    }
+    return css;
+}
+
+/** The CSS that keeps a node to its parent's edges (parentSize: the parent's inner size at design time). */
+export function constraintCss(node, parentSize) {
+    var c = constraintsOf(node);
+    var h = axisCss(c.h, num(node.x), num(node.w), parentSize.w, "left", "right", "width");
+    var v = axisCss(c.v, num(node.y), num(node.h), parentSize.h, "top", "bottom", "height");
+    return Object.assign(h, v);
+}
+
+function axisResize(mode, pos, size, oldP, newP) {
+    var d = newP - oldP;
+    if (mode === "right" || mode === "bottom") return [pos + d, size];
+    if (mode === "leftRight" || mode === "topBottom") return [pos, Math.max(1, size + d)];
+    if (mode === "center") return [pos + d / 2, size];
+    if (mode === "scale" && oldP > 0) return [pos * newP / oldP, Math.max(1, size * newP / oldP)];
+    return [pos, size];
+}
+
+/** A node's box after its parent's inner size went from oldP to newP ({ w, h }). */
+export function resizeWithConstraints(box, constraints, oldP, newP) {
+    var c = constraints || { h: "left", v: "top" };
+    var h = axisResize(c.h, box.x, box.w, oldP.w, newP.w);
+    var v = axisResize(c.v, box.y, box.h, oldP.h, newP.h);
+    return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
+}
+
 /**
  * The box CSS of a node — replaces the plain absolute box (left / top /
  * width / height) where the parent's layout or the node's own hug decides.
+ * opts.constraints (the deployed page): a node's constraints become CSS;
+ * opts.parentSize = the screen's size for a root node.
  */
-export function boxCss(node, parent) {
+export function boxCss(node, parent, opts) {
     var css = {
         position: "absolute",
         left: num(node.x) + "px",
         top: num(node.y) + "px",
         width: num(node.w) + "px",
         height: num(node.h) + "px",
+        right: "",
+        bottom: "",
         flex: "",
         "align-self": "",
         "justify-self": "",
@@ -178,6 +250,11 @@ export function boxCss(node, parent) {
         "min-height": node.minH ? num(node.minH) + "px" : "",
         "max-height": node.maxH ? num(node.maxH) + "px" : ""
     };
+    if (opts && opts.constraints && hasConstraints(node, parent)) {
+        var ps = parent ? innerSize(parent) : opts.parentSize;
+        var c = constraintsOf(node);
+        if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css, constraintCss(node, ps));
+    }
     // a frame that hugs its content has no fixed size on that axis
     if (frameHugs(node, "w")) css.width = "max-content";
     if (frameHugs(node, "h")) css.height = "max-content";
@@ -188,6 +265,8 @@ export function boxCss(node, parent) {
     css.position = "relative";
     css.left = "auto";
     css.top = "auto";
+    css.right = "";
+    css.bottom = "";
     if (mode === "grid") {
         var lc = node.layoutChild || {};
         if (lc.col) css["grid-column"] = num(lc.col, 1) + (lc.colSpan > 1 ? " / span " + num(lc.colSpan, 1) : "");

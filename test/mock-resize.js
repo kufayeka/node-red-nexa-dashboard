@@ -187,4 +187,24 @@ const lockIcon = handlesByClass['nexa-lock-handle'][handlesByClass['nexa-lock-ha
 lockIcon._handlers.click[0]({ stopPropagation(){} });
 console.log('locked now:', comp.locked, '(expect true)');
 
+console.log('--- a frame: resizing it moves its children by their constraints (Figma) ---');
+const scr = configNodes[0].screens[0];
+scr.components.push({ id: 'FR', type: '@frame', name: 'Panel', x: 400, y: 300, w: 200, h: 100, children: [
+  { id: 'kr', type: 'mock-box', x: 170, y: 10, w: 20, h: 20, constraints: { h: 'right' }, props: {} },
+  { id: 'klr', type: 'mock-box', x: 10, y: 40, w: 180, h: 20, constraints: { h: 'leftRight', v: 'bottom' }, props: {} },
+  { id: 'kl', type: 'mock-box', x: 10, y: 70, w: 20, h: 20, props: {} }] });
+window.__nexaEditor.render();
+const frEl = global.__artboardEl._children.find((c) => c._attrs && c._attrs['data-id'] === 'FR');
+frEl._handlers.mousedown[0]({ stopPropagation() {} });
+const frHandles = handlesByClass['nexa-resize-handle'].slice(-8);
+const kids = () => scr.components.find((n) => n.id === 'FR').children.map((c) => [c.id, c.x, c.y, c.w, c.h].join(':')).join(' ');
+frHandles[4]._domNode._fire('mousedown', { clientX: 600, clientY: 400, stopPropagation() {}, preventDefault() {} }); // SE
+fireDoc('mousemove', { clientX: 650, clientY: 430 });  // +50 wide, +30 high
+fireDoc('mousemove', { clientX: 700, clientY: 460 });  // +100, +60 (from the snapshot, not +50 twice)
+fireDoc('mouseup', {});
+console.log('right stays 10 from the right, left & right stretches, bottom follows, left stays?',
+  kids() === 'kr:270:10:20:20 klr:10:100:280:20 kl:10:70:20:20', kids());
+undoFn();
+console.log('one undo puts the frame and its children back?', kids() === 'kr:170:10:20:20 klr:10:40:180:20 kl:10:70:20:20' && scr.components.find((n) => n.id === 'FR').w === 200);
+
 console.log('ALL OK');
