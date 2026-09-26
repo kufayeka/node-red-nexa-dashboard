@@ -125,6 +125,9 @@ window.NEXA = window.NEXA || { _q: [], registerComponent: function(id,def){ this
 NEXA.registerComponent('mock-item', { category:'Basic', label:'Item', defaultSize:{w:60,h:60}, capabilities:{resizable:true,rotatable:true,lockable:true}, defaults:{}, render(){} });
 
 const fs = require('fs');
+// records what it was rendered with (to see {variables} resolved on the canvas)
+const renderedText = {};
+NEXA.registerComponent('mock-label', { category: 'Basic', label: 'Label', defaultSize: { w: 80, h: 20 }, defaults: {}, render(el, props, ctx) { renderedText[ctx.namespace] = props.text; } });
 eval(fs.readFileSync(process.argv[2], 'utf8'));
 
 // Frames capture (Figma): drops from the palette and drags go INTO the frame
@@ -211,6 +214,25 @@ mousedownOn(b.id, { shiftKey: true });
 dispatchKey({ key: 'g', ctrlKey: true, altKey: true });
 const fr = screen.components.find((n) => n.type === '@frame' && /^Frame \d+$/.test(n.name || ''));
 console.log('a frame "Frame 1" holds both (no fill, no layout), selected?', !!fr && fr.name === 'Frame 1' && fr.children.length === 2 && !fr.layout && window.__nexaEditorState.selectedIds[0] === fr.id);
+
+console.log('--- variables: the canvas shows {name} resolved in the scope chain of each node ---');
+screen.variables = [{ id: 'v1', name: 'line', type: 'string', defaultValue: 'L1' }];
+screen.components.push({ id: 'VP', type: '@frame', name: 'Panel', x: 10, y: 10, w: 300, h: 100, variables: [{ id: 'v2', name: 'label', type: 'string', defaultValue: 'outer' }], children: [
+  { id: 'VL', type: 'mock-label', x: 0, y: 0, w: 80, h: 20, props: { text: '{line}/{label}' } },
+  { id: 'VI', type: '@frame', name: 'Inner', x: 0, y: 30, w: 100, h: 40, variables: [{ id: 'v3', name: 'label', type: 'string', defaultValue: 'shadow' }], children: [
+    { id: 'VS', type: 'mock-label', x: 0, y: 0, w: 80, h: 20, props: { text: '{line}/{label}' } }] }] },
+  { id: 'VR', type: 'mock-label', x: 400, y: 10, w: 80, h: 20, props: { text: '{line}/{label}' } });
+window.__nexaEditor.render();
+console.log('nearest declaration wins; outside the frame its variable stays as written?',
+  renderedText.VL === 'L1/outer' && renderedText.VS === 'L1/shadow' && renderedText.VR === 'L1/{label}', JSON.stringify(renderedText));
+screen.variables[0].defaultValue = 'L9';
+window.__nexaEditor.render();
+console.log('a changed default shows after a render?', renderedText.VS === 'L9/shadow');
+
+console.log('--- the Events tab offers a Set Variable chip per declared variable ---');
+window.__nexaEditorState.sidebarTabs.activateTab('events');
+const setChips = draggables.filter((d) => /^Set (screen|Panel|Inner)\./.test(chipText(d.el) || '')).map((d) => chipText(d.el));
+console.log('Set screen.line / Set Panel.label / Set Inner.label?', ['Set screen.line', 'Set Panel.label', 'Set Inner.label'].every((l) => setChips.indexOf(l) !== -1) || JSON.stringify(setChips));
 
 console.log('ALL OK');
 

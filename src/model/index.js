@@ -3,6 +3,7 @@
 // lib/nexa-runtime-client.js: the frame / auto layout CSS).
 export * from "./tree.js";
 export * from "./layout.js";
+export * from "./scope.js";
 export { migrateSurface, TREE_VERSION } from "./migrate.js";
 
 import { migrateSurface } from "./migrate.js";

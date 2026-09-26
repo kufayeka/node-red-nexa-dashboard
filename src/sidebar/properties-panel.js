@@ -10,6 +10,7 @@ import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
 import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector } from "./frame-inspector.js";
+import { renderVariablesInspector } from "./variables-inspector.js";
 
 // Sizing / placement in the parent's auto layout — or, where no layout places
 // it (a frame's / the screen's child, an absolute one), its constraints.
@@ -472,6 +473,8 @@ function renderContainerProperties(comp) {
     lockInput.on("change", function () { setLockedForSelection(lockInput.is(":checked"), [comp.id]); });
     var btnRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "10px" }).appendTo(pane);
     window.$("<button>", { type: "button", title: (isFrame ? "Remove the frame, keep its children" : "Ungroup") + " (Ctrl+Shift+G)" }).text(isFrame ? "Remove frame" : "Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    // variables: a scope for everything inside it
+    renderVariablesInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp, false);
     // a frame: its box, auto layout and style in the property kit
     if (isFrame && renderFrameInspector(window.$("<div>").appendTo(pane), comp)) return;
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position").appendTo(pane);

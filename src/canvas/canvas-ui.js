@@ -1,4 +1,4 @@
-import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen, Tree } from "../state.js";
+import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen, Tree, Scope } from "../state.js";
 import { readbackLayout } from "./layout-readback.js";
 import { refreshSelectionVisuals } from "./selection.js";
 import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
@@ -34,7 +34,9 @@ export function renderActiveScreen() {
     }
     applyZoomTransform();
     // the root's children; containers draw their own children inside them
-    screen.components.forEach(function (node) { renderComponent(node, null, null); });
+    // the surface's variables (a template: its params too) are the root of every scope chain
+    var rootScope = Scope.surfaceScope(screen, state.editingMode === "template");
+    screen.components.forEach(function (node) { renderComponent(node, null, null, rootScope); });
     // boxes placed by auto layout back into the nodes; when that re-fitted a
     // group (its children's x / y shift), draw once more with the new values
     var changed = readbackLayout(screen);

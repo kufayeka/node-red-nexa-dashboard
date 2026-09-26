@@ -78,9 +78,14 @@ export class NxTag extends NxCombobox {
         this._provider = null;
         this.source = () => {
             var p = this._currentProvider();
-            if (!p || typeof p.list !== "function") return [];
-            return (p.list() || []).map((t) => ({ value: this._make(p.name, t.address), label: t.label || t.address, detail: t.detail || t.address }));
+            var tags = !p || typeof p.list !== "function" ? [] : (p.list() || []).map((t) => ({ value: this._make(p.name, t.address), label: t.label || t.address, detail: t.detail || t.address }));
+            // the variables / template parameters the node can bind to ({name}), nearest first
+            return this._variables().map((v) => ({ value: "{" + v.name + "}", label: "{" + v.name + "}", detail: "variable · " + v.owner.name + " = " + str(v.value) })).concat(tags);
         };
+    }
+    _variables() {
+        var h = getHost();
+        try { return typeof h.listVariables === "function" ? (h.listVariables() || []) : []; } catch (e) { return []; }
     }
     _allowed() {
         var sdk = sdkApi();
@@ -117,7 +122,10 @@ export class NxTag extends NxCombobox {
             return html`<div class="nx-tag-status nx-ok"><i class="${(p && p.icon) || "fa fa-check"}"></i><span>${p ? p.label + ": " : ""}${t.display}</span></div>`;
         }
         if (PARAM_RE.test(v)) {
-            return html`<div class="nx-tag-status"><i class="fa fa-link"></i><span>template parameter ${v}</span></div>`;
+            var known = this._variables().filter((x) => "{" + x.name + "}" === v)[0];
+            return known
+                ? html`<div class="nx-tag-status nx-ok"><i class="fa fa-link"></i><span>${known.owner.kind === "template" ? "parameter / variable" : "variable"} of ${known.owner.name} (now ${str(known.value)})</span></div>`
+                : html`<div class="nx-tag-status"><i class="fa fa-link"></i><span>variable or template parameter ${v} (not declared around this node)</span></div>`;
         }
         if (t && !t.known) return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>unknown tag provider "${t.provider}"</span></div>`;
         return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>not a valid tag${t ? " for " + t.provider : ""} — {provider:address}</span></div>`;

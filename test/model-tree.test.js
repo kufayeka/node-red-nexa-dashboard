@@ -17,6 +17,7 @@ function load(rel) {
 const T = load('tree.js');
 const M = load('migrate.js');
 const L = load('layout.js');
+const S = load('scope.js');
 
 let passed = 0;
 function ok(label, fn) { fn(); passed++; console.log('✔ ' + label); }
@@ -235,6 +236,33 @@ ok('constraints: resizing the parent in the editor (resizeWithConstraints)', () 
     assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'leftRight', v: 'topBottom' }, oldP, newP), { x: 10, y: 20, w: 130, h: 1 });
     assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'center', v: 'center' }, oldP, newP), { x: 60, y: -30, w: 30, h: 40 });
     assert.deepStrictEqual(L.resizeWithConstraints(box, { h: 'scale', v: 'scale' }, oldP, newP), { x: 20, y: 10, w: 60, h: 20 });
+});
+
+ok('scope: a chain of plain objects — lookup walks outwards, a set shows inside, shadowing', () => {
+    const screen = S.makeScope(null, [{ name: 'line', defaultValue: 'L1' }, { name: 'obj', defaultValue: { a: 1 } }, { name: '1bad', defaultValue: 0 }]);
+    const panel = S.makeScope(screen, [{ name: 'label', defaultValue: 'outer' }]);
+    const inner = S.makeScope(panel, [{ name: 'label', defaultValue: 'shadow' }]);
+    assert.deepStrictEqual([inner.line, inner.label, panel.label, screen.label], ['L1', 'shadow', 'outer', undefined]);
+    assert.strictEqual('1bad' in screen, false, 'an invalid name is not declared');
+    screen.line = 'L2';
+    assert.strictEqual(inner.line, 'L2', 'a value set on the screen is seen inside');
+    panel.obj.a = 2;
+    assert.strictEqual(S.makeScope(null, [{ name: 'obj', defaultValue: { a: 1 } }]).obj.a, 1, 'defaults are copied, not shared');
+    assert.ok(Object.prototype.isPrototypeOf.call(screen, inner), 'what refreshScope uses to find who sees a scope');
+});
+
+ok('scope: a template surface = params + variables (a param wins); visibleVariables nearest first, shadowed left out', () => {
+    const t = { id: 'T', name: 'Card', params: [{ name: 'who', defaultValue: 'x', type: 'string' }], variables: [{ name: 'who', defaultValue: 'v' }, { name: 'n', defaultValue: 1 }] };
+    const root = S.surfaceScope(t, true);
+    assert.deepStrictEqual([root.who, root.n], ['x', 1]);
+    assert.strictEqual(S.surfaceScope(t, false).who, 'v', 'a screen has no params');
+    const screen = { id: 's', variables: [{ name: 'line', type: 'string', defaultValue: 'L1' }, { name: 'label', type: 'string', defaultValue: 'top' }] };
+    const panel = { id: 'p', name: 'Panel', type: '@frame', variables: [{ name: 'label', type: 'string', defaultValue: 'outer' }] };
+    const g = { id: 'g', type: '@group' };
+    const vis = S.visibleVariables(screen, [panel, g], false, leaf('x', 0, 0));
+    assert.deepStrictEqual(vis.map((v) => v.name + '@' + v.owner.name + '=' + v.value), ['label@Panel=outer', 'line@screen=L1']);
+    const decl = S.allDeclarations({ variables: screen.variables, components: [panel] }, T.walk);
+    assert.deepStrictEqual(decl.map((d) => (d.scopeId || '-') + '.' + d.variable.name), ['-.line', '-.label', 'p.label']);
 });
 
 console.log(`\n${passed} passed\nALL OK`);

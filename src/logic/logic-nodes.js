@@ -1,6 +1,6 @@
 import {
     state, SVG_NS, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_NODE_W, LOGIC_NODE_H,
-    LOGIC_NODE_KINDS, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty
+    LOGIC_NODE_KINDS, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty, Tree
 } from "../state.js";
 import { pushHistory } from "../history.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
@@ -10,6 +10,7 @@ import { openUiUpdateNodeEditor } from "../dialogs/ui-update-dialog.js";
 import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
 import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
+import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
@@ -43,6 +44,12 @@ export function logicNodeLabel(node) {
     if (node.type === "layer-control") {
         var n = (node.states || []).length;
         return "Layer Control" + (n ? (" (" + n + ")") : "");
+    }
+    if (node.type === "set-variable") {
+        var vScreen = getActiveScreen();
+        var owner = node.scope && vScreen ? Tree.find(vScreen, node.scope) : null;
+        var where = node.scope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
+        return node.name ? "Set " + where + "." + node.name + (node.valueSource === "static" ? " = " + JSON.stringify(node.value) : "") : "Set Variable";
     }
     if (node.type === "set-template-param") {
         var instComp = findComponent(node.instanceId);
@@ -145,6 +152,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openLayerControlNodeEditor(node);
+        });
+    }
+    if (node.type === "set-variable") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSetVariableNodeEditor(node);
         });
     }
     if (node.type === "sparkplug-write") {

@@ -665,6 +665,70 @@
     return frame;
   }
 
+  // src/model/scope.js
+  var scope_exports = {};
+  __export(scope_exports, {
+    NAME_RE: () => NAME_RE,
+    allDeclarations: () => allDeclarations,
+    hasVariables: () => hasVariables,
+    makeScope: () => makeScope,
+    surfaceScope: () => surfaceScope,
+    visibleVariables: () => visibleVariables
+  });
+  var NAME_RE = /^[A-Za-z_$][\w$]*$/;
+  function makeScope(parent, variables) {
+    var scope = Object.create(parent || null);
+    (variables || []).forEach(function(v) {
+      if (v && typeof v.name === "string" && NAME_RE.test(v.name)) scope[v.name] = clone(v.defaultValue);
+    });
+    return scope;
+  }
+  function clone(v) {
+    return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
+  }
+  function hasVariables(node) {
+    return !!(node && Array.isArray(node.variables) && node.variables.length);
+  }
+  function surfaceScope(surface, isTemplate) {
+    var scope = makeScope(null, surface && surface.variables);
+    if (isTemplate) {
+      (surface.params || []).forEach(function(p) {
+        if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone(p.defaultValue);
+      });
+    }
+    return scope;
+  }
+  function visibleVariables(surface, ancestors2, isTemplate, self) {
+    var seen = {}, out = [];
+    function add(list, owner, valueKey) {
+      (list || []).forEach(function(v) {
+        if (!v || !NAME_RE.test(v.name || "") || seen[v.name]) return;
+        seen[v.name] = true;
+        out.push({ name: v.name, type: v.type || "string", value: v[valueKey], owner });
+      });
+    }
+    var chain = (ancestors2 || []).slice();
+    if (self && hasVariables(self)) chain.push(self);
+    for (var i2 = chain.length - 1; i2 >= 0; i2--) {
+      add(chain[i2].variables, { id: chain[i2].id, name: chain[i2].name || chain[i2].type, kind: "container" }, "defaultValue");
+    }
+    if (isTemplate) add(surface.params, { id: surface.id, name: surface.name || "template", kind: "template" }, "defaultValue");
+    add(surface.variables, { id: surface.id, name: isTemplate ? surface.name || "template" : "screen", kind: isTemplate ? "template" : "screen" }, "defaultValue");
+    return out;
+  }
+  function allDeclarations(surface, walk2) {
+    var out = [];
+    (surface.variables || []).forEach(function(v) {
+      out.push({ scopeId: "", scopeName: "Screen", variable: v });
+    });
+    walk2(surface, function(node) {
+      if (hasVariables(node)) node.variables.forEach(function(v) {
+        out.push({ scopeId: node.id, scopeName: node.name || node.type, variable: v });
+      });
+    });
+    return out;
+  }
+
   // src/model/migrate.js
   var TREE_VERSION = 1;
   function genIdFallback() {
@@ -783,6 +847,8 @@
     // "@template" instance, setting ONE of its declared params by name.
     "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
+    // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
+    "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
     // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
     // "function", they're asynchronous (an HTTP round-trip) and only
@@ -1754,6 +1820,16 @@
   }
 
   // src/canvas/component-renderer.js
+  var nodeScopes = /* @__PURE__ */ new WeakMap();
+  function editorScopeFor(comp) {
+    var screen = getActiveScreen();
+    if (!screen) return void 0;
+    var scope = scope_exports.surfaceScope(screen, state.editingMode === "template");
+    tree_exports.ancestors(screen, comp.id).forEach(function(a) {
+      if (scope_exports.hasVariables(a)) scope = scope_exports.makeScope(scope, a.variables);
+    });
+    return scope;
+  }
   function refreshComponentRender(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
@@ -1775,14 +1851,15 @@
         markDirty();
       }
     };
+    var scope = nodeScopes.has(comp) ? nodeScopes.get(comp) : editorScopeFor(comp);
     if (comp.type === "@lit-component") {
-      renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, comp.__paramState), ctx);
+      renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, scope), ctx);
       return;
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (!typeDef || typeof typeDef.render !== "function") return;
     try {
-      typeDef.render(node, interpolateProps(comp.props || {}, comp.__paramState), ctx);
+      typeDef.render(node, interpolateProps(comp.props || {}, scope), ctx);
     } catch (e) {
       el.text("(render error: " + e.message + ")");
     }
@@ -2195,11 +2272,12 @@
       renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState);
     });
   }
-  function renderComponent(comp, parentEl, parentNode) {
+  function renderComponent(comp, parentEl, parentNode, scope) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
     if (parentNode === void 0) parentNode = tree_exports.parentOf(screen, comp.id);
+    if (scope === void 0) scope = editorScopeFor(comp);
     var inFlow = layout_exports.isInFlow(comp, parentNode);
     if (!shouldRenderNode(comp.id)) return;
     var interactable = isNodeInteractable(comp.id);
@@ -2211,10 +2289,12 @@
     css2.display = isNodeVisible(comp.id) ? css2.display || "" : "none";
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css2).appendTo(parentEl);
     if (container) {
+      var inner = scope_exports.hasVariables(comp) ? scope_exports.makeScope(scope, comp.variables) : scope;
       tree_exports.kids(comp).forEach(function(child) {
-        renderComponent(child, el, comp);
+        renderComponent(child, el, comp, inner);
       });
     } else {
+      nodeScopes.set(comp, scope);
       renderComponentContent(el.get(0), comp, {
         namespace: comp.id,
         // node ids are unique in a surface, so the raw id IS the full namespace
@@ -2230,7 +2310,7 @@
           comp.props[name2] = value;
           markDirty();
         }
-      }, comp.id, []);
+      }, comp.id, [], scope);
     }
     if (!interactable) return;
     el.on("mousedown", function(e) {
@@ -17630,9 +17710,9 @@
     Run a full parse, returning the resulting tree.
     */
     parse(input, fragments, ranges) {
-      let parse = this.startParse(input, fragments, ranges);
+      let parse2 = this.startParse(input, fragments, ranges);
       for (; ; ) {
-        let done = parse.advance();
+        let done = parse2.advance();
         if (done)
           return done;
       }
@@ -24036,10 +24116,10 @@
       this.top = this.topRules[Object.keys(this.topRules)[0]];
     }
     createParse(input, fragments, ranges) {
-      let parse = new Parse(this, input, fragments, ranges);
+      let parse2 = new Parse(this, input, fragments, ranges);
       for (let w of this.wrappers)
-        parse = w(parse, input, fragments, ranges);
-      return parse;
+        parse2 = w(parse2, input, fragments, ranges);
+      return parse2;
     }
     /**
     Get a goto table entry @internal
@@ -26213,6 +26293,9 @@
     if (type === "layer-control") {
       return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
     }
+    if (type === "set-variable") {
+      return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
+    }
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
       return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
     }
@@ -26533,6 +26616,18 @@
     chip(state.eventsPane, "Layer Control", function() {
       return { type: "layer-control", states: [] };
     }, "", "layer-control");
+    sectionHeader(state.eventsPane, "Variables");
+    chip(state.eventsPane, "Set Variable", function() {
+      return { type: "set-variable", scope: "", name: "", valueSource: "payload" };
+    }, "", "set-variable");
+    if (screen) {
+      scope_exports.allDeclarations(screen, tree_exports.walk).forEach(function(d) {
+        if (!scope_exports.NAME_RE.test(d.variable.name || "")) return;
+        chip(state.eventsPane, "Set " + (d.scopeId ? d.scopeName : state.editingMode === "template" ? "template" : "screen") + "." + d.variable.name, function() {
+          return { type: "set-variable", scope: d.scopeId, name: d.variable.name, valueSource: "payload" };
+        }, "", "set-variable");
+      });
+    }
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function() {
       return { type: "sparkplug-write", tag: "" };
@@ -26636,7 +26731,17 @@
   function ensureKitHost() {
     if (hostReady || !window.NexaKit) return;
     hostReady = true;
-    window.NexaKit.setHost({ openCode: openCodeEditorTray });
+    window.NexaKit.setHost({
+      openCode: openCodeEditorTray,
+      // what the selected node can bind to as {name}: its containers' variables,
+      // the screen's (a template: its params and variables), nearest first
+      listVariables: function() {
+        var screen = getActiveScreen();
+        var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
+        if (!screen || !id2) return [];
+        return scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2));
+      }
+    });
     if (window.NexaSDK && window.NexaSDK.getTagProvider("sparkplug")) {
       window.NexaSDK.extendTagProvider("sparkplug", {
         list: function() {
@@ -26648,7 +26753,7 @@
       });
     }
   }
-  function clone(v) {
+  function clone2(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
@@ -26659,11 +26764,11 @@
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
     if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
-      last2.to = clone(value);
+      last2.to = clone2(value);
       last2.at = now;
       state.redoStack = [];
     } else if (screen) {
-      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone(from), to: clone(value), at: now });
+      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone2(from), to: clone2(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -26992,6 +27097,105 @@
           if (c.h === "left" && c.v === "top") delete node.constraints;
           else node.constraints = c;
         });
+      }
+    });
+    return true;
+  }
+
+  // src/sidebar/variables-inspector.js
+  var TYPES = ["string", "number", "boolean", "object", "array", "color"];
+  function show(v, type) {
+    if (v === void 0 || v === null) return "";
+    if (type === "object" || type === "array") return JSON.stringify(v);
+    return String(v);
+  }
+  function parse(text, type) {
+    var t2 = text === void 0 || text === null ? "" : String(text);
+    if (type === "number") {
+      var n = parseFloat(t2);
+      return isFinite(n) ? n : 0;
+    }
+    if (type === "boolean") return t2 === "true" || t2 === "1";
+    if (type === "object" || type === "array") {
+      try {
+        var v = t2.trim() ? JSON.parse(t2) : type === "array" ? [] : {};
+        return v;
+      } catch (e) {
+        return type === "array" ? [] : {};
+      }
+    }
+    return t2;
+  }
+  function variableProblems(list) {
+    var seen = {}, out = [];
+    (list || []).forEach(function(v) {
+      if (!scope_exports.NAME_RE.test(v.name || "")) out.push('"' + (v.name || "") + '" is not a valid name (letters, digits, _ or $, not starting with a digit)');
+      else if (seen[v.name]) out.push('"' + v.name + '" is declared twice');
+      seen[v.name] = true;
+    });
+    return out;
+  }
+  function renderVariablesInspector(container, owner, isSurface) {
+    if (!window.NexaKit || !window.NEXA_LIT) return false;
+    var html = window.NEXA_LIT.html;
+    var view = function() {
+      return { variables: (owner.variables || []).map(function(v) {
+        return { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+      }) };
+    };
+    var meta2 = {
+      id: "@variables",
+      stateList: [],
+      inputs: [],
+      outputs: [],
+      props: {
+        variables: {
+          key: "variables",
+          type: "list",
+          label: "",
+          default: [],
+          noReset: true,
+          item: { row: true, fields: {
+            name: { type: "string", label: "Name", default: "" },
+            type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function(t2) {
+              return { value: t2, label: t2 };
+            }) },
+            value: { type: "string", label: "Default", default: "" }
+          } }
+        }
+      },
+      inspector: function(o) {
+        var problems = variableProblems(owner.variables);
+        return html`<nx-section heading="Variables" persist-key="nexa-variables">
+                <div class="nx-help" style="margin-bottom:6px">Bind with {name} in the props of anything ${isSurface ? "on this screen" : "inside"}; the nearest declaration wins. Change one live with the Logic "Set Variable" node.</div>
+                ${problems.map(function(p) {
+          return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
+        })}
+                <nx-list ${o.bind("variables")}></nx-list>
+            </nx-section>`;
+      }
+    };
+    var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+      meta: meta2,
+      props: view(),
+      persistKey: "nexa-variables",
+      set: function(key, items) {
+        if (!isSurface && isNodeLocked(owner.id)) return;
+        var old = owner.variables || [];
+        var next = (items || []).map(function(it, i2) {
+          var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
+          return { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
+        });
+        var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
+        if (next.length) owner.variables = next;
+        else delete owner.variables;
+        var screen = getActiveScreen();
+        if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
+        markDirty();
+        var keep = state.selectedIds.slice();
+        renderActiveScreen();
+        if (!isSurface && keep.length === 1) selectOnly(keep[0]);
+        handle.update();
       }
     });
     return true;
@@ -27368,6 +27572,7 @@
     });
     var btnRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "10px" }).appendTo(pane);
     window.$("<button>", { type: "button", title: (isFrame ? "Remove the frame, keep its children" : "Ungroup") + " (Ctrl+Shift+G)" }).text(isFrame ? "Remove frame" : "Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    renderVariablesInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp, false);
     if (isFrame && renderFrameInspector(window.$("<div>").appendTo(pane), comp)) return;
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position").appendTo(pane);
     [["x", "X"], ["y", "Y"]].forEach(function(pair2) {
@@ -27639,8 +27844,9 @@
       state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
+    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template");
     screen.components.forEach(function(node) {
-      renderComponent(node, null, null);
+      renderComponent(node, null, null, rootScope);
     });
     var changed = readbackLayout(screen);
     if (changed.redraw && !renderActiveScreen._again) {
@@ -28309,6 +28515,108 @@
     });
   }
 
+  // src/dialogs/set-variable-dialog.js
+  function openSetVariableNodeEditor(node) {
+    var screen = getActiveScreen();
+    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk) : [];
+    var surfaceLabel = state.editingMode === "template" ? "This template" : "Screen";
+    var draft = { scope: node.scope || "", name: node.name || "", valueSource: node.valueSource || "payload", value: node.value };
+    var scopeSel, nameSel, staticRow;
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    function fillNames() {
+      nameSel.empty();
+      var names = namesIn(draft.scope);
+      if (draft.name && names.indexOf(draft.name) === -1) names.unshift(draft.name);
+      if (!names.length) window.$("<option>", { value: "" }).text("(no variables declared here)").appendTo(nameSel);
+      names.forEach(function(n) {
+        window.$("<option>", { value: n }).text(n).appendTo(nameSel);
+      });
+      nameSel.val(draft.name || names[0] || "");
+      draft.name = nameSel.val() || "";
+    }
+    window.RED.tray.show({
+      id: "nexa-logic-setvariable-editor",
+      title: "Configure Set Variable Node",
+      width: 450,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.scope = draft.scope;
+            node.name = draft.name;
+            node.valueSource = draft.valueSource;
+            if (draft.valueSource === "static") node.value = draft.value;
+            else delete node.value;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Sets a variable on the live page. Everything inside its scope that binds {name} (and doesn't declare its own) updates; a template instance bound to it gets the value passed in. The message goes on unchanged.").appendTo(body);
+        var label = function(text) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
+        };
+        label("Scope (where the variable is declared)");
+        scopeSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        var scopes = [{ id: "", name: surfaceLabel }];
+        decls.forEach(function(d) {
+          if (d.scopeId && !scopes.some(function(s) {
+            return s.id === d.scopeId;
+          })) scopes.push({ id: d.scopeId, name: d.scopeName });
+        });
+        if (draft.scope && !scopes.some(function(s) {
+          return s.id === draft.scope;
+        })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
+        scopes.forEach(function(s) {
+          window.$("<option>", { value: s.id }).text(s.name).appendTo(scopeSel);
+        });
+        scopeSel.val(draft.scope).on("change", function() {
+          draft.scope = scopeSel.val();
+          draft.name = "";
+          fillNames();
+        });
+        label("Variable");
+        nameSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function() {
+          draft.name = nameSel.val();
+        });
+        fillNames();
+        label("Value");
+        var srcSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        window.$("<option>", { value: "payload" }).text("msg.payload").appendTo(srcSel);
+        window.$("<option>", { value: "static" }).text("A fixed value").appendTo(srcSel);
+        srcSel.val(draft.valueSource);
+        staticRow = window.$("<div>").css({ "margin-top": "6px" }).appendTo(body);
+        var decl = decls.filter(function(d) {
+          return d.scopeId === draft.scope && d.variable.name === draft.name;
+        })[0];
+        buildTypedInputWidget(staticRow, decl && decl.variable.type || "string", draft.value !== void 0 ? draft.value : "", function(v) {
+          draft.value = v;
+        });
+        var sync = function() {
+          staticRow.toggle(draft.valueSource === "static");
+        };
+        srcSel.on("change", function() {
+          draft.valueSource = srcSel.val();
+          sync();
+        });
+        sync();
+      }
+    });
+  }
+
   // src/dialogs/sparkplug-write-dialog.js
   function openSparkplugWriteNodeEditor(node) {
     var tagInput, listSelect;
@@ -28449,6 +28757,12 @@
       var n = (node.states || []).length;
       return "Layer Control" + (n ? " (" + n + ")" : "");
     }
+    if (node.type === "set-variable") {
+      var vScreen = getActiveScreen();
+      var owner = node.scope && vScreen ? tree_exports.find(vScreen, node.scope) : null;
+      var where = node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
+      return node.name ? "Set " + where + "." + node.name + (node.valueSource === "static" ? " = " + JSON.stringify(node.value) : "") : "Set Variable";
+    }
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
       var instTemplate = instComp && findTemplate(instComp.templateId);
@@ -28575,6 +28889,12 @@
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openLayerControlNodeEditor(node);
+      });
+    }
+    if (node.type === "set-variable") {
+      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openSetVariableNodeEditor(node);
       });
     }
     if (node.type === "sparkplug-write") {
@@ -29530,6 +29850,7 @@
     row("Width (px)", "width", screen.width, "number");
     row("Height (px)", "height", screen.height, "number");
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
+    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
     var checksWrap = window.$("<div>").css({
       "margin-top": "12px",
       "padding-top": "10px",

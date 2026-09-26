@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains, Tree } from "../state.js";
+import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope } from "../state.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -52,6 +52,9 @@ function getLogicNodeMeta(type) {
     }
     if (type === "layer-control") {
         return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
+    }
+    if (type === "set-variable") {
+        return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
     }
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
         return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
@@ -361,6 +364,18 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
+
+    // one chip per declared variable (screen / group / frame), plus a blank one
+    sectionHeader(state.eventsPane, "Variables");
+    chip(state.eventsPane, "Set Variable", function () { return { type: "set-variable", scope: "", name: "", valueSource: "payload" }; }, "", "set-variable");
+    if (screen) {
+        Scope.allDeclarations(screen, Tree.walk).forEach(function (d) {
+            if (!Scope.NAME_RE.test(d.variable.name || "")) return;
+            chip(state.eventsPane, "Set " + (d.scopeId ? d.scopeName : (state.editingMode === "template" ? "template" : "screen")) + "." + d.variable.name, function () {
+                return { type: "set-variable", scope: d.scopeId, name: d.variable.name, valueSource: "payload" };
+            }, "", "set-variable");
+        });
+    }
 
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function () { return { type: "sparkplug-write", tag: "" }; }, "", "sparkplug-write");
