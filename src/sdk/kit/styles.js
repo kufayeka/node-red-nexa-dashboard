@@ -231,6 +231,15 @@ nx-tab[hidden] { display: none !important; }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
+/* nx-align, nx-spacing (layout-widgets.js) */
+.nx-kit .nx-align { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 22px); gap: 2px; padding: 3px; width: max-content;
+    border: 1px solid var(--nx-border); border-radius: var(--nx-radius); background: var(--nx-bg); }
+.nx-kit.nx-kit .nx-align-cell { display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; border: none; border-radius: 3px; background: transparent; cursor: pointer; }
+.nx-kit.nx-kit .nx-align-cell span { width: 4px; height: 4px; border-radius: 50%; background: var(--nx-text-muted, #999); }
+.nx-kit.nx-kit .nx-align-cell:hover:not(:disabled) { background: var(--nx-bg-hover); }
+.nx-kit.nx-kit .nx-align-cell.nx-on span { width: 12px; height: 12px; border-radius: 2px; background: var(--nx-accent, #ff5722); }
+.nx-kit .nx-spacing { display: flex; gap: 4px; align-items: center; }
+.nx-kit.nx-kit .nx-spacing-input { flex: 1 1 0; min-width: 0; width: auto; }
 `;
 
 export function ensureStyles(doc) {

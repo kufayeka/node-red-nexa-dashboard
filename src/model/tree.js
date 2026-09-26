@@ -233,9 +233,15 @@ export function tidyContainer(surface, id) {
 }
 
 /**
- * Wraps sibling nodes into a new group (at the position of the top-most one).
- * All ids must share one parent. Returns the group.
+ * Wraps sibling nodes into a new container (at the position of the top-most
+ * one): an @group by default, or `container.type` ("@frame"). Its box is their
+ * bounds and their x / y become relative to it, so nothing moves on screen.
+ * All ids must share one parent. Returns the container.
  */
+export function wrapIn(surface, ids, container) {
+    return wrapInGroup(surface, ids, container);
+}
+
 export function wrapInGroup(surface, ids, group) {
     var locs = ids.map(function (id) { return locate(surface, id); }).filter(Boolean);
     if (!locs.length) return null;
@@ -245,10 +251,12 @@ export function wrapInGroup(surface, ids, group) {
     var at = locs[locs.length - 1].index - (locs.length - 1);
     var list = listOf(surface, parent);
     locs.slice().reverse().forEach(function (l) { list.splice(l.index, 1); });
-    group.type = "@group";
+    group.type = group.type === "@frame" ? "@frame" : "@group";
     group.children = locs.map(function (l) { return l.node; });
     group.x = 0; group.y = 0;
-    fitGroup(group);
+    var b = childBounds(group);
+    kids(group).forEach(function (c) { c.x = (c.x || 0) - b.x; c.y = (c.y || 0) - b.y; });
+    group.x = b.x; group.y = b.y; group.w = b.w; group.h = b.h;
     list.splice(at, 0, group);
     return group;
 }

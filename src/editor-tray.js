@@ -3,7 +3,7 @@ import {
     LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty, Tree
 } from "./state.js";
 import { undo, redo, pushHistory } from "./history.js";
-import { groupSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
+import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
 import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refreshComponentRender } from "./canvas/component-renderer.js";
 import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
@@ -58,7 +58,7 @@ export function onKeyDown(e) {
         } else if (e.key === "g" || e.key === "G") {
             if (state.activeCanvasTab === "ui") {
                 e.preventDefault();
-                if (e.shiftKey) ungroupSelection(); else groupSelection();
+                if (e.shiftKey) ungroupSelection(); else if (e.altKey) frameSelection(); else groupSelection();
             }
         } else if (e.key === "c" || e.key === "C") {
             e.preventDefault();

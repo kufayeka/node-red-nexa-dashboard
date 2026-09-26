@@ -131,6 +131,7 @@
     tidyContainer: () => tidyContainer,
     unwrap: () => unwrap,
     walk: () => walk,
+    wrapIn: () => wrapIn,
     wrapInGroup: () => wrapInGroup
   });
   var CONTAINER_TYPES = { "@group": true, "@frame": true };
@@ -324,6 +325,9 @@
     }
     return dropped;
   }
+  function wrapIn(surface, ids, container) {
+    return wrapInGroup(surface, ids, container);
+  }
   function wrapInGroup(surface, ids, group) {
     var locs = ids.map(function(id2) {
       return locate(surface, id2);
@@ -333,21 +337,29 @@
     if (locs.some(function(l) {
       return l.parent !== parent || l.orphan;
     })) throw new Error("[nexa] wrap: nodes must share one parent");
-    locs.sort(function(a, b) {
-      return a.index - b.index;
+    locs.sort(function(a, b2) {
+      return a.index - b2.index;
     });
     var at = locs[locs.length - 1].index - (locs.length - 1);
     var list = listOf(surface, parent);
     locs.slice().reverse().forEach(function(l) {
       list.splice(l.index, 1);
     });
-    group.type = "@group";
+    group.type = group.type === "@frame" ? "@frame" : "@group";
     group.children = locs.map(function(l) {
       return l.node;
     });
     group.x = 0;
     group.y = 0;
-    fitGroup(group);
+    var b = childBounds(group);
+    kids(group).forEach(function(c) {
+      c.x = (c.x || 0) - b.x;
+      c.y = (c.y || 0) - b.y;
+    });
+    group.x = b.x;
+    group.y = b.y;
+    group.w = b.w;
+    group.h = b.h;
     list.splice(at, 0, group);
     return group;
   }
@@ -384,6 +396,204 @@
       if (isContainer(n) && n.name === name2) out.push(n);
     });
     return out;
+  }
+
+  // src/model/layout.js
+  var layout_exports = {};
+  __export(layout_exports, {
+    LAYOUT_MODES: () => LAYOUT_MODES,
+    boxCss: () => boxCss,
+    canRotate: () => canRotate,
+    childSizing: () => childSizing,
+    frameCss: () => frameCss,
+    frameHugs: () => frameHugs,
+    hasAutoLayout: () => hasAutoLayout,
+    isInFlow: () => isInFlow,
+    layoutOf: () => layoutOf,
+    makeFrame: () => makeFrame,
+    styleOf: () => styleOf,
+    tracksCss: () => tracksCss
+  });
+  var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid"];
+  var DEFAULT_LAYOUT = {
+    mode: "none",
+    padding: { t: 0, r: 0, b: 0, l: 0 },
+    gap: 0,
+    rowGap: void 0,
+    // unset: the same as gap
+    alignX: "start",
+    alignY: "start",
+    wrap: false,
+    columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }],
+    rows: [],
+    sizeW: "fixed",
+    sizeH: "fixed"
+  };
+  var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false };
+  function num(v, d) {
+    var n = typeof v === "number" ? v : parseFloat(v);
+    return isFinite(n) ? n : d || 0;
+  }
+  function layoutOf(frame) {
+    var l = frame && frame.layout || {};
+    var out = {};
+    Object.keys(DEFAULT_LAYOUT).forEach(function(k) {
+      out[k] = l[k] !== void 0 ? l[k] : DEFAULT_LAYOUT[k];
+    });
+    var p = out.padding || {};
+    out.padding = { t: num(p.t), r: num(p.r), b: num(p.b), l: num(p.l) };
+    if (LAYOUT_MODES.indexOf(out.mode) === -1) out.mode = "none";
+    if (!Array.isArray(out.columns)) out.columns = DEFAULT_LAYOUT.columns;
+    if (!Array.isArray(out.rows)) out.rows = [];
+    return out;
+  }
+  function styleOf(frame) {
+    var s = frame && frame.style || {};
+    var out = {};
+    Object.keys(DEFAULT_STYLE).forEach(function(k) {
+      out[k] = s[k] !== void 0 ? s[k] : DEFAULT_STYLE[k];
+    });
+    return out;
+  }
+  function hasAutoLayout(node) {
+    return !!node && node.type === "@frame" && layoutOf(node).mode !== "none";
+  }
+  function isInFlow(child, parent) {
+    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute);
+  }
+  function childSizing(child, axis) {
+    var lc = child && child.layoutChild || {};
+    var v = lc[axis];
+    if (v === "fill") return "fill";
+    if (v === "hug" && hasAutoLayout(child)) return "hug";
+    return "fixed";
+  }
+  function frameHugs(frame, axis) {
+    if (!hasAutoLayout(frame)) return false;
+    var l = layoutOf(frame);
+    return (axis === "w" ? l.sizeW : l.sizeH) === "hug";
+  }
+  var FLEX_ALIGN = { start: "flex-start", center: "center", end: "flex-end" };
+  function track(t2) {
+    if (!t2) return "1fr";
+    if (t2.unit === "auto") return "auto";
+    var size = num(t2.size, 1);
+    return t2.unit === "px" ? size + "px" : size + "fr";
+  }
+  function tracksCss(list) {
+    return (list || []).map(track).join(" ");
+  }
+  function frameCss(frame) {
+    var l = layoutOf(frame);
+    var s = styleOf(frame);
+    var css2 = {
+      background: s.fill || "",
+      border: num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) + "px solid " + s.stroke : "",
+      "border-radius": num(s.radius) ? num(s.radius) + "px" : "",
+      overflow: s.clip ? "hidden" : "",
+      "box-sizing": "border-box"
+    };
+    if (l.mode === "none") {
+      css2.display = "";
+      css2.padding = "";
+      return css2;
+    }
+    css2.padding = l.padding.t + "px " + l.padding.r + "px " + l.padding.b + "px " + l.padding.l + "px";
+    if (l.mode === "grid") {
+      css2.display = "grid";
+      css2["grid-template-columns"] = tracksCss(l.columns) || "1fr";
+      css2["grid-template-rows"] = tracksCss(l.rows);
+      css2["grid-auto-rows"] = "auto";
+      css2["column-gap"] = num(l.gap) + "px";
+      css2["row-gap"] = num(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) + "px";
+      css2["justify-items"] = l.alignX;
+      css2["align-items"] = l.alignY;
+      css2["align-content"] = l.alignY;
+      css2["justify-content"] = l.alignX;
+    } else {
+      var horizontal = l.mode === "horizontal";
+      var main = horizontal ? l.alignX : l.alignY;
+      var cross = horizontal ? l.alignY : l.alignX;
+      css2.display = "flex";
+      css2["flex-direction"] = horizontal ? "row" : "column";
+      css2["flex-wrap"] = horizontal && l.wrap ? "wrap" : "nowrap";
+      css2["justify-content"] = l.gap === "auto" ? "space-between" : FLEX_ALIGN[main] || "flex-start";
+      css2["align-items"] = FLEX_ALIGN[cross] || "flex-start";
+      css2["align-content"] = FLEX_ALIGN[horizontal ? l.alignY : l.alignX] || "flex-start";
+      var gap = l.gap === "auto" ? 0 : num(l.gap);
+      css2[horizontal ? "column-gap" : "row-gap"] = gap + "px";
+      css2[horizontal ? "row-gap" : "column-gap"] = (horizontal && l.wrap ? num(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) : 0) + "px";
+    }
+    return css2;
+  }
+  function boxCss(node, parent) {
+    var css2 = {
+      position: "absolute",
+      left: num(node.x) + "px",
+      top: num(node.y) + "px",
+      width: num(node.w) + "px",
+      height: num(node.h) + "px",
+      flex: "",
+      "align-self": "",
+      "justify-self": "",
+      "grid-column": "",
+      "grid-row": "",
+      "min-width": node.minW ? num(node.minW) + "px" : "",
+      "max-width": node.maxW ? num(node.maxW) + "px" : "",
+      "min-height": node.minH ? num(node.minH) + "px" : "",
+      "max-height": node.maxH ? num(node.maxH) + "px" : ""
+    };
+    if (frameHugs(node, "w")) css2.width = "max-content";
+    if (frameHugs(node, "h")) css2.height = "max-content";
+    if (!isInFlow(node, parent)) return css2;
+    var mode = layoutOf(parent).mode;
+    var sw = childSizing(node, "w"), sh = childSizing(node, "h");
+    css2.position = "relative";
+    css2.left = "auto";
+    css2.top = "auto";
+    if (mode === "grid") {
+      var lc = node.layoutChild || {};
+      if (lc.col) css2["grid-column"] = num(lc.col, 1) + (lc.colSpan > 1 ? " / span " + num(lc.colSpan, 1) : "");
+      else if (lc.colSpan > 1) css2["grid-column"] = "span " + num(lc.colSpan, 1);
+      if (lc.row) css2["grid-row"] = num(lc.row, 1) + (lc.rowSpan > 1 ? " / span " + num(lc.rowSpan, 1) : "");
+      else if (lc.rowSpan > 1) css2["grid-row"] = "span " + num(lc.rowSpan, 1);
+      if (sw === "fill") {
+        css2.width = "auto";
+        css2["justify-self"] = "stretch";
+      } else if (sw === "hug") css2.width = "max-content";
+      if (sh === "fill") {
+        css2.height = "auto";
+        css2["align-self"] = "stretch";
+      } else if (sh === "hug") css2.height = "max-content";
+      return css2;
+    }
+    var horizontal = mode === "horizontal";
+    var mainSizing = horizontal ? sw : sh, crossSizing = horizontal ? sh : sw;
+    var mainProp = horizontal ? "width" : "height", crossProp = horizontal ? "height" : "width";
+    if (mainSizing === "fill") {
+      css2.flex = "1 1 0px";
+      css2[mainProp] = "auto";
+      css2[horizontal ? "min-width" : "min-height"] = css2[horizontal ? "min-width" : "min-height"] || "0px";
+    } else {
+      css2.flex = "0 0 auto";
+      if (mainSizing === "hug") css2[mainProp] = "max-content";
+    }
+    if (crossSizing === "fill") {
+      css2["align-self"] = "stretch";
+      css2[crossProp] = "auto";
+    } else if (crossSizing === "hug") css2[crossProp] = "max-content";
+    return css2;
+  }
+  function canRotate(node, parent) {
+    return !isInFlow(node, parent);
+  }
+  function makeFrame(mode, w, h) {
+    var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
+    if (mode && mode !== "none") {
+      frame.layout = { mode, padding: { t: 8, r: 8, b: 8, l: 8 }, gap: 8 };
+      if (mode === "grid") frame.layout.columns = [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }];
+    }
+    return frame;
   }
 
   // src/model/migrate.js
@@ -925,6 +1135,43 @@
     state.undoStack.push(ev);
   }
 
+  // src/canvas/layout-readback.js
+  function elementOf(id2) {
+    if (!state.artboardEl) return null;
+    var el = state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
+    return el && typeof el.offsetWidth === "number" && el.isConnected ? el : null;
+  }
+  function readbackLayout(screen) {
+    screen = screen || getActiveScreen();
+    var changed = [];
+    if (!screen) return changed;
+    tree_exports.walk(screen, function(node, parent) {
+      var inFlow = layout_exports.isInFlow(node, parent);
+      var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
+      if (!inFlow && !hugW && !hugH) return;
+      var el = elementOf(node.id);
+      if (!el) return;
+      var box = { x: node.x, y: node.y, w: node.w, h: node.h };
+      if (inFlow) {
+        box.x = el.offsetLeft;
+        box.y = el.offsetTop;
+      }
+      if (inFlow || hugW) box.w = el.offsetWidth;
+      if (inFlow || hugH) box.h = el.offsetHeight;
+      if (box.x !== node.x || box.y !== node.y || box.w !== node.w || box.h !== node.h) {
+        node.x = box.x;
+        node.y = box.y;
+        node.w = box.w;
+        node.h = box.h;
+        changed.push(node.id);
+      }
+    });
+    changed.forEach(function(id2) {
+      tree_exports.refitGroupsUp(screen, id2);
+    });
+    return changed;
+  }
+
   // src/canvas/sparkplug-live.js
   var SPARKPLUG_BINDING_PREFIX = "sparkplug:";
   function makeSparkplugBindingPath(ref) {
@@ -1357,6 +1604,18 @@
   function registerScreenRenderer(fn) {
     _renderScreen = fn;
   }
+  function nodeCss(comp, parent) {
+    var css2 = layout_exports.boxCss(comp, parent);
+    if (comp.type === "@frame") {
+      var f = layout_exports.frameCss(comp);
+      Object.keys(f).forEach(function(k) {
+        css2[k] = f[k];
+      });
+    }
+    css2.transform = layout_exports.canRotate(comp, parent) ? getComponentTransform(comp) : getComponentTransform({ flipH: comp.flipH, flipV: comp.flipV });
+    css2["box-sizing"] = "border-box";
+    return css2;
+  }
   function getComponentTransform(comp) {
     var transform = "rotate(" + (comp.rotation || 0) + "deg)";
     if (comp.flipH || comp.flipV) {
@@ -1602,22 +1861,15 @@
       window.$(el).text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
     }
   }
-  function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState) {
+  function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode) {
     if (innerComp.visibility === "remove") return;
-    var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css({
-      position: "absolute",
-      left: innerComp.x + "px",
-      top: innerComp.y + "px",
-      width: innerComp.w + "px",
-      height: innerComp.h + "px",
-      transform: getComponentTransform(innerComp),
-      "box-sizing": "border-box",
-      "pointer-events": "none",
-      display: innerComp.visibility === "hide" ? "none" : ""
-    }).appendTo(parentEl);
+    var css2 = nodeCss(innerComp, parentNode || null);
+    css2["pointer-events"] = "none";
+    css2.display = innerComp.visibility === "hide" ? "none" : css2.display || "";
+    var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css(css2).appendTo(parentEl);
     if (tree_exports.isContainer(innerComp)) {
       tree_exports.kids(innerComp).forEach(function(child) {
-        renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState);
+        renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp);
       });
       return;
     }
@@ -1654,29 +1906,24 @@
       renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState);
     });
   }
-  function renderComponent(comp, parentEl) {
+  function renderComponent(comp, parentEl, parentNode) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
+    if (parentNode === void 0) parentNode = tree_exports.parentOf(screen, comp.id);
+    var inFlow = layout_exports.isInFlow(comp, parentNode);
     if (!shouldRenderNode(comp.id)) return;
     var interactable = isNodeInteractable(comp.id);
     var container = tree_exports.isContainer(comp);
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css({
-      position: "absolute",
-      left: comp.x + "px",
-      top: comp.y + "px",
-      width: comp.w + "px",
-      height: comp.h + "px",
-      transform: getComponentTransform(comp),
-      "box-sizing": "border-box",
-      cursor: isNodeLocked(comp.id) || !interactable ? "default" : "move",
-      "user-select": "none",
-      "pointer-events": interactable ? "" : "none",
-      display: isNodeVisible(comp.id) ? "" : "none"
-    }).appendTo(parentEl);
+    var css2 = nodeCss(comp, parentNode);
+    css2.cursor = isNodeLocked(comp.id) || !interactable || inFlow ? "default" : "move";
+    css2["user-select"] = "none";
+    css2["pointer-events"] = interactable ? "" : "none";
+    css2.display = isNodeVisible(comp.id) ? css2.display || "" : "none";
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css2).appendTo(parentEl);
     if (container) {
       tree_exports.kids(comp).forEach(function(child) {
-        renderComponent(child, el);
+        renderComponent(child, el, comp);
       });
     } else {
       renderComponentContent(el.get(0), comp, {
@@ -1719,6 +1966,7 @@
       if (deeper && !isSelected(deeper)) selectOnly(deeper);
     });
     if (isNodeLocked(comp.id)) return;
+    if (inFlow) return;
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
     var clampOf = function(c) {
       var chain = tree_exports.ancestors(screen, c.id);
@@ -1851,6 +2099,14 @@
       }, artboardX, artboardY);
       return;
     }
+    if (typeof type === "string" && type.indexOf("@frame:") === 0) {
+      var mode = type.slice("@frame:".length);
+      var frame = layout_exports.makeFrame(mode, mode === "vertical" ? 160 : 240, mode === "horizontal" ? 80 : 160);
+      frame.id = genId();
+      frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid" }[mode] || "Frame";
+      placeNewNode(screen, frame, artboardX, artboardY);
+      return;
+    }
     if (type === "@lit-component") {
       placeNewNode(screen, {
         id: genId(),
@@ -1915,8 +2171,16 @@
   }
   function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
-    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
-    return typeDef && typeDef.capabilities || {};
+    var screen = getActiveScreen();
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    var caps;
+    if (comp.type === "@frame") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
+    else {
+      var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+      caps = typeDef && typeDef.capabilities || {};
+    }
+    if (!layout_exports.canRotate(comp, parent)) caps = Object.assign({}, caps, { rotatable: false });
+    return caps;
   }
   var HANDLE_SIZE = 8;
   function clearSelectionHandles() {
@@ -1928,13 +2192,10 @@
   function updateComponentBox(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    el.css({
-      left: comp.x + "px",
-      top: comp.y + "px",
-      width: comp.w + "px",
-      height: comp.h + "px",
-      transform: getComponentTransform(comp)
-    });
+    var screen = getActiveScreen();
+    var css2 = nodeCss(comp, screen ? tree_exports.parentOf(screen, comp.id) : null);
+    if (!isNodeVisible(comp.id)) css2.display = "none";
+    el.css(css2);
     if (comp.type === "@template") {
       var template = findTemplate(comp.templateId);
       if (template) {
@@ -1966,6 +2227,22 @@
       var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
         return a.type === "@group";
       });
+      var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+      var layoutAware = comp.type === "@frame" || layout_exports.hasAutoLayout(parent);
+      if (layoutAware) {
+        var axisW = /[ew]/.test(handleName), axisH = /[ns]/.test(handleName);
+        if (layout_exports.isInFlow(comp, parent)) {
+          var lc = Object.assign({}, comp.layoutChild || {});
+          if (axisW && lc.w && lc.w !== "fixed") lc.w = "fixed";
+          if (axisH && lc.h && lc.h !== "fixed") lc.h = "fixed";
+          comp.layoutChild = lc;
+        }
+        if (comp.type === "@frame" && comp.layout) {
+          comp.layout = Object.assign({}, comp.layout);
+          if (axisW && comp.layout.sizeW === "hug") comp.layout.sizeW = "fixed";
+          if (axisH && comp.layout.sizeH === "hug") comp.layout.sizeH = "fixed";
+        }
+      }
       var rad = (comp.rotation || 0) * Math.PI / 180;
       var cos = Math.cos(rad), sin = Math.sin(rad);
       function onMove2(ev) {
@@ -2000,7 +2277,13 @@
         document.removeEventListener("mousemove", onMove2);
         document.removeEventListener("mouseup", onUp);
         if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
-          if (inGroup) {
+          if (layoutAware) {
+            readbackLayout(screen);
+            tree_exports.refitGroupsUp(screen, comp.id);
+            pushTreeChange(screen, before);
+            renderActiveScreen();
+            selectOnly(comp.id);
+          } else if (inGroup) {
             tree_exports.refitGroupsUp(screen, comp.id);
             pushTreeChange(screen, before);
             renderActiveScreen();
@@ -4799,10 +5082,10 @@
         selection: this.selection.toJSON()
       };
       if (fields)
-        for (let prop in fields) {
-          let value = fields[prop];
+        for (let prop2 in fields) {
+          let value = fields[prop2];
           if (value instanceof StateField && this.config.address[value.id] != null)
-            result[prop] = value.spec.toJSON(this.field(fields[prop]), this);
+            result[prop2] = value.spec.toJSON(this.field(fields[prop2]), this);
         }
       return result;
     }
@@ -4817,9 +5100,9 @@
         throw new RangeError("Invalid JSON representation for EditorState");
       let fieldInit = [];
       if (fields)
-        for (let prop in fields) {
-          if (Object.prototype.hasOwnProperty.call(json, prop)) {
-            let field = fields[prop], value = json[prop];
+        for (let prop2 in fields) {
+          if (Object.prototype.hasOwnProperty.call(json, prop2)) {
+            let field = fields[prop2], value = json[prop2];
             fieldInit.push(field.init((state2) => field.spec.fromJSON(value, state2)));
           }
         }
@@ -5845,26 +6128,26 @@
       function render(selectors, spec2, target, isKeyframes) {
         let local = [], isAt = /^@(\w+)\b/.exec(selectors[0]), keyframes = isAt && isAt[1] == "keyframes";
         if (isAt && spec2 == null) return target.push(selectors[0] + ";");
-        for (let prop in spec2) {
-          let value = spec2[prop];
-          if (/&/.test(prop)) {
+        for (let prop2 in spec2) {
+          let value = spec2[prop2];
+          if (/&/.test(prop2)) {
             render(
-              prop.split(/,\s*/).map((part) => selectors.map((sel) => part.replace(/&/, sel))).reduce((a, b) => a.concat(b)),
+              prop2.split(/,\s*/).map((part) => selectors.map((sel) => part.replace(/&/, sel))).reduce((a, b) => a.concat(b)),
               value,
               target
             );
           } else if (value && typeof value == "object") {
-            if (!isAt) throw new RangeError("The value of a property (" + prop + ") should be a primitive value.");
-            render(splitSelector(prop), value, local, keyframes);
+            if (!isAt) throw new RangeError("The value of a property (" + prop2 + ") should be a primitive value.");
+            render(splitSelector(prop2), value, local, keyframes);
           } else if (value != null) {
-            local.push(prop.replace(/_.*/, "").replace(/[A-Z]/g, (l) => "-" + l.toLowerCase()) + ": " + value + ";");
+            local.push(prop2.replace(/_.*/, "").replace(/[A-Z]/g, (l) => "-" + l.toLowerCase()) + ": " + value + ";");
           }
         }
         if (local.length || keyframes) {
           target.push((finish && !isAt && !isKeyframes ? selectors.map(finish) : selectors).join(", ") + " {" + local.join(" ") + "}");
         }
       }
-      for (let prop in spec) render(splitSelector(prop), spec[prop], this.rules);
+      for (let prop2 in spec) render(splitSelector(prop2), spec[prop2], this.rules);
     }
     // :: () → string
     // Returns a string containing the module's CSS rules.
@@ -7550,7 +7833,7 @@
     get domAttrs() {
       return null;
     }
-    sync(track) {
+    sync(track2) {
       this.flags |= 2;
       if (this.flags & 4) {
         this.flags &= ~4;
@@ -7636,15 +7919,15 @@
       this.children.push(child);
       child.parent = this;
     }
-    sync(track) {
+    sync(track2) {
       if (this.flags & 2)
         return;
-      super.sync(track);
+      super.sync(track2);
       let parent = this.dom, prev = null, next;
-      let tracking = (track === null || track === void 0 ? void 0 : track.node) == parent ? track : null;
+      let tracking = (track2 === null || track2 === void 0 ? void 0 : track2.node) == parent ? track2 : null;
       let length = 0;
       for (let child of this.children) {
-        child.sync(track);
+        child.sync(track2);
         length += child.length + child.breakAfter;
         next = prev ? prev.nextSibling : parent.firstChild;
         if (tracking && next != child.dom)
@@ -7874,13 +8157,13 @@
       super(dom, text.length);
       this.text = text;
     }
-    sync(track) {
+    sync(track2) {
       if (this.flags & 2)
         return;
-      super.sync(track);
+      super.sync(track2);
       if (this.dom.nodeValue != this.text) {
-        if (track && track.node == this.dom)
-          track.written = true;
+        if (track2 && track2.node == this.dom)
+          track2.written = true;
         this.dom.nodeValue = this.text;
       }
     }
@@ -8815,9 +9098,9 @@
         }
         this.tile.dom.style.height = this.view.viewState.contentHeight / this.view.scaleY + "px";
         this.tile.dom.style.flexBasis = this.minWidth ? this.minWidth + "px" : "";
-        let track = browser.chrome || browser.ios ? { node: observer.selectionRange.focusNode, written: false } : void 0;
-        this.tile.sync(track);
-        if (track && (track.written || observer.selectionRange.focusNode != track.node || !this.tile.dom.contains(track.node)))
+        let track2 = browser.chrome || browser.ios ? { node: observer.selectionRange.focusNode, written: false } : void 0;
+        this.tile.sync(track2);
+        if (track2 && (track2.written || observer.selectionRange.focusNode != track2.node || !this.tile.dom.contains(track2.node)))
           this.forceSelection = true;
         this.tile.dom.style.height = "";
       });
@@ -15106,8 +15389,8 @@
       this.spacer = null;
       this.dom = document.createElement("div");
       this.dom.className = "cm-gutter" + (this.config.class ? " " + this.config.class : "");
-      for (let prop in config2.domEventHandlers) {
-        this.dom.addEventListener(prop, (event) => {
+      for (let prop2 in config2.domEventHandlers) {
+        this.dom.addEventListener(prop2, (event) => {
           let target = event.target, y;
           if (target != this.dom && this.dom.contains(target)) {
             while (target.parentNode != this.dom)
@@ -15118,7 +15401,7 @@
             y = event.clientY;
           }
           let line = view.lineBlockAtHeight(y - view.documentTop);
-          if (config2.domEventHandlers[prop](view, line, event))
+          if (config2.domEventHandlers[prop2](view, line, event))
             event.preventDefault();
         });
       }
@@ -15411,8 +15694,8 @@
     Retrieves a node prop for this type. Will return `undefined` if
     the prop isn't present on this node.
     */
-    prop(prop) {
-      return this.props[prop.id];
+    prop(prop2) {
+      return this.props[prop2.id];
     }
     /**
     True when this is the top node of a grammar.
@@ -15462,9 +15745,9 @@
     */
     static match(map) {
       let direct = /* @__PURE__ */ Object.create(null);
-      for (let prop in map)
-        for (let name2 of prop.split(" "))
-          direct[name2] = map[prop];
+      for (let prop2 in map)
+        for (let name2 of prop2.split(" "))
+          direct[name2] = map[prop2];
       return (node) => {
         for (let groups = node.prop(NodeProp.group), i2 = -1; i2 < (groups ? groups.length : 0); i2++) {
           let found = direct[i2 < 0 ? node.name : groups[i2]];
@@ -15506,10 +15789,10 @@
           if (add) {
             if (!newProps)
               newProps = Object.assign({}, type.props);
-            let value = add[1], prop = add[0];
-            if (prop.combine && prop.id in newProps)
-              value = prop.combine(newProps[prop.id], value);
-            newProps[prop.id] = value;
+            let value = add[1], prop2 = add[0];
+            if (prop2.combine && prop2.id in newProps)
+              value = prop2.combine(newProps[prop2.id], value);
+            newProps[prop2.id] = value;
           }
         }
         newTypes.push(newProps ? new NodeType(type.name, newProps, type.id, type.flags) : type);
@@ -15539,8 +15822,8 @@
       this.props = null;
       if (props && props.length) {
         this.props = /* @__PURE__ */ Object.create(null);
-        for (let [prop, value] of props)
-          this.props[typeof prop == "number" ? prop : prop.id] = value;
+        for (let [prop2, value] of props)
+          this.props[typeof prop2 == "number" ? prop2 : prop2.id] = value;
       }
     }
     /**
@@ -15658,8 +15941,8 @@
     Get the value of the given [node prop](#common.NodeProp) for this
     node. Works with both per-node and per-type props.
     */
-    prop(prop) {
-      return !prop.perNode ? this.type.prop(prop) : this.props ? this.props[prop.id] : void 0;
+    prop(prop2) {
+      return !prop2.perNode ? this.type.prop(prop2) : this.props ? this.props[prop2.id] : void 0;
     }
     /**
     Returns the node's [per-node props](#common.NodeProp.perNode) in a
@@ -15954,8 +16237,8 @@
         /* Side.Before */
       );
     }
-    prop(prop) {
-      return this._tree.prop(prop);
+    prop(prop2) {
+      return this._tree.prop(prop2);
     }
     enter(pos, side, mode = 0) {
       let mounted;
@@ -16101,8 +16384,8 @@
         /* Side.Before */
       );
     }
-    prop(prop) {
-      return this.type.prop(prop);
+    prop(prop2) {
+      return this.type.prop(prop2);
     }
     enter(pos, side, mode = 0) {
       if (mode & IterMode.ExcludeBuffers)
@@ -17073,11 +17356,11 @@
   }
   function styleTags(spec) {
     let byName = /* @__PURE__ */ Object.create(null);
-    for (let prop in spec) {
-      let tags3 = spec[prop];
+    for (let prop2 in spec) {
+      let tags3 = spec[prop2];
       if (!Array.isArray(tags3))
         tags3 = [tags3];
-      for (let part of prop.split(" "))
+      for (let part of prop2.split(" "))
         if (part) {
           let pieces = [], mode = 2, rest = part;
           for (let pos = 0; ; ) {
@@ -23306,22 +23589,22 @@
       let nodeProps = [];
       for (let i2 = 0; i2 < nodeNames.length; i2++)
         nodeProps.push([]);
-      function setProp(nodeID, prop, value) {
-        nodeProps[nodeID].push([prop, prop.deserialize(String(value))]);
+      function setProp(nodeID, prop2, value) {
+        nodeProps[nodeID].push([prop2, prop2.deserialize(String(value))]);
       }
       if (spec.nodeProps)
         for (let propSpec of spec.nodeProps) {
-          let prop = propSpec[0];
-          if (typeof prop == "string")
-            prop = NodeProp[prop];
+          let prop2 = propSpec[0];
+          if (typeof prop2 == "string")
+            prop2 = NodeProp[prop2];
           for (let i2 = 1; i2 < propSpec.length; ) {
             let next = propSpec[i2++];
             if (next >= 0) {
-              setProp(next, prop, propSpec[i2++]);
+              setProp(next, prop2, propSpec[i2++]);
             } else {
               let value = propSpec[i2 + -next];
               for (let j = -next; j > 0; j--)
-                setProp(propSpec[i2++], prop, value);
+                setProp(propSpec[i2++], prop2, value);
               i2++;
             }
           }
@@ -24315,14 +24598,14 @@
   function properties() {
     if (!_properties && typeof document == "object" && document.body) {
       let { style } = document.body, names = [], seen = /* @__PURE__ */ new Set();
-      for (let prop in style)
-        if (prop != "cssText" && prop != "cssFloat") {
-          if (typeof style[prop] == "string") {
-            if (/[A-Z]/.test(prop))
-              prop = prop.replace(/[A-Z]/g, (ch) => "-" + ch.toLowerCase());
-            if (!seen.has(prop)) {
-              names.push(prop);
-              seen.add(prop);
+      for (let prop2 in style)
+        if (prop2 != "cssText" && prop2 != "cssFloat") {
+          if (typeof style[prop2] == "string") {
+            if (/[A-Z]/.test(prop2))
+              prop2 = prop2.replace(/[A-Z]/g, (ch) => "-" + ch.toLowerCase());
+            if (!seen.has(prop2)) {
+              names.push(prop2);
+              seen.add(prop2);
             }
           }
         }
@@ -25671,6 +25954,11 @@
     if (!components.length && !availableTemplates.length) {
       window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "12px", "text-align": "center" }).text("No components registered.").appendTo(paletteEl);
     }
+    sectionHeader(paletteEl, "Layout");
+    makeComponentChip(paletteEl, "Frame", "@frame:none", "Layout", "fa-square-o");
+    makeComponentChip(paletteEl, "Row (auto layout)", "@frame:horizontal", "Layout", "fa-columns");
+    makeComponentChip(paletteEl, "Column (auto layout)", "@frame:vertical", "Layout", "fa-bars");
+    makeComponentChip(paletteEl, "Grid", "@frame:grid", "Layout", "fa-th");
     var categories = {};
     components.forEach(function(def) {
       var cat = def.category || "Components";
@@ -26007,7 +26295,268 @@
     return true;
   }
 
+  // src/sidebar/frame-inspector.js
+  var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
+  var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
+  var TRACK = { row: true, fields: { size: { type: "number", default: 1, min: 0 }, unit: { type: "enum", default: "fr", options: [{ value: "fr", label: "fr" }, { value: "px", label: "px" }, { value: "auto", label: "auto" }] } } };
+  function prop(key, type, label, extra) {
+    return Object.assign({ key, type, label, default: void 0, noReset: true }, extra || {});
+  }
+  var FRAME_META = {
+    id: "@frame",
+    stateList: [],
+    inputs: [],
+    outputs: [],
+    props: {
+      x: prop("x", "number", "X"),
+      y: prop("y", "number", "Y"),
+      w: prop("w", "number", "W", { min: 1 }),
+      h: prop("h", "number", "H", { min: 1 }),
+      mode: prop("mode", "enum", "Auto layout", { options: [
+        { value: "none", label: "None", icon: "fa fa-ban" },
+        { value: "horizontal", label: "Row", icon: "fa fa-long-arrow-right" },
+        { value: "vertical", label: "Column", icon: "fa fa-long-arrow-down" },
+        { value: "grid", label: "Grid", icon: "fa fa-th" }
+      ] }),
+      sizeW: prop("sizeW", "enum", "Width", { options: SIZING_FRAME }),
+      sizeH: prop("sizeH", "enum", "Height", { options: SIZING_FRAME }),
+      align: prop("align", "align", "Alignment"),
+      gap: prop("gap", "number", "Gap", { min: 0, unit: "px" }),
+      gapAuto: prop("gapAuto", "boolean", "Space between"),
+      rowGap: prop("rowGap", "number", "Row gap", { min: 0, unit: "px", placeholder: "= gap" }),
+      padding: prop("padding", "spacing", "Padding"),
+      wrap: prop("wrap", "boolean", "Wrap"),
+      columns: prop("columns", "list", "Columns", { item: TRACK }),
+      rows: prop("rows", "list", "Rows (empty = as needed)", { item: TRACK }),
+      fill: prop("fill", "color", "Fill"),
+      stroke: prop("stroke", "color", "Stroke"),
+      strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
+      radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
+      clip: prop("clip", "boolean", "Clip content")
+    }
+  };
+  var CHILD_META = {
+    id: "@layout-child",
+    stateList: [],
+    inputs: [],
+    outputs: [],
+    props: {
+      childW: prop("childW", "enum", "Width", { options: SIZING_CHILD }),
+      childH: prop("childH", "enum", "Height", { options: SIZING_CHILD }),
+      absolute: prop("absolute", "boolean", "Absolute position (out of the layout)"),
+      col: prop("col", "number", "Column", { min: 0, help: "0 = next free cell" }),
+      row: prop("row", "number", "Row", { min: 0 }),
+      colSpan: prop("colSpan", "number", "Column span", { min: 1 }),
+      rowSpan: prop("rowSpan", "number", "Row span", { min: 1 }),
+      minW: prop("minW", "number", "Min W", { min: 0 }),
+      maxW: prop("maxW", "number", "Max W", { min: 0 }),
+      minH: prop("minH", "number", "Min H", { min: 0 }),
+      maxH: prop("maxH", "number", "Max H", { min: 0 })
+    }
+  };
+  function frameView(frame) {
+    var l = layout_exports.layoutOf(frame), s = layout_exports.styleOf(frame);
+    return {
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      mode: l.mode,
+      sizeW: l.sizeW,
+      sizeH: l.sizeH,
+      align: { x: l.alignX, y: l.alignY },
+      gap: l.gap === "auto" ? 0 : l.gap,
+      gapAuto: l.gap === "auto",
+      rowGap: l.rowGap === void 0 ? "" : l.rowGap,
+      padding: l.padding,
+      wrap: !!l.wrap,
+      columns: l.columns,
+      rows: l.rows,
+      fill: s.fill,
+      stroke: s.stroke,
+      strokeWidth: s.strokeWidth,
+      radius: s.radius,
+      clip: !!s.clip
+    };
+  }
+  function writeFrame(frame, key, v) {
+    var layout = Object.assign({}, frame.layout || {});
+    var style = Object.assign({}, frame.style || {});
+    switch (key) {
+      case "x":
+      case "y":
+      case "w":
+      case "h":
+        frame[key] = Number(v) || 0;
+        return;
+      case "align":
+        layout.alignX = v.x;
+        layout.alignY = v.y;
+        break;
+      case "gapAuto":
+        layout.gap = v ? "auto" : 0;
+        break;
+      case "gap":
+        layout.gap = Number(v) || 0;
+        break;
+      case "mode":
+        layout.mode = v;
+        if (v !== "none" && !frame.layout) {
+          layout.padding = { t: 8, r: 8, b: 8, l: 8 };
+          layout.gap = 8;
+        }
+        break;
+      case "fill":
+      case "stroke":
+      case "strokeWidth":
+      case "radius":
+      case "clip":
+        style[key] = v;
+        break;
+      default:
+        layout[key] = v;
+    }
+    frame.layout = layout;
+    frame.style = style;
+  }
+  function childView(node) {
+    var lc = node.layoutChild || {};
+    return {
+      childW: lc.w || "fixed",
+      childH: lc.h || "fixed",
+      absolute: !!lc.absolute,
+      col: lc.col || 0,
+      row: lc.row || 0,
+      colSpan: lc.colSpan || 1,
+      rowSpan: lc.rowSpan || 1,
+      minW: node.minW || 0,
+      maxW: node.maxW || 0,
+      minH: node.minH || 0,
+      maxH: node.maxH || 0
+    };
+  }
+  function writeChild(node, key, v) {
+    if (/^(min|max)[WH]$/.test(key)) {
+      if (Number(v) > 0) node[key] = Number(v);
+      else delete node[key];
+      return;
+    }
+    var lc = Object.assign({}, node.layoutChild || {});
+    var map = { childW: "w", childH: "h" };
+    var k = map[key] || key;
+    if (v === "fixed" || v === false || v === 0 || k.indexOf("Span") !== -1 && Number(v) <= 1) delete lc[k];
+    else lc[k] = typeof v === "string" || typeof v === "boolean" ? v : Number(v);
+    if (Object.keys(lc).length) node.layoutChild = lc;
+    else delete node.layoutChild;
+  }
+  function commit(node, fn) {
+    var screen = getActiveScreen();
+    if (!screen || isNodeLocked(node.id)) return;
+    var before = treeSnapshot(screen);
+    fn();
+    tree_exports.refitGroupsUp(screen, node.id);
+    renderActiveScreen();
+    pushTreeChange(screen, before);
+    markDirty();
+    selectOnly(node.id);
+  }
+  function lit() {
+    return window.NEXA_LIT;
+  }
+  function renderFrameInspector(container, frame) {
+    if (!window.NexaKit || !lit()) return false;
+    var html = lit().html, nothing = lit().nothing;
+    var meta2 = Object.assign({}, FRAME_META, {
+      inspector: function(o) {
+        var p = o.p, bind = o.bind;
+        var auto = p.mode !== "none";
+        return html`
+                <nx-section heading="Frame" persist-key="nexa-frame:box">
+                    <nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>
+                    <nx-row><nx-number ${bind("w")} ?disabled="${auto && p.sizeW === "hug"}"></nx-number><nx-number ${bind("h")} ?disabled="${auto && p.sizeH === "hug"}"></nx-number></nx-row>
+                </nx-section>
+                <nx-section heading="Auto layout" persist-key="nexa-frame:layout">
+                    <nx-segmented ${bind("mode")} icons-only></nx-segmented>
+                    ${auto ? html`
+                        <nx-row><nx-segmented ${bind("sizeW")}></nx-segmented><nx-segmented ${bind("sizeH")}></nx-segmented></nx-row>
+                        <nx-row>
+                            <nx-align ${bind("align")}></nx-align>
+                            <div>
+                                <nx-number ${bind("gap")} ?disabled="${p.gapAuto}"></nx-number>
+                                ${p.mode !== "grid" ? html`<nx-checkbox ${bind("gapAuto")}></nx-checkbox>` : nothing}
+                            </div>
+                        </nx-row>
+                        <nx-spacing ${bind("padding")}></nx-spacing>
+                        ${p.mode === "horizontal" ? html`<nx-row><nx-checkbox ${bind("wrap")}></nx-checkbox>${p.wrap ? html`<nx-number ${bind("rowGap")}></nx-number>` : nothing}</nx-row>` : nothing}
+                        ${p.mode === "grid" ? html`<nx-list ${bind("columns")}></nx-list><nx-list ${bind("rows")}></nx-list><nx-number ${bind("rowGap")}></nx-number>` : nothing}
+                    ` : nothing}
+                </nx-section>
+                <nx-section heading="Fill & stroke" persist-key="nexa-frame:style">
+                    <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
+                    <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
+                    <nx-checkbox ${bind("clip")}></nx-checkbox>
+                </nx-section>`;
+      }
+    });
+    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+      meta: meta2,
+      props: frameView(frame),
+      persistKey: "nexa-frame",
+      set: function(key, v) {
+        commit(frame, function() {
+          writeFrame(frame, key, v);
+        });
+      }
+    });
+    return true;
+  }
+  function renderLayoutChildInspector(container, node, parent) {
+    if (!window.NexaKit || !lit() || !layout_exports.hasAutoLayout(parent)) return false;
+    var html = lit().html, nothing = lit().nothing;
+    var grid = layout_exports.layoutOf(parent).mode === "grid";
+    var canHug = layout_exports.hasAutoLayout(node);
+    var options = canHug ? SIZING_CHILD : SIZING_CHILD.filter(function(o) {
+      return o.value !== "hug";
+    });
+    var meta2 = Object.assign({}, CHILD_META, {
+      props: Object.assign({}, CHILD_META.props, {
+        childW: Object.assign({}, CHILD_META.props.childW, { options }),
+        childH: Object.assign({}, CHILD_META.props.childH, { options })
+      }),
+      inspector: function(o) {
+        var p = o.p, bind = o.bind;
+        return html`
+                <nx-section heading="In ${parent.name || "frame"} (auto layout)" persist-key="nexa-layout-child">
+                    <nx-checkbox ${bind("absolute")}></nx-checkbox>
+                    ${p.absolute ? nothing : html`
+                        <nx-row><nx-segmented ${bind("childW")}></nx-segmented><nx-segmented ${bind("childH")}></nx-segmented></nx-row>
+                        ${grid ? html`
+                            <nx-row><nx-number ${bind("col")}></nx-number><nx-number ${bind("row")}></nx-number></nx-row>
+                            <nx-row><nx-number ${bind("colSpan")}></nx-number><nx-number ${bind("rowSpan")}></nx-number></nx-row>` : nothing}
+                        <nx-row><nx-number ${bind("minW")}></nx-number><nx-number ${bind("maxW")}></nx-number></nx-row>
+                        <nx-row><nx-number ${bind("minH")}></nx-number><nx-number ${bind("maxH")}></nx-number></nx-row>`}
+                </nx-section>`;
+      }
+    });
+    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+      meta: meta2,
+      props: childView(node),
+      persistKey: "nexa-layout-child",
+      set: function(key, v) {
+        commit(node, function() {
+          writeChild(node, key, v);
+        });
+      }
+    });
+    return true;
+  }
+
   // src/sidebar/properties-panel.js
+  function renderLayoutChildSection(comp) {
+    var screen = getActiveScreen();
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    renderLayoutChildInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, parent);
+  }
   function previewText(code2, emptyLabel) {
     if (!code2) return emptyLabel;
     var firstLine = code2.split("\n")[0];
@@ -26019,7 +26568,10 @@
     if (state.selectedIds.length > 1) {
       window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
       var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-      window.$("<button>", { type: "button", title: "Group selection (Ctrl+G)" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
+      window.$("<button>", { type: "button", title: "Group selection (Ctrl+G)" }).text("Group").css({ flex: "1" }).on("click", function() {
+        groupSelection();
+      }).appendTo(groupRow);
+      window.$("<button>", { type: "button", title: "Frame selection (Ctrl+Alt+G)" }).text("Frame").css({ flex: "1" }).on("click", frameSelection).appendTo(groupRow);
       var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
       window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" }).on("click", function() {
         setLockedForSelection(true);
@@ -26062,6 +26614,7 @@
       setLockedForSelection(lockInput.is(":checked"), [comp.id]);
     });
     renderNameField(comp);
+    renderLayoutChildSection(comp);
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
     } else if (typeDef && typeof typeDef.renderProperties === "function") {
       typeDef.renderProperties(state.propertiesPane, comp, {
@@ -26352,8 +26905,10 @@
   function renderContainerProperties(comp) {
     var screen = getActiveScreen();
     var pane = state.propertiesPane;
-    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).html('<i class="fa fa-object-group"></i> ' + (comp.type === "@group" ? "Group" : "Frame") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
+    var isFrame = comp.type === "@frame";
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).html('<i class="fa ' + (isFrame ? "fa-square-o" : "fa-object-group") + '"></i> ' + (isFrame ? "Frame" : "Group") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
     renderNameField(comp);
+    renderLayoutChildSection(comp);
     var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(pane);
     var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
     lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked (with everything inside)"));
@@ -26361,7 +26916,8 @@
       setLockedForSelection(lockInput.is(":checked"), [comp.id]);
     });
     var btnRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "10px" }).appendTo(pane);
-    window.$("<button>", { type: "button", title: "Ungroup (Ctrl+Shift+G)" }).text("Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    window.$("<button>", { type: "button", title: (isFrame ? "Remove the frame, keep its children" : "Ungroup") + " (Ctrl+Shift+G)" }).text(isFrame ? "Remove frame" : "Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    if (isFrame && renderFrameInspector(window.$("<div>").appendTo(pane), comp)) return;
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position").appendTo(pane);
     [["x", "X"], ["y", "Y"]].forEach(function(pair2) {
       var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane);
@@ -26492,15 +27048,21 @@
     markDirty();
     renderPropertiesPanel();
   }
-  function nextGroupName(screen) {
+  function nextGroupName(screen, type) {
+    var word = type === "@frame" ? "Frame" : "Group";
+    var re = new RegExp("^" + word + " (\\d+)$");
     var n = 0;
     tree_exports.allNodes(screen, { orphans: true }).forEach(function(node) {
-      var m = node.type === "@group" && /^Group (\d+)$/.exec(node.name || "");
+      var m = node.type === (type || "@group") && re.exec(node.name || "");
       if (m) n = Math.max(n, Number(m[1]));
     });
-    return "Group " + (n + 1);
+    return word + " " + (n + 1);
   }
-  function groupSelection() {
+  function frameSelection() {
+    groupSelection("@frame");
+  }
+  function groupSelection(type) {
+    var asFrame = type === "@frame";
     var screen = getActiveScreen();
     if (!screen) return;
     var ids = state.selectedIds.filter(function(id2) {
@@ -26521,7 +27083,7 @@
       return;
     }
     var before = treeSnapshot(screen);
-    var group = tree_exports.wrapInGroup(screen, ids, { id: genId(), name: nextGroupName(screen) });
+    var group = tree_exports.wrapIn(screen, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen) });
     if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
     pushTreeChange(screen, before);
     markDirty();
@@ -26627,8 +27189,21 @@
     }
     applyZoomTransform();
     screen.components.forEach(function(node) {
-      renderComponent(node);
+      renderComponent(node, null, null);
     });
+    var changed = readbackLayout(screen);
+    if (changed.length && changed.some(function(id2) {
+      return tree_exports.ancestors(screen, id2).some(function(a) {
+        return a.type === "@group";
+      });
+    }) && !renderActiveScreen._again) {
+      renderActiveScreen._again = true;
+      try {
+        renderActiveScreen();
+      } finally {
+        renderActiveScreen._again = false;
+      }
+    }
   }
   registerScreenRenderer(renderActiveScreen);
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
@@ -27860,6 +28435,7 @@
         if (state.activeCanvasTab === "ui") {
           e.preventDefault();
           if (e.shiftKey) ungroupSelection();
+          else if (e.altKey) frameSelection();
           else groupSelection();
         }
       } else if (e.key === "c" || e.key === "C") {
@@ -28322,6 +28898,9 @@
       [
         ["fa fa-object-group", "Group selection (Ctrl+G)", function() {
           groupSelection();
+        }],
+        ["fa fa-square-o", "Frame selection (Ctrl+Alt+G)", function() {
+          frameSelection();
         }],
         ["fa fa-angle-double-down", "Expand all", function() {
           treeEl.setAllCollapsed(false);

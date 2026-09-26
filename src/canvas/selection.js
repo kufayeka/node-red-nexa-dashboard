@@ -129,17 +129,25 @@ export function toggleFlipForSelection(axis) {
     renderPropertiesPanel();
 }
 
-function nextGroupName(screen) {
+function nextGroupName(screen, type) {
+    var word = type === "@frame" ? "Frame" : "Group";
+    var re = new RegExp("^" + word + " (\\d+)$");
     var n = 0;
     Tree.allNodes(screen, { orphans: true }).forEach(function (node) {
-        var m = node.type === "@group" && /^Group (\d+)$/.exec(node.name || "");
+        var m = node.type === (type || "@group") && re.exec(node.name || "");
         if (m) n = Math.max(n, Number(m[1]));
     });
-    return "Group " + (n + 1);
+    return word + " " + (n + 1);
+}
+
+/** Ctrl+Alt+G: the selected siblings go into a new frame (no fill, no layout yet). */
+export function frameSelection() {
+    groupSelection("@frame");
 }
 
 /** Ctrl+G: the selected siblings go into a new group (it hugs them). */
-export function groupSelection() {
+export function groupSelection(type) {
+    var asFrame = type === "@frame";
     var screen = getActiveScreen();
     if (!screen) return;
     var ids = state.selectedIds.filter(function (id) { return findComponent(id) && isNodeInteractable(id); });
@@ -153,7 +161,9 @@ export function groupSelection() {
         return;
     }
     var before = treeSnapshot(screen);
-    var group = Tree.wrapInGroup(screen, ids, { id: genId(), name: nextGroupName(screen) });
+    var group = Tree.wrapIn(screen, ids, asFrame
+        ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} }
+        : { id: genId(), name: nextGroupName(screen) });
     if (parents[0]) Tree.refitGroupsUp(screen, group.id);
     pushTreeChange(screen, before);
     markDirty();

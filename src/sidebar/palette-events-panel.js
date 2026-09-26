@@ -198,6 +198,13 @@ export function buildPalette(paletteEl) {
         window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "12px", "text-align": "center" }).text("No components registered.").appendTo(paletteEl);
     }
 
+    // Frames: a box of their own, optionally laying out their children (src/model/layout.js)
+    sectionHeader(paletteEl, "Layout");
+    makeComponentChip(paletteEl, "Frame", "@frame:none", "Layout", "fa-square-o");
+    makeComponentChip(paletteEl, "Row (auto layout)", "@frame:horizontal", "Layout", "fa-columns");
+    makeComponentChip(paletteEl, "Column (auto layout)", "@frame:vertical", "Layout", "fa-bars");
+    makeComponentChip(paletteEl, "Grid", "@frame:grid", "Layout", "fa-th");
+
     // Group components by category
     var categories = {};
     components.forEach(function (def) {

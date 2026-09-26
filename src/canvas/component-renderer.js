@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
@@ -171,6 +171,20 @@ export function removeComponents(ids) {
 // so importing it back would be circular).
 var _renderScreen = function () {};
 export function registerScreenRenderer(fn) { _renderScreen = fn; }
+
+// The full CSS of a node's element: its box (plain x / y / w / h, or what its
+// parent's auto layout / its own hug decides — src/model/layout.js), a frame's
+// own style and display, and the transform (no rotation while a layout places it).
+export function nodeCss(comp, parent) {
+    var css = Layout.boxCss(comp, parent);
+    if (comp.type === "@frame") {
+        var f = Layout.frameCss(comp);
+        Object.keys(f).forEach(function (k) { css[k] = f[k]; });
+    }
+    css.transform = Layout.canRotate(comp, parent) ? getComponentTransform(comp) : getComponentTransform({ flipH: comp.flipH, flipV: comp.flipV });
+    css["box-sizing"] = "border-box";
+    return css;
+}
 
 export function getComponentTransform(comp) {
     var transform = "rotate(" + (comp.rotation || 0) + "deg)";
@@ -554,22 +568,15 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
 // keeps data-id lookups unique across multiple instances of the same
 // template (see the runtime's identical flattening approach for why this
 // matters once these need to be individually targetable).
-function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState) {
+function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode) {
     if (innerComp.visibility === "remove") return;
-    var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css({
-        position: "absolute",
-        left: innerComp.x + "px",
-        top: innerComp.y + "px",
-        width: innerComp.w + "px",
-        height: innerComp.h + "px",
-        transform: getComponentTransform(innerComp),
-        "box-sizing": "border-box",
-        "pointer-events": "none",
-        display: innerComp.visibility === "hide" ? "none" : ""
-    }).appendTo(parentEl);
+    var css = nodeCss(innerComp, parentNode || null);
+    css["pointer-events"] = "none";
+    css.display = innerComp.visibility === "hide" ? "none" : (css.display || "");
+    var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css(css).appendTo(parentEl);
     if (Tree.isContainer(innerComp)) {
         Tree.kids(innerComp).forEach(function (child) {
-            renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState);
+            renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp);
         });
         return;
     }
@@ -612,31 +619,26 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
 // `parentEl` — the artboard for a top-level node, the container's own element
 // for a child. Every container is a coordinate space: left / top are the
 // node's x / y relative to its parent.
-export function renderComponent(comp, parentEl) {
+export function renderComponent(comp, parentEl, parentNode) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
+    if (parentNode === undefined) parentNode = Tree.parentOf(screen, comp.id);
+    var inFlow = Layout.isInFlow(comp, parentNode);
     // "remove": no DOM node at all (the next full render draws it again when it
     // comes back); "hide": rendered but invisible and not interactable.
     if (!shouldRenderNode(comp.id)) return;
     var interactable = isNodeInteractable(comp.id);
     var container = Tree.isContainer(comp);
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css({
-        position: "absolute",
-        left: comp.x + "px",
-        top: comp.y + "px",
-        width: comp.w + "px",
-        height: comp.h + "px",
-        transform: getComponentTransform(comp),
-        "box-sizing": "border-box",
-        cursor: (isNodeLocked(comp.id) || !interactable) ? "default" : "move",
-        "user-select": "none",
-        "pointer-events": interactable ? "" : "none",
-        display: isNodeVisible(comp.id) ? "" : "none"
-    }).appendTo(parentEl);
+    var css = nodeCss(comp, parentNode);
+    css.cursor = (isNodeLocked(comp.id) || !interactable || inFlow) ? "default" : "move";
+    css["user-select"] = "none";
+    css["pointer-events"] = interactable ? "" : "none";
+    css.display = isNodeVisible(comp.id) ? (css.display || "") : "none";
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css).appendTo(parentEl);
 
     if (container) {
-        Tree.kids(comp).forEach(function (child) { renderComponent(child, el); });
+        Tree.kids(comp).forEach(function (child) { renderComponent(child, el, comp); });
     } else {
         renderComponentContent(el.get(0), comp, {
             namespace: comp.id, // node ids are unique in a surface, so the raw id IS the full namespace
@@ -680,6 +682,8 @@ export function renderComponent(comp, parentEl) {
     });
 
     if (isNodeLocked(comp.id)) return;
+    // the parent's auto layout places this node: it isn't dragged freely
+    if (inFlow) return;
     // Dragging moves the SELECTED nodes — when the pointer is on a child of a
     // selected group, the group moves and the child stays put inside it.
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
@@ -808,6 +812,16 @@ export function addComponentAt(type, artboardX, artboardY) {
             props: {},
             paramValues: {} // per-instance overrides of template.params[].defaultValue — see Properties panel
         }, artboardX, artboardY);
+        return;
+    }
+
+    // A frame from the palette's "Layout" section: "@frame:<layout mode>"
+    if (typeof type === "string" && type.indexOf("@frame:") === 0) {
+        var mode = type.slice("@frame:".length);
+        var frame = Layout.makeFrame(mode, mode === "vertical" ? 160 : 240, mode === "horizontal" ? 80 : 160);
+        frame.id = genId();
+        frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid" }[mode] || "Frame";
+        placeNewNode(screen, frame, artboardX, artboardY);
         return;
     }
 

@@ -9,7 +9,7 @@
 // Built on the property kit's nx-tree (the MQTT Sparkplug explorer's look).
 import { state, getActiveScreen, markDirty, Tree, findTemplate } from "../state.js";
 import { pushHistory, pushTreeChange, treeSnapshot, onTreeChange } from "../history.js";
-import { selectOnly, selectMultiple, onSelectionChange, isSelected, groupSelection } from "../canvas/selection.js";
+import { selectOnly, selectMultiple, onSelectionChange, isSelected, groupSelection, frameSelection } from "../canvas/selection.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { setHierarchyRefresher } from "./properties-panel.js";
 
@@ -211,6 +211,7 @@ export function renderHierarchyPanel() {
         bar.style.cssText = "display:flex;align-items:center;gap:4px;margin-bottom:6px;";
         bar.innerHTML = '<span style="flex:1;font-weight:600;font-size:12px;"><i class="fa fa-sitemap"></i> Hierarchy</span>';
         [["fa fa-object-group", "Group selection (Ctrl+G)", function () { groupSelection(); }],
+            ["fa fa-square-o", "Frame selection (Ctrl+Alt+G)", function () { frameSelection(); }],
             ["fa fa-angle-double-down", "Expand all", function () { treeEl.setAllCollapsed(false); }],
             ["fa fa-angle-double-up", "Collapse all", function () { treeEl.setAllCollapsed(true); }]].forEach(function (b) {
             var btn = document.createElement("button");

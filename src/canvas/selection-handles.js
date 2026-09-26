@@ -1,9 +1,10 @@
 // --- Selection Handles, Resizing, and Rotation ---------------------------
-import { state, snap, markDirty, getActiveScreen, findTemplate, Tree, isNodeLocked } from "../state.js";
+import { state, snap, markDirty, getActiveScreen, findTemplate, Tree, Layout, isNodeLocked, isNodeVisible } from "../state.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { setLockedForSelection, selectOnly } from "./selection.js";
-import { getComponentTransform } from "./component-renderer.js";
+import { nodeCss } from "./component-renderer.js";
 import { renderActiveScreen } from "./canvas-ui.js";
+import { readbackLayout } from "./layout-readback.js";
 
 // The handles live on the artboard, so they need the node's box in surface
 // coordinates (a nested node's x / y are relative to its parent).
@@ -13,10 +14,19 @@ function boxOf(comp) {
 }
 
 // Groups hug their children: resizing / rotating one isn't offered (yet).
+// Nothing a parent's auto layout places rotates (src/model/layout.js).
 function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
-    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
-    return (typeDef && typeDef.capabilities) || {};
+    var screen = getActiveScreen();
+    var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+    var caps;
+    if (comp.type === "@frame") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
+    else {
+        var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+        caps = (typeDef && typeDef.capabilities) || {};
+    }
+    if (!Layout.canRotate(comp, parent)) caps = Object.assign({}, caps, { rotatable: false });
+    return caps;
 }
 
 const HANDLE_SIZE = 8;
@@ -31,11 +41,10 @@ export function clearSelectionHandles() {
 export function updateComponentBox(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    el.css({
-        left: comp.x + "px", top: comp.y + "px",
-        width: comp.w + "px", height: comp.h + "px",
-        transform: getComponentTransform(comp)
-    });
+    var screen = getActiveScreen();
+    var css = nodeCss(comp, screen ? Tree.parentOf(screen, comp.id) : null);
+    if (!isNodeVisible(comp.id)) css.display = "none"; // a hidden node stays hidden
+    el.css(css);
     // A "@template" instance's actual content lives in a child wrapper
     // scaled from the template's own intrinsic width/height (see
     // renderTemplateInstance in component-renderer.js) — resizing the OUTER
@@ -70,6 +79,25 @@ export function wireResizeHandle(handle, comp, handleName) {
         var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
         var before = screen ? treeSnapshot(screen) : null;
         var inGroup = screen && Tree.ancestors(screen, comp.id).some(function (a) { return a.type === "@group"; });
+        // A frame, or a node its parent's auto layout places: resizing an axis
+        // makes it Fixed on that axis (Figma), and the browser re-flows the
+        // rest live; the boxes are read back at the end (layout-readback.js).
+        var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+        var layoutAware = comp.type === "@frame" || Layout.hasAutoLayout(parent);
+        if (layoutAware) {
+            var axisW = /[ew]/.test(handleName), axisH = /[ns]/.test(handleName);
+            if (Layout.isInFlow(comp, parent)) {
+                var lc = Object.assign({}, comp.layoutChild || {});
+                if (axisW && lc.w && lc.w !== "fixed") lc.w = "fixed";
+                if (axisH && lc.h && lc.h !== "fixed") lc.h = "fixed";
+                comp.layoutChild = lc;
+            }
+            if (comp.type === "@frame" && comp.layout) {
+                comp.layout = Object.assign({}, comp.layout);
+                if (axisW && comp.layout.sizeW === "hug") comp.layout.sizeW = "fixed";
+                if (axisH && comp.layout.sizeH === "hug") comp.layout.sizeH = "fixed";
+            }
+        }
         var rad = (comp.rotation || 0) * Math.PI / 180;
         var cos = Math.cos(rad), sin = Math.sin(rad);
 
@@ -97,7 +125,14 @@ export function wireResizeHandle(handle, comp, handleName) {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
             if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
-                if (inGroup) {
+                if (layoutAware) {
+                    // sizing modes may have changed and the siblings moved: one tree step
+                    readbackLayout(screen);
+                    Tree.refitGroupsUp(screen, comp.id);
+                    pushTreeChange(screen, before);
+                    renderActiveScreen();
+                    selectOnly(comp.id);
+                } else if (inGroup) {
                     // its groups hug again (shifting coordinates): one tree step
                     Tree.refitGroupsUp(screen, comp.id);
                     pushTreeChange(screen, before);

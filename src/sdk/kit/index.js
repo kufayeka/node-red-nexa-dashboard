@@ -12,6 +12,7 @@ import { NxText, NxTextarea, NxNumber, NxSelect, NxSegmented, NxCombobox, NxChec
 import { NxCode, NxTag, NxList, NxStateSwitcher, NxAlert, NxBadge, NxField, NxSection, NxTabs, NxTab, NxRow } from "./composite.js";
 import { renderInspector, validateProp, openDialog } from "./inspector.js";
 import { NxTree } from "./tree.js";
+import { NxAlign, NxSpacing } from "./layout-widgets.js";
 
 var ELEMENTS = {
     "nx-text": NxText, "nx-textarea": NxTextarea, "nx-number": NxNumber, "nx-select": NxSelect, "nx-segmented": NxSegmented,
@@ -19,7 +20,7 @@ var ELEMENTS = {
     "nx-code": NxCode, "nx-tag": NxTag, "nx-list": NxList, "nx-state-switcher": NxStateSwitcher,
     "nx-alert": NxAlert, "nx-badge": NxBadge, "nx-field": NxField,
     "nx-section": NxSection, "nx-tabs": NxTabs, "nx-tab": NxTab, "nx-row": NxRow,
-    "nx-tree": NxTree
+    "nx-tree": NxTree, "nx-align": NxAlign, "nx-spacing": NxSpacing
 };
 
 // A plugin's own inspector widget: factory({ KitElement, html, css, nothing, str, icon }) -> class.
