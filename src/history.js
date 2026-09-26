@@ -1,5 +1,5 @@
 // --- Undo / Redo History Stack -------------------------------------------
-import { state, markDirty, findSurfaceById, getActiveScreen } from "./state.js";
+import { state, markDirty, findSurfaceById, getActiveScreen, Tree } from "./state.js";
 
 let _renderActiveScreenFn = null;
 let _renderLogicCanvasFn = null;
@@ -12,6 +12,49 @@ export const MAX_HISTORY = 20;
 export function registerHistoryRenderers(renderActiveScreen, renderLogicCanvas) {
     _renderActiveScreenFn = renderActiveScreen;
     _renderLogicCanvasFn = renderLogicCanvas;
+}
+
+// The tree of a surface as JSON — the "before" of a structural change.
+export function treeSnapshot(surface) {
+    return JSON.stringify({ c: surface.components || [], o: surface.orphans || [] });
+}
+
+// Puts a snapshot back IN PLACE: node objects (and the arrays holding them)
+// that exist on both sides are reused by id, so anything still holding a
+// node — a rendered element's handlers, the inspector — keeps a live object.
+function restoreTree(surface, snap) {
+    var existing = {};
+    Tree.allNodes(surface, { orphans: true }).forEach(function (n) { existing[n.id] = n; });
+    function revive(list, into) {
+        var out = into || [];
+        out.length = 0;
+        list.forEach(function (s) {
+            var node = existing[s.id] || {};
+            var oldChildren = node.children;
+            Object.keys(node).forEach(function (k) { delete node[k]; });
+            Object.keys(s).forEach(function (k) { if (k !== "children") node[k] = s[k]; });
+            if (s.children) node.children = revive(s.children, Array.isArray(oldChildren) ? oldChildren : []);
+            out.push(node);
+        });
+        return out;
+    }
+    surface.components = revive(snap.c, surface.components);
+    surface.orphans = revive(snap.o, surface.orphans);
+}
+
+var treeListeners = [];
+/** Called after every structural change of a tree (and after undo / redo). */
+export function onTreeChange(fn) { treeListeners.push(fn); }
+function notifyTreeChange() {
+    treeListeners.forEach(function (fn) { try { fn(); } catch (e) { /* a listener must not break editing */ } });
+}
+
+/** Records a structural change: call treeSnapshot() before it, this after. */
+export function pushTreeChange(surface, before) {
+    var after = treeSnapshot(surface);
+    if (after === before) return;
+    pushHistory({ t: "tree", screenId: surface.id, before: before, after: after });
+    notifyTreeChange();
 }
 
 export function pushHistory(ev) {
@@ -28,65 +71,49 @@ export function applyHistoryMutation(ev, direction) {
     if (ev.t === "multi") {
         var subs = direction === "undo" ? ev.events.slice().reverse() : ev.events;
         subs.forEach(function (sub) { applyHistoryMutation(sub, direction); });
-    } else if (ev.t === "add") {
-        if (direction === "undo") {
-            screen.components = screen.components.filter(function (c) { return c.id !== ev.comp.id; });
-        } else {
-            screen.components.push(ev.comp);
-        }
-    } else if (ev.t === "delete") {
-        if (direction === "undo") {
-            screen.components.push(ev.comp);
-        } else {
-            screen.components = screen.components.filter(function (c) { return c.id !== ev.comp.id; });
-        }
+    } else if (ev.t === "tree") {
+        // a structural change (add / delete / group / ungroup / reparent / paste /
+        // orphan): the surface's whole tree before and after, as JSON
+        var snap = JSON.parse(direction === "undo" ? ev.before : ev.after);
+        restoreTree(screen, snap);
     } else if (ev.t === "move") {
-        var comp = screen.components.find(function (c) { return c.id === ev.id; });
+        var comp = Tree.find(screen, ev.id);
         if (!comp) return;
         var pos = direction === "undo" ? ev.from : ev.to;
         comp.x = pos.x;
         comp.y = pos.y;
+        Tree.refitGroupsUp(screen, ev.id);
     } else if (ev.t === "resize") {
-        var rcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        var rcomp = Tree.find(screen, ev.id);
         if (!rcomp) return;
         var box = direction === "undo" ? ev.from : ev.to;
         rcomp.x = box.x; rcomp.y = box.y; rcomp.w = box.w; rcomp.h = box.h;
+        Tree.refitGroupsUp(screen, ev.id);
     } else if (ev.t === "rotate") {
-        var tcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        var tcomp = Tree.find(screen, ev.id);
         if (!tcomp) return;
         tcomp.rotation = direction === "undo" ? ev.from : ev.to;
     } else if (ev.t === "flip") {
-        var fcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        var fcomp = Tree.find(screen, ev.id);
         if (!fcomp) return;
         var fstate = direction === "undo" ? ev.from : ev.to;
         fcomp.flipH = fstate.flipH;
         fcomp.flipV = fstate.flipV;
     } else if (ev.t === "props") {
         // one prop of an SDK component, edited in the property kit (sidebar/kit-inspector.js)
-        var pcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        var pcomp = Tree.find(screen, ev.id);
         if (!pcomp) return;
         pcomp.props = pcomp.props || {};
         var pv = direction === "undo" ? ev.from : ev.to;
         if (pv === undefined) delete pcomp.props[ev.key];
         else pcomp.props[ev.key] = pv !== null && typeof pv === "object" ? JSON.parse(JSON.stringify(pv)) : pv;
-    } else if (ev.t === "group") {
-        screen.groups = screen.groups || [];
-        if (direction === "undo") {
-            ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) delete c.g; });
-            screen.groups = screen.groups.filter(function (g) { return g.id !== ev.group.id; });
-        } else {
-            if (!screen.groups.some(function (g) { return g.id === ev.group.id; })) screen.groups.push(ev.group);
-            ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) c.g = ev.group.id; });
-        }
-    } else if (ev.t === "ungroup") {
-        screen.groups = screen.groups || [];
-        if (direction === "undo") {
-            if (!screen.groups.some(function (g) { return g.id === ev.group.id; })) screen.groups.push(ev.group);
-            ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) c.g = ev.group.id; });
-        } else {
-            ev.memberIds.forEach(function (id) { var c = screen.components.find(function (x) { return x.id === id; }); if (c) delete c.g; });
-            screen.groups = screen.groups.filter(function (g) { return g.id !== ev.group.id; });
-        }
+    } else if (ev.t === "node") {
+        // one field of a node itself (name, visibility, locked, layout, …)
+        var ncomp = Tree.find(screen, ev.id);
+        if (!ncomp) return;
+        var nv = direction === "undo" ? ev.from : ev.to;
+        if (nv === undefined) delete ncomp[ev.key];
+        else ncomp[ev.key] = nv !== null && typeof nv === "object" ? JSON.parse(JSON.stringify(nv)) : nv;
     } else if (ev.t === "addLogicNode") {
         if (direction === "undo") {
             screen.logic.nodes = screen.logic.nodes.filter(function (n) { return n.id !== ev.node.id; });
@@ -138,6 +165,7 @@ export function applyHistoryEvent(ev, direction) {
     } else {
         state.selectedIds = [];
         if (isActiveSurface && _renderActiveScreenFn) _renderActiveScreenFn();
+        notifyTreeChange();
     }
     markDirty();
 }

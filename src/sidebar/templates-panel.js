@@ -1,5 +1,5 @@
 // --- Reusable Screen Templates: the "Templates" sidebar tab -------------
-import { state, genId, markDirty, findTemplate, makeTemplate } from "../state.js";
+import { state, genId, markDirty, findTemplate, makeTemplate, Tree } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
@@ -17,7 +17,7 @@ function templateUsageCount(id) {
     var count = 0;
     function scan(list) {
         (list || []).forEach(function (surface) {
-            (surface.components || []).forEach(function (c) {
+            Tree.allNodes(surface, { orphans: true }).forEach(function (c) {
                 if (c.type === "@template" && c.templateId === id) count++;
             });
         });

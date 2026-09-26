@@ -1,85 +1,62 @@
-import { state, findComponent, groupMemberIds, getActiveScreen, genId, markDirty } from "../state.js";
+// --- Copy / cut / paste of canvas nodes (whole subtrees) ------------------------
+import { state, findComponent, getActiveScreen, genId, markDirty, Tree } from "../state.js";
 import { removeComponents, renderComponent } from "./component-renderer.js";
-import { pushHistory } from "../history.js";
+import { pushTreeChange, treeSnapshot } from "../history.js";
 import { selectMultiple } from "./selection.js";
+import { renderActiveScreen } from "./canvas-ui.js";
 
-var clipboard = null; // array of cloned component objects
-var clipboardSource = null; // "copy" | "cut"
-var clipboardFullGroups = null; // {groupId: true} — only groups where EVERY member was selected at copy time
+var clipboard = null;        // deep copies of the copied nodes (a container carries its children)
+var clipboardSource = null;  // "copy" | "cut"
 
 export function copySelection(isCut) {
     if (!state.selectedIds.length) return;
-    var members = state.selectedIds.map(findComponent).filter(Boolean);
-    if (!members.length) return;
-
-    var touchedGroups = {};
-    members.forEach(function (c) { if (c.g) touchedGroups[c.g] = true; });
-    var fullGroups = {};
-    Object.keys(touchedGroups).forEach(function (gid) {
-        var allMembers = groupMemberIds(gid);
-        var selectedMembers = allMembers.filter(function (id) { return state.selectedIds.indexOf(id) !== -1; });
-        if (allMembers.length && selectedMembers.length === allMembers.length) fullGroups[gid] = true;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    // a node inside another selected node travels with it
+    var roots = state.selectedIds.filter(function (id) {
+        return findComponent(id) && !state.selectedIds.some(function (o) { return o !== id && Tree.isAncestor(screen, o, id); });
     });
-
-    clipboard = JSON.parse(JSON.stringify(members));
-    clipboardFullGroups = fullGroups;
+    if (!roots.length) return;
+    clipboard = JSON.parse(JSON.stringify(roots.map(findComponent)));
     clipboardSource = isCut ? "cut" : "copy";
-
-    if (isCut) {
-        removeComponents(state.selectedIds.slice());
-    }
+    if (isCut) removeComponents(roots);
 }
 
+// Pastes next to the selection (into the selected node's parent), or onto the
+// root. A copy gets new ids (everywhere in its subtree) and a +20 offset; a
+// cut comes back with the same ids and place, once — further pastes copy.
 export function pasteClipboard() {
     if (!clipboard || !clipboard.length) return;
     var screen = getActiveScreen();
     if (!screen) return;
-    screen.groups = screen.groups || [];
+    var anchor = state.selectedIds[0] && findComponent(state.selectedIds[0]);
+    var anchorLoc = anchor ? Tree.locate(screen, anchor.id) : null;
+    var parent = anchorLoc && !anchorLoc.orphan ? anchorLoc.parent : null;
     var regenerateIds = clipboardSource === "copy";
-    var groupIdMap = {};
+    var before = treeSnapshot(screen);
 
-    var newComps = clipboard.map(function (c) {
-        var copy = JSON.parse(JSON.stringify(c));
-        copy.id = regenerateIds ? genId() : copy.id;
+    var newNodes = clipboard.map(function (c) {
+        var copy = regenerateIds ? Tree.cloneWithNewIds(c, genId) : JSON.parse(JSON.stringify(c));
         if (regenerateIds) {
-            copy.x += 20;
-            copy.y += 20;
+            copy.x = (copy.x || 0) + 20;
+            copy.y = (copy.y || 0) + 20;
         }
+        Tree.insert(screen, parent ? parent.id : null, null, copy);
         return copy;
     });
-
-    newComps.forEach(function (copy) {
-        if (!copy.g) return;
-        if (!clipboardFullGroups[copy.g]) {
-            delete copy.g; // partial group membership — don't dangle-reference a group that won't have every member
-        } else if (regenerateIds) {
-            if (!groupIdMap[copy.g]) groupIdMap[copy.g] = genId();
-            copy.g = groupIdMap[copy.g];
-        }
-    });
-
-    Object.keys(groupIdMap).forEach(function (oldGid) {
-        var original = (screen.groups || []).find(function (g) { return g.id === oldGid; });
-        var newGroup = original ? JSON.parse(JSON.stringify(original)) : { x: 0, y: 0, w: 0, h: 0 };
-        newGroup.id = groupIdMap[oldGid];
-        screen.groups.push(newGroup);
-    });
-
-    newComps.forEach(function (copy) { screen.components.push(copy); });
-    newComps.forEach(renderComponent);
-
-    if (newComps.length === 1) {
-        pushHistory({ t: "add", screenId: screen.id, comp: newComps[0] });
-    } else {
-        pushHistory({ t: "multi", screenId: screen.id, events: newComps.map(function (c) { return { t: "add", screenId: screen.id, comp: c }; }) });
+    if (parent && parent.type === "@group") {
+        Tree.fitGroup(parent);                  // the group hugs the pasted nodes too
+        Tree.refitGroupsUp(screen, parent.id);  // and so do the groups around it
     }
+
+    pushTreeChange(screen, before);
     markDirty();
-    selectMultiple(newComps.map(function (c) { return c.id; }));
+    if (parent) renderActiveScreen();
+    else newNodes.forEach(function (n) { renderComponent(n); });
+    selectMultiple(newNodes.map(function (c) { return c.id; }));
 
     if (clipboardSource === "cut") {
-        clipboard = newComps;
-        clipboardFullGroups = {};
-        newComps.forEach(function (c) { if (c.g) clipboardFullGroups[c.g] = true; });
+        clipboard = JSON.parse(JSON.stringify(newNodes));
         clipboardSource = "copy";
     }
 }

@@ -1,8 +1,7 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, groupMemberIds } from "../state.js";
-import { isLayerVisible, isLayerInteractable, shouldRenderLayer } from "./layers.js";
-import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals } from "./selection.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
-import { pushHistory } from "../history.js";
+import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeyOfBindingString } from "./sparkplug-live.js";
 
 // Re-invokes just one component's render() with its current props
@@ -60,7 +59,7 @@ export function refreshComponentRender(comp) {
 // today).
 function buildSparkplugBindingIndex(screen) {
     var index = {};
-    (screen.components || []).forEach(function (comp) {
+    Tree.allNodes(screen).forEach(function (comp) {
         var list = [];
         if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
             list.push(comp.sparkplugBinding);
@@ -138,27 +137,43 @@ export function ensureSparkplugLiveRenderWired() {
     });
 }
 
+// Deletes nodes (not locked ones). A container's children are not deleted:
+// they become orphans (Hierarchy -> Unplaced) and can be placed again.
 export function removeComponents(ids) {
     var screen = getActiveScreen();
     if (!screen) return;
-    var toRemove = ids
-        .map(function (id) { return screen.components.find(function (c) { return c.id === id; }); })
-        .filter(function (c) { return c && !c.locked; });
-    if (!toRemove.length) return;
-    var removeIds = toRemove.map(function (c) { return c.id; });
-    screen.components = screen.components.filter(function (c) { return removeIds.indexOf(c.id) === -1; });
-    if (state.artboardEl) {
-        removeIds.forEach(function (id) { state.artboardEl.find('[data-id="' + id + '"]').remove(); });
+    var targets = ids.filter(function (id) { return Tree.find(screen, id) && !isNodeLocked(id); });
+    // a node inside another target goes with it
+    targets = targets.filter(function (id) { return !targets.some(function (other) { return other !== id && Tree.isAncestor(screen, other, id); }); });
+    if (!targets.length) return;
+    var before = treeSnapshot(screen);
+    var parents = {};
+    targets.forEach(function (id) {
+        var p = Tree.parentOf(screen, id);
+        if (p) parents[p.id] = true;
+        Tree.remove(screen, id);
+        if (state.artboardEl) state.artboardEl.find('[data-id="' + id + '"]').remove();
+    });
+    // a group that lost a member hugs the rest
+    Object.keys(parents).forEach(function (pid) {
+        var p = Tree.find(screen, pid);
+        if (p && p.type === "@group") { Tree.fitGroup(p); Tree.refitGroupsUp(screen, pid); }
+    });
+    state.selectedIds = state.selectedIds.filter(function (id) { return !!Tree.find(screen, id) && !Tree.locate(screen, id).orphan; });
+    pushTreeChange(screen, before);
+    if (Object.keys(parents).length && state.artboardEl) {
+        var keep = state.selectedIds.slice();
+        _renderScreen();
+        state.selectedIds = keep;
     }
-    state.selectedIds = state.selectedIds.filter(function (id) { return removeIds.indexOf(id) === -1; });
     refreshSelectionVisuals();
-    if (toRemove.length === 1) {
-        pushHistory({ t: "delete", screenId: screen.id, comp: toRemove[0] });
-    } else {
-        pushHistory({ t: "multi", screenId: screen.id, events: toRemove.map(function (c) { return { t: "delete", screenId: screen.id, comp: c }; }) });
-    }
     markDirty();
 }
+
+// canvas-ui.js registers its renderActiveScreen here (it imports this module,
+// so importing it back would be circular).
+var _renderScreen = function () {};
+export function registerScreenRenderer(fn) { _renderScreen = fn; }
 
 export function getComponentTransform(comp) {
     var transform = "rotate(" + (comp.rotation || 0) + "deg)";
@@ -543,6 +558,7 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
 // template (see the runtime's identical flattening approach for why this
 // matters once these need to be individually targetable).
 function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState) {
+    if (innerComp.visibility === "remove") return;
     var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css({
         position: "absolute",
         left: innerComp.x + "px",
@@ -551,8 +567,15 @@ function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTempla
         height: innerComp.h + "px",
         transform: getComponentTransform(innerComp),
         "box-sizing": "border-box",
-        "pointer-events": "none"
+        "pointer-events": "none",
+        display: innerComp.visibility === "hide" ? "none" : ""
     }).appendTo(parentEl);
+    if (Tree.isContainer(innerComp)) {
+        Tree.kids(innerComp).forEach(function (child) {
+            renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState);
+        });
+        return;
+    }
     renderComponentContent(el.get(0), innerComp, { namespace: namespacedId, mode: "editor", getRawProps: function () { return innerComp.props || {}; }, emit: function () {} }, namespacedId, visitedTemplateIds, paramState);
 }
 
@@ -588,23 +611,20 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
     });
 }
 
-export function renderComponent(comp) {
+// Draws one node (and, for a container, its children inside it) into
+// `parentEl` — the artboard for a top-level node, the container's own element
+// for a child. Every container is a coordinate space: left / top are the
+// node's x / y relative to its parent.
+export function renderComponent(comp, parentEl) {
     var screen = getActiveScreen();
     if (!screen || !state.artboardEl) return;
-    // A "remove"-state layer's components get no DOM node at all — coming
-    // back out of it (via the Layers panel or a Layer Control node setting
-    // the layer back to show/hide) just means the NEXT renderActiveScreen()
-    // (which always rebuilds every component from scratch — see canvas-ui.js)
-    // naturally draws this one fresh, so no separate "remount" path is needed.
-    if (!shouldRenderLayer(comp.layerId)) return;
-    // "hide" still renders (so toggling back to "show" is instant) but must
-    // be locked out of selection/dragging exactly like "remove" is —
-    // display:none already blocks clicks, but NOT geometry-based marquee
-    // select (see selection.js), so this also has to gate the mousedown/
-    // draggable wiring below, not just the CSS.
-    var interactable = isLayerInteractable(comp.layerId);
-    var dragStart = null;
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" }).css({
+    parentEl = parentEl || state.artboardEl;
+    // "remove": no DOM node at all (the next full render draws it again when it
+    // comes back); "hide": rendered but invisible and not interactable.
+    if (!shouldRenderNode(comp.id)) return;
+    var interactable = isNodeInteractable(comp.id);
+    var container = Tree.isContainer(comp);
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css({
         position: "absolute",
         left: comp.x + "px",
         top: comp.y + "px",
@@ -612,113 +632,153 @@ export function renderComponent(comp) {
         height: comp.h + "px",
         transform: getComponentTransform(comp),
         "box-sizing": "border-box",
-        cursor: (comp.locked || !interactable) ? "default" : "move",
+        cursor: (isNodeLocked(comp.id) || !interactable) ? "default" : "move",
         "user-select": "none",
         "pointer-events": interactable ? "" : "none",
-        display: isLayerVisible(comp.layerId) ? "" : "none"
-    }).appendTo(state.artboardEl);
+        display: isNodeVisible(comp.id) ? "" : "none"
+    }).appendTo(parentEl);
 
-    renderComponentContent(el.get(0), comp, {
-        namespace: comp.id, // top-level, so the raw id IS the full namespace
-        mode: "editor",
-        getRawProps: function () { return comp.props || {}; },
-        emit: function (eventName, payload) {
-            if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
-        },
-        setBindableValue: function (name, value) {
-            comp.props = comp.props || {};
-            comp.props[name] = value;
-            markDirty();
-        }
-    }, comp.id, []);
+    if (container) {
+        Tree.kids(comp).forEach(function (child) { renderComponent(child, el); });
+    } else {
+        renderComponentContent(el.get(0), comp, {
+            namespace: comp.id, // node ids are unique in a surface, so the raw id IS the full namespace
+            mode: "editor",
+            getRawProps: function () { return comp.props || {}; },
+            emit: function (eventName, payload) {
+                if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
+            },
+            setBindableValue: function (name, value) {
+                comp.props = comp.props || {};
+                comp.props[name] = value;
+                markDirty();
+            }
+        }, comp.id, []);
+    }
 
     if (!interactable) return;
 
+    // Figma-style selection: a click selects the node at the depth of the current
+    // selection (top-level by default), Ctrl / Cmd+click the deepest, a double
+    // click dives one level into the selected container. Containers draw inside
+    // each other, so only the innermost element handles the event.
     el.on("mousedown", function (e) {
         e.stopPropagation();
-        var targetIds = comp.g ? groupMemberIds(comp.g) : [comp.id];
-        var alreadyAllSelected = targetIds.every(isSelected);
+        var target = pickSelectionTarget(comp.id, e);
         if (e.shiftKey) {
-            if (alreadyAllSelected) {
-                state.selectedIds = state.selectedIds.filter(function (id) { return targetIds.indexOf(id) === -1; });
+            if (isSelected(target)) {
+                state.selectedIds = state.selectedIds.filter(function (id) { return id !== target; });
             } else {
-                targetIds.forEach(function (id) { if (!isSelected(id)) state.selectedIds.push(id); });
+                state.selectedIds.push(target);
             }
             refreshSelectionVisuals();
-        } else if (!alreadyAllSelected) {
-            selectMultiple(targetIds);
+        } else if (!isSelected(target)) {
+            selectMultiple([target]);
         }
     });
+    el.on("dblclick", function (e) {
+        e.stopPropagation();
+        var deeper = pickDeeperTarget(comp.id);
+        if (deeper && !isSelected(deeper)) selectOnly(deeper);
+    });
 
-    if (!comp.locked) {
-        var groupStart = null;
-        var dragStartPage = null;
-        el.draggable({
-            start: function (e) {
-                if (!isSelected(comp.id)) selectOnly(comp.id);
-                dragStart = { x: comp.x, y: comp.y };
-                dragStartPage = { x: e.pageX, y: e.pageY };
-                groupStart = {};
-                state.selectedIds.forEach(function (id) {
-                    var c = findComponent(id);
-                    if (c) groupStart[id] = { x: c.x, y: c.y };
+    if (isNodeLocked(comp.id)) return;
+    // Dragging moves the SELECTED nodes — when the pointer is on a child of a
+    // selected group, the group moves and the child stays put inside it.
+    var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
+    // A node stays inside the nearest ancestor that is NOT a group (the root, or
+    // a frame): a group hugs its children, so a member may leave the group's
+    // current box — the group grows instead.
+    var clampOf = function (c) {
+        var chain = Tree.ancestors(screen, c.id); // outermost first
+        var parent = chain.length ? chain[chain.length - 1] : null;
+        var space = null;
+        for (var i = chain.length - 1; i >= 0; i--) { if (chain[i].type !== "@group") { space = chain[i]; break; } }
+        var spaceBox = space ? Tree.absBox(screen, space.id) : { x: 0, y: 0, w: screen.width, h: screen.height };
+        var origin = parent ? Tree.absBox(screen, parent.id) : { x: 0, y: 0 };
+        // the space's box in the parent's coordinates (its own box starts at 0 when it IS the parent)
+        var left = space === parent ? 0 : spaceBox.x - origin.x;
+        var top = space === parent ? 0 : spaceBox.y - origin.y;
+        return { minX: left, minY: top, maxX: left + spaceBox.w - c.w, maxY: top + spaceBox.h - c.h };
+    };
+    var place = function (c, start, dx, dy) {
+        var nx = start.x + dx, ny = start.y + dy;
+        if (screen.snap) { nx = snap(nx, screen.gridSize); ny = snap(ny, screen.gridSize); }
+        var lim = clampOf(c);
+        c.x = Math.max(lim.minX, Math.min(nx, lim.maxX));
+        c.y = Math.max(lim.minY, Math.min(ny, lim.maxY));
+    };
+    el.draggable({
+        start: function (e) {
+            var target = pickSelectionTarget(comp.id, e);
+            if (!isSelected(target)) selectOnly(target);
+            dragStart = { x: comp.x, y: comp.y };
+            dragStartPage = { x: e.pageX, y: e.pageY };
+            before = treeSnapshot(screen);
+            // selected nodes that aren't inside another selected node, and not locked
+            movers = state.selectedIds.filter(function (id) {
+                return Tree.find(screen, id) && !isNodeLocked(id) && !state.selectedIds.some(function (o) { return o !== id && Tree.isAncestor(screen, o, id); });
+            });
+            starts = {};
+            movers.forEach(function (id) {
+                var c = findComponent(id);
+                starts[id] = { x: c.x, y: c.y };
+            });
+        },
+        drag: function (e, ui) {
+            var dx = (e.pageX - dragStartPage.x) / state.zoomLevel;
+            var dy = (e.pageY - dragStartPage.y) / state.zoomLevel;
+            movers.forEach(function (id) {
+                var c = findComponent(id);
+                if (!c) return;
+                place(c, starts[id], dx, dy);
+                if (id !== comp.id) updateComponentBox(c);
+            });
+            // jQuery UI moves the element under the pointer: that's this node
+            // only when it is a mover itself; otherwise it stays in place.
+            var self = starts[comp.id] ? comp : null;
+            ui.position.left = self ? comp.x : dragStart.x;
+            ui.position.top = self ? comp.y : dragStart.y;
+            if (self) updateComponentBox(comp);
+        },
+        stop: function () {
+            var moved = movers.filter(function (id) {
+                var c = findComponent(id);
+                return c && (starts[id].x !== c.x || starts[id].y !== c.y);
+            });
+            if (!moved.length) return;
+            var inGroup = moved.some(function (id) { return Tree.ancestors(screen, id).some(function (a) { return a.type === "@group"; }); });
+            if (inGroup) {
+                // members moved: their groups hug again (which shifts coordinates) — one tree step
+                moved.forEach(function (id) { Tree.refitGroupsUp(screen, id); });
+                pushTreeChange(screen, before);
+                var keep = state.selectedIds.slice();
+                _renderScreen();
+                selectMultiple(keep);
+            } else if (moved.length === 1) {
+                var c1 = findComponent(moved[0]);
+                pushHistory({ t: "move", screenId: screen.id, id: moved[0], from: starts[moved[0]], to: { x: c1.x, y: c1.y } });
+            } else {
+                pushHistory({
+                    t: "multi", screenId: screen.id,
+                    events: moved.map(function (id) { var c = findComponent(id); return { t: "move", screenId: screen.id, id: id, from: starts[id], to: { x: c.x, y: c.y } }; })
                 });
-            },
-            drag: function (e, ui) {
-                var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
-                var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
-                localLeft = snap(localLeft, screen.gridSize);
-                localTop = snap(localTop, screen.gridSize);
-                localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
-                localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
-                ui.position.left = localLeft;
-                ui.position.top = localTop;
-                if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
-                    state.selectionHandlesEl.css({ left: localLeft + "px", top: localTop + "px" });
-                }
-                var dx = localLeft - dragStart.x;
-                var dy = localTop - dragStart.y;
-                state.selectedIds.forEach(function (id) {
-                    if (id === comp.id) return;
-                    var c = findComponent(id);
-                    var start = groupStart[id];
-                    if (!c || !start) return;
-                    c.x = start.x + dx;
-                    c.y = start.y + dy;
-                    updateComponentBox(c);
-                });
-            },
-            stop: function (e) {
-                var localLeft = dragStart.x + (e.pageX - dragStartPage.x) / state.zoomLevel;
-                var localTop = dragStart.y + (e.pageY - dragStartPage.y) / state.zoomLevel;
-                localLeft = snap(localLeft, screen.gridSize);
-                localTop = snap(localTop, screen.gridSize);
-                localLeft = Math.max(0, Math.min(localLeft, screen.width - comp.w));
-                localTop = Math.max(0, Math.min(localTop, screen.height - comp.h));
-                comp.x = localLeft;
-                comp.y = localTop;
-                updateComponentBox(comp);
-                var moved = [];
-                state.selectedIds.forEach(function (id) {
-                    var c = findComponent(id);
-                    var start = groupStart[id];
-                    if (!c || !start) return;
-                    if (start.x !== c.x || start.y !== c.y) {
-                        moved.push({ id: id, from: start, to: { x: c.x, y: c.y } });
-                    }
-                });
-                if (moved.length === 1) {
-                    pushHistory({ t: "move", screenId: screen.id, id: moved[0].id, from: moved[0].from, to: moved[0].to });
-                } else if (moved.length > 1) {
-                    pushHistory({
-                        t: "multi", screenId: screen.id,
-                        events: moved.map(function (m) { return { t: "move", screenId: screen.id, id: m.id, from: m.from, to: m.to }; })
-                    });
-                }
-                if (moved.length) markDirty();
             }
-        });
-    }
+            markDirty();
+        }
+    });
+}
+
+// A new node lands on the root (on top). `node` is complete but for x / y.
+function placeNewNode(screen, node, artboardX, artboardY) {
+    node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
+    node.y = Math.max(0, screen.snap ? snap(artboardY - node.h / 2, screen.gridSize) : artboardY - node.h / 2);
+    var before = treeSnapshot(screen);
+    Tree.insert(screen, null, null, node);
+    renderComponent(node);
+    selectOnly(node.id);
+    pushTreeChange(screen, before);
+    markDirty();
 }
 
 export function addComponentAt(type, artboardX, artboardY) {
@@ -740,26 +800,17 @@ export function addComponentAt(type, artboardX, artboardY) {
             }
             return;
         }
-        var tw = template.width, th = template.height;
-        var templateComp = {
+        placeNewNode(screen, {
             id: genId(),
             type: "@template",
             templateId: templateId,
-            x: Math.max(0, screen.snap ? snap(artboardX - tw / 2, screen.gridSize) : artboardX - tw / 2),
-            y: Math.max(0, screen.snap ? snap(artboardY - th / 2, screen.gridSize) : artboardY - th / 2),
-            w: tw,
-            h: th,
+            w: template.width,
+            h: template.height,
             rotation: 0,
             locked: false,
-            layerId: (screen.layers[0] || {}).id,
             props: {},
             paramValues: {} // per-instance overrides of template.params[].defaultValue — see Properties panel
-        };
-        screen.components.push(templateComp);
-        renderComponent(templateComp);
-        selectOnly(templateComp.id);
-        pushHistory({ t: "add", screenId: screen.id, comp: templateComp });
-        markDirty();
+        }, artboardX, artboardY);
         return;
     }
 
@@ -767,27 +818,19 @@ export function addComponentAt(type, artboardX, artboardY) {
     // registered type, since there's nothing to register: the code lives on
     // the instance itself, authored per-drop in the Properties panel).
     if (type === "@lit-component") {
-        var litComp = {
+        placeNewNode(screen, {
             id: genId(),
             type: "@lit-component",
-            x: Math.max(0, screen.snap ? snap(artboardX - 110, screen.gridSize) : artboardX - 110),
-            y: Math.max(0, screen.snap ? snap(artboardY - 60, screen.gridSize) : artboardY - 60),
             w: 220,
             h: 120,
             rotation: 0,
             locked: false,
-            layerId: (screen.layers[0] || {}).id,
             props: {},
             litCode: "render() {\n  return html`<div>Hello from Lit</div>`;\n}",
             litStyles: ":host { display: block; font-family: sans-serif; }",
             litBindable: [], // [{ name, type, defaultValue }] -> Lit `static properties` + Properties-panel/ui-update targets
             litEvents: []    // [{ name }] -> Events tab "on <name>" chips; call this.emit(name, payload) from your code
-        };
-        screen.components.push(litComp);
-        renderComponent(litComp);
-        selectOnly(litComp.id);
-        pushHistory({ t: "add", screenId: screen.id, comp: litComp });
-        markDirty();
+        }, artboardX, artboardY);
         return;
     }
 
@@ -798,23 +841,7 @@ export function addComponentAt(type, artboardX, artboardY) {
     Object.keys(def.defaults || {}).forEach(function (k) {
         props[k] = def.defaults[k].value;
     });
-    var comp = {
-        id: genId(),
-        type: type,
-        x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
-        y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
-        w: size.w,
-        h: size.h,
-        rotation: 0,
-        locked: false,
-        layerId: (screen.layers[0] || {}).id,
-        props: props
-    };
-    screen.components.push(comp);
-    renderComponent(comp);
-    selectOnly(comp.id);
-    pushHistory({ t: "add", screenId: screen.id, comp: comp });
-    markDirty();
+    placeNewNode(screen, { id: genId(), type: type, w: size.w, h: size.h, rotation: 0, locked: false, props: props }, artboardX, artboardY);
 }
 
 // Drop target for a metric row dragged out of the "MQTT Sparkplug" sidebar
@@ -822,10 +849,8 @@ export function addComponentAt(type, artboardX, artboardY) {
 // editor-tray.js) — builds a "kufayeka-text-label" component with its
 // `props.text` pre-seeded to a live "{sparkplug:...}" binding (see
 // sparkplug-live.js's makeSparkplugBindingPath), rather than the component's
-// own registered default text. Everything else about the component (size,
-// selection, history, dirty-tracking) matches the generic branch of
-// addComponentAt() above exactly — this is NOT a second component-creation
-// path, just a different initial `props`.
+// own registered default text. Everything else (size, selection, history,
+// dirty-tracking) goes the same way as addComponentAt() above.
 var SPARKPLUG_TEXT_COMPONENT_TYPE = "kufayeka-text-label";
 export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
     var screen = getActiveScreen();
@@ -844,22 +869,8 @@ export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
     });
     var bindingPath = makeSparkplugBindingPath(ref);
     props.text = bindingPath;
-    var comp = {
-        id: genId(),
-        type: SPARKPLUG_TEXT_COMPONENT_TYPE,
-        x: Math.max(0, screen.snap ? snap(artboardX - size.w / 2, screen.gridSize) : artboardX - size.w / 2),
-        y: Math.max(0, screen.snap ? snap(artboardY - size.h / 2, screen.gridSize) : artboardY - size.h / 2),
-        w: size.w,
-        h: size.h,
-        rotation: 0,
-        locked: false,
-        layerId: (screen.layers[0] || {}).id,
-        sparkplugBinding: bindingPath,
-        props: props
-    };
-    screen.components.push(comp);
-    renderComponent(comp);
-    selectOnly(comp.id);
-    pushHistory({ t: "add", screenId: screen.id, comp: comp });
-    markDirty();
+    placeNewNode(screen, {
+        id: genId(), type: SPARKPLUG_TEXT_COMPONENT_TYPE, w: size.w, h: size.h, rotation: 0, locked: false,
+        sparkplugBinding: bindingPath, props: props
+    }, artboardX, artboardY);
 }

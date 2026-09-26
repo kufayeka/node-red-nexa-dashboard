@@ -1,11 +1,19 @@
-// --- Canvas Component Selection & Grouping -----------------------------
-import { state, genId, markDirty, getActiveScreen, findComponent, findGroup, groupMemberIds } from "../state.js";
-import { isLayerInteractable } from "./layers.js";
-import { pushHistory } from "../history.js";
+// --- Canvas selection, grouping and marquee ------------------------------------
+// Figma-style selection over the node tree (see model/tree.js):
+//   click          selects the node at the depth of the current selection —
+//                  top-level by default, a sibling of what is selected otherwise
+//   Ctrl / Cmd+click  selects the deepest node under the pointer
+//   double click   dives one level into the selected container
+import { state, genId, markDirty, getActiveScreen, findComponent, Tree, isNodeInteractable, isNodeLocked } from "../state.js";
+import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { clearSelectionHandles, renderSelectionHandles, updateComponentBox } from "./selection-handles.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { refreshEventsHighlight } from "../sidebar/palette-events-panel.js";
 import { renderActiveScreen } from "./canvas-ui.js";
+
+var hierarchyListeners = [];
+/** The Hierarchy panel follows the canvas selection. */
+export function onSelectionChange(fn) { hierarchyListeners.push(fn); }
 
 export function isSelected(id) {
     return state.selectedIds.indexOf(id) !== -1;
@@ -24,6 +32,7 @@ export function refreshSelectionVisuals() {
     }
     renderPropertiesPanel();
     refreshEventsHighlight();
+    hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
     if (state.selectedIds.length > 0 && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
         state.sidebarTabs.activateTab("properties");
     }
@@ -44,12 +53,47 @@ export function deselectAll() {
     refreshSelectionVisuals();
 }
 
+// The node a click on `nodeId` (the innermost node under the pointer) selects.
+export function pickSelectionTarget(nodeId, e) {
+    var screen = getActiveScreen();
+    if (!screen) return nodeId;
+    if (e && (e.ctrlKey || e.metaKey)) return nodeId;
+    var chain = Tree.ancestors(screen, nodeId).map(function (a) { return a.id; }).concat([nodeId]);
+    // clicking inside what is selected keeps it
+    for (var i = 0; i < chain.length; i++) if (isSelected(chain[i])) return chain[i];
+    // the depth of the current selection: a sibling of the selected node
+    var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
+    if (sel) {
+        var context = Tree.parentOf(screen, sel.id);
+        var contextId = context ? context.id : null;
+        for (var j = 0; j < chain.length; j++) {
+            var parent = Tree.parentOf(screen, chain[j]);
+            if ((parent ? parent.id : null) === contextId) return chain[j];
+        }
+    }
+    return chain[0];
+}
+
+// Double click: one level deeper than the selected node, towards `nodeId`.
+export function pickDeeperTarget(nodeId) {
+    var screen = getActiveScreen();
+    if (!screen) return null;
+    var chain = Tree.ancestors(screen, nodeId).map(function (a) { return a.id; }).concat([nodeId]);
+    var at = -1;
+    for (var i = 0; i < chain.length; i++) if (isSelected(chain[i])) at = i;
+    return at >= 0 && at < chain.length - 1 ? chain[at + 1] : null;
+}
+
 export function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
     var changed = false;
     ids.forEach(function (id) {
         var c = findComponent(id);
-        if (c && c.locked !== locked) { c.locked = locked; changed = true; }
+        if (c && !!c.locked !== locked) {
+            pushHistory({ t: "node", screenId: getActiveScreen().id, id: id, key: "locked", from: c.locked, to: locked });
+            c.locked = locked;
+            changed = true;
+        }
     });
     if (!changed) return;
     markDirty();
@@ -63,7 +107,7 @@ export function toggleFlipForSelection(axis) {
     var events = [];
     state.selectedIds.forEach(function (id) {
         var c = findComponent(id);
-        if (!c || c.locked) return;
+        if (!c || isNodeLocked(id) || Tree.isContainer(c)) return;
         var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
         if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
         var from = { flipH: !!c.flipH, flipV: !!c.flipV };
@@ -82,65 +126,51 @@ export function toggleFlipForSelection(axis) {
     renderPropertiesPanel();
 }
 
+function nextGroupName(screen) {
+    var n = 0;
+    Tree.allNodes(screen, { orphans: true }).forEach(function (node) {
+        var m = node.type === "@group" && /^Group (\d+)$/.exec(node.name || "");
+        if (m) n = Math.max(n, Number(m[1]));
+    });
+    return "Group " + (n + 1);
+}
+
+/** Ctrl+G: the selected siblings go into a new group (it hugs them). */
 export function groupSelection() {
     var screen = getActiveScreen();
     if (!screen) return;
-    screen.groups = screen.groups || [];
-    // Defensive, not just belt-and-suspenders: state.selectedIds can be set
-    // through paths other than the canvas's own click/marquee handlers
-    // (e.g. the Layers panel's "See" button), which don't all know to
-    // reject a "hide"/"remove" layer's components the way those two do.
-    var members = state.selectedIds.map(findComponent).filter(Boolean).filter(function (c) { return isLayerInteractable(c.layerId); });
-    if (members.length < 2) {
-        RED.notify("Select at least 2 components to group", { type: "warning", timeout: 2000 });
+    var ids = state.selectedIds.filter(function (id) { return findComponent(id) && isNodeInteractable(id); });
+    if (ids.length < 1) {
+        RED.notify("Select what to group", { type: "warning", timeout: 2000 });
         return;
     }
-    if (members.some(function (c) { return c.g; })) {
-        RED.notify("One or more selected components are already in a group — ungroup first", { type: "warning", timeout: 2500 });
+    var parents = ids.map(function (id) { var p = Tree.parentOf(screen, id); return p ? p.id : null; });
+    if (parents.some(function (p) { return p !== parents[0]; })) {
+        RED.notify("Select nodes that share one parent to group them", { type: "warning", timeout: 2500 });
         return;
     }
-    var minX = Math.min.apply(null, members.map(function (c) { return c.x; }));
-    var minY = Math.min.apply(null, members.map(function (c) { return c.y; }));
-    var maxX = Math.max.apply(null, members.map(function (c) { return c.x + c.w; }));
-    var maxY = Math.max.apply(null, members.map(function (c) { return c.y + c.h; }));
-    var pad = 10;
-    var group = { id: genId(), x: minX - pad, y: minY - pad, w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2 };
-    var memberIds = members.map(function (c) { return c.id; });
-
-    screen.groups.push(group);
-    memberIds.forEach(function (id) { var c = findComponent(id); if (c) c.g = group.id; });
-    pushHistory({ t: "group", screenId: screen.id, group: group, memberIds: memberIds });
+    var before = treeSnapshot(screen);
+    var group = Tree.wrapInGroup(screen, ids, { id: genId(), name: nextGroupName(screen) });
+    if (parents[0]) Tree.refitGroupsUp(screen, group.id);
+    pushTreeChange(screen, before);
     markDirty();
     renderActiveScreen();
-    selectMultiple(memberIds);
+    selectOnly(group.id);
 }
 
+/** Ctrl+Shift+G: each selected container is replaced by its children. */
 export function ungroupSelection() {
     var screen = getActiveScreen();
     if (!screen) return;
-    var groupIds = {};
-    state.selectedIds.forEach(function (id) {
-        var c = findComponent(id);
-        if (c && c.g) groupIds[c.g] = true;
-    });
-    var ids = Object.keys(groupIds);
-    if (!ids.length) return;
-    var ungroupEvents = [];
-    var allMemberIds = [];
-    ids.forEach(function (gid) {
-        var group = findGroup(gid);
-        if (!group) return;
-        var memberIds = groupMemberIds(gid);
-        ungroupEvents.push({ t: "ungroup", screenId: screen.id, group: group, memberIds: memberIds });
-        memberIds.forEach(function (id) { var c = findComponent(id); if (c) delete c.g; });
-        screen.groups = (screen.groups || []).filter(function (g) { return g.id !== gid; });
-        allMemberIds = allMemberIds.concat(memberIds);
-    });
-    if (!ungroupEvents.length) return;
-    pushHistory(ungroupEvents.length === 1 ? ungroupEvents[0] : { t: "multi", screenId: screen.id, events: ungroupEvents });
+    var containers = state.selectedIds.map(findComponent).filter(function (c) { return c && Tree.isContainer(c) && !isNodeLocked(c.id); });
+    if (!containers.length) return;
+    var before = treeSnapshot(screen);
+    var released = [];
+    containers.forEach(function (g) { released = released.concat(Tree.unwrap(screen, g.id).map(function (c) { return c.id; })); });
+    pushTreeChange(screen, before);
     markDirty();
     renderActiveScreen();
-    selectMultiple(allMemberIds);
+    selectMultiple(released);
 }
 
 export function startMarqueeSelect(e) {
@@ -174,14 +204,15 @@ export function startMarqueeSelect(e) {
         if (box.width < 3 && box.height < 3) return;
         var screen = getActiveScreen();
         if (!screen) return;
-        var hits = screen.components.filter(function (c) {
-            // Marquee-select is pure geometry (never touches the DOM), so a
-            // "hide"/"remove" layer's display:none never protected it here
-            // the way it incidentally does for a direct click — has to be
-            // checked explicitly, or a rubber-band drag over a locked layer
-            // would happily select components the user can't even see.
-            if (!isLayerInteractable(c.layerId)) return false;
-            return !(c.x > box.left + box.width || c.x + c.w < box.left || c.y > box.top + box.height || c.y + c.h < box.top);
+        // The nodes at the depth of the current selection (top-level by default).
+        // Pure geometry, so a hidden node is excluded explicitly.
+        var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
+        var context = sel ? Tree.parentOf(screen, sel.id) : null;
+        var candidates = context ? Tree.kids(context) : screen.components;
+        var hits = candidates.filter(function (c) {
+            if (!isNodeInteractable(c.id)) return false;
+            var b = Tree.absBox(screen, c.id);
+            return !(b.x > box.left + box.width || b.x + b.w < box.left || b.y > box.top + box.height || b.y + b.h < box.top);
         }).map(function (c) { return c.id; });
         if (shiftHeld) {
             hits.forEach(function (id) { if (!isSelected(id)) state.selectedIds.push(id); });

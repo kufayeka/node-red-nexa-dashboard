@@ -1,8 +1,8 @@
-import { state, ensureScreensLoaded, getActiveScreen } from "../state.js";
+import { state, ensureScreensLoaded, getActiveScreen, Tree } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { buildPalette, renderEventsPanel } from "./palette-events-panel.js";
 import { renderPropertiesPanel } from "./properties-panel.js";
-import { renderLayersPanel } from "../canvas/layers.js";
+import { renderHierarchyPanel } from "./hierarchy-panel.js";
 import { renderScreenList, renderScreenForm, addScreenFromSidebar } from "./screens-panel.js";
 import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTemplateEditing } from "./templates-panel.js";
 import { renderSparkplugPanel } from "./sparkplug-panel.js";
@@ -31,7 +31,7 @@ export function buildSidebarContent() {
     state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
     var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.layersPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     // Same flex/column reasoning as componentsPane/eventsPane above (see
@@ -108,7 +108,7 @@ export function buildSidebarContent() {
             state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             screensPane.toggle(tab.id === "screens");
             state.propertiesPane.toggle(tab.id === "properties");
-            state.layersPane.toggle(tab.id === "layers");
+            state.hierarchyPane.toggle(tab.id === "hierarchy");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
             state.templatesPane.toggle(tab.id === "templates");
             state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
@@ -130,7 +130,7 @@ export function buildSidebarContent() {
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
             if (tab.id === "properties") renderPropertiesPanel();
-            if (tab.id === "layers") renderLayersPanel();
+            if (tab.id === "hierarchy") renderHierarchyPanel();
             if (tab.id === "events") renderEventsPanel();
             if (tab.id === "sparkplug") renderSparkplugPanel();
         }
@@ -139,7 +139,7 @@ export function buildSidebarContent() {
     state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
     state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    state.sidebarTabs.addTab({ id: "layers", label: "Layers" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
@@ -151,7 +151,7 @@ export function buildSidebarContent() {
             // A plugin that registered after the screen was drawn (plugins load
             // in no guaranteed order): draw its components for real now.
             var screen = getActiveScreen();
-            if (screen && (screen.components || []).some(function (c) { return c.type === id; })) renderActiveScreen();
+            if (screen && Tree.allNodes(screen).some(function (c) { return c.type === id; })) renderActiveScreen();
             if (state.eventsPane && state.eventsPane.is(":visible")) {
                 renderEventsPanel();
             }

@@ -132,74 +132,103 @@ actions['nexa:open-pages-editor']();
 // filter by the known 'Item' label instead of positional index.
 const itemDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Item'; });
 const chip = itemDraggables[itemDraggables.length - 1];
-
-console.log('--- drop 3 items ---');
-// Placement now happens in the artboard's own .droppable() "drop" handler
-// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
-// real drop by calling that handler directly with the chip as ui.draggable.
+// the newest draggable for a node (a re-render registers a fresh one)
+function state_selected() { return window.__nexaEditorState.selectedIds.slice(); }
+function lastDragOf(id) { return draggables.filter(d => d.id === id).pop(); }
+function dblclickOn(id, opts) {
+  var el = componentsById[id];
+  (el._handlers['dblclick'] || []).forEach(fn => fn(Object.assign({ stopPropagation(){} }, opts)));
+}
 function dropOnArtboard(x, y) {
   global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
 }
+
+// Groups are tree nodes now (@group, see src/model/tree.js): a group hugs its
+// children, their x / y are relative to it, and it is selected / dragged as one.
+console.log('--- drop 3 items ---');
 dropOnArtboard(100, 100);
 dropOnArtboard(300, 100);
 dropOnArtboard(500, 100);
-const comps = configNodes[0].screens[0].components;
 const screen = configNodes[0].screens[0];
-console.log('ids:', comps.map(c => c.id));
+const [i0, i1, i2] = screen.components.slice();
+const abs = (n) => {
+  var g = screen.components.find(c => c.type === '@group' && (c.children || []).indexOf(n) !== -1);
+  return { x: n.x + (g ? g.x : 0), y: n.y + (g ? g.y : 0) };
+};
+const absBefore = [i0, i1, i2].map(abs);
+console.log('placed:', absBefore);
 
-console.log('--- select item[0] and item[1] (shift-click), then Ctrl+G to group ---');
-mousedownOn(comps[0].id, { shiftKey: false });
-mousedownOn(comps[1].id, { shiftKey: true });
+console.log('--- select item[0] and item[1] (shift-click), then Ctrl+G ---');
+mousedownOn(i0.id, { shiftKey: false });
+mousedownOn(i1.id, { shiftKey: true });
 dispatchKey({ key: 'g', ctrlKey: true });
-console.log('comp[0].g === comp[1].g?', comps[0].g === comps[1].g, '(expect true)');
-console.log('comp[2].g is undefined?', comps[2].g === undefined, '(expect true)');
-console.log('screen.groups.length:', screen.groups.length, '(expect 1)');
+const group = screen.components.find(c => c.type === '@group');
+console.log('a @group node now holds item[0] and item[1]?', !!group && group.children[0] === i0 && group.children[1] === i1);
+console.log('item[2] stays top-level, the group takes their place in the stack?', screen.components.length === 2 && screen.components[0] === group && screen.components[1] === i2);
+console.log('the group hugs its children (box = their bounds, children relative to it)?', group.x === i0.x + group.x && group.w === (i1.x + i1.w) - i0.x && i0.x === 0);
+console.log('nothing moved on screen?', JSON.stringify([i0, i1, i2].map(abs)) === JSON.stringify(absBefore));
+console.log('named "Group 1"?', group.name === 'Group 1');
+console.log('the group is selected?', state_selected().length === 1 && state_selected()[0] === group.id);
 
-console.log('--- click item[1] alone (no shift): should auto-select the WHOLE group (item[0] too) ---');
-mousedownOn(comps[1].id, { shiftKey: false });
-console.log('--- drag item[1] by (+20,+20): item[0] should move too (grouped), item[2] should not ---');
-// The plugin's drag: handler now reads raw mouse-event pageX/pageY itself
-// (not jQuery UI's own ui.position, which doesn't account for the canvas's
-// CSS zoom scale) and always grid-snaps (gridSize 20) the result, matching
-// the jQuery UI grid:[...] option it replaces — so simulate a start origin
-// plus a delta that's already a grid multiple.
-const before = comps.map(c => ({ id: c.id, x: c.x, y: c.y }));
-const d1 = dragOf(comps[1].id);
+console.log('--- a click on a member selects the whole group (Figma: outermost first); dragging moves the group ---');
+dispatchKey({ key: 'Escape' });
+mousedownOn(i1.id, { shiftKey: false });
+console.log('clicking item[1] selected the group?', state_selected()[0] === group.id);
+const gBefore = { x: group.x, y: group.y };
+const d1 = lastDragOf(i1.id);
 d1.opts.start({ pageX: 0, pageY: 0 });
-d1.opts.drag({ pageX: 20, pageY: 20 }, { position: {} }); // drag: now mutates ui.position in place (see nexa-plugin.html)
+const ui = { position: {} };
+d1.opts.drag({ pageX: 20, pageY: 20 }, ui);
 d1.opts.stop({ pageX: 20, pageY: 20 });
-const after = comps.map(c => ({ id: c.id, x: c.x, y: c.y }));
-console.log('before:', before);
-console.log('after: ', after);
-const groupMovedTogether = (after[0].x - before[0].x === 20) && (after[0].y - before[0].y === 20) && (after[1].x - before[1].x === 20) && (after[2].x - before[2].x === 0);
-console.log('clicking one grouped member dragged BOTH members together, third untouched?', groupMovedTogether);
+console.log('the group moved by (+20,+20)?', group.x - gBefore.x === 20 && group.y - gBefore.y === 20);
+console.log('its children did not move inside it (x/y relative to the group)?', i0.x === 0 && i1.x === absBefore[1].x - absBefore[0].x);
+console.log('the element under the pointer stays in place inside the group?', ui.position.left === i1.x && ui.position.top === i1.y);
+console.log('item[2] untouched?', abs(i2).x === absBefore[2].x);
 
-console.log('--- undo the group-move (should revert both grouped members) ---');
+console.log('--- undo the move ---');
 dispatchKey({ key: 'z', ctrlKey: true });
-console.log('reverted:', comps.map(c => ({ id: c.id, x: c.x, y: c.y })));
+console.log('group back?', group.x === gBefore.x && group.y === gBefore.y);
 
-console.log('--- Ctrl+Shift+G to ungroup ---');
-// The preceding undo (like every applyHistoryEvent) cleared selectedIds —
-// re-select the group by clicking a member first, same as a real user
-// would have to (undo doesn't keep anything selected in this app, a
-// pre-existing behavior, not new to grouping).
-mousedownOn(comps[0].id, { shiftKey: false });
+console.log('--- double click dives into the group; Ctrl+click selects the deepest directly ---');
+mousedownOn(i0.id, { shiftKey: false });
+dblclickOn(i0.id);
+console.log('double click on item[0] (group selected) selected item[0]?', state_selected()[0] === i0.id);
+mousedownOn(i1.id, { shiftKey: false });
+console.log('then a click on its sibling item[1] selects the sibling (same depth)?', state_selected()[0] === i1.id);
+mousedownOn(i2.id, { shiftKey: false });
+mousedownOn(i0.id, { shiftKey: false, ctrlKey: true });
+console.log('Ctrl+click selected item[0] inside the group directly?', state_selected()[0] === i0.id);
+
+console.log('--- moving a member inside the group: the group re-hugs (one undo step) ---');
+const d0 = lastDragOf(i0.id);
+d0.opts.start({ pageX: 0, pageY: 0 });
+d0.opts.drag({ pageX: -40, pageY: 0 }, { position: {} });
+d0.opts.stop({ pageX: -40, pageY: 0 });
+const g2 = screen.components.find(c => c.type === '@group');
+console.log('the group grew to the left, the member is at its left edge again?', g2.x === gBefore.x - 40 && i0.x === 0 && abs(i0).x === absBefore[0].x - 40);
+console.log('item[1] did not move on screen?', abs(i1).x === absBefore[1].x);
+dispatchKey({ key: 'z', ctrlKey: true });
+console.log('undo restores the group and the member?', g2.x === gBefore.x && abs(i0).x === absBefore[0].x);
+
+console.log('--- Ctrl+Shift+G ungroups (children keep their place), undo re-creates the group ---');
+mousedownOn(i0.id, { shiftKey: false }); // selects the group
 dispatchKey({ key: 'g', ctrlKey: true, shiftKey: true });
-console.log('comp[0].g after ungroup:', comps[0].g, '(expect undefined)');
-console.log('comp[1].g after ungroup:', comps[1].g, '(expect undefined)');
-console.log('screen.groups.length after ungroup:', screen.groups.length, '(expect 0)');
-
-console.log('--- undo the ungroup (should re-create the group) ---');
+console.log('ungrouped: three top-level items again, in place?', screen.components.length === 3 && !screen.components.some(c => c.type === '@group') && JSON.stringify([i0, i1, i2].map(abs)) === JSON.stringify(absBefore));
 dispatchKey({ key: 'z', ctrlKey: true });
-console.log('comp[0].g === comp[1].g after undo-ungroup?', comps[0].g === comps[1].g && !!comps[0].g, '(expect true)');
-console.log('screen.groups.length after undo-ungroup:', screen.groups.length, '(expect 1)');
+console.log('undo: the group is back with the same members?', screen.components.length === 2 && screen.components[0].type === '@group' && screen.components[0].children[0] === i0);
 
-console.log('--- attempting to group an already-grouped member with a third should warn and refuse ---');
+console.log('--- deleting the group orphans its children (not deleted, not rendered) ---');
+mousedownOn(i0.id, { shiftKey: false });
+dispatchKey({ key: 'Delete' });
+console.log('only item[2] is left in the tree, item[0] and item[1] are orphans?', screen.components.length === 1 && screen.components[0] === i2 && screen.orphans.length === 2 && screen.orphans[0] === i0);
+dispatchKey({ key: 'z', ctrlKey: true });
+console.log('undo: group and children back, no orphans?', screen.components.length === 2 && screen.orphans.length === 0);
+
+console.log('--- grouping nodes of different parents is refused ---');
 notifications.length = 0;
-mousedownOn(comps[0].id, { shiftKey: false }); // selects the whole group (item0+item1)
-mousedownOn(comps[2].id, { shiftKey: true });  // add the ungrouped item2
+mousedownOn(i2.id, { shiftKey: false });
+mousedownOn(i0.id, { shiftKey: true, ctrlKey: true }); // add item[0], deep inside the group
 dispatchKey({ key: 'g', ctrlKey: true });
-console.log('warned about already-grouped member?', notifications.some(m => /already/i.test(m)));
-console.log('screen.groups.length still 1 (no new group created)?', screen.groups.length === 1);
+console.log('warned, no new group?', notifications.some(m => /share one parent/i.test(m)) && screen.components.filter(c => c.type === '@group').length === 1);
 
 console.log('ALL OK');

@@ -200,6 +200,26 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit.nx-kit .nx-state.nx-on { color: var(--nx-text-strong); font-weight: 600; border-color: var(--nx-accent); box-shadow: 0 0 0 1px var(--nx-accent); }
 .nx-kit .nx-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--nx-text-faint); }
 
+/* ---- tree (the MQTT Sparkplug explorer's look) ---- */
+.nx-kit .nx-tree { font-size: 12px; user-select: none; }
+.nx-kit .nx-tree-row { position: relative; display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 6px 0 4px; border-radius: 3px; cursor: default; color: var(--nx-text-strong); }
+.nx-kit .nx-tree-row:hover { background: var(--nx-bg-hover); }
+.nx-kit .nx-tree-row.nx-on { background: var(--nx-bg-selected); box-shadow: inset 2px 0 0 var(--nx-accent); }
+.nx-kit .nx-tree-row.nx-muted { color: var(--nx-text-faint); }
+.nx-kit .nx-tree-row.nx-muted .nx-tree-label { font-style: italic; }
+.nx-kit .nx-tree-row.nx-drop-before { box-shadow: inset 0 2px 0 var(--nx-accent); }
+.nx-kit .nx-tree-row.nx-drop-after { box-shadow: inset 0 -2px 0 var(--nx-accent); }
+.nx-kit .nx-tree-row.nx-drop-inside { background: var(--nx-bg-selected); outline: 1px dashed var(--nx-accent); outline-offset: -1px; }
+.nx-kit .nx-tree-indent { flex: 0 0 auto; align-self: stretch; }
+.nx-kit .nx-tree-caret { flex: 0 0 10px; width: 10px; color: var(--nx-text-muted); text-align: center; cursor: pointer; }
+.nx-kit .nx-tree-icon { flex: 0 0 auto; width: 14px; text-align: center; color: var(--nx-text-muted); }
+.nx-kit .nx-tree-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-kit.nx-kit .nx-tree-rename { flex: 1 1 auto; height: 20px; min-height: 20px; padding: 0 4px; font-size: 12px; }
+.nx-kit .nx-tree-actions { flex: 0 0 auto; display: flex; gap: 1px; opacity: 0.35; }
+.nx-kit .nx-tree-row:hover .nx-tree-actions, .nx-kit .nx-tree-row.nx-on .nx-tree-actions, .nx-kit .nx-tree-actions .nx-on { opacity: 1; }
+.nx-kit .nx-tree-children { margin-left: 9px; border-left: 1px dotted var(--nx-border); }
+.nx-kit .nx-tree-empty { padding: 10px; font-size: 11px; color: var(--nx-text-faint); text-align: center; }
+
 /* ---- dialog ---- */
 .nx-dialog-backdrop { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
 .nx-kit .nx-dialog { min-width: 320px; max-width: min(640px, 92vw); max-height: 86vh; display: flex; flex-direction: column; background: var(--red-ui-primary-background, #fff);

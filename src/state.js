@@ -1,4 +1,8 @@
 // --- Global State & Data Model for Nexa Dashboard Editor -----------------
+import * as Tree from "./model/tree.js";
+import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
+
+export { Tree };
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 2.0;
@@ -87,7 +91,7 @@ export const state = {
     // Sidebar panes
     componentsPane: null,
     propertiesPane: null,
-    layersPane: null,
+    hierarchyPane: null,
     eventsPane: null,
     screenListEl: null,
     screenFormEl: null,
@@ -96,6 +100,9 @@ export const state = {
     templateFormEl: null,
     templateParamsEl: null
 };
+
+// The editor's live state, reachable from the browser console and the tests.
+if (typeof window !== "undefined") window.__nexaEditorState = state;
 
 export function genId() {
     return "n" + Math.random().toString(16).slice(2, 10);
@@ -137,6 +144,8 @@ export function findSurfaceById(id) {
     return state.screens.find(function (s) { return s.id === id; }) || findTemplate(id);
 }
 
+// A surface's `components` is the root of its node tree (see model/tree.js);
+// `orphans` holds nodes taken out of the tree without being deleted.
 function makeSurfaceBase(opts) {
     return {
         id: genId(),
@@ -145,8 +154,8 @@ function makeSurfaceBase(opts) {
         gridSize: (opts && opts.gridSize) || 20,
         snap: opts ? opts.snap !== false : true,
         components: (opts && opts.components) || [],
-        groups: (opts && opts.groups) || [],
-        layers: (opts && opts.layers) || [{ id: "default", name: "Default Layer", parentId: null, state: "show" }],
+        orphans: (opts && opts.orphans) || [],
+        treeVersion: TREE_VERSION,
         logic: (opts && opts.logic) || { nodes: [], wires: [] }
     };
 }
@@ -180,7 +189,7 @@ export function makeTemplate(opts) {
     return template;
 }
 
-// DFS over `template.components` (recursing into any nested `@template`
+// DFS over a template's node tree (recursing into any nested `@template`
 // instance's own template) — true if `candidateId` already, directly or
 // transitively, contains an instance of `targetId`. Used both to block a
 // cyclical drop in the palette (dropping `targetId` while editing
@@ -193,7 +202,7 @@ export function templateContains(candidateId, targetId, seen) {
     seen[candidateId] = true;
     var candidate = findTemplate(candidateId);
     if (!candidate) return false;
-    return (candidate.components || []).some(function (c) {
+    return Tree.allNodes(candidate, { orphans: true }).some(function (c) {
         return c.type === "@template" && templateContains(c.templateId, targetId, seen);
     });
 }
@@ -239,21 +248,9 @@ export function getOrCreateProjectConfigNode() {
     return node;
 }
 
+// Pre-tree saves (flat components + layers + groups) become the node tree.
 function backfillSurface(s) {
-    if (!s.groups) s.groups = [];
-    if (!s.layers || !s.layers.length) s.layers = [{ id: "default", name: "Default Layer", parentId: null, state: "show" }];
-    // Pre-3-state saves only ever had a boolean `visible` — migrate it to
-    // the new `state` field (true -> "show", false -> "hide") instead of
-    // leaving both fields around for isLayerRenderState() to have to
-    // understand two competing shapes forever.
-    s.layers.forEach(function (l) {
-        if (!l.state) {
-            l.state = l.visible === false ? "hide" : "show";
-            delete l.visible;
-        }
-    });
-    s.components.forEach(function (c) { if (!c.layerId) c.layerId = s.layers[0].id; });
-    if (!s.logic) s.logic = { nodes: [], wires: [] };
+    migrateSurface(s, genId);
 }
 
 export function ensureScreensLoaded(cb) {
@@ -283,90 +280,38 @@ export function ensureScreensLoaded(cb) {
     if (cb) cb();
 }
 
+/** A node of the active surface by id (anywhere in the tree, or an orphan). */
 export function findComponent(id) {
-    var screen = getActiveScreen();
-    return screen && screen.components.find(function (c) { return c.id === id; });
+    return Tree.find(getActiveScreen(), id);
 }
 
-export function findGroup(id) {
-    var screen = getActiveScreen();
-    return screen && (screen.groups || []).find(function (g) { return g.id === id; });
+// A node's EFFECTIVE visibility is the most restrictive on its path to the
+// root: "show"; "hide" (still rendered, so showing it again is instant, but
+// invisible and not selectable); "remove" (not rendered at all).
+export function nodeVisibility(id) {
+    var surface = getActiveScreen();
+    return surface ? Tree.effectiveVisibility(surface, id) : "show";
 }
 
-export function groupMemberIds(groupId) {
-    var screen = getActiveScreen();
-    if (!screen) return [];
-    return screen.components.filter(function (c) { return c.g === groupId; }).map(function (c) { return c.id; });
+export function isNodeVisible(id) {
+    return nodeVisibility(id) === "show";
 }
 
-export function findLayer(id) {
-    var screen = getActiveScreen();
-    return screen && (screen.layers || []).find(function (l) { return l.id === id; });
+export function shouldRenderNode(id) {
+    return nodeVisibility(id) !== "remove";
 }
 
-export function getLayerChildren(parentId) {
-    var screen = getActiveScreen();
-    if (!screen) return [];
-    if (!parentId) {
-        return (screen.layers || []).filter(function (l) {
-            return !l.parentId || !findLayer(l.parentId);
-        });
-    }
-    return (screen.layers || []).filter(function (l) { return l.parentId === parentId; });
+// Only a "show" node takes clicks / marquee / drags. (Kept apart from
+// isNodeVisible: "interactable" and "visible" are different questions even
+// though they coincide today.)
+export function isNodeInteractable(id) {
+    return nodeVisibility(id) === "show";
 }
 
-// A layer's OWN state is "show"/"hide"/"remove", but its EFFECTIVE state (the
-// one that actually governs a component in it) is the most restrictive one
-// anywhere up its parentId chain — a "show" sub-layer inside a "remove"
-// parent is still removed, exactly like isLayerVisible's old ancestor-walk
-// already did for plain visible/hidden.
-var LAYER_STATE_RANK = { show: 0, hide: 1, remove: 2 };
-export function getLayerRenderState(layerId) {
-    var layer = findLayer(layerId);
-    var effective = "show";
-    while (layer) {
-        var layerState = layer.state || "show";
-        if (LAYER_STATE_RANK[layerState] > LAYER_STATE_RANK[effective]) effective = layerState;
-        layer = layer.parentId ? findLayer(layer.parentId) : null;
-    }
-    return effective;
-}
-
-// CSS-visible: true only for "show" — "hide" is still mounted (see
-// shouldRenderLayer) but must not paint or be interactable.
-export function isLayerVisible(layerId) {
-    return getLayerRenderState(layerId) === "show";
-}
-
-// Whether a component in this layer should have a DOM node at all —
-// false only for "remove". "hide" still renders (isLayerVisible above
-// handles hiding it), so toggling back to "show" is instant, no rebuild
-// needed; "remove" doesn't exist in the DOM, so coming back out of it
-// requires a fresh render (see renderComponent in component-renderer.js).
-export function shouldRenderLayer(layerId) {
-    return getLayerRenderState(layerId) !== "remove";
-}
-
-// "hide" and "remove" both lock their components out of selection/marquee/
-// grouping — only a "show" component is interactable. Kept as its own name
-// (rather than reusing isLayerVisible) since "interactable" and "visible"
-// are different questions even though they coincide today (both are
-// simply "=== show"): a future state that's visible-but-locked, or
-// interactable-but-dimmed, wouldn't collapse into one boolean.
-export function isLayerInteractable(layerId) {
-    return getLayerRenderState(layerId) === "show";
-}
-
-export function getComponentsInLayer(layerId) {
-    var screen = getActiveScreen();
-    if (!screen) return [];
-    var firstLayerId = screen.layers && screen.layers[0] && screen.layers[0].id;
-    return screen.components.filter(function (c) {
-        if (c.layerId === layerId) return true;
-        if (!c.layerId && layerId === firstLayerId) return true;
-        if (c.layerId && !findLayer(c.layerId) && layerId === firstLayerId) return true;
-        return false;
-    });
+/** Locked itself or inside a locked container. */
+export function isNodeLocked(id) {
+    var surface = getActiveScreen();
+    return !!(surface && Tree.effectiveLocked(surface, id));
 }
 
 export function findLogicNode(screenOrId, maybeId) {
