@@ -1,6 +1,8 @@
 import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
+import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
+import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } from "./drag-feedback.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeyOfBindingString } from "./sparkplug-live.js";
 
@@ -682,25 +684,20 @@ export function renderComponent(comp, parentEl, parentNode) {
     });
 
     if (isNodeLocked(comp.id)) return;
-    // the parent's auto layout places this node: it isn't dragged freely
-    if (inFlow) return;
     // Dragging moves the SELECTED nodes — when the pointer is on a child of a
     // selected group, the group moves and the child stays put inside it.
+    // Frames capture (Figma): let go over another frame and the nodes go into
+    // it (into its auto layout at the line shown), out of every frame = the
+    // root. Nodes an auto layout places ("flow" drag) aren't moved freely:
+    // they follow the pointer as a ghost and land where the line / frame shows.
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
-    // A node stays inside the nearest ancestor that is NOT a group (the root, or
-    // a frame): a group hugs its children, so a member may leave the group's
-    // current box — the group grows instead.
+    var flowMode = false, plan = null, grab = {};
+    // A node stays on the screen (frames don't trap their children any more:
+    // dragged out, it leaves the frame on drop).
     var clampOf = function (c) {
-        var chain = Tree.ancestors(screen, c.id); // outermost first
-        var parent = chain.length ? chain[chain.length - 1] : null;
-        var space = null;
-        for (var i = chain.length - 1; i >= 0; i--) { if (chain[i].type !== "@group") { space = chain[i]; break; } }
-        var spaceBox = space ? Tree.absBox(screen, space.id) : { x: 0, y: 0, w: screen.width, h: screen.height };
+        var parent = Tree.parentOf(screen, c.id);
         var origin = parent ? Tree.absBox(screen, parent.id) : { x: 0, y: 0 };
-        // the space's box in the parent's coordinates (its own box starts at 0 when it IS the parent)
-        var left = space === parent ? 0 : spaceBox.x - origin.x;
-        var top = space === parent ? 0 : spaceBox.y - origin.y;
-        return { minX: left, minY: top, maxX: left + spaceBox.w - c.w, maxY: top + spaceBox.h - c.h };
+        return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function (c, start, dx, dy) {
         var nx = start.x + dx, ny = start.y + dy;
@@ -708,6 +705,11 @@ export function renderComponent(comp, parentEl, parentNode) {
         var lim = clampOf(c);
         c.x = Math.max(lim.minX, Math.min(nx, lim.maxX));
         c.y = Math.max(lim.minY, Math.min(ny, lim.maxY));
+    };
+    var feedback = function (e) {
+        plan = planDrop(screen, movers, pointerOnArtboard(e));
+        showDropFrame(plan && plan.change && plan.targetId ? Tree.find(screen, plan.targetId) : null);
+        showInsertLine(plan && plan.flow && (plan.change || flowMode) ? plan.flow.line : null);
     };
     el.draggable({
         start: function (e) {
@@ -725,8 +727,25 @@ export function renderComponent(comp, parentEl, parentNode) {
                 var c = findComponent(id);
                 starts[id] = { x: c.x, y: c.y };
             });
+            // all placed by one auto layout: reorder / take out, not a free move
+            flowMode = movers.length > 0 && movers.every(function (id) { return Layout.isInFlow(findComponent(id), Tree.parentOf(screen, id)); });
+            var p0 = pointerOnArtboard(e);
+            grab = {};
+            movers.forEach(function (id) { var b = Tree.absBox(screen, id); grab[id] = p0 ? { x: p0.x - b.x, y: p0.y - b.y } : { x: 0, y: 0 }; });
+            plan = null;
+            if (flowMode) {
+                movers.forEach(function (id) { state.artboardEl.find('[data-id="' + id + '"]').css("opacity", "0.5"); });
+                // the handles would stay behind at the old place: hidden until the drop re-renders
+                if (state.selectionHandlesEl) state.selectionHandlesEl.css("display", "none");
+            }
         },
         drag: function (e, ui) {
+            if (flowMode) {
+                // a ghost under the pointer (position: relative offsets), the layout keeps its place
+                feedback(e);
+                if (!starts[comp.id]) { ui.position.left = inFlow ? 0 : dragStart.x; ui.position.top = inFlow ? 0 : dragStart.y; }
+                return;
+            }
             var dx = (e.pageX - dragStartPage.x) / state.zoomLevel;
             var dy = (e.pageY - dragStartPage.y) / state.zoomLevel;
             movers.forEach(function (id) {
@@ -741,8 +760,31 @@ export function renderComponent(comp, parentEl, parentNode) {
             ui.position.left = self ? comp.x : dragStart.x;
             ui.position.top = self ? comp.y : dragStart.y;
             if (self) updateComponentBox(comp);
+            feedback(e);
         },
-        stop: function () {
+        stop: function (e) {
+            clearDragFeedback();
+            var p = pointerOnArtboard(e);
+            var finalPlan = planDrop(screen, movers, p) || plan;
+            var reparent = finalPlan && (finalPlan.change || (flowMode && finalPlan.flow));
+            if (flowMode || reparent) {
+                if (reparent) {
+                    var places = {};
+                    if (p) movers.forEach(function (id) { places[id] = { x: p.x - grab[id].x, y: p.y - grab[id].y }; });
+                    try {
+                        applyDrop(screen, movers, finalPlan, flowMode ? places : null);
+                    } catch (err) {
+                        if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
+                    }
+                }
+                // one tree step; the layout re-flows (and the boxes are read back)
+                var keepSel = movers.slice();
+                _renderScreen();
+                pushTreeChange(screen, before);
+                selectMultiple(keepSel);
+                markDirty();
+                return;
+            }
             var moved = movers.filter(function (id) {
                 var c = findComponent(id);
                 return c && (starts[id].x !== c.x || starts[id].y !== c.y);
@@ -771,12 +813,23 @@ export function renderComponent(comp, parentEl, parentNode) {
 }
 
 // A new node lands on the root (on top). `node` is complete but for x / y.
+// Dropped over a frame, it goes into it (Figma): into its auto layout at the
+// pointer's place in the flow, or at the pointer in a frame without one.
 function placeNewNode(screen, node, artboardX, artboardY) {
     node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
     node.y = Math.max(0, screen.snap ? snap(artboardY - node.h / 2, screen.gridSize) : artboardY - node.h / 2);
     var before = treeSnapshot(screen);
-    Tree.insert(screen, null, null, node);
-    renderComponent(node);
+    var frame = frameAt(screen, artboardX, artboardY, []);
+    if (frame) {
+        var fb = Tree.absBox(screen, frame.id);
+        node.x = Math.round(artboardX - node.w / 2 - fb.x);
+        node.y = Math.round(artboardY - node.h / 2 - fb.y);
+        Tree.insert(screen, frame.id, Layout.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);
+        _renderScreen(); // its frame re-flows
+    } else {
+        Tree.insert(screen, null, null, node);
+        renderComponent(node, null, null);
+    }
     selectOnly(node.id);
     pushTreeChange(screen, before);
     markDirty();

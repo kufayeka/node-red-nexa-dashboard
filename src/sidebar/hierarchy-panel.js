@@ -12,6 +12,7 @@ import { pushHistory, pushTreeChange, treeSnapshot, onTreeChange } from "../hist
 import { selectOnly, selectMultiple, onSelectionChange, isSelected, groupSelection, frameSelection } from "../canvas/selection.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { setHierarchyRefresher } from "./properties-panel.js";
+import { reparentKeepingPlace } from "../canvas/drop-target.js";
 
 var VIS_CYCLE = ["show", "hide", "remove"];
 var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-ban" };
@@ -66,24 +67,6 @@ function rows(screen, list, orphan) {
     });
 }
 
-// Moves a node under parentId at a DATA index, keeping its place on screen.
-function moveKeepingPlace(screen, id, parentId, dataIndex) {
-    var loc = Tree.locate(screen, id);
-    // (an orphan's x / y are already surface coordinates)
-    var abs = !loc ? null : loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : Tree.absBox(screen, id);
-    var oldParent = loc && loc.parent ? loc.parent.id : null;
-    if (loc && loc.orphan) Tree.placeOrphan(screen, id, parentId, dataIndex);
-    else Tree.move(screen, id, parentId, dataIndex);
-    var node = Tree.find(screen, id);
-    if (abs) {
-        var p = parentId ? Tree.absBox(screen, parentId) : { x: 0, y: 0 };
-        node.x = abs.x - p.x;
-        node.y = abs.y - p.y;
-    }
-    if (parentId) Tree.tidyContainer(screen, parentId);   // the new group hugs it
-    if (oldParent && oldParent !== parentId) Tree.tidyContainer(screen, oldParent); // the old one hugs the rest, or goes when empty
-}
-
 function onMove(e) {
     var screen = getActiveScreen();
     if (!screen) return;
@@ -106,12 +89,12 @@ function onMove(e) {
             if (target.orphan) return; // arranging the Unplaced list itself isn't a thing
             if (d.position === "inside") {
                 // on top of the container's stack
-                moveKeepingPlace(screen, d.id, d.targetId, null);
+                reparentKeepingPlace(screen, d.id, d.targetId, null);
             } else {
                 // display order is reversed: "before" a row = above it = later in the data
                 var parentId = target.parent ? target.parent.id : null;
                 var index = target.index + (d.position === "before" ? 1 : 0);
-                moveKeepingPlace(screen, d.id, parentId, index); // Tree.move handles a move within the same list
+                reparentKeepingPlace(screen, d.id, parentId, index); // Tree.move handles a move within the same list
             }
         }
     } catch (err) {

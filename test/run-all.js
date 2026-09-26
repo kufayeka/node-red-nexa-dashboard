@@ -24,7 +24,7 @@ const RUNTIME_CLIENT = path.join(ROOT, "lib", "nexa-runtime-client.js");
 // Editor-side tests: take one arg (the extracted editor script).
 const EDITOR_TESTS = [
     "mock-registry.js", "mock-resize.js", "mock-multiselect.js", "mock-group.js",
-    "mock-clipboard.js", "mock-tree.js", "mock-zoom.js", "mock-logic.js",
+    "mock-clipboard.js", "mock-tree.js", "mock-frames.js", "mock-zoom.js", "mock-logic.js",
     "mock-templates-editor.js"
 ];
 // Runtime-side tests: take two args (registry client, runtime client).

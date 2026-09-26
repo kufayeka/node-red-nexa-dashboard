@@ -1172,6 +1172,173 @@
     return changed;
   }
 
+  // src/canvas/drop-target.js
+  function frameAt(screen, x, y, excludeIds) {
+    var excluded = {};
+    (excludeIds || []).forEach(function(id2) {
+      excluded[id2] = true;
+    });
+    var hit = null;
+    tree_exports.walk(screen, function(node) {
+      if (excluded[node.id]) return false;
+      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
+      if (node.type !== "@frame" || isNodeLocked(node.id)) return;
+      var b = tree_exports.absBox(screen, node.id);
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) hit = node;
+    });
+    return hit;
+  }
+  function flowKids(frame, excludeIds) {
+    return tree_exports.kids(frame).filter(function(c) {
+      return (excludeIds || []).indexOf(c.id) === -1 && layout_exports.isInFlow(c, frame);
+    });
+  }
+  function flowInsert(screen, frame, x, y, excludeIds) {
+    var l = layout_exports.layoutOf(frame);
+    var fb = tree_exports.absBox(screen, frame.id);
+    var list = flowKids(frame, excludeIds);
+    var boxes = list.map(function(c) {
+      return tree_exports.absBox(screen, c.id);
+    });
+    var horizontal = l.mode === "horizontal";
+    var readingOrder = l.mode === "grid" || horizontal && l.wrap;
+    var at = list.length;
+    for (var i2 = 0; i2 < boxes.length; i2++) {
+      var b = boxes[i2];
+      var before;
+      if (readingOrder) {
+        var above = y < b.y;
+        var sameRow = y >= b.y && y <= b.y + b.h;
+        before = above || sameRow && x < b.x + b.w / 2;
+      } else {
+        before = horizontal ? x < b.x + b.w / 2 : y < b.y + b.h / 2;
+      }
+      if (before) {
+        at = i2;
+        break;
+      }
+    }
+    var all = tree_exports.kids(frame).filter(function(c) {
+      return (excludeIds || []).indexOf(c.id) === -1;
+    });
+    var index = at < list.length ? all.indexOf(list[at]) : all.length;
+    var pad = l.padding;
+    var line;
+    var prev = boxes[at - 1], next = boxes[at];
+    if (horizontal || readingOrder) {
+      var lx = next && prev && Math.abs(next.y - prev.y) < 1 ? (prev.x + prev.w + next.x) / 2 : next ? next.x - 2 : prev ? prev.x + prev.w + 2 : fb.x + pad.l;
+      var ref = next || prev;
+      line = ref ? { x: lx - 1, y: ref.y, w: 2, h: ref.h } : { x: lx - 1, y: fb.y + pad.t, w: 2, h: Math.max(8, fb.h - pad.t - pad.b) };
+    } else {
+      var ly = next && prev ? (prev.y + prev.h + next.y) / 2 : next ? next.y - 2 : prev ? prev.y + prev.h + 2 : fb.y + pad.t;
+      line = { x: fb.x + pad.l, y: ly - 1, w: Math.max(8, fb.w - pad.l - pad.r), h: 2 };
+    }
+    return { index, line };
+  }
+  function reparentKeepingPlace(screen, id2, parentId, index) {
+    var loc = tree_exports.locate(screen, id2);
+    if (!loc) return;
+    var abs = loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen, id2);
+    var oldParent = loc.parent ? loc.parent.id : null;
+    if (loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, index);
+    else tree_exports.move(screen, id2, parentId, index);
+    var node = tree_exports.find(screen, id2);
+    var p = parentId ? tree_exports.absBox(screen, parentId) : { x: 0, y: 0 };
+    node.x = abs.x - p.x;
+    node.y = abs.y - p.y;
+    if (parentId) tree_exports.tidyContainer(screen, parentId);
+    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen, oldParent);
+  }
+  function homeFrameOf(screen, id2) {
+    var chain = tree_exports.ancestors(screen, id2);
+    for (var i2 = chain.length - 1; i2 >= 0; i2--) if (chain[i2].type === "@frame") return chain[i2];
+    return null;
+  }
+  function planDrop(screen, ids, p) {
+    if (!ids.length || !p) return null;
+    var home = homeFrameOf(screen, ids[0]);
+    var homeId = home ? home.id : null;
+    if (ids.some(function(id2) {
+      var h = homeFrameOf(screen, id2);
+      return (h ? h.id : null) !== homeId;
+    })) return null;
+    var target = frameAt(screen, p.x, p.y, ids);
+    var targetId = target ? target.id : null;
+    return {
+      targetId,
+      change: targetId !== homeId,
+      flow: target && layout_exports.hasAutoLayout(target) ? flowInsert(screen, target, p.x, p.y, ids) : null
+    };
+  }
+  function applyDrop(screen, ids, plan, places) {
+    ids.forEach(function(id2, k) {
+      var loc = tree_exports.locate(screen, id2);
+      if (!loc) return;
+      var sameList = !loc.orphan && (loc.parent ? loc.parent.id : null) === plan.targetId;
+      var index = null;
+      if (plan.flow) {
+        index = plan.flow.index + k;
+        if (sameList && index >= loc.index) index++;
+      }
+      var node = loc.node;
+      if (!sameList && node.layoutChild && node.layoutChild.absolute) {
+        node.layoutChild = Object.assign({}, node.layoutChild);
+        delete node.layoutChild.absolute;
+        if (!Object.keys(node.layoutChild).length) delete node.layoutChild;
+      }
+      reparentKeepingPlace(screen, id2, plan.targetId, index);
+      if (places && places[id2] && !plan.flow) {
+        var p = plan.targetId ? tree_exports.absBox(screen, plan.targetId) : { x: 0, y: 0 };
+        node.x = Math.round(places[id2].x - p.x);
+        node.y = Math.round(places[id2].y - p.y);
+      }
+    });
+  }
+
+  // src/canvas/drag-feedback.js
+  var outlineEl = null;
+  var lineEl = null;
+  function ensure(el, css2) {
+    if (el && state.artboardEl && el.parent().get(0) === state.artboardEl.get(0)) return el;
+    return window.$("<div>").css(Object.assign({ position: "absolute", "pointer-events": "none", "z-index": 9998, display: "none" }, css2)).appendTo(state.artboardEl);
+  }
+  function showDropFrame(frame) {
+    if (!state.artboardEl) return;
+    outlineEl = ensure(outlineEl, { border: "2px solid #0d99ff", "box-sizing": "border-box", "border-radius": "2px" });
+    var screen = getActiveScreen();
+    if (!frame || !screen) {
+      outlineEl.css("display", "none");
+      return;
+    }
+    var b = tree_exports.absBox(screen, frame.id);
+    outlineEl.css({ display: "block", left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
+  }
+  function showInsertLine(line) {
+    if (!state.artboardEl) return;
+    lineEl = ensure(lineEl, { background: "#0d99ff", "border-radius": "1px" });
+    if (!line) {
+      lineEl.css("display", "none");
+      return;
+    }
+    lineEl.css({ display: "block", left: line.x + "px", top: line.y + "px", width: line.w + "px", height: line.h + "px" });
+  }
+  function clearDragFeedback() {
+    if (outlineEl) {
+      outlineEl.remove();
+      outlineEl = null;
+    }
+    if (lineEl) {
+      lineEl.remove();
+      lineEl = null;
+    }
+  }
+  function pointerOnArtboard(e) {
+    if (!state.artboardEl || typeof state.artboardEl.offset !== "function") return null;
+    var o = state.artboardEl.offset();
+    if (!o || typeof e.pageX !== "number") return null;
+    return { x: (e.pageX - o.left) / state.zoomLevel, y: (e.pageY - o.top) / state.zoomLevel };
+  }
+
   // src/canvas/sparkplug-live.js
   var SPARKPLUG_BINDING_PREFIX = "sparkplug:";
   function makeSparkplugBindingPath(ref) {
@@ -1966,23 +2133,12 @@
       if (deeper && !isSelected(deeper)) selectOnly(deeper);
     });
     if (isNodeLocked(comp.id)) return;
-    if (inFlow) return;
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
+    var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
-      var chain = tree_exports.ancestors(screen, c.id);
-      var parent = chain.length ? chain[chain.length - 1] : null;
-      var space3 = null;
-      for (var i2 = chain.length - 1; i2 >= 0; i2--) {
-        if (chain[i2].type !== "@group") {
-          space3 = chain[i2];
-          break;
-        }
-      }
-      var spaceBox = space3 ? tree_exports.absBox(screen, space3.id) : { x: 0, y: 0, w: screen.width, h: screen.height };
+      var parent = tree_exports.parentOf(screen, c.id);
       var origin = parent ? tree_exports.absBox(screen, parent.id) : { x: 0, y: 0 };
-      var left = space3 === parent ? 0 : spaceBox.x - origin.x;
-      var top2 = space3 === parent ? 0 : spaceBox.y - origin.y;
-      return { minX: left, minY: top2, maxX: left + spaceBox.w - c.w, maxY: top2 + spaceBox.h - c.h };
+      return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function(c, start, dx, dy) {
       var nx = start.x + dx, ny = start.y + dy;
@@ -1993,6 +2149,11 @@
       var lim = clampOf(c);
       c.x = Math.max(lim.minX, Math.min(nx, lim.maxX));
       c.y = Math.max(lim.minY, Math.min(ny, lim.maxY));
+    };
+    var feedback = function(e) {
+      plan = planDrop(screen, movers, pointerOnArtboard(e));
+      showDropFrame(plan && plan.change && plan.targetId ? tree_exports.find(screen, plan.targetId) : null);
+      showInsertLine(plan && plan.flow && (plan.change || flowMode) ? plan.flow.line : null);
     };
     el.draggable({
       start: function(e) {
@@ -2011,8 +2172,32 @@
           var c = findComponent(id2);
           starts[id2] = { x: c.x, y: c.y };
         });
+        flowMode = movers.length > 0 && movers.every(function(id2) {
+          return layout_exports.isInFlow(findComponent(id2), tree_exports.parentOf(screen, id2));
+        });
+        var p0 = pointerOnArtboard(e);
+        grab = {};
+        movers.forEach(function(id2) {
+          var b = tree_exports.absBox(screen, id2);
+          grab[id2] = p0 ? { x: p0.x - b.x, y: p0.y - b.y } : { x: 0, y: 0 };
+        });
+        plan = null;
+        if (flowMode) {
+          movers.forEach(function(id2) {
+            state.artboardEl.find('[data-id="' + id2 + '"]').css("opacity", "0.5");
+          });
+          if (state.selectionHandlesEl) state.selectionHandlesEl.css("display", "none");
+        }
       },
       drag: function(e, ui) {
+        if (flowMode) {
+          feedback(e);
+          if (!starts[comp.id]) {
+            ui.position.left = inFlow ? 0 : dragStart.x;
+            ui.position.top = inFlow ? 0 : dragStart.y;
+          }
+          return;
+        }
         var dx = (e.pageX - dragStartPage.x) / state.zoomLevel;
         var dy = (e.pageY - dragStartPage.y) / state.zoomLevel;
         movers.forEach(function(id2) {
@@ -2025,8 +2210,32 @@
         ui.position.left = self ? comp.x : dragStart.x;
         ui.position.top = self ? comp.y : dragStart.y;
         if (self) updateComponentBox(comp);
+        feedback(e);
       },
-      stop: function() {
+      stop: function(e) {
+        clearDragFeedback();
+        var p = pointerOnArtboard(e);
+        var finalPlan = planDrop(screen, movers, p) || plan;
+        var reparent = finalPlan && (finalPlan.change || flowMode && finalPlan.flow);
+        if (flowMode || reparent) {
+          if (reparent) {
+            var places = {};
+            if (p) movers.forEach(function(id2) {
+              places[id2] = { x: p.x - grab[id2].x, y: p.y - grab[id2].y };
+            });
+            try {
+              applyDrop(screen, movers, finalPlan, flowMode ? places : null);
+            } catch (err) {
+              if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
+            }
+          }
+          var keepSel = movers.slice();
+          _renderScreen();
+          pushTreeChange(screen, before);
+          selectMultiple(keepSel);
+          markDirty();
+          return;
+        }
         var moved = movers.filter(function(id2) {
           var c = findComponent(id2);
           return c && (starts[id2].x !== c.x || starts[id2].y !== c.y);
@@ -2066,8 +2275,17 @@
     node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
     node.y = Math.max(0, screen.snap ? snap(artboardY - node.h / 2, screen.gridSize) : artboardY - node.h / 2);
     var before = treeSnapshot(screen);
-    tree_exports.insert(screen, null, null, node);
-    renderComponent(node);
+    var frame = frameAt(screen, artboardX, artboardY, []);
+    if (frame) {
+      var fb = tree_exports.absBox(screen, frame.id);
+      node.x = Math.round(artboardX - node.w / 2 - fb.x);
+      node.y = Math.round(artboardY - node.h / 2 - fb.y);
+      tree_exports.insert(screen, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);
+      _renderScreen();
+    } else {
+      tree_exports.insert(screen, null, null, node);
+      renderComponent(node, null, null);
+    }
     selectOnly(node.id);
     pushTreeChange(screen, before);
     markDirty();
@@ -2334,6 +2552,42 @@
       document.addEventListener("mouseup", onUp);
     });
   }
+  function renderLayoutOverlay(comp, box) {
+    if (!layout_exports.hasAutoLayout(comp)) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var l = layout_exports.layoutOf(comp), bw = Number(layout_exports.styleOf(comp).strokeWidth) > 0 && layout_exports.styleOf(comp).stroke ? Number(layout_exports.styleOf(comp).strokeWidth) : 0;
+    var band = function(x, y, w, h, cls) {
+      if (w <= 0 || h <= 0) return;
+      $("<div>", { "class": "nexa-layout-band " + cls }).css({
+        position: "absolute",
+        left: x + "px",
+        top: y + "px",
+        width: w + "px",
+        height: h + "px",
+        background: "rgba(255, 64, 129, 0.18)",
+        "pointer-events": "none"
+      }).appendTo(state.selectionHandlesEl);
+    };
+    var inner = { x: bw, y: bw, w: box.w - 2 * bw, h: box.h - 2 * bw };
+    var p = l.padding;
+    band(inner.x, inner.y, inner.w, p.t, "nexa-pad-t");
+    band(inner.x, inner.y + inner.h - p.b, inner.w, p.b, "nexa-pad-b");
+    band(inner.x, inner.y + p.t, p.l, inner.h - p.t - p.b, "nexa-pad-l");
+    band(inner.x + inner.w - p.r, inner.y + p.t, p.r, inner.h - p.t - p.b, "nexa-pad-r");
+    if (l.mode === "grid" || l.mode === "horizontal" && l.wrap) return;
+    var kids2 = tree_exports.kids(comp).filter(function(c) {
+      return layout_exports.isInFlow(c, comp);
+    }).map(function(c) {
+      var b2 = tree_exports.absBox(screen, c.id);
+      return { x: b2.x - box.x, y: b2.y - box.y, w: b2.w, h: b2.h };
+    });
+    for (var i2 = 1; i2 < kids2.length; i2++) {
+      var a = kids2[i2 - 1], b = kids2[i2];
+      if (l.mode === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
+      else band(inner.x + p.l, a.y + a.h, inner.w - p.l - p.r, b.y - a.y - a.h, "nexa-gap");
+    }
+  }
   function renderSelectionHandles(comp) {
     clearSelectionHandles();
     var caps = capabilitiesOf(comp);
@@ -2348,6 +2602,7 @@
       "pointer-events": "none",
       transform: "rotate(" + (comp.rotation || 0) + "deg)"
     }).appendTo(state.artboardEl);
+    renderLayoutOverlay(comp, box);
     if (!locked) {
       if (caps.resizable) {
         [
@@ -28748,21 +29003,6 @@
       };
     });
   }
-  function moveKeepingPlace(screen, id2, parentId, dataIndex) {
-    var loc = tree_exports.locate(screen, id2);
-    var abs = !loc ? null : loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen, id2);
-    var oldParent = loc && loc.parent ? loc.parent.id : null;
-    if (loc && loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, dataIndex);
-    else tree_exports.move(screen, id2, parentId, dataIndex);
-    var node = tree_exports.find(screen, id2);
-    if (abs) {
-      var p = parentId ? tree_exports.absBox(screen, parentId) : { x: 0, y: 0 };
-      node.x = abs.x - p.x;
-      node.y = abs.y - p.y;
-    }
-    if (parentId) tree_exports.tidyContainer(screen, parentId);
-    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen, oldParent);
-  }
   function onMove(e) {
     var screen = getActiveScreen();
     if (!screen) return;
@@ -28785,11 +29025,11 @@
         if (!target) return;
         if (target.orphan) return;
         if (d.position === "inside") {
-          moveKeepingPlace(screen, d.id, d.targetId, null);
+          reparentKeepingPlace(screen, d.id, d.targetId, null);
         } else {
           var parentId = target.parent ? target.parent.id : null;
           var index = target.index + (d.position === "before" ? 1 : 0);
-          moveKeepingPlace(screen, d.id, parentId, index);
+          reparentKeepingPlace(screen, d.id, parentId, index);
         }
       }
     } catch (err) {
