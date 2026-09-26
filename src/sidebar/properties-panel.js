@@ -1,7 +1,7 @@
 import { state, findComponent, findTemplate, markDirty, genId, getActiveScreen, Tree, isNodeLocked } from "../state.js";
 import { pushHistory } from "../history.js";
 import { buildTypedInputWidget, buildEditableListWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
-import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
+import { isSelected, selectOnly, groupSelection, frameSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { updateComponentBox } from "../canvas/selection-handles.js";
@@ -9,6 +9,14 @@ import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-co
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
+import { renderFrameInspector, renderLayoutChildInspector } from "./frame-inspector.js";
+
+// Sizing / placement in the parent's auto layout, for any kind of node.
+function renderLayoutChildSection(comp) {
+    var screen = getActiveScreen();
+    var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+    renderLayoutChildInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, parent);
+}
 
 function previewText(code, emptyLabel) {
     if (!code) return emptyLabel;
@@ -24,7 +32,8 @@ export function renderPropertiesPanel() {
         window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
 
         var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-        window.$("<button>", { type: "button", title: "Group selection (Ctrl+G)" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
+        window.$("<button>", { type: "button", title: "Group selection (Ctrl+G)" }).text("Group").css({ flex: "1" }).on("click", function () { groupSelection(); }).appendTo(groupRow);
+        window.$("<button>", { type: "button", title: "Frame selection (Ctrl+Alt+G)" }).text("Frame").css({ flex: "1" }).on("click", frameSelection).appendTo(groupRow);
 
         var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
         window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" })
@@ -70,6 +79,7 @@ export function renderPropertiesPanel() {
     });
 
     renderNameField(comp);
+    renderLayoutChildSection(comp);
 
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
         // SDK component: the property kit rendered its inspector from the schema
@@ -446,16 +456,20 @@ function afterGeometryEdit(comp) {
 function renderContainerProperties(comp) {
     var screen = getActiveScreen();
     var pane = state.propertiesPane;
+    var isFrame = comp.type === "@frame";
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" })
-        .html('<i class="fa fa-object-group"></i> ' + (comp.type === "@group" ? "Group" : "Frame") + " — " + Tree.kids(comp).length + " children")
+        .html('<i class="fa ' + (isFrame ? "fa-square-o" : "fa-object-group") + '"></i> ' + (isFrame ? "Frame" : "Group") + " — " + Tree.kids(comp).length + " children")
         .appendTo(pane);
     renderNameField(comp);
+    renderLayoutChildSection(comp);
     var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(pane);
     var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
     lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked (with everything inside)"));
     lockInput.on("change", function () { setLockedForSelection(lockInput.is(":checked"), [comp.id]); });
     var btnRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "10px" }).appendTo(pane);
-    window.$("<button>", { type: "button", title: "Ungroup (Ctrl+Shift+G)" }).text("Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    window.$("<button>", { type: "button", title: (isFrame ? "Remove the frame, keep its children" : "Ungroup") + " (Ctrl+Shift+G)" }).text(isFrame ? "Remove frame" : "Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    // a frame: its box, auto layout and style in the property kit
+    if (isFrame && renderFrameInspector(window.$("<div>").appendTo(pane), comp)) return;
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position").appendTo(pane);
     [["x", "X"], ["y", "Y"]].forEach(function (pair) {
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane);

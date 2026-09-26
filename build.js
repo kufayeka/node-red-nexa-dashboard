@@ -27,6 +27,7 @@ const outRegistryClient = path.join(__dirname, "lib", "nexa-registry-client.js")
 // screen worker migrates pre-tree projects exactly the way the editor does.
 const modelEntry = path.join(__dirname, "src", "model", "index.js");
 const outModel = path.join(__dirname, "lib", "nexa-model.js");
+const outModelClient = path.join(__dirname, "lib", "nexa-model-client.js");
 
 // Resolves `import ... from "lit"` to the global the SDK bundle publishes.
 const litFromGlobal = {
@@ -101,8 +102,10 @@ async function runBuild() {
             "// Served to deployed pages as /nexa/_registry.js (lib/screen-worker.js).\n" + await bundle(registryEntry), "utf8");
 
         fs.writeFileSync(outModel, banner("src/model/index.js") + await bundle(modelEntry, { format: "cjs", platform: "node" }), "utf8");
+        fs.writeFileSync(outModelClient, banner("src/model/index.js") +
+            "// Served to deployed pages as /nexa/_model.js (lib/screen-worker.js).\n" + await bundle(modelEntry, { globalName: "NexaModel" }), "utf8");
 
-        console.log(`[build] Built nexa-plugin.html, nexa-editor.bundle.js, nexa-sdk.bundle.js, nexa-sdk-kit.bundle.js nexa-registry-client.js & nexa-model.js in ${Date.now() - startTime}ms`);
+        console.log(`[build] Built nexa-plugin.html, nexa-editor.bundle.js, nexa-sdk.bundle.js, nexa-sdk-kit.bundle.js nexa-registry-client.js & nexa-model(-client).js in ${Date.now() - startTime}ms`);
     } catch (e) {
         console.error("[build] Build error:", e);
     }

@@ -1,4 +1,5 @@
-import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen } from "../state.js";
+import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen, Tree } from "../state.js";
+import { readbackLayout } from "./layout-readback.js";
 import { refreshSelectionVisuals } from "./selection.js";
 import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
@@ -33,7 +34,14 @@ export function renderActiveScreen() {
     }
     applyZoomTransform();
     // the root's children; containers draw their own children inside them
-    screen.components.forEach(function (node) { renderComponent(node); });
+    screen.components.forEach(function (node) { renderComponent(node, null, null); });
+    // boxes placed by auto layout back into the nodes; when that re-fitted a
+    // group (its children's x / y shift), draw once more with the new values
+    var changed = readbackLayout(screen);
+    if (changed.length && changed.some(function (id) { return Tree.ancestors(screen, id).some(function (a) { return a.type === "@group"; }); }) && !renderActiveScreen._again) {
+        renderActiveScreen._again = true;
+        try { renderActiveScreen(); } finally { renderActiveScreen._again = false; }
+    }
 }
 
 registerScreenRenderer(renderActiveScreen);

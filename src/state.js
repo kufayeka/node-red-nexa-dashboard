@@ -1,8 +1,9 @@
 // --- Global State & Data Model for Nexa Dashboard Editor -----------------
 import * as Tree from "./model/tree.js";
+import * as Layout from "./model/layout.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
 
-export { Tree };
+export { Tree, Layout };
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 2.0;

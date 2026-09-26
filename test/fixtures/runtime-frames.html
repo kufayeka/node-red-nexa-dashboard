@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>frames</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- A deployed page the way lib/screen-worker.js writes it, with a screen of
+     frames (see test/runtime-layout-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:800px;height:500px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("box", { render: function (el, p) { el.style.background = p.fill || "#ccc"; } });
+function box(id, w, h, extra) { return Object.assign({ id: id, type: "box", x: 0, y: 0, w: w, h: h, props: {} }, extra || {}); }
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 500, treeVersion: 1, orphans: [], logic: { nodes: [], wires: [
+  ] }, components: [
+  { id: "row", type: "@frame", name: "Row", x: 20, y: 20, w: 400, h: 80, style: { stroke: "#999", strokeWidth: 1 },
+    layout: { mode: "horizontal", padding: { t: 8, r: 8, b: 8, l: 8 }, gap: 8, alignY: "center" },
+    children: [box("a", 60, 40), box("b", 50, 40, { layoutChild: { w: "fill" } }), box("c", 80, 30), box("abs", 10, 10, { x: 5, y: 5, layoutChild: { absolute: true } })] },
+  { id: "grid", type: "@frame", name: "Grid", x: 450, y: 20, w: 200, h: 150,
+    layout: { mode: "grid", padding: { t: 4, r: 4, b: 4, l: 4 }, gap: 4, columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }] },
+    children: [box("g1", 30, 30, { layoutChild: { w: "fill" } }), box("g2", 30, 30), box("g3", 30, 30, { layoutChild: { w: "fill", colSpan: 2 } })] },
+  { id: "hug", type: "@frame", name: "Hug", x: 20, y: 200, w: 10, h: 10, visibility: "hide",
+    layout: { mode: "vertical", padding: { t: 10, r: 10, b: 10, l: 10 }, gap: 5, sizeW: "hug", sizeH: "hug", alignX: "center" },
+    children: [box("h1", 100, 20), box("h2", 60, 20)] }
+] };
+window.__NEXA_SCREEN__.logic.nodes.push({ id: "tick", type: "inject", once: true, onceDelay: 600, intervalMs: 0 },
+  { id: "show", type: "layer-control", states: [{ name: "Hug", state: "show" }] });
+window.__NEXA_SCREEN__.logic.wires.push({ id: "w", from: "tick", to: "show" });
+window.__NEXA_TEMPLATES__ = [];
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>
