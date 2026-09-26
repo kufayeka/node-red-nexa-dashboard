@@ -23,9 +23,9 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orp
     ] }
   ],
   logic: { nodes: [
-    { id: "t1", type: "inject", once: true, onceDelay: 400, intervalMs: 0 },
+    { id: "t1", type: "inject", once: true, onceDelay: 1500, intervalMs: 0 },
     { id: "set1", type: "set-variable", scope: "panel", name: "label", valueSource: "static", value: "changed" },
-    { id: "t2", type: "inject", once: true, onceDelay: 700, intervalMs: 0, payloadType: "str", payload: "L2" },
+    { id: "t2", type: "inject", once: true, onceDelay: 3500, intervalMs: 0, payloadType: "str", payload: "L2" },
     { id: "set2", type: "set-variable", scope: "", name: "line", valueSource: "payload" }
   ], wires: [{ id: "w1", from: "t1", to: "set1" }, { id: "w2", from: "t2", to: "set2" }] } };
 window.__NEXA_PARAMS__ = {}; window.__NEXA_QUERY__ = {};

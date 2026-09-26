@@ -19,6 +19,14 @@ async function main() {
     const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-variables.html', async ({ js, logs }) => {
+            // the injects fire on timers: wait (up to 5 s) for the expected state instead of sleeping
+            const settle = async (want) => {
+                for (let i = 0; i < 50; i++) {
+                    if (JSON.stringify(await texts()) === JSON.stringify(want)) return;
+                    await js('new Promise(function (r) { setTimeout(r, 100); })');
+                }
+                assert.deepStrictEqual(await texts(), want);
+            };
             const texts = () => js(`(function () { var o = {}; ["root", "deep", "shadowed", "card::inT"].forEach(function (id) { var e = document.querySelector('[data-id="' + id + '"]'); o[id] = e ? e.textContent : null; }); return o; })()`);
 
             await ok('mount: nearest declaration wins; outside a scope its names stay as written; a template sees only its params', async () => {
@@ -30,12 +38,10 @@ async function main() {
                 });
             });
             await ok('Set Variable on Panel: everything inside that does not shadow it follows, the instance gets it passed in', async () => {
-                await js('new Promise(function (r) { setTimeout(r, 550); })');
-                assert.deepStrictEqual(await texts(), { root: 'L1:3:{label}', deep: 'L1/changed', shadowed: 'L1/shadow', 'card::inT': 'changed@L1/{line}' });
+                await settle({ root: 'L1:3:{label}', deep: 'L1/changed', shadowed: 'L1/shadow', 'card::inT': 'changed@L1/{line}' });
             });
             await ok('Set Variable on the screen (from msg.payload): seen through every scope', async () => {
-                await js('new Promise(function (r) { setTimeout(r, 400); })');
-                assert.deepStrictEqual(await texts(), { root: 'L2:3:{label}', deep: 'L2/changed', shadowed: 'L2/shadow', 'card::inT': 'changed@L2/{line}' });
+                await settle({ root: 'L2:3:{label}', deep: 'L2/changed', shadowed: 'L2/shadow', 'card::inT': 'changed@L2/{line}' });
             });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;

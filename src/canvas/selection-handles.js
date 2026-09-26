@@ -60,14 +60,33 @@ export function updateComponentBox(comp) {
             el.find(".nexa-template-instance-inner").css("transform", "scale(" + scaleX + "," + scaleY + ")");
         }
     }
-    if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
-        var b = boxOf(comp);
-        state.selectionHandlesEl.css({
-            left: b.x + "px", top: b.y + "px",
-            width: b.w + "px", height: b.h + "px",
-            transform: "rotate(" + (comp.rotation || 0) + "deg)"
-        });
+    // Inside an auto layout (or a frame that lays out / hugs), this change moved
+    // or resized its siblings / parent too: read the new boxes back so the
+    // selection box follows whatever is selected, not the stale values.
+    var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+    if (screen && (Layout.hasAutoLayout(parent) || Layout.hasAutoLayout(comp) || Tree.ancestors(screen, comp.id).some(Layout.hasAutoLayout))) {
+        readbackLayout(screen);
     }
+    syncSelectionHandles();
+}
+
+/** Puts the selection box back on the (single) selected node's current box. */
+export function syncSelectionHandles() {
+    if (!state.selectionHandlesEl || state.selectedIds.length !== 1) return;
+    var screen = getActiveScreen();
+    var sel = screen && Tree.find(screen, state.selectedIds[0]);
+    if (!sel) return;
+    // a layout frame's padding / gap bands depend on its children: redraw them
+    if (Layout.hasAutoLayout(sel)) {
+        state.selectionHandlesEl.find(".nexa-layout-band").remove();
+        renderLayoutOverlay(sel, boxOf(sel));
+    }
+    var b = boxOf(sel);
+    state.selectionHandlesEl.css({
+        left: b.x + "px", top: b.y + "px",
+        width: b.w + "px", height: b.h + "px",
+        transform: "rotate(" + (sel.rotation || 0) + "deg)"
+    });
 }
 
 export function wireResizeHandle(handle, comp, handleName) {

@@ -196,7 +196,7 @@ console.log('the first item now last, still in the row?', ids(row.children) === 
 console.log('--- drag an item out of the row onto empty canvas ---');
 flow(row);
 mousedownOn(i1.id, { ctrlKey: true });
-const grabAt = { x: row.x + i1.x + 5, y: row.y + i1.y + 5 };
+const grabAt = { x: row.x + 1 + i1.x + 5, y: row.y + 1 + i1.y + 5 };  // +1: inside the row's border
 dragNode(i1.id, grabAt, { x: 700, y: 520 });
 const out = screen.components.find((n) => n.id === i1.id);
 console.log('out of the row, on the root where it was let go (grab kept)?', !!out && out.x === 695 && out.y === 515 && row.children.length === 2);

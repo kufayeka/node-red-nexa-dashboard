@@ -159,13 +159,29 @@ export function cloneWithNewIds(node, genId) {
     return copy;
 }
 
+/** Where a container's children's x / y = 0 is, in surface coordinates (inside a frame's border). */
+export function contentOrigin(surface, id) {
+    var b = absBox(surface, id);
+    if (!b) return { x: 0, y: 0 };
+    var bw = borderOf(find(surface, id));
+    return { x: b.x + bw, y: b.y + bw };
+}
+
+/** A frame's stroke width (its children start inside it); 0 for anything else. */
+export function borderOf(node) {
+    var st = node && node.type === "@frame" && node.style;
+    var w = st && st.stroke ? Number(st.strokeWidth) : 0;
+    return w > 0 ? w : 0;
+}
+
 /** Box of a node in surface coordinates (sum of the ancestors' offsets). */
 export function absBox(surface, id) {
     var loc = locate(surface, id);
     if (!loc) return null;
     var n = loc.node;
     var x = n.x || 0, y = n.y || 0;
-    ancestors(surface, id).forEach(function (a) { x += a.x || 0; y += a.y || 0; });
+    // a child is positioned inside its frame's border (CSS: from the padding edge)
+    ancestors(surface, id).forEach(function (a) { var b = borderOf(a); x += (a.x || 0) + b; y += (a.y || 0) + b; });
     return { x: x, y: y, w: n.w || 0, h: n.h || 0 };
 }
 

@@ -28,8 +28,11 @@ export function readbackLayout(screen) {
         var inFlow = Layout.isInFlow(node, parent);
         var hugW = Layout.frameHugs(node, "w"), hugH = Layout.frameHugs(node, "h");
         if (!inFlow && !hugW && !hugH) return;
+        // hidden (display: none, itself or an ancestor): it measures 0 x 0 —
+        // keep its real size for when it shows again
+        if (Tree.effectiveVisibility(screen, node.id) !== "show") return false;
         var el = elementOf(node.id);
-        if (!el) return;
+        if (!el || !el.getClientRects().length) return;
         var box = { x: node.x, y: node.y, w: node.w, h: node.h };
         if (inFlow) { box.x = el.offsetLeft; box.y = el.offsetTop; }
         if (inFlow || hugW) box.w = el.offsetWidth;
