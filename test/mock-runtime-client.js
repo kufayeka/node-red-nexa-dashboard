@@ -7,9 +7,10 @@ function makeEl(tag) {
     tag: tag, style: {}, children: [], attrs: {}, parentNode: null,
     setAttribute(k, v) { this.attrs[k] = v; },
     appendChild(child) { child.parentNode = this; this.children.push(child); },
+    insertBefore(child, ref) { child.parentNode = this; this.children.splice(this.children.indexOf(ref), 0, child); },
     // Real DOM's removeChild — needed by the Layer Control node's "remove"
-    // state (reconcileTopLevelLayerRender in nexa-runtime-client.js actually
-    // tears a component's DOM node out, not just css-hides it).
+    // state (reconcileVisibility in nexa-runtime-client.js actually tears a
+    // node's element out, not just css-hides it).
     removeChild(child) {
       child.parentNode = null;
       this.children = this.children.filter(c => c !== child);
@@ -49,6 +50,19 @@ global.window.addEventListener = function () {};
 
 const fs = require('fs');
 eval(fs.readFileSync(process.argv[2], 'utf8')); // nexa-registry-client.js
+// The screen worker migrates pre-tree screens (flat components + layers) to
+// the node tree before a page gets them; the screens below are written in
+// the old shape, so they go through the same migration.
+const { migrateSurface } = require('../lib/nexa-model.js');
+// an element anywhere under `root` (containers nest their children)
+function deepFind(root, id) {
+  for (const c of root.children) {
+    if (c.attrs['data-id'] === id) return c;
+    const hit = deepFind(c, id);
+    if (hit) return hit;
+  }
+  return null;
+}
 
 // Register the same two component types the real example package does, but
 // with a lightweight fake render() (no real Lit needed here — this test is
@@ -75,27 +89,28 @@ window.__NEXA_SCREEN__ = {
     { id: 'c4', type: 'kufayeka-broken', x: 400, y: 20, w: 60, h: 60, rotation: 0, layerId: 'default', props: {} }
   ]
 };
+migrateSurface(window.__NEXA_SCREEN__);
 
 eval(fs.readFileSync(process.argv[3], 'utf8')); // nexa-runtime-client.js
 
-console.log('mounted element count:', artboard.children.length, '(expect 4)');
+console.log('mounted element count:', artboard.children.length, '(expect 4: c1, c3, c4 and the "Hidden" group holding c2)');
 const c1 = artboard.children.find(e => e.attrs['data-id'] === 'c1');
 console.log('c1 positioned correctly?', c1.style.left === '10px' && c1.style.top === '20px' && c1.style.width === '100px');
 console.log('c1 visible (display not none)?', c1.style.display === '');
 
-const c2 = artboard.children.find(e => e.attrs['data-id'] === 'c2');
+const c2 = deepFind(artboard, 'c2');
+const hiddenGroup = window.__NEXA_SCREEN__.components.find(n => n.name === 'Hidden');
 console.log('c2 rotation applied?', c2.style.transform === 'rotate(45deg)');
-console.log('c2 in "hidden-child" layer (parent still visible) is VISIBLE?', c2.style.display === '');
+console.log('c2 is mounted INSIDE the element of the group its old layer became?', !!hiddenGroup && c2.parentNode.attrs['data-id'] === hiddenGroup.id && c2.parentNode.attrs['data-nexa-container'] === '@group');
+console.log('c2 in a visible group is VISIBLE?', c2.style.display === '');
 
-// Now hide the PARENT layer directly and re-mount a fresh component to
-// prove the cascading check itself (same isLayerVisible logic, exercised a
-// second time rather than needing a full re-render pipeline).
-window.__NEXA_SCREEN__.layers[0].visible = false;
+// Now hide the group and mount again: the most restrictive ancestor wins.
+hiddenGroup.visibility = 'hide';
 const artboard2 = makeEl('div');
 global.document.getElementById = (id) => id === 'nexa-runtime-artboard' ? artboard2 : null;
 eval(fs.readFileSync(process.argv[3], 'utf8'));
-const c2b = artboard2.children.find(e => e.attrs['data-id'] === 'c2');
-console.log('after hiding the PARENT layer, c2 (nested child layer) becomes hidden?', c2b.style.display === 'none');
+const c2b = deepFind(artboard2, 'c2');
+console.log('after hiding its GROUP, c2 inside it becomes hidden?', c2b.style.display === 'none');
 
 const c3 = artboard.children.find(e => e.attrs['data-id'] === 'c3');
 console.log('unknown component type shows a placeholder message, no throw?', /unknown component/.test(c3.textContent));
@@ -288,7 +303,7 @@ async function runNewNodeTypeTests() {
   await new Promise(resolve => setTimeout(resolve, 250)); // >= 2 ticks at the enforced 100ms floor
   console.log('Inject node fired on its own interval, without any ctx.emit/lifecycle trigger?', /^TICK-\d+$/.test(sink3.props.text), '(actual: ' + JSON.stringify(sink3.props.text) + ')');
 
-  console.log('--- Layer Control node: 3-state layers reconciled live on a deployed page (no re-mount pass to rely on, unlike the editor) ---');
+  console.log('--- Layer Control node: node visibility by name, reconciled live on a deployed page (no re-mount pass to rely on, unlike the editor) ---');
   const artboard6 = makeEl('div');
   global.document.getElementById = (id) => id === 'nexa-runtime-artboard' ? artboard6 : null;
   window.__NEXA_SCREEN__ = {
@@ -317,9 +332,10 @@ async function runNewNodeTypeTests() {
       ]
     }
   };
+  migrateSurface(window.__NEXA_SCREEN__); // the "Panel" layer becomes a "Panel" group
   eval(fs.readFileSync(process.argv[3], 'utf8'));
 
-  function panelEl() { return artboard6.children.find(e => e.attrs['data-id'] === 'panelComp'); }
+  function panelEl() { return deepFind(artboard6, 'panelComp'); }
   console.log('initially mounted (state "show")?', !!panelEl() && panelEl().style.display === '');
 
   lastCtx.emit('hidePanel', null);

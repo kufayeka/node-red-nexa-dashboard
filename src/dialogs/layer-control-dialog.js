@@ -32,12 +32,12 @@ export function openLayerControlNodeEditor(node) {
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
             window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
-                .text("Sets one or more layers' state by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.")
+                .text("Shows, hides or removes nodes of this screen's Hierarchy (usually groups) by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.")
                 .appendTo(body);
 
             var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-            window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Layer states (JSON array)").appendTo(row);
-            var initialText = JSON.stringify((node.states && node.states.length) ? node.states : [{ name: "Default Layer", state: "show" }], null, 2);
+            window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Visibility by node name (JSON array)").appendTo(row);
+            var initialText = JSON.stringify((node.states && node.states.length) ? node.states : [{ name: "Group 1", state: "show" }], null, 2);
             statesInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
             if (typeof statesInput.typedInput === "function") {
                 statesInput.typedInput({ default: "json", types: ["json"] });
@@ -47,7 +47,7 @@ export function openLayerControlNodeEditor(node) {
             }
 
             window.$("<div>").css({ "font-size": "11px", color: "#aaa", "margin-top": "6px" })
-                .html('Example: <code>[{"name":"Default Layer","state":"hide"}]</code> &mdash; state is one of "show", "hide", "remove".')
+                .html('Example: <code>[{"name":"Popup","state":"hide"}]</code> &mdash; state is one of "show", "hide" (drawn, not visible), "remove" (not drawn). What is inside a node follows it.')
                 .appendTo(body);
         }
     });

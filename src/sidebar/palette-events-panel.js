@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains } from "../state.js";
+import { state, getActiveScreen, findTemplate, templateContains, Tree } from "../state.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -371,9 +371,11 @@ export function renderEventsPanel() {
         return false;
     }
 
-    if (screen && screen.components.length) {
+    // every component at any depth (groups / frames have no events of their own)
+    var eventComps = screen ? Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n); }) : [];
+    if (eventComps.length) {
         sectionHeader(state.eventsPane, "Components on this screen");
-        screen.components.forEach(function (comp) {
+        eventComps.forEach(function (comp) {
             var shortId = comp.id.slice(-4);
             if (comp.type === "@template") {
                 var template = findTemplate(comp.templateId);

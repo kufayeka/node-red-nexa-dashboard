@@ -1,6 +1,6 @@
 import {
     state, ZOOM_STEP, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_GRID_SIZE,
-    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty
+    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty, Tree
 } from "./state.js";
 import { undo, redo, pushHistory } from "./history.js";
 import { groupSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
@@ -160,11 +160,13 @@ export function buildCanvasArea(trayBody) {
                         targetComp = findComponent(compId);
                     }
                 }
-                if (!targetComp && screen && screen.components) {
-                    for (var i = screen.components.length - 1; i >= 0; i--) {
-                        var c = screen.components[i];
-                        if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
-                            targetComp = c;
+                if (!targetComp && screen) {
+                    // the top-most component under the drop point, at any depth
+                    var nodes = Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n); });
+                    for (var i = nodes.length - 1; i >= 0; i--) {
+                        var b = Tree.absBox(screen, nodes[i].id);
+                        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+                            targetComp = nodes[i];
                             break;
                         }
                     }

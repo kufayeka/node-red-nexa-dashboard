@@ -1,6 +1,6 @@
 import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen } from "../state.js";
 import { refreshSelectionVisuals } from "./selection.js";
-import { renderComponent, ensureSparkplugLiveRenderWired } from "./component-renderer.js";
+import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
 
@@ -32,8 +32,14 @@ export function renderActiveScreen() {
         state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
-    screen.components.forEach(renderComponent);
+    // the root's children; containers draw their own children inside them
+    screen.components.forEach(function (node) { renderComponent(node); });
 }
+
+registerScreenRenderer(renderActiveScreen);
+
+// Reachable from the browser console and the tests.
+if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
 
 export function applyZoomTransform() {
     if (!state.stageEl || !state.sizerEl) return;

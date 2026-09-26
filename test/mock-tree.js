@@ -88,6 +88,7 @@ function mousedownOn(id, opts) {
   var evt = Object.assign({ stopPropagation(){}, shiftKey:false }, opts);
   handlers.forEach(fn => fn(evt));
 }
+function dragOf(id) { return draggables.find(d => d.id === id); }
 function dispatchKey(opts) {
   var hs = documentJQ && documentJQ._handlers['keydown.nexa'] || [];
   var evt = Object.assign({ target: {}, preventDefault(){}, key:'', ctrlKey:false, metaKey:false, shiftKey:false }, opts);
@@ -100,7 +101,7 @@ global.RED = {
   actions: { add(id, fn){ actions[id]=fn; }, invoke(id){ actions[id](); } },
   menu: { addItem(){} },
   comms: { subscribe(){} },
-  notify(msg, opts){ notifications.push(msg); },
+  notify(msg, opts){ notifications.push(msg); console.log('  [notify]', opts&&opts.type, msg); },
   events: { on(){}, emit(){} },
   log: { info(){} },
   nodes: {
@@ -124,76 +125,57 @@ window.NEXA = window.NEXA || { _q: [], registerComponent: function(id,def){ this
 NEXA.registerComponent('mock-item', { category:'Basic', label:'Item', defaultSize:{w:60,h:60}, capabilities:{resizable:true,rotatable:true,lockable:true}, defaults:{}, render(){} });
 
 const fs = require('fs');
+
+// A project saved before the node tree: flat components, layers (one nested,
+// one hidden) and an old group. Opening the editor migrates it.
+configNodes.push({ id: 'cfg-old', type: 'kufayeka-nexa-project', name: 'Old', templates: [], screens: [{
+  id: 'old1', name: 'Old screen', path: '/old', width: 800, height: 600, gridSize: 20, snap: true,
+  layers: [{ id: 'default', name: 'Default Layer', parentId: null, state: 'show' }, { id: 'pop', name: 'Popup', parentId: null, state: 'hide' }, { id: 'popb', name: 'Popup buttons', parentId: 'pop', state: 'show' }],
+  groups: [{ id: 'G1', x: 0, y: 0, w: 0, h: 0 }],
+  components: [
+    { id: 'a', type: 'mock-item', x: 40, y: 40, w: 60, h: 60, layerId: 'default' },
+    { id: 'b', type: 'mock-item', x: 300, y: 200, w: 60, h: 60, layerId: 'pop' },
+    { id: 'c', type: 'mock-item', x: 320, y: 300, w: 60, h: 60, layerId: 'popb' },
+    { id: 'd', type: 'mock-item', x: 100, y: 400, w: 60, h: 60, layerId: 'default', g: 'G1' },
+    { id: 'e', type: 'mock-item', x: 200, y: 400, w: 60, h: 60, layerId: 'default', g: 'G1' }
+  ], logic: { nodes: [], wires: [] } }] });
+
 eval(fs.readFileSync(process.argv[2], 'utf8'));
-
 actions['nexa:open-pages-editor']();
-// The sidebar's new "Events" tab also registers draggable chips now, so
-// filter by the known 'Item' label instead of positional index.
-const itemDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Item'; });
-const chip = itemDraggables[itemDraggables.length - 1];
-
-console.log('--- drop 3 items ---');
-// Placement now happens in the artboard's own .droppable() "drop" handler
-// (editor-tray.js), not the palette chip's draggable "stop" — simulate a
-// real drop by calling that handler directly with the chip as ui.draggable.
-function dropOnArtboard(x, y) {
-  global.__artboardEl._droppableOpts.drop({ pageX: x, pageY: y }, { draggable: chip.el });
-}
-dropOnArtboard(100, 100);
-dropOnArtboard(300, 100);
-dropOnArtboard(500, 100);
-const comps = configNodes[0].screens[0].components;
 const screen = configNodes[0].screens[0];
-console.log('ids:', comps.map(c => c.id));
+const byId = (id) => { var f = null; (function walk(l) { l.forEach(n => { if (n.id === id) f = n; if (n.children) walk(n.children); }); })(screen.components); return f; };
+const rendered = (id) => !!componentsById[id] && (function inTree(el) { while (el) { if (el === global.__artboardEl) return true; el = el._parent; } return false; })(componentsById[id]);
+const render = () => { Object.keys(componentsById).forEach(k => delete componentsById[k]); window.__nexaEditor.render(); };
 
-// NOTE: removeComponents() (used by cut and by group/ungroup) does
-// `screen.components = screen.components.filter(...)` — a REASSIGNMENT,
-// not an in-place mutation. `comps` above is a snapshot of the array
-// reference at one point in time and goes stale the moment that happens
-// (same reason markDirty() has to explicitly resync projectConfigNode.
-// screens = screens elsewhere in the real code). Always read
-// `screen.components` fresh here instead of the stale `comps` alias.
+console.log('--- the old screen was migrated to the node tree on open ---');
+console.log('top level: a, the Popup group, Group 1?', JSON.stringify(screen.components.map(n => n.id)) === JSON.stringify(['a', 'pop', 'G1']));
+console.log('layers / groups / layerId are gone?', screen.layers === undefined && screen.groups === undefined && byId('a').layerId === undefined && screen.treeVersion === 1);
+console.log('Popup is a hidden group holding b and the nested "Popup buttons" group?', byId('pop').type === '@group' && byId('pop').visibility === 'hide' && JSON.stringify(byId('pop').children.map(n => n.id)) === JSON.stringify(['b', 'popb']));
+console.log('b keeps its place on screen (x relative to the group)?', byId('pop').x + byId('b').x === 300 && byId('pop').y + byId('b').y === 200);
 
-console.log('--- COPY item[0], paste: expect a NEW id, offset +20,+20, original untouched ---');
-mousedownOn(comps[0].id, { shiftKey: false });
-var originalX = comps[0].x, originalY = comps[0].y, originalId = comps[0].id;
-dispatchKey({ key: 'c', ctrlKey: true });
-dispatchKey({ key: 'v', ctrlKey: true });
-console.log('component count after copy-paste:', screen.components.length, '(expect 4)');
-var pasted = screen.components[screen.components.length - 1];
-console.log('pasted id !== original id?', pasted.id !== originalId);
-console.log('pasted position offset by +20,+20?', pasted.x === originalX + 20 && pasted.y === originalY + 20);
-console.log('original still present unchanged?', screen.components.some(c => c.id === originalId && c.x === originalX));
+console.log('--- rendering follows effective visibility ---');
+render();
+console.log('a (visible) is drawn and draggable?', rendered('a') && draggables.some(d => d.id === 'a'));
+console.log('the hidden Popup group is drawn but display:none, and so are its children (instant to show again)?',
+  rendered('pop') && componentsById['pop']._css.display === 'none' && rendered('c') && componentsById['c']._css.display === 'none');
+console.log('children are drawn INSIDE their group\'s element?', componentsById['b']._parent === componentsById['pop'] && componentsById['c']._parent === componentsById['popb']);
+console.log('a hidden node takes no clicks (no mousedown wiring)?', !(componentsById['b']._handlers.mousedown || []).length);
 
-console.log('--- CUT item[1], paste: expect SAME id and SAME position restored ---');
-var cutId = comps[1].id, cutX = comps[1].x, cutY = comps[1].y;
-mousedownOn(cutId, { shiftKey: false });
-dispatchKey({ key: 'x', ctrlKey: true });
-console.log('component count after cut:', screen.components.length, '(expect 3)');
-dispatchKey({ key: 'v', ctrlKey: true });
-console.log('component count after cut-paste:', screen.components.length, '(expect 4)');
-var restored = screen.components.find(c => c.id === cutId);
-console.log('cut item restored with SAME id and SAME position?', !!restored && restored.x === cutX && restored.y === cutY);
+byId('pop').visibility = 'remove';
+render();
+console.log('"remove": the group and everything inside is not drawn at all?', !rendered('pop') && !rendered('b') && !rendered('c'));
+delete byId('pop').visibility;
+render();
+console.log('back to "show": drawn again and visible?', rendered('c') && componentsById['c']._css.display === '');
 
-console.log('--- paste AGAIN right after a cut-paste: should duplicate (new id), not collide ---');
-dispatchKey({ key: 'v', ctrlKey: true });
-console.log('component count after second paste:', screen.components.length, '(expect 5)');
-var idsNow = screen.components.map(c => c.id);
-var uniqueIds = new Set(idsNow);
-console.log('all ids still unique (no collision)?', uniqueIds.size === idsNow.length);
-
-console.log('--- copy a group, paste: a new group whose children all have new ids ---');
-var a = comps[0].id, b = screen.components.find(c => c.id !== a && c.id !== restored.id && c.id !== pasted.id).id;
-mousedownOn(a, { shiftKey: false });
-mousedownOn(b, { shiftKey: true });
-dispatchKey({ key: 'g', ctrlKey: true }); // group them (the group ends up selected)
-var original = screen.components.find(c => c.type === '@group');
-dispatchKey({ key: 'c', ctrlKey: true });
-dispatchKey({ key: 'v', ctrlKey: true });
-var groups = screen.components.filter(c => c.type === '@group');
-var copy = groups.find(g => g !== original);
-console.log('two groups now, the copy on top, offset +20,+20?', groups.length === 2 && screen.components[screen.components.length - 1] === copy && copy.x === original.x + 20 && copy.y === original.y + 20);
-console.log('the copy carries both children, all with NEW ids?', copy.children.length === 2 && copy.children.every((c, i) => c.id !== original.children[i].id && c.type === original.children[i].type));
-console.log('children keep their place inside the copy?', copy.children.every((c, i) => c.x === original.children[i].x && c.y === original.children[i].y));
+console.log('--- a locked group locks what is inside ---');
+byId('G1').locked = true;
+draggables.length = 0;
+render();
+console.log('no drag wiring for the locked group nor its children?', !draggables.some(d => d.id === 'G1' || d.id === 'd' || d.id === 'e'));
+console.log('but they can still be selected (click wiring present)?', (componentsById['d']._handlers.mousedown || []).length > 0);
+mousedownOn('d', {});
+dispatchKey({ key: 'Delete' });
+console.log('Delete does nothing to a locked group?', !!byId('G1') && byId('G1').children.length === 2);
 
 console.log('ALL OK');

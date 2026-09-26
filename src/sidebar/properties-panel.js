@@ -1,7 +1,7 @@
-import { state, findComponent, findTemplate, groupMemberIds, markDirty, genId } from "../state.js";
+import { state, findComponent, findTemplate, markDirty, genId, getActiveScreen, Tree, isNodeLocked } from "../state.js";
+import { pushHistory } from "../history.js";
 import { buildTypedInputWidget, buildEditableListWidget, PARAM_TYPES, defaultValueForType } from "../param-types.js";
 import { isSelected, selectOnly, groupSelection, ungroupSelection, setLockedForSelection, toggleFlipForSelection } from "../canvas/selection.js";
-import { getLayerChildren } from "../canvas/layers.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { updateComponentBox } from "../canvas/selection-handles.js";
@@ -23,18 +23,8 @@ export function renderPropertiesPanel() {
     if (state.selectedIds.length > 1) {
         window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
 
-        var isOneWholeGroup = (function () {
-            var first = findComponent(state.selectedIds[0]);
-            if (!first || !first.g) return false;
-            var members = groupMemberIds(first.g);
-            return members.length === state.selectedIds.length && members.every(isSelected);
-        })();
         var groupRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
-        if (isOneWholeGroup) {
-            window.$("<button>", { type: "button" }).text("Ungroup").css({ flex: "1" }).on("click", ungroupSelection).appendTo(groupRow);
-        } else {
-            window.$("<button>", { type: "button" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
-        }
+        window.$("<button>", { type: "button", title: "Group selection (Ctrl+G)" }).text("Group").css({ flex: "1" }).on("click", groupSelection).appendTo(groupRow);
 
         var lockRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "6px" }).appendTo(state.propertiesPane);
         window.$("<button>", { type: "button" }).text("Lock all").css({ flex: "1" })
@@ -56,7 +46,12 @@ export function renderPropertiesPanel() {
     }
     var isTemplateInstance = comp.type === "@template";
     var isLitComponent = comp.type === "@lit-component";
-    var typeDef = (isTemplateInstance || isLitComponent) ? null : window.NEXA.getComponent(comp.type);
+    var isContainer = Tree.isContainer(comp);
+    var typeDef = (isTemplateInstance || isLitComponent || isContainer) ? null : window.NEXA.getComponent(comp.type);
+    if (isContainer) {
+        renderContainerProperties(comp);
+        return;
+    }
     if (!isTemplateInstance && !isLitComponent && !typeDef) {
         window.$("<div>").css({ color: "#a00", "font-size": "12px" }).text("Unknown component type: " + comp.type).appendTo(state.propertiesPane);
         return;
@@ -74,22 +69,7 @@ export function renderPropertiesPanel() {
         setLockedForSelection(lockInput.is(":checked"), [comp.id]);
     });
 
-    var layerRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
-    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Layer").appendTo(layerRow);
-    var layerSelect = window.$("<select>").css({ width: "100%" }).appendTo(layerRow);
-    (function buildLayerOptions(parentId, depth) {
-        getLayerChildren(parentId).forEach(function (layer) {
-            window.$("<option>", { value: layer.id }).text(new Array(depth + 1).join("— ") + layer.name)
-                .prop("selected", comp.layerId === layer.id).appendTo(layerSelect);
-            buildLayerOptions(layer.id, depth + 1);
-        });
-    })(null, 0);
-    layerSelect.on("change", function () {
-        comp.layerId = layerSelect.val();
-        markDirty();
-        renderActiveScreen();
-        selectOnly(comp.id);
-    });
+    renderNameField(comp);
 
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
         // SDK component: the property kit rendered its inspector from the schema
@@ -392,10 +372,10 @@ export function renderPropertiesPanel() {
         var field = pair[0], label = pair[1];
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
-        var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", comp.locked).appendTo(row);
+        var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
         input.on("change", function () {
             comp[field] = parseFloat(input.val()) || 0;
-            updateComponentBox(comp);
+            afterGeometryEdit(comp);
             markDirty();
         });
     });
@@ -426,5 +406,69 @@ export function renderPropertiesPanel() {
             .prop("disabled", comp.locked)
             .on("click", function () { toggleFlipForSelection("v"); })
             .appendTo(flipRow);
+    }
+}
+
+// Name of any node: what the Hierarchy panel shows (and what the Logic
+// "Layer Control" node targets for a group).
+function renderNameField(comp) {
+    var row = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.propertiesPane);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text("Name").appendTo(row);
+    var input = window.$("<input>", { type: "text", placeholder: comp.type }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.name || "").appendTo(row);
+    input.on("change", function () {
+        var next = String(input.val()).trim();
+        var screen = getActiveScreen();
+        pushHistory({ t: "node", screenId: screen.id, id: comp.id, key: "name", from: comp.name, to: next || undefined });
+        if (next) comp.name = next; else delete comp.name;
+        markDirty();
+        refreshHierarchyIfOpen();
+    });
+}
+
+var hierarchyRefresher = null;
+export function setHierarchyRefresher(fn) { hierarchyRefresher = fn; }
+function refreshHierarchyIfOpen() { if (hierarchyRefresher) hierarchyRefresher(); }
+
+// A node moved / resized in the panel: groups around it hug again.
+function afterGeometryEdit(comp) {
+    var screen = getActiveScreen();
+    var inGroup = screen && Tree.ancestors(screen, comp.id).some(function (a) { return a.type === "@group"; });
+    if (inGroup) {
+        Tree.refitGroupsUp(screen, comp.id);
+        renderActiveScreen();
+        selectOnly(comp.id);
+    } else {
+        updateComponentBox(comp);
+    }
+}
+
+// A group: name, lock, ungroup, position (its size follows its children).
+function renderContainerProperties(comp) {
+    var screen = getActiveScreen();
+    var pane = state.propertiesPane;
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" })
+        .html('<i class="fa fa-object-group"></i> ' + (comp.type === "@group" ? "Group" : "Frame") + " — " + Tree.kids(comp).length + " children")
+        .appendTo(pane);
+    renderNameField(comp);
+    var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(pane);
+    var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
+    lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked (with everything inside)"));
+    lockInput.on("change", function () { setLockedForSelection(lockInput.is(":checked"), [comp.id]); });
+    var btnRow = window.$("<div>").css({ display: "flex", gap: "6px", "margin-bottom": "10px" }).appendTo(pane);
+    window.$("<button>", { type: "button", title: "Ungroup (Ctrl+Shift+G)" }).text("Ungroup").css({ flex: "1" }).prop("disabled", isNodeLocked(comp.id)).on("click", ungroupSelection).appendTo(btnRow);
+    window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position").appendTo(pane);
+    [["x", "X"], ["y", "Y"]].forEach(function (pair) {
+        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(pair[1]).appendTo(row);
+        var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[pair[0]]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
+        input.on("change", function () {
+            comp[pair[0]] = parseFloat(input.val()) || 0;
+            afterGeometryEdit(comp);
+            markDirty();
+        });
+    });
+    window.$("<div>").css({ "font-size": "11px", color: "#888" }).text("Size " + Math.round(comp.w) + " × " + Math.round(comp.h) + " (follows the children)").appendTo(pane);
+    if (screen && Tree.parentOf(screen, comp.id)) {
+        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Inside: " + (Tree.parentOf(screen, comp.id).name || Tree.parentOf(screen, comp.id).type)).appendTo(pane);
     }
 }

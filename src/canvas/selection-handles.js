@@ -1,8 +1,23 @@
 // --- Selection Handles, Resizing, and Rotation ---------------------------
-import { state, snap, markDirty, getActiveScreen, findTemplate } from "../state.js";
-import { pushHistory } from "../history.js";
-import { setLockedForSelection } from "./selection.js";
+import { state, snap, markDirty, getActiveScreen, findTemplate, Tree, isNodeLocked } from "../state.js";
+import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
+import { setLockedForSelection, selectOnly } from "./selection.js";
 import { getComponentTransform } from "./component-renderer.js";
+import { renderActiveScreen } from "./canvas-ui.js";
+
+// The handles live on the artboard, so they need the node's box in surface
+// coordinates (a nested node's x / y are relative to its parent).
+function boxOf(comp) {
+    var screen = getActiveScreen();
+    return (screen && Tree.absBox(screen, comp.id)) || { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+}
+
+// Groups hug their children: resizing / rotating one isn't offered (yet).
+function capabilitiesOf(comp) {
+    if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
+    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
+    return (typeDef && typeDef.capabilities) || {};
+}
 
 const HANDLE_SIZE = 8;
 
@@ -36,9 +51,10 @@ export function updateComponentBox(comp) {
         }
     }
     if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
+        var b = boxOf(comp);
         state.selectionHandlesEl.css({
-            left: comp.x + "px", top: comp.y + "px",
-            width: comp.w + "px", height: comp.h + "px",
+            left: b.x + "px", top: b.y + "px",
+            width: b.w + "px", height: b.h + "px",
             transform: "rotate(" + (comp.rotation || 0) + "deg)"
         });
     }
@@ -52,6 +68,8 @@ export function wireResizeHandle(handle, comp, handleName) {
         var minSize = 20;
         var start = { x: e.clientX, y: e.clientY };
         var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+        var before = screen ? treeSnapshot(screen) : null;
+        var inGroup = screen && Tree.ancestors(screen, comp.id).some(function (a) { return a.type === "@group"; });
         var rad = (comp.rotation || 0) * Math.PI / 180;
         var cos = Math.cos(rad), sin = Math.sin(rad);
 
@@ -79,10 +97,18 @@ export function wireResizeHandle(handle, comp, handleName) {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
             if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
-                pushHistory({
-                    t: "resize", screenId: screen ? screen.id : "", id: comp.id,
-                    from: orig, to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
-                });
+                if (inGroup) {
+                    // its groups hug again (shifting coordinates): one tree step
+                    Tree.refitGroupsUp(screen, comp.id);
+                    pushTreeChange(screen, before);
+                    renderActiveScreen();
+                    selectOnly(comp.id);
+                } else {
+                    pushHistory({
+                        t: "resize", screenId: screen ? screen.id : "", id: comp.id,
+                        from: orig, to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
+                    });
+                }
                 markDirty();
             }
         }
@@ -98,8 +124,9 @@ export function wireRotateHandle(handle, comp) {
         var screen = getActiveScreen();
         var origRotation = comp.rotation || 0;
         var artboardOffset = state.artboardEl.offset();
-        var centerX = artboardOffset.left + (comp.x + comp.w / 2) * state.zoomLevel;
-        var centerY = artboardOffset.top + (comp.y + comp.h / 2) * state.zoomLevel;
+        var b = boxOf(comp);
+        var centerX = artboardOffset.left + (b.x + b.w / 2) * state.zoomLevel;
+        var centerY = artboardOffset.top + (b.y + b.h / 2) * state.zoomLevel;
         var startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI;
 
         function onMove(ev) {
@@ -124,18 +151,19 @@ export function wireRotateHandle(handle, comp) {
 
 export function renderSelectionHandles(comp) {
     clearSelectionHandles();
-    var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
-    var caps = (typeDef && typeDef.capabilities) || {};
+    var caps = capabilitiesOf(comp);
+    var box = boxOf(comp);
+    var locked = isNodeLocked(comp.id);
 
     state.selectionHandlesEl = $("<div>", { "class": "nexa-selection-handles" }).css({
         position: "absolute",
-        left: comp.x + "px", top: comp.y + "px",
-        width: comp.w + "px", height: comp.h + "px",
+        left: box.x + "px", top: box.y + "px",
+        width: box.w + "px", height: box.h + "px",
         "pointer-events": "none",
         transform: "rotate(" + (comp.rotation || 0) + "deg)"
     }).appendTo(state.artboardEl);
 
-    if (!comp.locked) {
+    if (!locked) {
         if (caps.resizable) {
             [
                 { n: "nw", x: 0, y: 0, cursor: "nwse-resize" },
