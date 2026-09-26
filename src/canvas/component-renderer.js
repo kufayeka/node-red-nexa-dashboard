@@ -709,7 +709,7 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     // dragged out, it leaves the frame on drop).
     var clampOf = function (c) {
         var parent = Tree.parentOf(screen, c.id);
-        var origin = parent ? Tree.absBox(screen, parent.id) : { x: 0, y: 0 };
+        var origin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
         return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function (c, start, dx, dy) {
@@ -834,7 +834,7 @@ function placeNewNode(screen, node, artboardX, artboardY) {
     var before = treeSnapshot(screen);
     var frame = frameAt(screen, artboardX, artboardY, []);
     if (frame) {
-        var fb = Tree.absBox(screen, frame.id);
+        var fb = Tree.contentOrigin(screen, frame.id);
         node.x = Math.round(artboardX - node.w / 2 - fb.x);
         node.y = Math.round(artboardY - node.h / 2 - fb.y);
         Tree.insert(screen, frame.id, Layout.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);

@@ -89,7 +89,7 @@ export function reparentKeepingPlace(screen, id, parentId, index) {
     if (loc.orphan) Tree.placeOrphan(screen, id, parentId, index);
     else Tree.move(screen, id, parentId, index);
     var node = Tree.find(screen, id);
-    var p = parentId ? Tree.absBox(screen, parentId) : { x: 0, y: 0 };
+    var p = parentId ? Tree.contentOrigin(screen, parentId) : { x: 0, y: 0 };
     node.x = abs.x - p.x;
     node.y = abs.y - p.y;
     if (parentId) Tree.tidyContainer(screen, parentId);                          // the new group hugs it
@@ -147,7 +147,7 @@ export function applyDrop(screen, ids, plan, places) {
         }
         reparentKeepingPlace(screen, id, plan.targetId, index);
         if (places && places[id] && !plan.flow) {
-            var p = plan.targetId ? Tree.absBox(screen, plan.targetId) : { x: 0, y: 0 };
+            var p = plan.targetId ? Tree.contentOrigin(screen, plan.targetId) : { x: 0, y: 0 };
             node.x = Math.round(places[id].x - p.x);
             node.y = Math.round(places[id].y - p.y);
         }

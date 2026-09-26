@@ -109,8 +109,10 @@
     absBox: () => absBox,
     allNodes: () => allNodes,
     ancestors: () => ancestors,
+    borderOf: () => borderOf,
     childBounds: () => childBounds,
     cloneWithNewIds: () => cloneWithNewIds,
+    contentOrigin: () => contentOrigin,
     detach: () => detach,
     effectiveLocked: () => effectiveLocked,
     effectiveVisibility: () => effectiveVisibility,
@@ -262,14 +264,26 @@
     })(copy);
     return copy;
   }
+  function contentOrigin(surface, id2) {
+    var b = absBox(surface, id2);
+    if (!b) return { x: 0, y: 0 };
+    var bw = borderOf(find(surface, id2));
+    return { x: b.x + bw, y: b.y + bw };
+  }
+  function borderOf(node) {
+    var st = node && node.type === "@frame" && node.style;
+    var w = st && st.stroke ? Number(st.strokeWidth) : 0;
+    return w > 0 ? w : 0;
+  }
   function absBox(surface, id2) {
     var loc = locate(surface, id2);
     if (!loc) return null;
     var n = loc.node;
     var x = n.x || 0, y = n.y || 0;
     ancestors(surface, id2).forEach(function(a) {
-      x += a.x || 0;
-      y += a.y || 0;
+      var b = borderOf(a);
+      x += (a.x || 0) + b;
+      y += (a.y || 0) + b;
     });
     return { x, y, w: n.w || 0, h: n.h || 0 };
   }
@@ -1327,8 +1341,9 @@
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
       if (!inFlow && !hugW && !hugH) return;
+      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
       var el = elementOf(node.id);
-      if (!el) return;
+      if (!el || !el.getClientRects().length) return;
       var box = { x: node.x, y: node.y, w: node.w, h: node.h };
       if (inFlow) {
         box.x = el.offsetLeft;
@@ -1431,7 +1446,7 @@
     if (loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, index);
     else tree_exports.move(screen, id2, parentId, index);
     var node = tree_exports.find(screen, id2);
-    var p = parentId ? tree_exports.absBox(screen, parentId) : { x: 0, y: 0 };
+    var p = parentId ? tree_exports.contentOrigin(screen, parentId) : { x: 0, y: 0 };
     node.x = abs.x - p.x;
     node.y = abs.y - p.y;
     if (parentId) tree_exports.tidyContainer(screen, parentId);
@@ -1476,7 +1491,7 @@
       }
       reparentKeepingPlace(screen, id2, plan.targetId, index);
       if (places && places[id2] && !plan.flow) {
-        var p = plan.targetId ? tree_exports.absBox(screen, plan.targetId) : { x: 0, y: 0 };
+        var p = plan.targetId ? tree_exports.contentOrigin(screen, plan.targetId) : { x: 0, y: 0 };
         node.x = Math.round(places[id2].x - p.x);
         node.y = Math.round(places[id2].y - p.y);
       }
@@ -2339,7 +2354,7 @@
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
       var parent = tree_exports.parentOf(screen, c.id);
-      var origin = parent ? tree_exports.absBox(screen, parent.id) : { x: 0, y: 0 };
+      var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
       return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function(c, start, dx, dy) {
@@ -2479,7 +2494,7 @@
     var before = treeSnapshot(screen);
     var frame = frameAt(screen, artboardX, artboardY, []);
     if (frame) {
-      var fb = tree_exports.absBox(screen, frame.id);
+      var fb = tree_exports.contentOrigin(screen, frame.id);
       node.x = Math.round(artboardX - node.w / 2 - fb.x);
       node.y = Math.round(artboardY - node.h / 2 - fb.y);
       tree_exports.insert(screen, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);
@@ -2624,16 +2639,29 @@
         el.find(".nexa-template-instance-inner").css("transform", "scale(" + scaleX + "," + scaleY + ")");
       }
     }
-    if (state.selectionHandlesEl && state.selectedIds.length === 1 && state.selectedIds[0] === comp.id) {
-      var b = boxOf(comp);
-      state.selectionHandlesEl.css({
-        left: b.x + "px",
-        top: b.y + "px",
-        width: b.w + "px",
-        height: b.h + "px",
-        transform: "rotate(" + (comp.rotation || 0) + "deg)"
-      });
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    if (screen && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen, comp.id).some(layout_exports.hasAutoLayout))) {
+      readbackLayout(screen);
     }
+    syncSelectionHandles();
+  }
+  function syncSelectionHandles() {
+    if (!state.selectionHandlesEl || state.selectedIds.length !== 1) return;
+    var screen = getActiveScreen();
+    var sel = screen && tree_exports.find(screen, state.selectedIds[0]);
+    if (!sel) return;
+    if (layout_exports.hasAutoLayout(sel)) {
+      state.selectionHandlesEl.find(".nexa-layout-band").remove();
+      renderLayoutOverlay(sel, boxOf(sel));
+    }
+    var b = boxOf(sel);
+    state.selectionHandlesEl.css({
+      left: b.x + "px",
+      top: b.y + "px",
+      width: b.w + "px",
+      height: b.h + "px",
+      transform: "rotate(" + (sel.rotation || 0) + "deg)"
+    });
   }
   function wireResizeHandle(handle, comp, handleName) {
     handle.get(0).addEventListener("mousedown", function(e) {
@@ -29469,9 +29497,8 @@
   }
 
   // src/sidebar/hierarchy-panel.js
-  var VIS_CYCLE = ["show", "hide", "remove"];
-  var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-ban" };
-  var VIS_TITLE = { show: "Visible \u2014 click to hide (still rendered)", hide: "Hidden \u2014 click to remove (not rendered)", remove: "Removed \u2014 click to show" };
+  var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-eye-slash" };
+  var VIS_TITLE = { show: "Visible \u2014 click to hide", hide: "Hidden \u2014 click to show", remove: "Hidden \u2014 click to show" };
   var UNPLACED_ID = "__unplaced__";
   var treeEl = null;
   var orphanEl = null;
@@ -29561,7 +29588,7 @@
     if (!node) return;
     if (e.detail.action === "visibility") {
       var cur2 = node.visibility || "show";
-      var next = VIS_CYCLE[(VIS_CYCLE.indexOf(cur2) + 1) % VIS_CYCLE.length];
+      var next = cur2 === "show" ? "hide" : "show";
       pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? void 0 : next });
       if (next === "show") delete node.visibility;
       else node.visibility = next;

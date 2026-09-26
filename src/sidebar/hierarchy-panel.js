@@ -14,9 +14,9 @@ import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { setHierarchyRefresher } from "./properties-panel.js";
 import { reparentKeepingPlace } from "../canvas/drop-target.js";
 
-var VIS_CYCLE = ["show", "hide", "remove"];
-var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-ban" };
-var VIS_TITLE = { show: "Visible — click to hide (still rendered)", hide: "Hidden — click to remove (not rendered)", remove: "Removed — click to show" };
+// Show / hide only ("remove" stays a runtime state for the Layer Control node).
+var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-eye-slash" };
+var VIS_TITLE = { show: "Visible — click to hide", hide: "Hidden — click to show", remove: "Hidden — click to show" };
 var UNPLACED_ID = "__unplaced__";
 
 var treeEl = null, orphanEl = null;
@@ -115,7 +115,7 @@ function onAction(e) {
     if (!node) return;
     if (e.detail.action === "visibility") {
         var cur = node.visibility || "show";
-        var next = VIS_CYCLE[(VIS_CYCLE.indexOf(cur) + 1) % VIS_CYCLE.length];
+        var next = cur === "show" ? "hide" : "show";
         pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? undefined : next });
         if (next === "show") delete node.visibility; else node.visibility = next;
         // a hidden / removed node can't stay selected
