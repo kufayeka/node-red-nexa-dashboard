@@ -154,11 +154,8 @@ export function removeComponents(ids) {
         Tree.remove(screen, id);
         if (state.artboardEl) state.artboardEl.find('[data-id="' + id + '"]').remove();
     });
-    // a group that lost a member hugs the rest
-    Object.keys(parents).forEach(function (pid) {
-        var p = Tree.find(screen, pid);
-        if (p && p.type === "@group") { Tree.fitGroup(p); Tree.refitGroupsUp(screen, pid); }
-    });
+    // a group that lost a member hugs the rest (and one left empty goes)
+    Object.keys(parents).forEach(function (pid) { Tree.tidyContainer(screen, pid); });
     state.selectedIds = state.selectedIds.filter(function (id) { return !!Tree.find(screen, id) && !Tree.locate(screen, id).orphan; });
     pushTreeChange(screen, before);
     if (Object.keys(parents).length && state.artboardEl) {

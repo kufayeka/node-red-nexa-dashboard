@@ -120,14 +120,21 @@ export function move(surface, id, parentId, index) {
 
 /**
  * Deletes a node. A container's children are NOT deleted: they become
- * orphans (kept, not rendered). Returns the deleted node, or null.
+ * orphans (kept, not rendered, x / y in surface coordinates so they come back
+ * where they were). Returns the deleted node, or null.
  */
 export function remove(surface, id) {
+    var loc = locate(surface, id);
+    var origin = loc && !loc.orphan ? absBox(surface, id) : { x: loc && loc.node.x || 0, y: loc && loc.node.y || 0 };
     var d = detach(surface, id);
     if (!d) return null;
     if (isContainer(d.node) && d.node.children && d.node.children.length) {
         surface.orphans = surface.orphans || [];
-        d.node.children.forEach(function (c) { surface.orphans.push(c); });
+        d.node.children.forEach(function (c) {
+            c.x = (c.x || 0) + origin.x;
+            c.y = (c.y || 0) + origin.y;
+            surface.orphans.push(c);
+        });
         d.node.children = [];
     }
     return d.node;
@@ -202,6 +209,27 @@ export function fitGroup(group) {
 /** Re-fits every group on the path from a node up to the root (after it moved / resized). */
 export function refitGroupsUp(surface, id) {
     ancestors(surface, id).reverse().forEach(function (a) { if (a.type === "@group") fitGroup(a); });
+}
+
+/**
+ * After a node left the container `id` (moved out, deleted, unplaced): a group
+ * left empty is deleted, like in Figma (and so on up), and the groups around
+ * re-hug their children. Returns the ids of the deleted groups.
+ */
+export function tidyContainer(surface, id) {
+    var dropped = [];
+    var loc = id ? locate(surface, id) : null;
+    while (loc && !loc.orphan && loc.node.type === "@group" && !kids(loc.node).length) {
+        var parentId = loc.parent ? loc.parent.id : null;
+        loc.list.splice(loc.index, 1);
+        dropped.push(loc.node.id);
+        loc = parentId ? locate(surface, parentId) : null;
+    }
+    if (loc && !loc.orphan) {
+        fitGroup(loc.node);
+        refitGroupsUp(surface, loc.node.id);
+    }
+    return dropped;
 }
 
 /**
