@@ -149,6 +149,8 @@ node-red-nexa-dashboard/
 │   ├── nexa-plugin.js               # hand-written backend: httpAdmin/httpNode routes, Asset Engine bridge
 │   ├── nexa-plugin.html             # ⚠️ the ONE generated exception — pinned here by Node-RED itself, see above
 │   ├── nexa-registry-client.js      # ⚠️ GENERATED from src/sdk/registry.js: the registry for deployed pages
+│   ├── nexa-model.js                # ⚠️ GENERATED from src/model/: migrates old projects in the screen worker
+│   ├── nexa-model-client.js         # ⚠️ GENERATED from src/model/: window.NexaModel for deployed pages (/nexa/_model.js)
 │   └── nexa-runtime-client.js       # hand-written: deployed-page mount + Logic execution engine
 ├── src/                      # editor source — THIS is what you actually edit
 │   ├── index.js               # entry point: registers the editor plugin + sidebar tab
@@ -164,10 +166,16 @@ node-red-nexa-dashboard/
 │   ├── canvas/
 │   │   ├── canvas-ui.js         # UI canvas render/zoom
 │   │   ├── component-renderer.js # renderComponent(), addComponentAt(), drag, Lit/Template mounting
-│   │   ├── selection.js          # select/marquee/group/ungroup/flip
-│   │   ├── selection-handles.js  # resize/rotate/lock handles
-│   │   ├── layers.js             # layer tree, z-order (the "Layers" sidebar tab)
+│   │   ├── selection.js          # Figma-style select/marquee, group/frame/ungroup, flip
+│   │   ├── selection-handles.js  # resize/rotate/lock handles, padding/gap overlay
+│   │   ├── drop-target.js        # frames capture: where a drag / drop goes (docs/LAYOUT.md)
+│   │   ├── layout-readback.js    # auto-layout boxes read back from the DOM
+│   │   ├── constraints.js        # children follow a resized frame / screen
 │   │   └── clipboard.js          # copy/cut/paste for UI components
+│   ├── model/                 # the node tree (shared with the deployed page, docs/LAYOUT.md)
+│   │   ├── tree.js / migrate.js  # tree helpers; layers + groups -> the tree
+│   │   ├── layout.js             # frames, auto layout, constraints (CSS)
+│   │   └── scope.js              # variables and their lexical scope chain
 │   ├── logic/
 │   │   ├── logic-nodes.js       # Logic node render/drag/add/remove
 │   │   ├── logic-wires.js       # bezier wire drawing + radius-based port hit-testing
@@ -184,6 +192,9 @@ node-red-nexa-dashboard/
 │       ├── screens-panel.js         # Screens tab (add/select/delete/settings)
 │       ├── templates-panel.js       # Templates tab (§8)
 │       ├── properties-panel.js      # Properties tab (per-component inspector)
+│       ├── hierarchy-panel.js       # Hierarchy tab (the node tree)
+│       ├── frame-inspector.js       # Frame / layout child / constraints inspectors
+│       ├── variables-inspector.js   # Variables of a screen / group / frame
 │       ├── kit-inspector.js         # SDK components: the kit's inspector + undo for prop edits
 │       └── palette-events-panel.js  # Components palette + Events tab (Logic chips)
 ├── test/                     # regression test suite — see §14.1
@@ -196,6 +207,7 @@ node-red-nexa-dashboard/
 │   └── template/              # a plugin to copy
 ├── docs/
 │   ├── SDK.md                 # the Nexa Component SDK guide
+│   ├── LAYOUT.md              # hierarchy, frames, auto layout, constraints, variables
 │   └── LIT_COMPONENT_GUIDE.md # deep-dive companion to §9
 └── dist/                      # 100% generated, gitignored — nothing here is ever hand-edited
     ├── nexa-editor.bundle.js      # ⚠️ AUTO-GENERATED — the raw editor bundle (lib/nexa-plugin.html wraps this)
@@ -256,9 +268,10 @@ interface Screen {
   height: number;             // artboard height in px (e.g. 800)
   gridSize: number;           // snap grid, px (default 20)
   snap: boolean;               // snap-to-grid on/off
-  components: Component[];
-  groups: Group[];
-  layers: Layer[];             // hierarchical, at least one ("Default Layer")
+  components: Component[];    // a TREE: containers ("@group" / "@frame") hold `children`
+  orphans: Component[];       // taken out of the tree, not deleted (Hierarchy -> Unplaced)
+  variables?: Variable[];     // see docs/LAYOUT.md §5
+  treeVersion: 1;             // pre-tree saves (flat components + layers) are migrated on open
   logic: { nodes: LogicNode[]; wires: LogicWire[] };
 }
 
@@ -276,8 +289,12 @@ interface Component {
   rotation: number;            // degrees
   flipH?: boolean; flipV?: boolean;
   locked: boolean;
-  g?: string;                  // group id, if this component is grouped
-  layerId: string;
+  name?: string;               // shown in the Hierarchy; Layer Control targets nodes by name
+  visibility?: "hide" | "remove";  // unset = show; the most restrictive ancestor wins
+  // x / y are relative to the parent container. Containers ("@group" / "@frame"),
+  // frames' layout / style, layoutChild, constraints and variables:
+  // see docs/LAYOUT.md
+  children?: Component[];
   props: Record<string, any>;  // seeded from the component's `defaults`
 
   // Only present on a "@template" instance (see §8):
@@ -295,8 +312,7 @@ interface Component {
   litEvents?: Array<{ name: string }>;
 }
 
-interface Group { id: string; x: number; y: number; w: number; h: number; }
-interface Layer { id: string; name: string; parentId: string | null; visible: boolean; }
+interface Variable { id: string; name: string; type: "string" | "number" | "boolean" | "object" | "array" | "color"; defaultValue: any; }
 
 // One flat edge list — not Node-RED's node.wires[[...]] nested-array shape.
 // Deliberately simpler: fan-out is just "more than one wire with the same `from`".
@@ -306,7 +322,7 @@ interface LogicWire { id: string; from: string; to: string; }
 interface LogicNode {
   id: string;
   type: "onload" | "onrender" | "onclose" | "ui-event" | "ui-update"
-      | "function" | "debug" | "inject" | "reload" | "open-url"
+      | "function" | "debug" | "inject" | "reload" | "open-url" | "layer-control" | "set-variable"
       // Template-only node types (only offered in the Events tab while
       // editing a Template — see §8):
       | "param-input" | "set-template-param";
@@ -322,8 +338,9 @@ interface ProjectTemplate {
   name: string;
   identifier: string;    // plain user-editable reference field — NOT a routing key
   width: number; height: number; gridSize: number; snap: boolean;
-  components: Component[];
-  layers: Layer[];
+  components: Component[];    // a tree, like a Screen's
+  orphans: Component[];
+  variables?: Variable[];
   logic: { nodes: LogicNode[]; wires: LogicWire[] };
   params: Array<{
     id: string; name: string; label: string;
@@ -341,14 +358,14 @@ Open it via the hamburger menu → **"Pages (Nexa Dashboard)"**, or the **"Nexa"
 tab's **"Open Pages Canvas"** button. Both call the same `nexa:open-pages-editor` action,
 which opens a full-width (`width: Infinity`) tray.
 
-### Sidebar — 5 tabs
+### Sidebar tabs
 
 | Tab | Purpose |
 | --- | --- |
 | **Components** | Palette of every registered component type (from all installed component packages), grouped by `category`. Drag a chip onto the UI canvas to place it. |
 | **Screens** | Add/select/delete screens; per-screen settings (name, URL path, width/height, grid size, snap toggle). |
-| **Properties** | Inspector for the current selection: one component's full `defaults` schema as editable fields, plus X/Y/W/H/rotation, layer assignment, lock toggle, flip H/V — or, for a multi-selection, group/ungroup, lock/unlock all, and flip. |
-| **Layers** | Hierarchical layer tree (nested sub-layers), per-layer visibility toggle, rename, add/delete, and per-component z-order controls (bring to front/forward/backward/send to back). |
+| **Properties** | Inspector for the current selection: one component's full `defaults` schema as editable fields, plus X/Y/W/H/rotation, lock toggle, flip H/V, its sizing in an auto layout or its constraints — for a group / frame: variables, and a frame's box, auto layout and style — or, for a multi-selection, group / frame, lock/unlock all, and flip. |
+| **Hierarchy** | The screen's node tree (top of the stack first): drag to reorder / reparent, visibility (show → hide → remove), lock, rename, and the **Unplaced** list. See docs/LAYOUT.md. |
 | **Events** | The Logic canvas's own "palette" — see §6. |
 
 ### Dual canvas: **UI** tab and **Logic** tab
@@ -381,8 +398,9 @@ confusing side effects (and diverged from what actually happens once a page is d
 ### Undo/redo model
 
 A single independent stack (`state.undoStack` / `state.redoStack`, not Node-RED's own
-`RED.history`) records typed events: `add`, `delete`, `move`, `resize`, `rotate`, `flip`,
-`group`, `ungroup` for the UI canvas, and `addLogicNode`, `deleteLogicNode`,
+`RED.history`) records typed events: `move`, `resize`, `rotate`, `flip`, `props`,
+`node` (one field of a node) and `tree` (a structural change — add, delete, group,
+reparent, paste — stored as before/after snapshots of the tree) for the UI canvas, and `addLogicNode`, `deleteLogicNode`,
 `moveLogicNode`, `addLogicWire`, `deleteLogicWire` for the Logic canvas, plus a `multi`
 wrapper (an ordered list of the above, replayed/reversed together) for any action that
 touches more than one thing at once — e.g. dragging 3 selected components, or deleting a
@@ -419,6 +437,8 @@ Clicking an existing wire deletes it (hover turns it red first as a warning).
 | `inject` | Inject | — | ✔ | light green | payload type (`json` / `str` / `num` / `date`), payload value, repeat interval in ms (0 = no repeat), "fire once on startup" |
 | `reload` | Reload Page | ✔ | — | gray | none — calls `window.location.reload()` |
 | `open-url` | Open URL | ✔ | — | teal | navigation mode (replace whole URL vs. sub-path/"endpoint" relative to the current screen), URL/endpoint value, open in new tab |
+| `layer-control` | Layer Control | ✔ | — | amber | `[{name, state}]` — shows / hides / removes the nodes of this screen's tree with that name (usually groups); what is inside follows |
+| `set-variable` | *(e.g. "Set Panel.label")* | ✔ | ✔ | purple | scope (the screen, or the group / frame that declares it), variable name, value (`msg.payload` or a fixed value) — see docs/LAYOUT.md §5 |
 | `param-input` | On Params Change | — | ✔ | green | none — **only offered while editing a Template** (see §8). Subflow-Input analogue: fires the current instance's full param snapshot as `msg.payload`, once on mount and again every time any of its params change |
 | `set-template-param` | *(e.g. "Instance #xxxx → Set Value")* | ✔ | — | purple | none — dropped from the **Events** tab like `ui-event`/`ui-update`, already bound to one `@template` instance + one declared param name; sets `msg.payload` as that param's new live value and cascades into any bound nested instance (see §8) |
 
@@ -547,7 +567,7 @@ return msg;
 
 A **Template** solves "the same 10-field monitoring card needs to appear on this screen
 15 times, all wired the same way, without hand-copying it 15 times." A Template is
-**data-shape-identical to a Screen** (`components`/`layers`/`logic`, see `ProjectTemplate`
+**data-shape-identical to a Screen** (a node tree + `logic`, see `ProjectTemplate`
 in §4) — no `path` (it's never deployed directly), plus a declared `params` list. Once
 created, it's droppable from the **Components** palette (under a **"Templates"** section)
 onto a Screen — or onto *another* Template, which is how nesting works — as a `"@template"`
