@@ -166,6 +166,10 @@ const tick = () => new Promise(r => setTimeout(r, 20));
   await tick();
   console.log('onload -> function -> ui-update fires on mount (no editor, no tray)?', sinkComp.props.text === 'LOADED', '(actual: ' + JSON.stringify(sinkComp.props.text) + ')');
 
+  console.log('SDK components get mode "runtime" and a generic writeTag on their ctx?', lastCtx.mode === 'runtime' && typeof lastCtx.writeTag === 'function');
+  const notATag = await lastCtx.writeTag('nope', 1).then(() => 'resolved', (e) => e.message);
+  console.log('writeTag on a prop that holds no tag rejects?', /is not a tag/.test(notATag), '(actual: ' + notATag + ')');
+
   lastCtx.emit('click', 'clicked');
   await tick();
   console.log('a real component ctx.emit fires its wired ui-event -> function -> ui-update chain?', sinkComp.props.text === 'clicked!', '(actual: ' + JSON.stringify(sinkComp.props.text) + ')');

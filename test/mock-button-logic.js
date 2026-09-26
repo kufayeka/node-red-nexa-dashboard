@@ -63,7 +63,7 @@ global.XMLHttpRequest = function () {
 };
 
 eval(fs.readFileSync(process.argv[2], 'utf8')); // nexa-registry-client.js
-eval(fs.readFileSync(path.join(__dirname, '..', '..', 'nexa-component-buttons', 'dist', 'buttons-components.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, 'fixtures', 'legacy-buttons-components.js'), 'utf8'));
 
 let failures = 0;
 function check(label, ok, actual) {

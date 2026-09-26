@@ -1,45 +1,12 @@
 // --- NEXA component registry -------------------------------------------
-// Component plugins call NEXA.registerComponent(id, def) from their own
-// .html — see @kufayeka/nexa-component-basic-shapes for real examples.
+// The implementation lives in src/sdk/registry.js, shared with the SDK
+// bundle and the deployed page's /nexa/_registry.js. Component plugins call
+// NEXA.component(id, factory) (SDK) or NEXA.registerComponent(id, def)
+// (legacy) — see @kufayeka/nexa-component-fields / -buttons for examples.
+import { ensureRegistry } from "./sdk/registry.js";
+
 export function initNexaRegistry() {
-    var pendingQueue = (window.NEXA && window.NEXA._q) || [];
-    var registry = {};
-    var listeners = [];
-    window.NEXA = {
-        registerComponent: function (id, def) {
-            registry[id] = def;
-            listeners.forEach(function (fn) {
-                try { fn(id, def); } catch (e) {}
-            });
-        },
-        onRegister: function (fn) {
-            listeners.push(fn);
-        },
-        getComponent: function (id) {
-            return registry[id];
-        },
-        getComponents: function () {
-            return Object.keys(registry).map(function (id) {
-                var def = registry[id];
-                return {
-                    id: id,
-                    category: def.category || "General",
-                    label: def.label || id,
-                    icon: def.icon,
-                    defaultSize: def.defaultSize || { w: 100, h: 60 },
-                    capabilities: def.capabilities || {},
-                    defaults: def.defaults || {},
-                    bindable: def.bindable || [],
-                    render: def.render,
-                    onBind: def.onBind,
-                    events: (def.events || []).map(function (e) {
-                        return typeof e === "string" ? { name: e, label: "On " + e } : { name: e.name, label: e.label || ("On " + e.name) };
-                    })
-                };
-            });
-        }
-    };
-    pendingQueue.forEach(function (item) { window.NEXA.registerComponent(item[0], item[1]); });
+    return ensureRegistry();
 }
 
 // Initialize immediately so window.NEXA is always present

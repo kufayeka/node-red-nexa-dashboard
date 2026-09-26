@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Nexa SDK test harness</title>
+<!-- What a host page loads (registry, SDK, the editor's property kit), then
+     the plugin modules named in ?modules=["/a.js", ...]. -->
+<script src="/__nexa_test__/registry.js"></script>
+<script src="/__nexa_test__/sdk.js"></script>
+<script src="/__nexa_test__/kit.js"></script>
+<script src="/__nexa_test__/testkit.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 8px; }
+  .nexa-test-slot { position: relative; width: 220px; height: 34px; margin: 8px; }
+  .nexa-test-inspector { width: 300px; margin: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  const modules = JSON.parse(q.get("modules") || "[]");
+  try {
+      for (const m of modules) await import(m);
+      window.NexaTest.ready = true;
+  } catch (e) {
+      console.error("[nexa-test] could not load", modules, e);
+      window.NexaTest.loadError = String(e && e.stack || e);
+      window.NexaTest.ready = true;
+  }
+</script>
+</body>
+</html>
