@@ -78,7 +78,7 @@ async function main() {
   window.requestAnimationFrame = (fn) => setTimeout(fn, 1);
 
   eval(fs.readFileSync(process.argv[2], "utf8"));
-  eval(fs.readFileSync(path.join(__dirname, "..", "..", "nexa-component-buttons", "dist", "buttons-components.js"), "utf8"));
+  eval(fs.readFileSync(path.join(__dirname, "fixtures", "legacy-buttons-components.js"), "utf8"));
   const labelRenders = [];
   NEXA.registerComponent("mock-label", { render: function (el, props) { el.text = props.text; labelRenders.push(props.text); } });
 

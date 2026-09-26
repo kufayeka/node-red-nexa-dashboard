@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>nexa sdk load order</title>
+<!-- The editor gives plugin scripts no order: a module plugin and the kit
+     BEFORE the SDK must still work (they wait for it). -->
+<script type="module">
+  import { defineComponent, NexaElement, html } from "/nexa-sdk/nexa-component-sdk.js";
+  defineComponent({ id: "early-bird", label: "Early", view: class extends NexaElement { render() { return html`<i>early</i>`; } } });
+  window.__earlyDone = true;
+</script>
+<script src="/__nexa_test__/kit.js"></script>
+<script>window.__kitBeforeSdk = !!window.NexaKit;</script>
+<script>setTimeout(function () {
+  var s1 = document.createElement("script"); s1.src = "/__nexa_test__/registry.js";
+  s1.onload = function () { var s2 = document.createElement("script"); s2.src = "/__nexa_test__/sdk.js"; s2.onload = function () { window.T = true; }; document.head.appendChild(s2); };
+  document.head.appendChild(s1);
+}, 50);</script>
+</head>
+<body><div id="kit"></div></body>
+</html>

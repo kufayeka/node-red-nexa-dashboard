@@ -40,7 +40,9 @@ const STANDALONE_TESTS = [
     "mock-sparkplug-rebirth.js", "mock-nexa-sparkplug-node.js", "mock-sparkplug-drag-binding.js",
     "mock-nexa-plugin-screen-worker-relay.js", "mock-sparkplug-worker.js", "mock-sparkplug-worker-integration.js",
     "mock-screen-worker.js", "mock-screen-worker-integration.js", "mock-delta-batcher.js",
-    "mock-io-hub.js", "mock-io-worker-integration.js"
+    "mock-io-hub.js", "mock-io-worker-integration.js",
+    // Nexa SDK: pure modules in Node, then the SDK + property kit in headless Chrome (skipped without Chrome)
+    "sdk-format.test.js", "sdk-schema.test.js", "sdk-kit-browser.test.js"
 ];
 
 function runBuild() {

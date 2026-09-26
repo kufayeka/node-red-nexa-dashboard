@@ -148,3 +148,53 @@ export function openCssCodeEditor(comp, propKey, title) {
     });
 }
 
+
+// Generic code tray for the SDK property kit (nx-code): same tray + CM6 as
+// openCssCodeEditor above, but value in / value out instead of a comp prop —
+// the kit decides what to do with the result. Resolves the edited text on
+// Done, null on Cancel. JavaScript gets the {sparkplug:...} completions.
+var CODE_TRAY_HELP = {
+    css: "CSS — scoped to this component's shadow DOM. Target :host and the component's own classes.",
+    json: "JSON.",
+    javascript: "JavaScript. Type { for the known {sparkplug:...} tag bindings."
+};
+export function openCodeEditorTray(opts) {
+    opts = opts || {};
+    var lang = opts.lang === "javascript" || opts.lang === "js" ? "javascript" : (opts.lang === "json" ? "json" : "css");
+    return new Promise(function (resolve) {
+        var editor = null, settled = false;
+        var finish = function (value) {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+        window.RED.tray.show({
+            id: "nexa-code-editor",
+            title: opts.title || "Edit code",
+            width: 700,
+            buttons: [
+                { text: "Cancel", click: function () { finish(null); window.RED.tray.close(); } },
+                { text: "Done", "class": "primary", click: function () { finish(editor ? editor.getValue() : null); window.RED.tray.close(); } }
+            ],
+            open: function (tray) {
+                var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+                var pane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
+                window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #888)", "margin-bottom": "6px", "flex-shrink": "0" })
+                    .text(opts.help || CODE_TRAY_HELP[lang]).appendTo(pane);
+                var holder = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0" }).appendTo(pane);
+                editor = createCM6Editor({
+                    parent: holder.get(0),
+                    value: opts.value || "",
+                    // CM6 has no JSON mode wired here: JavaScript highlighting fits JSON.
+                    language: lang === "css" ? "css" : "javascript",
+                    completionSource: lang === "javascript" ? sparkplugBindingCompletionSource : undefined
+                });
+                if (editor) editor.focus();
+            },
+            close: function () {
+                if (editor) editor.destroy();
+                finish(null);
+            }
+        });
+    });
+}

@@ -13,6 +13,8 @@ export function refreshComponentRender(comp) {
     if (!node) return;
     var ctx = {
         namespace: comp.id, // top-level selection, so the raw id IS the full namespace
+        mode: "editor",
+        getRawProps: function () { return comp.props || {}; },
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
         },
@@ -67,6 +69,7 @@ function buildSparkplugBindingIndex(screen) {
         Object.keys(props).forEach(function (k) {
             var v = props[k];
             if (typeof v === "string") list.push(v);
+            else if (Array.isArray(v)) v.forEach(function (x) { if (typeof x === "string") list.push(x); }); // `multiple` inputs
         });
         list.forEach(function (v) {
             var key = refKeyOfBindingString(v);
@@ -497,6 +500,16 @@ export function renderLitComponentInstance(el, comp, props, ctx) {
 // state — used only to interpolate THIS component's props; a nested
 // "@template" component ignores it entirely and computes its own fresh
 // state instead (see renderTemplateInstance).
+// SDK components declare a `version`: props saved by an older version are
+// brought up to date (and saved) the first time the editor renders them.
+function migrateComponentProps(comp, typeDef) {
+    if (typeof typeDef.migrateProps !== "function") return;
+    var before = comp.props || {};
+    if ((Number(before.__v) || 1) >= (typeDef.version || 1)) return;
+    comp.props = typeDef.migrateProps(before);
+    markDirty();
+}
+
 function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, paramState) {
     if (comp.type === "@template") {
         // `paramState` here is the ENCLOSING scope's state (whatever surface
@@ -512,6 +525,7 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (typeDef && typeof typeDef.render === "function") {
+        migrateComponentProps(comp, typeDef);
         try {
             typeDef.render(el, interpolateProps(comp.props || {}, paramState), ctx);
         } catch (e) {
@@ -539,7 +553,7 @@ function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTempla
         "box-sizing": "border-box",
         "pointer-events": "none"
     }).appendTo(parentEl);
-    renderComponentContent(el.get(0), innerComp, { namespace: namespacedId, emit: function () {} }, namespacedId, visitedTemplateIds, paramState);
+    renderComponentContent(el.get(0), innerComp, { namespace: namespacedId, mode: "editor", getRawProps: function () { return innerComp.props || {}; }, emit: function () {} }, namespacedId, visitedTemplateIds, paramState);
 }
 
 // Mounts a "@template" instance's whole component tree, scaled from the
@@ -606,6 +620,8 @@ export function renderComponent(comp) {
 
     renderComponentContent(el.get(0), comp, {
         namespace: comp.id, // top-level, so the raw id IS the full namespace
+        mode: "editor",
+        getRawProps: function () { return comp.props || {}; },
         emit: function (eventName, payload) {
             if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
         },

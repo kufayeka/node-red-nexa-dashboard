@@ -250,6 +250,13 @@ export function resolveSparkplugProps(props) {
     var out = null;
     Object.keys(props || {}).forEach(function (k) {
         var v = props[k];
+        if (Array.isArray(v)) {
+            // an SDK component's `multiple` input: an array of tag bindings
+            if (!v.some(function (x) { return parseSparkplugBindingPath(x); })) return;
+            if (!out) out = Object.assign({}, props);
+            out[k] = v.map(function (x) { var r = parseSparkplugBindingPath(x); return r ? formatSparkplugValue(r) : x; });
+            return;
+        }
         if (typeof v !== "string") return;
         var ref = parseSparkplugBindingPath(v);
         if (!ref) return;

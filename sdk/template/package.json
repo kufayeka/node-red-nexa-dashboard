@@ -1,0 +1,16 @@
+{
+  "name": "acme-nexa-sample",
+  "version": "0.1.0",
+  "description": "A Nexa Dashboard component plugin (start from here: rename acme-nexa-sample everywhere).",
+  "main": "widgets/plugin.js",
+  "scripts": {
+    "test": "node test/browser.test.js"
+  },
+  "node-red": {
+    "version": ">=4.0.0",
+    "plugins": {
+      "acme-nexa-sample": "widgets/plugin.js"
+    }
+  },
+  "keywords": ["node-red", "node-red-plugin", "nexa"]
+}

@@ -1,4 +1,5 @@
-import { state, ensureScreensLoaded } from "../state.js";
+import { state, ensureScreensLoaded, getActiveScreen } from "../state.js";
+import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { buildPalette, renderEventsPanel } from "./palette-events-panel.js";
 import { renderPropertiesPanel } from "./properties-panel.js";
 import { renderLayersPanel } from "../canvas/layers.js";
@@ -143,10 +144,14 @@ export function buildSidebarContent() {
     state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
-        window.NEXA.onRegister(function () {
+        window.NEXA.onRegister(function (id) {
             if (state.componentsPane) {
                 buildPalette(state.componentsPane);
             }
+            // A plugin that registered after the screen was drawn (plugins load
+            // in no guaranteed order): draw its components for real now.
+            var screen = getActiveScreen();
+            if (screen && (screen.components || []).some(function (c) { return c.type === id; })) renderActiveScreen();
             if (state.eventsPane && state.eventsPane.is(":visible")) {
                 renderEventsPanel();
             }

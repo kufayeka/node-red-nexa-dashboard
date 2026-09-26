@@ -8,6 +8,7 @@ import { updateComponentBox } from "../canvas/selection-handles.js";
 import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-code-dialog.js";
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
+import { renderKitInspector } from "./kit-inspector.js";
 
 function previewText(code, emptyLabel) {
     if (!code) return emptyLabel;
@@ -90,7 +91,9 @@ export function renderPropertiesPanel() {
         selectOnly(comp.id);
     });
 
-    if (typeDef && typeof typeDef.renderProperties === "function") {
+    if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
+        // SDK component: the property kit rendered its inspector from the schema
+    } else if (typeDef && typeof typeDef.renderProperties === "function") {
         typeDef.renderProperties(state.propertiesPane, comp, {
             refreshComponentRender: refreshComponentRender,
             markDirty: markDirty,

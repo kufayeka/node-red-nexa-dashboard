@@ -132,9 +132,11 @@ isolation:
   the extension on its exact registered `.js` path (`lib/nexa-plugin.js` →
   `lib/nexa-plugin.html`) — there's no config for a different location, so this one file
   can never move to `dist/` no matter how much tidier that would look.
-- `dist/nexa-editor.bundle.js`, `dist/nexa-lit-vendor.bundle.js` — **generated**, and
-  free to live wherever's cleanest since nothing forces their location — both gitignored,
-  both rebuilt by `npm run build`.
+- `lib/nexa-registry-client.js` — **generated** from `src/sdk/registry.js` (the same
+  registry the editor bundles), kept at its old path because tests and the screen worker
+  read it there.
+- `dist/nexa-editor.bundle.js`, `dist/nexa-sdk.bundle.js`, `dist/nexa-sdk-kit.bundle.js` —
+  **generated**, gitignored, rebuilt by `npm run build`.
 
 ```
 node-red-nexa-dashboard/
@@ -146,12 +148,15 @@ node-red-nexa-dashboard/
 ├── lib/                       # ⚠️ REQUIRED AT RUNTIME, (almost) all hand-written — see above
 │   ├── nexa-plugin.js               # hand-written backend: httpAdmin/httpNode routes, Asset Engine bridge
 │   ├── nexa-plugin.html             # ⚠️ the ONE generated exception — pinned here by Node-RED itself, see above
-│   ├── nexa-registry-client.js      # hand-written: NEXA registry bootstrap, served to deployed pages
+│   ├── nexa-registry-client.js      # ⚠️ GENERATED from src/sdk/registry.js: the registry for deployed pages
 │   └── nexa-runtime-client.js       # hand-written: deployed-page mount + Logic execution engine
 ├── src/                      # editor source — THIS is what you actually edit
 │   ├── index.js               # entry point: registers the editor plugin + sidebar tab
-│   ├── registry.js            # window.NEXA bootstrap (editor copy)
-│   ├── lit-vendor.js           # Lit re-export, bundled standalone into dist/nexa-lit-vendor.bundle.js (§9.3)
+│   ├── registry.js            # window.NEXA bootstrap (uses src/sdk/registry.js)
+│   ├── sdk/                   # the Nexa Component SDK (docs/SDK.md) -> dist/nexa-sdk*.bundle.js
+│   │   ├── runtime-entry.js     # Lit + registry + defineComponent / NexaElement / FieldController / tags / bind
+│   │   ├── kit/                 # the property kit: <nx-*> widgets + the inspector renderer (editor only)
+│   │   └── ...                  # schema, element, component, tags, bind, format, field/ (codecs, controller)
 │   ├── param-types.js          # shared typed-param helpers (typedInput/editableList widgets, type coercion)
 │   ├── state.js                # global state object, constants, screen/model helpers
 │   ├── history.js              # undo/redo stack
@@ -179,37 +184,47 @@ node-red-nexa-dashboard/
 │       ├── screens-panel.js         # Screens tab (add/select/delete/settings)
 │       ├── templates-panel.js       # Templates tab (§8)
 │       ├── properties-panel.js      # Properties tab (per-component inspector)
+│       ├── kit-inspector.js         # SDK components: the kit's inspector + undo for prop edits
 │       └── palette-events-panel.js  # Components palette + Events tab (Logic chips)
 ├── test/                     # regression test suite — see §14.1
 │   ├── run-all.js             # rebuilds + runs every mock-*.js, prints a PASS/FAIL summary
 │   └── mock-*.js              # one file per area (registry/resize/templates/lit/etc.)
+├── sdk/                      # what component PLUGINS use (docs/SDK.md)
+│   ├── nexa-component-sdk.js  # the ES module plugins import (served at <root>/nexa-sdk/)
+│   ├── package.js             # backend helper: serve + register a plugin in one call
+│   ├── testkit/               # headless-Chrome harness for plugin tests
+│   └── template/              # a plugin to copy
 ├── docs/
+│   ├── SDK.md                 # the Nexa Component SDK guide
 │   └── LIT_COMPONENT_GUIDE.md # deep-dive companion to §9
 └── dist/                      # 100% generated, gitignored — nothing here is ever hand-edited
     ├── nexa-editor.bundle.js      # ⚠️ AUTO-GENERATED — the raw editor bundle (lib/nexa-plugin.html wraps this)
-    └── nexa-lit-vendor.bundle.js  # ⚠️ AUTO-GENERATED from src/lit-vendor.js — Lit runtime for editor + deployed pages
+    ├── nexa-sdk.bundle.js         # ⚠️ AUTO-GENERATED from src/sdk/runtime-entry.js — Lit + SDK, editor + deployed pages
+    └── nexa-sdk-kit.bundle.js     # ⚠️ AUTO-GENERATED from src/sdk/kit/index.js — the property kit, editor only
 ```
 
 ### The build step — **`src/` is the source of truth, not `lib/nexa-plugin.html`**
 
-`lib/nexa-plugin.html` and `dist/nexa-lit-vendor.bundle.js` are not written by hand —
-both carry an "AUTO-GENERATED, DO NOT EDIT" banner at the top of the file itself as a
-second line of defense. `build.js` runs esbuild (IIFE format, `es2020` target) **twice**:
+`lib/nexa-plugin.html`, `lib/nexa-registry-client.js` and the `dist/` bundles are not
+written by hand — each carries an "AUTO-GENERATED, DO NOT EDIT" banner at the top as a
+second line of defense. `build.js` runs esbuild (IIFE format, `es2020` target) for:
 
 1. Bundles the ES module tree rooted at `src/index.js`, writing the result to both
    `dist/nexa-editor.bundle.js` (the raw bundle) and `lib/nexa-plugin.html` (the same
-   bundle wrapped in a single `<script>` tag, preceded by a `<script src>` for the Lit
-   vendor bundle — see §9.3 for why Lit isn't folded into this same bundle). This
+   bundle wrapped in a single `<script>` tag, preceded by `<script src>`s for the SDK and
+   property-kit bundles — see §9.3 for why Lit isn't folded into this same bundle). This
    `.html` file is what Node-RED's plugin loader actually serves to the editor (a `.html`
    sibling of `lib/nexa-plugin.js`'s registered plugin id is loaded automatically, per the
    standard Node-RED plugin-loader convention) — and it's the **one** generated file that
    is forced to live in `lib/` rather than `dist/`, because that loader convention derives
    the `.html` path by swapping the extension on the *exact* registered `.js` path, with
    no way to point it elsewhere.
-2. Bundles `src/lit-vendor.js` standalone into `dist/nexa-lit-vendor.bundle.js`, served as
-   a plain script both to the editor (`RED.httpAdmin`) and to deployed pages
-   (`RED.httpNode`, under `/nexa/_lit-vendor.js`) — nothing forces *this* one's location,
-   so it lives in `dist/` alongside every other generated artifact.
+2. `src/sdk/runtime-entry.js` -> `dist/nexa-sdk.bundle.js` (Lit + the component SDK),
+   served to the editor (`/nexa-dashboard/_sdk.js`) and to deployed pages (`/nexa/_sdk.js`;
+   `_lit-vendor.js` is its old name, kept as an alias).
+3. `src/sdk/kit/index.js` -> `dist/nexa-sdk-kit.bundle.js` (the property kit, editor only,
+   `/nexa-dashboard/_sdk-kit.js`), with `lit` aliased to the SDK's copy.
+4. `src/sdk/registry-entry.js` -> `lib/nexa-registry-client.js` (`/nexa/_registry.js`).
 
 ```bash
 npm run build     # one-shot build (both bundles above)
@@ -729,8 +744,8 @@ registered component.
   standard limitation of live-editing custom elements in any browser).
 - Lit itself ships as a plain `<script src>` — `window.NEXA_LIT = { LitElement, html,
   css, nothing }` — loaded once via `RED.httpAdmin` in the editor and once via
-  `RED.httpNode` on each deployed page (`dist/nexa-lit-vendor.bundle.js`, built from
-  `src/lit-vendor.js` by `build.js`), **not** bundled into the editor's own ES-module
+  `RED.httpNode` on each deployed page (`dist/nexa-sdk.bundle.js`, built from
+  `src/sdk/runtime-entry.js` by `build.js`), **not** bundled into the editor's own ES-module
   pipeline. Lit's module-level code runs real browser feature-detection unconditionally at
   import time, so folding it into `dist/nexa-editor.bundle.js` would mean paying that cost
   (and needing a real DOM) the instant the editor bundle loads, whether or not any screen
@@ -775,6 +790,11 @@ over the screen worker's SSE stream.
 ---
 
 ## 11. The component plugin contract (`window.NEXA.registerComponent`)
+
+> **Legacy.** New components use the Nexa Component SDK (`defineComponent`, see
+> [docs/SDK.md](docs/SDK.md)), which compiles to this same registry contract. Everything
+> below still works for existing plugins — `test/fixtures/legacy-buttons-components.js`
+> keeps proving it — but it has no generated inspector, no generic tags and no testkit.
 
 Any script that calls `window.NEXA.registerComponent(id, definition)` — from the editor
 bundle, from a component package's own runtime script, or both (the same `def` shape
@@ -869,124 +889,20 @@ interface NexaRenderContext {
 
 ## 12. Writing your own component plugin, step by step
 
-This mirrors `@kufayeka/nexa-component-basic-shapes` (the bundled example/reference
-package — see its own README for the full shape catalogue it ships).
+Use the **Nexa Component SDK** — the full guide is [docs/SDK.md](docs/SDK.md):
 
-### Step 1 — scaffold the package
+1. Copy [`sdk/template/`](sdk/template/) and rename `acme-nexa-sample` everywhere.
+2. Write your components in `dist/*.js` as ES modules:
+   `import { defineComponent, NexaElement, html, css, bind } from "../../nexa-sdk/nexa-component-sdk.js";`
+   — one `defineComponent({ properties, inputs, outputs, events, actions, inspector, view })` each.
+3. `widgets/plugin.js` is one call to `require("@kufayeka/node-red-nexa-dashboard/sdk/package")(RED, {...})`;
+   `widgets/plugin.html` is one `<script type="module">`.
+4. Test with the SDK testkit (`sdk/testkit`, headless Chrome): `npm test`.
 
-```bash
-mkdir node-red-nexa-component-indicator
-cd node-red-nexa-component-indicator
-npm init -y
-```
-
-### Step 2 — declare it as a Node-RED plugin in `package.json`
-
-```json
-{
-  "name": "node-red-nexa-component-indicator",
-  "version": "1.0.0",
-  "main": "plugin.js",
-  "node-red": {
-    "version": ">=4.0.0",
-    "plugins": {
-      "nexa-indicator": "plugin.js"
-    }
-  }
-}
-```
-
-Node-RED's plugin loader discovers this from any package installed alongside Node-RED
-(same mechanism as `node-red-contrib-*` nodes) — no changes to Nexa Dashboard itself, and
-no registration call anywhere in Nexa's own code. Nexa only ever asks Node-RED for
-`RED.plugins.getByType("nexa-ui-component-package")` — your package shows up there purely
-because of `type` in the definition below.
-
-### Step 3 — the plugin backend (`plugin.js`)
-
-```javascript
-const path = require("path");
-const express = require("express");
-
-module.exports = function (RED) {
-  RED.plugins.registerPlugin("nexa-indicator", {
-    type: "nexa-ui-component-package",
-    // Every script listed here is injected, in order, into BOTH the editor's
-    // Pages tray (so you can drag it in the palette) and every deployed page
-    // that uses it (so it actually renders once published) — see §10.
-    runtimeScripts: [
-      "/nexa-indicator/client.js"
-    ],
-    onadd: function () {
-      const staticDir = express.static(path.join(__dirname, "public"));
-      // Both mounts are needed: httpAdmin serves it to the authenticated editor,
-      // httpNode serves it to public deployed pages. Skipping either one means
-      // your component works in only one of the two contexts.
-      if (RED.httpAdmin) RED.httpAdmin.use("/nexa-indicator", staticDir);
-      if (RED.httpNode) RED.httpNode.use("/nexa-indicator", staticDir);
-    }
-  });
-};
-```
-
-### Step 4 — the component itself (`public/client.js`)
-
-```javascript
-(function () {
-  window.NEXA = window.NEXA || { _q: [], registerComponent: function (id, def) { this._q.push([id, def]); } };
-
-  NEXA.registerComponent("custom-indicator", {
-    category: "Sensors",
-    label: "LED Indicator",
-    icon: "fa fa-lightbulb-o",
-    defaultSize: { w: 40, h: 40 },
-    capabilities: { resizable: true, rotatable: true, flippable: true, lockable: true },
-    defaults: {
-      active: { value: false, type: "checkbox" },
-      activeColor: { value: "#4caf50", type: "color" },
-      inactiveColor: { value: "#9e9e9e", type: "color" }
-    },
-    bindable: ["props.active", "props.activeColor"],
-    events: [{ name: "click", label: "Clicked" }],
-
-    render: function (el, props, ctx) {
-      // el is already the right size — style its contents, don't resize el itself.
-      el.style.borderRadius = "50%";
-      el.style.width = "100%";   // OK here only because el has no siblings competing
-      el.style.height = "100%";  // for its box — for anything with a border/shadow that
-                                  // must exactly track comp.w/h, prefer NOT touching
-                                  // el's size at all (see §11's warning).
-      el.style.backgroundColor = props.active ? props.activeColor : props.inactiveColor;
-      el.style.boxShadow = props.active ? "0 0 12px " + props.activeColor : "inset 0 1px 3px rgba(0,0,0,0.5)";
-      el.style.transition = "background-color 0.2s, box-shadow 0.2s";
-      el.onclick = function () {
-        ctx.emit("click", { active: props.active });
-      };
-    },
-
-    onBind: function (el, target, value) {
-      if (target === "props.active") {
-        el.style.backgroundColor = value ? "#4caf50" : "#9e9e9e";
-      }
-    }
-  });
-})();
-```
-
-### Step 5 — install and verify
-
-Add the package as a dependency the same way you would any other Node-RED node package
-(see §14), restart Node-RED, then:
-
-1. Open **Pages** — your component should appear in the **Components** palette under
-   category **"Sensors"**.
-2. Drag it onto a screen — it should render at 40×40 and its selection box should match.
-3. Open the **Events** tab — with the indicator selected/present on the screen, you
-   should see a **"LED Indicator #xxxx → Clicked"** chip and a **"LED Indicator #xxxx →
-   Update"** chip, draggable onto the Logic canvas.
-4. Deploy, then open the screen's public `/nexa/<path>` URL — clicking the indicator
-   there should actually fire whatever you wired its `click` event to (only the deployed
-   page executes Logic — see §6).
+The three bundled plugins are the references: `@kufayeka/nexa-component-fields` (inputs,
+hand-written inspector, `FieldController`), `@kufayeka/nexa-component-buttons` (a boolean
+control, per-state CSS, a migration) and `@kufayeka/nexa-component-basic-shapes` (simple
+components, automatic inspector).
 
 ---
 
@@ -1027,7 +943,7 @@ Documented honestly so nobody builds on top of something that isn't really there
   (plain Node.js, no real `HTMLElement`/`customElements`/Shadow DOM) can and does verify
   the mount/compile/cache/`ui-update` wiring around it, but not whether Lit itself then
   paints correctly. Boot-test any non-trivial Lit Component by hand before relying on it.
-- **`_registry.js`/`_runtime.js`/`_lit-vendor.js` are served with no cache-busting query
+- **`_registry.js`/`_runtime.js`/`_sdk.js` are served with no cache-busting query
   string.** If you deploy a fix to this package itself and a previously-opened deployed
   page still looks wrong, hard-refresh (or open in a private window) before assuming the
   fix didn't take — the browser may be serving an old cached copy of one of those scripts.
@@ -1066,7 +982,7 @@ To work on the editor itself:
 ```bash
 cd packages/node_modules/@kufayeka/node-red-nexa-dashboard
 npm install         # esbuild, lit
-npm run watch         # rebuilds lib/nexa-plugin.html + dist/nexa-lit-vendor.bundle.js on every src/ change
+npm run watch         # rebuilds lib/nexa-plugin.html + the SDK bundles on every src/ change
 ```
 
 **Two different kinds of change need two different kinds of restart, and mixing them up

@@ -61,6 +61,14 @@ export function applyHistoryMutation(ev, direction) {
         var fstate = direction === "undo" ? ev.from : ev.to;
         fcomp.flipH = fstate.flipH;
         fcomp.flipV = fstate.flipV;
+    } else if (ev.t === "props") {
+        // one prop of an SDK component, edited in the property kit (sidebar/kit-inspector.js)
+        var pcomp = screen.components.find(function (c) { return c.id === ev.id; });
+        if (!pcomp) return;
+        pcomp.props = pcomp.props || {};
+        var pv = direction === "undo" ? ev.from : ev.to;
+        if (pv === undefined) delete pcomp.props[ev.key];
+        else pcomp.props[ev.key] = pv !== null && typeof pv === "object" ? JSON.parse(JSON.stringify(pv)) : pv;
     } else if (ev.t === "group") {
         screen.groups = screen.groups || [];
         if (direction === "undo") {
