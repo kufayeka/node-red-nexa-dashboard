@@ -10,7 +10,7 @@
 // browser re-flows the layout, see canvas/layout-readback.js).
 import { getActiveScreen, markDirty, Tree, Layout, isNodeLocked } from "../state.js";
 import { pushTreeChange, treeSnapshot } from "../history.js";
-import { renderActiveScreen } from "../canvas/canvas-ui.js";
+import { renderActiveScreen, redrawCanvas } from "../canvas/canvas-ui.js";
 import { selectOnly } from "../canvas/selection.js";
 import { constrainFrameChildren } from "../canvas/constraints.js";
 
@@ -131,17 +131,36 @@ function writeChild(node, key, v) {
     if (Object.keys(lc).length) node.layoutChild = lc; else delete node.layoutChild;
 }
 
-// One edit = one undo step, then the layout re-flows.
-function commit(node, fn) {
+// One edit = one undo step, then the layout re-flows. Only the canvas is
+// redrawn: the panel you are typing in stays (a full rebuild would throw you
+// out of the field). `rebuild`: the edit changes which blocks the panel shows.
+function commit(node, fn, rebuild) {
     var screen = getActiveScreen();
     if (!screen || isNodeLocked(node.id)) return;
     var before = treeSnapshot(screen);
     fn();
     Tree.refitGroupsUp(screen, node.id);
-    renderActiveScreen();   // re-flow (and read the boxes back)
     pushTreeChange(screen, before);
     markDirty();
-    selectOnly(node.id);
+    if (rebuild) { renderActiveScreen(); selectOnly(node.id); }
+    else redrawCanvas();    // re-flow (and read the boxes back); selection and panel stay
+}
+
+// A kit inspector over a view of the node, kept in step after every edit.
+function mountLive(container, meta, persistKey, view, onSet) {
+    var current = view();
+    var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+        meta: meta,
+        props: current,
+        persistKey: persistKey,
+        set: function (key, v) {
+            onSet(key, v);
+            Object.keys(current).forEach(function (k) { delete current[k]; });
+            Object.assign(current, view());
+            handle.update();
+        }
+    });
+    return handle;
 }
 
 function lit() { return window.NEXA_LIT; }
@@ -182,12 +201,8 @@ export function renderFrameInspector(container, frame) {
                 </nx-section>`;
         }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-        meta: meta,
-        props: frameView(frame),
-        persistKey: "nexa-frame",
-        set: function (key, v) { commit(frame, function () { writeFrame(frame, key, v); }); }
-    });
+    mountLive(container, meta, "nexa-frame", function () { return frameView(frame); },
+        function (key, v) { commit(frame, function () { writeFrame(frame, key, v); }); });
     return true;
 }
 
@@ -217,12 +232,9 @@ export function renderLayoutChildInspector(container, node, parent) {
                 </nx-section>`;
         }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-        meta: meta,
-        props: childView(node),
-        persistKey: "nexa-layout-child",
-        set: function (key, v) { commit(node, function () { writeChild(node, key, v); }); }
-    });
+    // "absolute" moves the node out of the flow: the Constraints block appears / goes
+    mountLive(container, meta, "nexa-layout-child", function () { return childView(node); },
+        function (key, v) { commit(node, function () { writeChild(node, key, v); }, key === "absolute"); });
     return true;
 }
 
@@ -254,17 +266,12 @@ export function renderConstraintsInspector(container, node, parent) {
             </nx-section>`;
         }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-        meta: meta,
-        props: Layout.constraintsOf(node),
-        persistKey: "nexa-constraints",
-        set: function (key, v) {
-            commit(node, function () {
-                var c = Object.assign({}, Layout.constraintsOf(node));
-                c[key] = v;
-                if (c.h === "left" && c.v === "top") delete node.constraints; else node.constraints = c;
-            });
-        }
+    mountLive(container, meta, "nexa-constraints", function () { return Layout.constraintsOf(node); }, function (key, v) {
+        commit(node, function () {
+            var c = Object.assign({}, Layout.constraintsOf(node));
+            c[key] = v;
+            if (c.h === "left" && c.v === "top") delete node.constraints; else node.constraints = c;
+        });
     });
     return true;
 }

@@ -27055,16 +27055,35 @@
     if (Object.keys(lc).length) node.layoutChild = lc;
     else delete node.layoutChild;
   }
-  function commit(node, fn) {
+  function commit(node, fn, rebuild) {
     var screen = getActiveScreen();
     if (!screen || isNodeLocked(node.id)) return;
     var before = treeSnapshot(screen);
     fn();
     tree_exports.refitGroupsUp(screen, node.id);
-    renderActiveScreen();
     pushTreeChange(screen, before);
     markDirty();
-    selectOnly(node.id);
+    if (rebuild) {
+      renderActiveScreen();
+      selectOnly(node.id);
+    } else redrawCanvas();
+  }
+  function mountLive(container, meta2, persistKey, view, onSet) {
+    var current = view();
+    var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
+      meta: meta2,
+      props: current,
+      persistKey,
+      set: function(key, v) {
+        onSet(key, v);
+        Object.keys(current).forEach(function(k) {
+          delete current[k];
+        });
+        Object.assign(current, view());
+        handle.update();
+      }
+    });
+    return handle;
   }
   function lit() {
     return window.NEXA_LIT;
@@ -27105,16 +27124,19 @@
                 </nx-section>`;
       }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-      meta: meta2,
-      props: frameView(frame),
-      persistKey: "nexa-frame",
-      set: function(key, v) {
+    mountLive(
+      container,
+      meta2,
+      "nexa-frame",
+      function() {
+        return frameView(frame);
+      },
+      function(key, v) {
         commit(frame, function() {
           writeFrame(frame, key, v);
         });
       }
-    });
+    );
     return true;
   }
   function renderLayoutChildInspector(container, node, parent) {
@@ -27145,16 +27167,19 @@
                 </nx-section>`;
       }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-      meta: meta2,
-      props: childView(node),
-      persistKey: "nexa-layout-child",
-      set: function(key, v) {
+    mountLive(
+      container,
+      meta2,
+      "nexa-layout-child",
+      function() {
+        return childView(node);
+      },
+      function(key, v) {
         commit(node, function() {
           writeChild(node, key, v);
-        });
+        }, key === "absolute");
       }
-    });
+    );
     return true;
   }
   var CONSTRAINT_META = {
@@ -27190,18 +27215,15 @@
             </nx-section>`;
       }
     });
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-      meta: meta2,
-      props: layout_exports.constraintsOf(node),
-      persistKey: "nexa-constraints",
-      set: function(key, v) {
-        commit(node, function() {
-          var c = Object.assign({}, layout_exports.constraintsOf(node));
-          c[key] = v;
-          if (c.h === "left" && c.v === "top") delete node.constraints;
-          else node.constraints = c;
-        });
-      }
+    mountLive(container, meta2, "nexa-constraints", function() {
+      return layout_exports.constraintsOf(node);
+    }, function(key, v) {
+      commit(node, function() {
+        var c = Object.assign({}, layout_exports.constraintsOf(node));
+        c[key] = v;
+        if (c.h === "left" && c.v === "top") delete node.constraints;
+        else node.constraints = c;
+      });
     });
     return true;
   }
@@ -27260,6 +27282,7 @@
       value: { type: "string", label: "Default", default: "" }
     };
     if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
+    var current = view();
     var meta2 = {
       id: "@variables",
       stateList: [],
@@ -27288,7 +27311,7 @@
     };
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: meta2,
-      props: view(),
+      props: current,
       persistKey: "nexa-variables",
       set: function(key, items) {
         if (!isSurface && isNodeLocked(owner.id)) return;
@@ -27305,10 +27328,9 @@
         var screen = getActiveScreen();
         if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
         markDirty();
-        var keep = state.selectedIds.slice();
-        renderActiveScreen();
-        if (!isSurface && keep.length === 1) selectOnly(keep[0]);
+        current.variables = view().variables;
         handle.update();
+        redrawCanvas();
       }
     });
     return true;
@@ -27712,7 +27734,7 @@
   function isSelected(id2) {
     return state.selectedIds.indexOf(id2) !== -1;
   }
-  function refreshSelectionVisuals() {
+  function refreshSelectionVisuals(opts) {
     if (!state.artboardEl) return;
     state.artboardEl.find(".nexa-component").css("outline", "none");
     state.selectedIds.forEach(function(id2) {
@@ -27723,6 +27745,7 @@
       var comp = findComponent(state.selectedIds[0]);
       if (comp) renderSelectionHandles(comp);
     }
+    if (opts && opts.keepPanel) return;
     renderPropertiesPanel();
     refreshEventsHighlight();
     hierarchyListeners.forEach(function(fn) {
@@ -27936,15 +27959,18 @@
   }
 
   // src/canvas/canvas-ui.js
-  function renderActiveScreen() {
+  function renderActiveScreen(opts) {
+    var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
-    state.selectedIds = [];
     state.selectionHandlesEl = null;
-    renderPropertiesPanel();
+    if (!keepPanel) {
+      state.selectedIds = [];
+      renderPropertiesPanel();
+    }
     state.artboardEl.empty();
     state.artboardEl.css({
       width: screen.width + "px",
@@ -27965,11 +27991,20 @@
     if (changed.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
-        renderActiveScreen();
+        renderActiveScreen(opts);
       } finally {
         renderActiveScreen._again = false;
       }
     }
+  }
+  function redrawCanvas() {
+    var screen = getActiveScreen();
+    renderActiveScreen({ keepPanel: true });
+    if (!screen) return;
+    state.selectedIds = state.selectedIds.filter(function(id2) {
+      return !!tree_exports.find(screen, id2);
+    });
+    refreshSelectionVisuals({ keepPanel: true });
   }
   registerScreenRenderer(renderActiveScreen);
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
@@ -27983,7 +28018,7 @@
       height: screen.height * state.zoomLevel + "px"
     });
     updateZoomLabel();
-    refreshSelectionVisuals();
+    refreshSelectionVisuals({ keepPanel: true });
   }
   function updateZoomLabel() {
     if (state.zoomLabelEl) state.zoomLabelEl.text(Math.round(state.zoomLevel * 100) + "%");

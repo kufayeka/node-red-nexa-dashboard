@@ -227,7 +227,7 @@ export function renderInspector(container, opts) {
             var cells = Object.keys(item.fields).map(function (k) {
                 var f = Object.assign({ label: k }, item.fields[k]);
                 var v = value && value[k] !== undefined ? value[k] : f.default;
-                return plainWidget(f, v, function (nv) { setItem(Object.assign({}, value, { [k]: nv })); });
+                return plainWidget(f, v, function (nv) { setItem(function (cur) { return Object.assign({}, cur, { [k]: nv }); }); });
             });
             return item.row ? html`<nx-row cols="${cells.length}">${cells}</nx-row>` : cells;
         }

@@ -163,9 +163,11 @@ export class NxList extends KitElement {
     };
     constructor() { super(); this.sortable = true; this._drag = null; }
     get items() { return Array.isArray(this.value) ? this.value : []; }
+    // `item`: the new row value, or fn(current row) -> new row value (so two quick
+    // edits of different fields in one row can't overwrite each other)
     _set(index, item) {
         var next = this.items.slice();
-        next[index] = item;
+        next[index] = typeof item === "function" ? item(next[index]) : item;
         this.change(next);
     }
     addItem() {

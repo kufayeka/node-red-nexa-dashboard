@@ -206,19 +206,22 @@ async function main() {
             assert.strictEqual(r.fill, '{color}');
         });
 
-        await ok('widget contract: nx-text applies on Enter (once) and after typing stops; nx-number keeps 0 and "" apart', async () => {
+        await ok('widget contract: nx-text applies on Enter (once) and on blur, never while typing; nx-number keeps 0 and "" apart', async () => {
             await js(`(function () { var k = document.createElement("div"); k.id = "kit"; k.style.width = "300px"; document.body.appendChild(k);
                 window.KE = []; k.addEventListener("nx-change", function (e) { KE.push({ tag: e.target.localName, value: e.detail.value }); });
                 k.innerHTML = '<nx-text label="Name"></nx-text>'; return true; })()`);
             await js('NexaTest.wait()');
             await js('document.querySelector("#kit nx-text input").focus()');
             await type('abc');
-            assert.deepStrictEqual(await js('KE'), [], 'debounced while typing');
+            await js('NexaTest.wait(600)');
+            assert.deepStrictEqual(await js('KE'), [], 'nothing while typing, however long the pause');
             await key('Enter');
             await js('NexaTest.wait(450)');
-            assert.deepStrictEqual(await js('KE'), [{ tag: 'nx-text', value: 'abc' }]);
-            await type('d'); await js('NexaTest.wait(500)');
-            assert.deepStrictEqual(await js('KE.map(function (e) { return e.value; })'), ['abc', 'abcd']);
+            assert.deepStrictEqual(await js('KE'), [{ tag: 'nx-text', value: 'abc' }], 'Enter applies, once');
+            await type('d'); await js('NexaTest.wait(600)');
+            assert.deepStrictEqual(await js('KE.map(function (e) { return e.value; })'), ['abc'], 'still nothing while typing');
+            await js('(function () { document.querySelector("#kit nx-text input").blur(); return NexaTest.wait(); })()');
+            assert.deepStrictEqual(await js('KE.map(function (e) { return e.value; })'), ['abc', 'abcd'], 'leaving the field applies');
             await js('(function () { KE.length = 0; document.getElementById("kit").innerHTML = \'<nx-number label="N"></nx-number>\'; return NexaTest.wait(); })()');
             await js('(function () { var i = document.querySelector("#kit nx-number input"); i.focus(); i.select(); })()');
             await type('0'); await key('Enter');
@@ -273,6 +276,33 @@ async function main() {
                 return out;
             })()`);
             assert.deepStrictEqual(r, [1, 1, '["a"]']);
+        });
+
+        await ok('regression: two quick edits in one list row both stay (a row merges into its current value), then add', async () => {
+            const r = await js(`(async function () {
+                var root = document.createElement("div"); document.body.appendChild(root);
+                var props = { rows: [{ name: "a", type: "string" }] }, sets = [];
+                var meta = { id: "rw", stateList: [], inputs: [], outputs: [], props: {
+                    rows: { key: "rows", type: "list", label: "Rows", default: [], item: { row: true, fields: {
+                        name: { type: "string", default: "" }, type: { type: "enum", default: "string", options: [{ value: "string", label: "string" }, { value: "number", label: "number" }] } } } } } };
+                // like an owner that saves elsewhere: it doesn't hand the kit a fresh props object
+                var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { sets.push(JSON.stringify(v)); props[k] = v; } });
+                await NexaTest.wait();
+                var input = root.querySelector("nx-list nx-text input");
+                input.value = "speed"; input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                // straight away, before any re-render: the type of the same row
+                var sel = root.querySelector("nx-list nx-select select");
+                sel.value = "1"; sel.dispatchEvent(new Event("change", { bubbles: true }));
+                await NexaTest.wait();
+                root.querySelector("nx-list .nx-list-foot button").click();
+                await NexaTest.wait();
+                var out = { rows: JSON.stringify(props.rows), shown: Array.from(root.querySelectorAll("nx-list nx-text input")).map(function (i) { return i.value; }) };
+                h.destroy(); root.remove();
+                return out;
+            })()`);
+            assert.strictEqual(r.rows, '[{"name":"speed","type":"number"},{"name":"","type":"string"}]');
+            assert.deepStrictEqual(r.shown, ['speed', ''], 'the list shows both rows at once');
         });
 
         await ok('nx-tree: nested rows, select, collapse, actions, rename, drag & drop (never into itself)', async () => {

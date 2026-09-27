@@ -4,8 +4,7 @@
 // see src/model/scope.js); the Logic "Set Variable" node changes it live.
 import { state, getActiveScreen, markDirty, genId, Scope, isNodeLocked } from "../state.js";
 import { pushHistory } from "../history.js";
-import { renderActiveScreen } from "../canvas/canvas-ui.js";
-import { selectOnly } from "../canvas/selection.js";
+import { redrawCanvas } from "../canvas/canvas-ui.js";
 
 var TYPES = ["string", "number", "boolean", "object", "array", "color"];
 
@@ -61,6 +60,8 @@ export function renderVariablesInspector(container, owner, kind) {
         value: { type: "string", label: "Default", default: "" }
     };
     if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
+    // the kit reads this object: kept in step with owner.variables after every edit
+    var current = view();
     var meta = {
         id: "@variables", stateList: [], inputs: [], outputs: [],
         props: {
@@ -82,7 +83,7 @@ export function renderVariablesInspector(container, owner, kind) {
     };
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
         meta: meta,
-        props: view(),
+        props: current,
         persistKey: "nexa-variables",
         set: function (key, items) {
             if (!isSurface && isNodeLocked(owner.id)) return;
@@ -98,10 +99,9 @@ export function renderVariablesInspector(container, owner, kind) {
             var screen = getActiveScreen();
             if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : undefined });
             markDirty();
-            var keep = state.selectedIds.slice();
-            renderActiveScreen();           // {name} bindings show the new defaults
-            if (!isSurface && keep.length === 1) selectOnly(keep[0]);
+            current.variables = view().variables;
             handle.update();
+            redrawCanvas();                 // {name} bindings show the new defaults; the panel stays
         }
     });
     return true;

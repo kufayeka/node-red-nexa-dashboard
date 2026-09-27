@@ -5,7 +5,10 @@ import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
 
-export function renderActiveScreen() {
+// opts.keepPanel: redraw the canvas only — the selection stays, the properties
+// panel is not rebuilt (an edit made IN the panel must not lose its field).
+export function renderActiveScreen(opts) {
+    var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
@@ -16,9 +19,11 @@ export function renderActiveScreen() {
     // Sparkplug" sidebar tab first.
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
-    state.selectedIds = [];
     state.selectionHandlesEl = null; // artboardEl.empty() below discards its DOM node too
-    renderPropertiesPanel();
+    if (!keepPanel) {
+        state.selectedIds = [];
+        renderPropertiesPanel();
+    }
     state.artboardEl.empty();
     state.artboardEl.css({
         width: screen.width + "px",
@@ -42,8 +47,17 @@ export function renderActiveScreen() {
     var changed = readbackLayout(screen);
     if (changed.redraw && !renderActiveScreen._again) {
         renderActiveScreen._again = true;
-        try { renderActiveScreen(); } finally { renderActiveScreen._again = false; }
+        try { renderActiveScreen(opts); } finally { renderActiveScreen._again = false; }
     }
+}
+
+/** Redraws the canvas, keeping the selection and the properties panel as they are. */
+export function redrawCanvas() {
+    var screen = getActiveScreen();
+    renderActiveScreen({ keepPanel: true });
+    if (!screen) return;
+    state.selectedIds = state.selectedIds.filter(function (id) { return !!Tree.find(screen, id); });
+    refreshSelectionVisuals({ keepPanel: true });
 }
 
 registerScreenRenderer(renderActiveScreen);
@@ -61,7 +75,8 @@ export function applyZoomTransform() {
         height: (screen.height * state.zoomLevel) + "px"
     });
     updateZoomLabel();
-    refreshSelectionVisuals();
+    // the handles scale with the zoom; the properties panel has nothing to do with it
+    refreshSelectionVisuals({ keepPanel: true });
 }
 
 export function updateZoomLabel() {

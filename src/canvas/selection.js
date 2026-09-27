@@ -19,7 +19,8 @@ export function isSelected(id) {
     return state.selectedIds.indexOf(id) !== -1;
 }
 
-export function refreshSelectionVisuals() {
+// opts.keepPanel: outlines / handles only (no properties panel rebuild, no tab switch)
+export function refreshSelectionVisuals(opts) {
     if (!state.artboardEl) return;
     state.artboardEl.find(".nexa-component").css("outline", "none");
     state.selectedIds.forEach(function (id) {
@@ -30,6 +31,7 @@ export function refreshSelectionVisuals() {
         var comp = findComponent(state.selectedIds[0]);
         if (comp) renderSelectionHandles(comp);
     }
+    if (opts && opts.keepPanel) return;
     renderPropertiesPanel();
     refreshEventsHighlight();
     hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });

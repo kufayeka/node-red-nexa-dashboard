@@ -5,24 +5,14 @@
 import { html, nothing } from "lit";
 import { KitElement, str, icon } from "./base.js";
 
-// Text typed into a field is applied this long after the last keystroke
-// (and immediately on Enter / blur), so the canvas follows while typing
-// without one history step per character.
-var TYPING_DEBOUNCE_MS = 400;
-
+// Text typed into a field is applied on Enter or when the field is left
+// (blur) — never halfway through typing: a commit re-renders what shows the
+// value, which must not happen under the user's fingers.
 class TypingElement extends KitElement {
-    constructor() {
-        super();
-        this._timer = null;
-    }
     _typed(raw) {
-        clearTimeout(this._timer);
         this._pending = raw;
-        this._timer = setTimeout(() => this._flush(), TYPING_DEBOUNCE_MS);
     }
     _flush() {
-        clearTimeout(this._timer);
-        this._timer = null;
         if (this._pending === undefined) return;
         var raw = this._pending;
         this._pending = undefined;
