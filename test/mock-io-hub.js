@@ -123,6 +123,14 @@ const tw = fakeTransport(); const cw = hubW.addClient(tw);
 hubW.handleText(cw, { t: 'w', id: 9, g: 'G', e: 'E', d: 'GP', m: [{ n: 'RuangBlower/MotorCommandON', v: true }] });
 check('explicit write handed to onWrite', written && written.id === 9 && written.m[0].v === true, written);
 
-hub.close(); hubW.close();
+// a page subscribing tags the cache has no value for: reported (the owner asks their Edge Node to rebirth)
+let missing = null;
+const hubM = new IoHub({ onMissing: (keys) => { missing = keys; } });
+hubM.absorbSnapshot({ G: { E: { online: true, nodeMetrics: {}, devices: { D: { online: true, metrics: { a: { value: 1 } } } } } } });
+const cm = { transport: fakeTransport(), keys: new Set(), dirty: new Set(), indexOf: new Map(), sentMetaVer: new Map(), nextIdx: 0 };
+hubM._subscribe(cm, ['G::E::D::a', 'G2::E2::D::b']);
+check('onMissing gets only the tags not in the cache', JSON.stringify(missing) === '["G2::E2::D::b"]', missing);
+
+hub.close(); hubW.close(); hubM.close();
 if (!failures) console.log('ALL OK');
 process.exit(failures ? 1 : 0);

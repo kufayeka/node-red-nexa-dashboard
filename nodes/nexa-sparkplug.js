@@ -62,6 +62,13 @@ function _setWorkerFactoryForTests(fn) { workerFactory = fn; }
 
 const NAMESPACE = "spBv1.0";
 
+// Edge Nodes a connection node has seen, by its id: outlives a redeploy (the
+// module stays loaded), so the NEW instance can ask them to rebirth on connect.
+// A BIRTH is not retained by the broker: without this, a wildcard ("+")
+// connection redeployed after its Edge Nodes were born had an empty tree until
+// one of them happened to send data, which a quiet device never does.
+const knownEdgeNodes = Object.create(null); // node id -> { "g::e": [g, e] }
+
 module.exports = function (RED) {
     function NexaSparkplugNode(config) {
         RED.nodes.createNode(this, config);
@@ -98,6 +105,8 @@ module.exports = function (RED) {
         var dataTree = {};
         var listeners = [];
         var rebirthTracker = new RebirthTracker(REBIRTH_COOLDOWN_MS);
+        var remembered = knownEdgeNodes[node.id] || (knownEdgeNodes[node.id] = Object.create(null));
+        var wanted = Object.create(null); // "g::e" -> [g, e]: needed before we were connected
 
         function emitDelta(delta) {
             // Serialize ONCE here (not once per SSE-connected browser tab in
@@ -200,6 +209,15 @@ module.exports = function (RED) {
             return count;
         };
 
+        node.requestRebirthIfUnborn = function (groupId, edgeNodeId) {
+            if (!groupId || !edgeNodeId) return false;
+            if (!connected) { wanted[groupId + "::" + edgeNodeId] = [groupId, edgeNodeId]; return false; }
+            if (!rebirthTracker.shouldRequest(groupId, edgeNodeId, Date.now())) return false;
+            node.log("Nexa Sparkplug: requesting Rebirth from \"" + groupId + "/" + edgeNodeId + "\" (a screen needs its tags)");
+            requestRebirth(groupId, edgeNodeId);
+            return true;
+        };
+
         function onMessage(topic, payload) {
             var parts = topic.split("/");
             if (parts[0] !== NAMESPACE) return;
@@ -207,6 +225,7 @@ module.exports = function (RED) {
             var msgType = parts[2];
             var edgeNodeId = parts[3];
             var deviceId = parts[4];
+            if (groupId && edgeNodeId) remembered[groupId + "::" + edgeNodeId] = [groupId, edgeNodeId];
             var delta = tree.applyMessage(dataTree, groupId, msgType, edgeNodeId, deviceId, payload);
             if (delta) emitDelta(delta);
 
@@ -271,6 +290,13 @@ module.exports = function (RED) {
                         if (groupFilter !== "+" && edgeNodeFilter !== "+") {
                             requestRebirth(groupFilter, edgeNodeFilter);
                         }
+                        // the Edge Nodes known from before a redeploy, and any a screen asked for
+                        var ask = Object.assign(Object.create(null), remembered, wanted);
+                        wanted = Object.create(null);
+                        Object.keys(ask).forEach(function (k) {
+                            if (ask[k][0] === groupFilter && ask[k][1] === edgeNodeFilter) return; // asked just above
+                            node.requestRebirthIfUnborn(ask[k][0], ask[k][1]);
+                        });
                     } else if (msg.status === "reconnecting") {
                         connected = false;
                         node.status({ fill: "yellow", shape: "ring", text: "reconnecting" });

@@ -236,4 +236,36 @@ console.log("--- node close() posts a graceful close message and terminates the 
   console.log("close message posted to the worker?", lastFakeWorker.posted.length === 0 && doneCalled === true && terminated === true);
 })();
 
+console.log("--- a redeployed WILDCARD connection asks the Edge Nodes it knew to rebirth (a quiet device sends no data to trigger it) ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  new Ctor({ id: "nR", brokerUrl: "mqtt://fake" });
+  lastFakeWorker.simulateConnect();
+  lastFakeWorker.simulateMessage("spBv1.0/G7/NBIRTH/Edge7", { timestamp: 1, metrics: [{ name: "bdSeq", value: 0 }] });
+  lastFakeWorker.posted = [];
+  // the redeploy: a new instance, same config node id, same (still loaded) module
+  new Ctor({ id: "nR", brokerUrl: "mqtt://fake" });
+  lastFakeWorker.simulateConnect();
+  console.log("the new instance asked G7/Edge7 to rebirth on connect?", publishedTo(lastFakeWorker, "G7", "Edge7", null).length === 1);
+})();
+
+console.log("--- a screen needing a tag of an unborn Edge Node asks it to rebirth: once per cooldown, and not once it is born ---");
+(function () {
+  var RED = makeFakeRED();
+  var mod = loadFreshNode();
+  mod(RED);
+  var Ctor = RED.getRegisteredCtor();
+  var node = new Ctor({ id: "nN", brokerUrl: "mqtt://fake" });
+  console.log("asked before connected: not yet, kept for later?", node.requestRebirthIfUnborn("G8", "Edge8") === false && lastFakeWorker.posted.length === 0);
+  lastFakeWorker.simulateConnect();
+  console.log("...sent on connect?", publishedTo(lastFakeWorker, "G8", "Edge8", null).length === 1);
+  lastFakeWorker.posted = [];
+  console.log("asked again inside the cooldown: not sent?", node.requestRebirthIfUnborn("G8", "Edge8") === false && lastFakeWorker.posted.length === 0);
+  lastFakeWorker.simulateMessage("spBv1.0/G9/NBIRTH/Edge9", { timestamp: 1, metrics: [{ name: "bdSeq", value: 0 }] });
+  console.log("an Edge Node already born: not asked?", node.requestRebirthIfUnborn("G9", "Edge9") === false && publishedTo(lastFakeWorker, "G9", "Edge9", null).length === 0);
+})();
+
 console.log("ALL OK");
