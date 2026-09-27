@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope } from "../state.js";
+import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope, getApp } from "../state.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -53,8 +53,11 @@ function getLogicNodeMeta(type) {
     if (type === "layer-control") {
         return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
     }
-    if (type === "set-variable") {
+    if (type === "set-variable" || type === "get-variable") {
         return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
+    }
+    if (type === "on-variable-change") {
+        return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
         return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
@@ -367,13 +370,19 @@ export function renderEventsPanel() {
 
     // one chip per declared variable (screen / group / frame), plus a blank one
     sectionHeader(state.eventsPane, "Variables");
-    chip(state.eventsPane, "Set Variable", function () { return { type: "set-variable", scope: "", name: "", valueSource: "payload" }; }, "", "set-variable");
+    chip(state.eventsPane, "Set Variable", function () { return { type: "set-variable", scope: "", name: "", op: "set", valueSource: "payload" }; }, "", "set-variable");
+    chip(state.eventsPane, "Get Variable", function () { return { type: "get-variable", scope: "", name: "", target: "payload" }; }, "", "get-variable");
+    chip(state.eventsPane, "On Variable Change", function () { return { type: "on-variable-change", scope: "", name: "" }; }, "", "on-variable-change");
     if (screen) {
-        Scope.allDeclarations(screen, Tree.walk).forEach(function (d) {
+        Scope.allDeclarations(screen, Tree.walk, getApp()).forEach(function (d) {
             if (!Scope.NAME_RE.test(d.variable.name || "")) return;
-            chip(state.eventsPane, "Set " + (d.scopeId ? d.scopeName : (state.editingMode === "template" ? "template" : "screen")) + "." + d.variable.name, function () {
-                return { type: "set-variable", scope: d.scopeId, name: d.variable.name, valueSource: "payload" };
+            var label = (d.scopeId ? d.scopeName : (state.editingMode === "template" ? "template" : "screen")) + "." + d.variable.name;
+            chip(state.eventsPane, "Set " + label, function () {
+                return { type: "set-variable", scope: d.scopeId, name: d.variable.name, op: "set", valueSource: "payload" };
             }, "", "set-variable");
+            chip(state.eventsPane, "On change " + label, function () {
+                return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
+            }, "", "on-variable-change");
         });
     }
 

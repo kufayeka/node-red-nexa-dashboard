@@ -1,4 +1,4 @@
-import { state, getActiveScreen, makeScreen, markDirty } from "../state.js";
+import { state, getActiveScreen, makeScreen, markDirty, getApp } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { applyConstraints } from "../canvas/constraints.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
@@ -230,6 +230,8 @@ export function renderScreenForm() {
 
     // the screen's variables: the root of every {name} binding on it
     renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
+    // the app's: shared by every screen (on the project config node)
+    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), getApp(), "app");
 
     var checksWrap = window.$("<div>").css({
         "margin-top": "12px",

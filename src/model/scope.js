@@ -37,8 +37,9 @@ export function hasVariables(node) {
  * The root scope of a surface: a screen's variables — or, for a template, its
  * params (defaults) and variables (a param wins over a variable of the same name).
  */
-export function surfaceScope(surface, isTemplate) {
-    var scope = makeScope(null, surface && surface.variables);
+export function surfaceScope(surface, isTemplate, parent) {
+    // `parent`: the app scope (app variables, $route) above every screen / template
+    var scope = makeScope(parent || null, surface && surface.variables);
     if (isTemplate) {
         (surface.params || []).forEach(function (p) { if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone(p.defaultValue); });
     }
@@ -50,7 +51,7 @@ export function surfaceScope(surface, isTemplate) {
  * [{ name, type, value, owner: { id, name, kind: "container" | "screen" | "template" } }].
  * `ancestors`: the node's containers, outermost first (Tree.ancestors).
  */
-export function visibleVariables(surface, ancestors, isTemplate, self) {
+export function visibleVariables(surface, ancestors, isTemplate, self, app) {
     var seen = {}, out = [];
     function add(list, owner, valueKey) {
         (list || []).forEach(function (v) {
@@ -66,12 +67,14 @@ export function visibleVariables(surface, ancestors, isTemplate, self) {
     }
     if (isTemplate) add(surface.params, { id: surface.id, name: surface.name || "template", kind: "template" }, "defaultValue");
     add(surface.variables, { id: surface.id, name: isTemplate ? (surface.name || "template") : "screen", kind: isTemplate ? "template" : "screen" }, "defaultValue");
+    if (app) add(app.variables, { id: "@app", name: "App", kind: "app" }, "defaultValue");
     return out;
 }
 
 /** Every variable declaration of a surface: [{ scopeId ("" = the surface), scopeName, variable }]. */
-export function allDeclarations(surface, walk) {
+export function allDeclarations(surface, walk, app) {
     var out = [];
+    if (app) (app.variables || []).forEach(function (v) { out.push({ scopeId: "@app", scopeName: "App", variable: v }); });
     (surface.variables || []).forEach(function (v) { out.push({ scopeId: "", scopeName: "Screen", variable: v }); });
     walk(surface, function (node) {
         if (hasVariables(node)) node.variables.forEach(function (v) { out.push({ scopeId: node.id, scopeName: node.name || node.type, variable: v }); });

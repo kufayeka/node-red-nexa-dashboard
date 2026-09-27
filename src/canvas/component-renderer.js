@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, appScope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
@@ -15,7 +15,7 @@ var nodeScopes = new WeakMap();
 export function editorScopeFor(comp) {
     var screen = getActiveScreen();
     if (!screen) return undefined;
-    var scope = Scope.surfaceScope(screen, state.editingMode === "template");
+    var scope = Scope.surfaceScope(screen, state.editingMode === "template", appScope());
     Tree.ancestors(screen, comp.id).forEach(function (a) { if (Scope.hasVariables(a)) scope = Scope.makeScope(scope, a.variables); });
     return scope;
 }
@@ -288,7 +288,9 @@ export function interpolateProps(props, paramState) {
 // non-inherited scoping); deeper nesting still works because each level
 // re-resolves its OWN bindings the same way, one hop at a time.
 export function resolveInstanceParamState(comp, template, enclosingParamState) {
-    var paramState = {};
+    // on the app scope (app variables), not the screen's: a template is a boundary
+    var paramState = appScope();
+    (template.variables || []).forEach(function (v) { if (v && v.name) paramState[v.name] = v.defaultValue; });
     (template.params || []).forEach(function (p) { paramState[p.name] = p.defaultValue; });
     Object.keys(comp.paramValues || {}).forEach(function (name) {
         var raw = comp.paramValues[name];

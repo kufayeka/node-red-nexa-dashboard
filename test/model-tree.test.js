@@ -274,4 +274,15 @@ ok('layout: a scrolling frame scrolls on the live page only (the editor shows it
     assert.deepStrictEqual([L.frameCss({ type: '@frame', style: { scroll: 'both' } }, { scroll: true })['overflow-x'], L.frameCss({ type: '@frame', style: { scroll: 'horizontal' } }, { scroll: true })['overflow-y']], ['auto', 'hidden']);
 });
 
+ok('scope: the app sits above every screen / template; its variables are visible last, declarations tagged @app', () => {
+    const app = { variables: [{ name: 'user', type: 'string', defaultValue: 'guest' }, { name: 'line', type: 'string', defaultValue: 'APP' }] };
+    const appScope = S.makeScope(null, app.variables);
+    const screen = { id: 's', variables: [{ name: 'line', type: 'string', defaultValue: 'L1' }] };
+    const root = S.surfaceScope(screen, false, appScope);
+    assert.deepStrictEqual([root.user, root.line], ['guest', 'L1'], 'a screen variable shadows the app one');
+    const vis = S.visibleVariables(screen, [], false, null, app);
+    assert.deepStrictEqual(vis.map((v) => v.name + '@' + v.owner.kind), ['line@screen', 'user@app']);
+    assert.deepStrictEqual(S.allDeclarations(screen, T.walk, app).map((d) => d.scopeId + '.' + d.variable.name), ['@app.user', '@app.line', '.line']);
+});
+
 console.log(`\n${passed} passed\nALL OK`);

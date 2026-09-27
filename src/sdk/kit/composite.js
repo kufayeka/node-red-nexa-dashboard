@@ -67,7 +67,8 @@ function sdkApi() {
     return window.NexaSDK || null;
 }
 
-var PARAM_RE = /^\{[A-Za-z_$][\w$]*\}$/;
+// {name}, or a path into one: {motor.Speed}, {$route.params.id}, {list[0].x}
+var PARAM_RE = /^\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*\}$/;
 
 export class NxTag extends NxCombobox {
     static properties = { access: { type: String }, providers: { attribute: false }, _provider: { state: true } };

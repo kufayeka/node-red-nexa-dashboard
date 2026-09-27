@@ -36,31 +36,45 @@ export function variableProblems(list) {
     return out;
 }
 
+var PERSIST = [{ value: "none", label: "this page" }, { value: "session", label: "tab session" }, { value: "local", label: "browser (kept)" }];
+
 /**
- * The Variables block for `owner` (a container node, or the surface itself
- * when `isSurface`). Returns false without the property kit.
+ * The Variables block for `owner`: a container node, the screen (`kind` true /
+ * "screen") or the app ("app": the project config node — variables every
+ * screen shares, optionally persisted). Returns false without the property kit.
  */
-export function renderVariablesInspector(container, owner, isSurface) {
+export function renderVariablesInspector(container, owner, kind) {
     if (!window.NexaKit || !window.NEXA_LIT) return false;
     var html = window.NEXA_LIT.html;
+    var isApp = kind === "app";
+    var isSurface = kind === true || kind === "screen" || isApp;
     var view = function () {
-        return { variables: (owner.variables || []).map(function (v) { return { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) }; }) };
+        return { variables: (owner.variables || []).map(function (v) {
+            var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+            if (isApp) it.persist = v.persist || "none";
+            return it;
+        }) };
     };
+    var fields = {
+        name: { type: "string", label: "Name", default: "" },
+        type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function (t) { return { value: t, label: t }; }) },
+        value: { type: "string", label: "Default", default: "" }
+    };
+    if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
     var meta = {
         id: "@variables", stateList: [], inputs: [], outputs: [],
         props: {
             variables: {
                 key: "variables", type: "list", label: "", default: [], noReset: true,
-                item: { row: true, fields: {
-                    name: { type: "string", label: "Name", default: "" },
-                    type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function (t) { return { value: t, label: t }; }) },
-                    value: { type: "string", label: "Default", default: "" } } }
+                item: { row: !isApp, fields: fields }
             }
         },
         inspector: function (o) {
             var problems = variableProblems(owner.variables);
-            return html`<nx-section heading="Variables" persist-key="nexa-variables">
-                <div class="nx-help" style="margin-bottom:6px">Bind with {name} in the props of anything ${isSurface ? "on this screen" : "inside"}; the nearest declaration wins. Change one live with the Logic "Set Variable" node.</div>
+            return html`<nx-section heading="${isApp ? "App variables (every screen)" : "Variables"}" persist-key="${isApp ? "nexa-app-variables" : "nexa-variables"}">
+                <div class="nx-help" style="margin-bottom:6px">${isApp
+                    ? "Shared by every screen (global state). \"Kept for\" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change."
+                    : "Bind with {name} in the props of anything " + (isSurface ? "on this screen" : "inside") + "; the nearest declaration wins. Change one live with the Logic \"Set Variable\" node."}</div>
                 ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
                 <nx-list ${o.bind("variables")}></nx-list>
             </nx-section>`;
@@ -75,10 +89,12 @@ export function renderVariablesInspector(container, owner, isSurface) {
             var old = owner.variables || [];
             var next = (items || []).map(function (it, i) {
                 var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-                return { id: (old[i] && old[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type, defaultValue: parse(it.value, type) };
+                var v = { id: (old[i] && old[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type, defaultValue: parse(it.value, type) };
+                if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
+                return v;
             });
             var before = old.length ? JSON.parse(JSON.stringify(old)) : undefined;
-            if (next.length) owner.variables = next; else delete owner.variables;
+            if (next.length || isApp) owner.variables = next; else delete owner.variables;
             var screen = getActiveScreen();
             if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : undefined });
             markDirty();

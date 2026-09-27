@@ -38,6 +38,9 @@ export const LOGIC_NODE_KINDS = {
     "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    // a source: fires when the variable it watches changes (payload = new, previous = old)
+    "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
     // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
     // "function", they're asynchronous (an HTTP round-trip) and only
@@ -209,6 +212,17 @@ export function templateContains(candidateId, targetId, seen) {
     return Tree.allNodes(candidate, { orphans: true }).some(function (c) {
         return c.type === "@template" && templateContains(c.templateId, targetId, seen);
     });
+}
+
+// The app: variables shared by every screen, kept on the project config node
+// (docs/STATE.md). Its scope sits above every screen's and template's.
+export function getApp() {
+    var p = state.projectConfigNode;
+    if (p && !Array.isArray(p.variables)) p.variables = [];
+    return p || { variables: [] };
+}
+export function appScope() {
+    return Scope.makeScope(null, getApp().variables);
 }
 
 export function markDirty() {

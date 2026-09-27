@@ -4,7 +4,7 @@
 // is only the editor's side of it: where a change goes (the comp's props,
 // undo history, dirty flag, canvas re-render) and what the kit's widgets may
 // ask the editor for (the code tray, the known Sparkplug tags).
-import { state, getActiveScreen, markDirty, Tree, Scope } from "../state.js";
+import { state, getActiveScreen, markDirty, Tree, Scope, getApp } from "../state.js";
 import { pushHistory } from "../history.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { openCodeEditorTray } from "../dialogs/lit-code-dialog.js";
@@ -25,7 +25,15 @@ function ensureKitHost() {
             var screen = getActiveScreen();
             var id = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
             if (!screen || !id) return [];
-            return Scope.visibleVariables(screen, Tree.ancestors(screen, id), state.editingMode === "template", Tree.find(screen, id));
+            var list = Scope.visibleVariables(screen, Tree.ancestors(screen, id), state.editingMode === "template", Tree.find(screen, id), getApp());
+            // the page's URL: {$route.params.<name>} for each ":name" in the screen's path, the query, the path
+            var route = { id: "$route", name: "the URL", kind: "route" };
+            ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function (p) {
+                list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
+            });
+            list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 → {a, b})", owner: route });
+            list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+            return list;
         }
     });
     // The tag picker's suggestions come from the tag PROVIDER; the editor

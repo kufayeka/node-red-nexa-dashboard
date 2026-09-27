@@ -712,8 +712,8 @@
   function hasVariables(node) {
     return !!(node && Array.isArray(node.variables) && node.variables.length);
   }
-  function surfaceScope(surface, isTemplate) {
-    var scope = makeScope(null, surface && surface.variables);
+  function surfaceScope(surface, isTemplate, parent) {
+    var scope = makeScope(parent || null, surface && surface.variables);
     if (isTemplate) {
       (surface.params || []).forEach(function(p) {
         if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone(p.defaultValue);
@@ -721,7 +721,7 @@
     }
     return scope;
   }
-  function visibleVariables(surface, ancestors2, isTemplate, self) {
+  function visibleVariables(surface, ancestors2, isTemplate, self, app) {
     var seen = {}, out = [];
     function add(list, owner, valueKey) {
       (list || []).forEach(function(v) {
@@ -737,10 +737,14 @@
     }
     if (isTemplate) add(surface.params, { id: surface.id, name: surface.name || "template", kind: "template" }, "defaultValue");
     add(surface.variables, { id: surface.id, name: isTemplate ? surface.name || "template" : "screen", kind: isTemplate ? "template" : "screen" }, "defaultValue");
+    if (app) add(app.variables, { id: "@app", name: "App", kind: "app" }, "defaultValue");
     return out;
   }
-  function allDeclarations(surface, walk2) {
+  function allDeclarations(surface, walk2, app) {
     var out = [];
+    if (app) (app.variables || []).forEach(function(v) {
+      out.push({ scopeId: "@app", scopeName: "App", variable: v });
+    });
     (surface.variables || []).forEach(function(v) {
       out.push({ scopeId: "", scopeName: "Screen", variable: v });
     });
@@ -872,6 +876,9 @@
     "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    // a source: fires when the variable it watches changes (payload = new, previous = old)
+    "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
     // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
     // "function", they're asynchronous (an HTTP round-trip) and only
@@ -999,6 +1006,14 @@
     return allNodes(candidate, { orphans: true }).some(function(c) {
       return c.type === "@template" && templateContains(c.templateId, targetId, seen);
     });
+  }
+  function getApp() {
+    var p = state.projectConfigNode;
+    if (p && !Array.isArray(p.variables)) p.variables = [];
+    return p || { variables: [] };
+  }
+  function appScope() {
+    return makeScope(null, getApp().variables);
   }
   function markDirty() {
     if (state.projectConfigNode) {
@@ -1848,7 +1863,7 @@
   function editorScopeFor(comp) {
     var screen = getActiveScreen();
     if (!screen) return void 0;
-    var scope = scope_exports.surfaceScope(screen, state.editingMode === "template");
+    var scope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
     tree_exports.ancestors(screen, comp.id).forEach(function(a) {
       if (scope_exports.hasVariables(a)) scope = scope_exports.makeScope(scope, a.variables);
     });
@@ -2052,7 +2067,10 @@
     return resolveSparkplugProps(withTemplateBindings);
   }
   function resolveInstanceParamState(comp, template, enclosingParamState) {
-    var paramState = {};
+    var paramState = appScope();
+    (template.variables || []).forEach(function(v) {
+      if (v && v.name) paramState[v.name] = v.defaultValue;
+    });
     (template.params || []).forEach(function(p) {
       paramState[p.name] = p.defaultValue;
     });
@@ -26330,8 +26348,11 @@
     if (type === "layer-control") {
       return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
     }
-    if (type === "set-variable") {
+    if (type === "set-variable" || type === "get-variable") {
       return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
+    }
+    if (type === "on-variable-change") {
+      return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
       return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
@@ -26655,14 +26676,24 @@
     }, "", "layer-control");
     sectionHeader(state.eventsPane, "Variables");
     chip(state.eventsPane, "Set Variable", function() {
-      return { type: "set-variable", scope: "", name: "", valueSource: "payload" };
+      return { type: "set-variable", scope: "", name: "", op: "set", valueSource: "payload" };
     }, "", "set-variable");
+    chip(state.eventsPane, "Get Variable", function() {
+      return { type: "get-variable", scope: "", name: "", target: "payload" };
+    }, "", "get-variable");
+    chip(state.eventsPane, "On Variable Change", function() {
+      return { type: "on-variable-change", scope: "", name: "" };
+    }, "", "on-variable-change");
     if (screen) {
-      scope_exports.allDeclarations(screen, tree_exports.walk).forEach(function(d) {
+      scope_exports.allDeclarations(screen, tree_exports.walk, getApp()).forEach(function(d) {
         if (!scope_exports.NAME_RE.test(d.variable.name || "")) return;
-        chip(state.eventsPane, "Set " + (d.scopeId ? d.scopeName : state.editingMode === "template" ? "template" : "screen") + "." + d.variable.name, function() {
-          return { type: "set-variable", scope: d.scopeId, name: d.variable.name, valueSource: "payload" };
+        var label = (d.scopeId ? d.scopeName : state.editingMode === "template" ? "template" : "screen") + "." + d.variable.name;
+        chip(state.eventsPane, "Set " + label, function() {
+          return { type: "set-variable", scope: d.scopeId, name: d.variable.name, op: "set", valueSource: "payload" };
         }, "", "set-variable");
+        chip(state.eventsPane, "On change " + label, function() {
+          return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
+        }, "", "on-variable-change");
       });
     }
     sectionHeader(state.eventsPane, "Sparkplug");
@@ -26776,7 +26807,14 @@
         var screen = getActiveScreen();
         var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
         if (!screen || !id2) return [];
-        return scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2));
+        var list = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
+        var route = { id: "$route", name: "the URL", kind: "route" };
+        ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
+          list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
+        });
+        list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
+        list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+        return list;
       }
     });
     if (window.NexaSDK && window.NexaSDK.getTagProvider("sparkplug")) {
@@ -27184,14 +27222,27 @@
     });
     return out;
   }
-  function renderVariablesInspector(container, owner, isSurface) {
+  var PERSIST = [{ value: "none", label: "this page" }, { value: "session", label: "tab session" }, { value: "local", label: "browser (kept)" }];
+  function renderVariablesInspector(container, owner, kind) {
     if (!window.NexaKit || !window.NEXA_LIT) return false;
     var html = window.NEXA_LIT.html;
+    var isApp = kind === "app";
+    var isSurface = kind === true || kind === "screen" || isApp;
     var view = function() {
       return { variables: (owner.variables || []).map(function(v) {
-        return { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+        var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+        if (isApp) it.persist = v.persist || "none";
+        return it;
       }) };
     };
+    var fields = {
+      name: { type: "string", label: "Name", default: "" },
+      type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function(t2) {
+        return { value: t2, label: t2 };
+      }) },
+      value: { type: "string", label: "Default", default: "" }
+    };
+    if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
     var meta2 = {
       id: "@variables",
       stateList: [],
@@ -27204,19 +27255,13 @@
           label: "",
           default: [],
           noReset: true,
-          item: { row: true, fields: {
-            name: { type: "string", label: "Name", default: "" },
-            type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function(t2) {
-              return { value: t2, label: t2 };
-            }) },
-            value: { type: "string", label: "Default", default: "" }
-          } }
+          item: { row: !isApp, fields }
         }
       },
       inspector: function(o) {
         var problems = variableProblems(owner.variables);
-        return html`<nx-section heading="Variables" persist-key="nexa-variables">
-                <div class="nx-help" style="margin-bottom:6px">Bind with {name} in the props of anything ${isSurface ? "on this screen" : "inside"}; the nearest declaration wins. Change one live with the Logic "Set Variable" node.</div>
+        return html`<nx-section heading="${isApp ? "App variables (every screen)" : "Variables"}" persist-key="${isApp ? "nexa-app-variables" : "nexa-variables"}">
+                <div class="nx-help" style="margin-bottom:6px">${isApp ? 'Shared by every screen (global state). "Kept for" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change.' : "Bind with {name} in the props of anything " + (isSurface ? "on this screen" : "inside") + '; the nearest declaration wins. Change one live with the Logic "Set Variable" node.'}</div>
                 ${problems.map(function(p) {
           return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
         })}
@@ -27233,10 +27278,12 @@
         var old = owner.variables || [];
         var next = (items || []).map(function(it, i2) {
           var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-          return { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
+          var v = { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
+          if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
+          return v;
         });
         var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
-        if (next.length) owner.variables = next;
+        if (next.length || isApp) owner.variables = next;
         else delete owner.variables;
         var screen = getActiveScreen();
         if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
@@ -27893,7 +27940,7 @@
       state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
-    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template");
+    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
@@ -28565,12 +28612,20 @@
   }
 
   // src/dialogs/set-variable-dialog.js
+  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change" };
+  var HELP = {
+    "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "On Variable Change" nodes watching it fire. The message goes on unchanged.',
+    "get-variable": "Puts the variable's current value into the message and passes it on.",
+    "on-variable-change": "Starts a flow whenever the variable changes \u2014 by a Set Variable node, a Function node (vars.set) or a query. msg.payload = the new value, msg.previous = the old one."
+  };
+  var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
   function openSetVariableNodeEditor(node) {
+    var type = node.type in TITLES ? node.type : "set-variable";
     var screen = getActiveScreen();
-    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk) : [];
-    var surfaceLabel = state.editingMode === "template" ? "This template" : "Screen";
-    var draft = { scope: node.scope || "", name: node.name || "", valueSource: node.valueSource || "payload", value: node.value };
-    var scopeSel, nameSel, staticRow;
+    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
+    var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
+    var draft = { scope: node.scope || "", name: node.name || "", op: node.op || "set", valueSource: node.valueSource || "payload", value: node.value, msgPath: node.msgPath || "payload.data", target: node.target || "payload" };
+    var nameSel;
     function namesIn(scopeId) {
       return decls.filter(function(d) {
         return d.scopeId === scopeId;
@@ -28590,9 +28645,9 @@
       draft.name = nameSel.val() || "";
     }
     window.RED.tray.show({
-      id: "nexa-logic-setvariable-editor",
-      title: "Configure Set Variable Node",
-      width: 450,
+      id: "nexa-logic-variable-editor",
+      title: "Configure " + TITLES[type] + " Node",
+      width: 460,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
@@ -28603,9 +28658,15 @@
           click: function() {
             node.scope = draft.scope;
             node.name = draft.name;
-            node.valueSource = draft.valueSource;
-            if (draft.valueSource === "static") node.value = draft.value;
-            else delete node.value;
+            if (type === "set-variable") {
+              node.op = draft.op;
+              node.valueSource = draft.valueSource;
+              if (draft.valueSource === "static") node.value = draft.value;
+              else delete node.value;
+              if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
+              else delete node.msgPath;
+            }
+            if (type === "get-variable") node.target = draft.target || "payload";
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -28614,15 +28675,15 @@
       ],
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Sets a variable on the live page. Everything inside its scope that binds {name} (and doesn't declare its own) updates; a template instance bound to it gets the value passed in. The message goes on unchanged.").appendTo(body);
-        var label = function(text) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP[type]).appendTo(body);
+        var label = function(text, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(parent || body);
         };
         label("Scope (where the variable is declared)");
-        scopeSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-        var scopes = [{ id: "", name: surfaceLabel }];
+        var scopeSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        var scopes = [{ id: "@app", name: "App (every screen)" }, { id: "", name: surfaceLabel }];
         decls.forEach(function(d) {
-          if (d.scopeId && !scopes.some(function(s) {
+          if (d.scopeId && d.scopeId !== "@app" && !scopes.some(function(s) {
             return s.id === d.scopeId;
           })) scopes.push({ id: d.scopeId, name: d.scopeName });
         });
@@ -28642,26 +28703,51 @@
           draft.name = nameSel.val();
         });
         fillNames();
-        label("Value");
-        var srcSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-        window.$("<option>", { value: "payload" }).text("msg.payload").appendTo(srcSel);
-        window.$("<option>", { value: "static" }).text("A fixed value").appendTo(srcSel);
-        srcSel.val(draft.valueSource);
-        staticRow = window.$("<div>").css({ "margin-top": "6px" }).appendTo(body);
-        var decl = decls.filter(function(d) {
-          return d.scopeId === draft.scope && d.variable.name === draft.name;
-        })[0];
-        buildTypedInputWidget(staticRow, decl && decl.variable.type || "string", draft.value !== void 0 ? draft.value : "", function(v) {
-          draft.value = v;
-        });
-        var sync = function() {
-          staticRow.toggle(draft.valueSource === "static");
-        };
-        srcSel.on("change", function() {
-          draft.valueSource = srcSel.val();
+        if (type === "get-variable") {
+          label("Into msg property");
+          window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(draft.target).appendTo(body).on("change", function() {
+            draft.target = this.value.trim() || "payload";
+          });
+        }
+        if (type === "set-variable") {
+          label("Operation");
+          var opSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          OPS.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(opSel);
+          });
+          opSel.val(draft.op);
+          var valueWrap = window.$("<div>").appendTo(body);
+          label("Value", valueWrap);
+          var srcSel = window.$("<select>").css({ width: "100%" }).appendTo(valueWrap);
+          [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed value"]].forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(srcSel);
+          });
+          srcSel.val(draft.valueSource);
+          var pathInput = window.$("<input>", { type: "text", placeholder: "e.g. payload.data.items" }).css({ width: "100%", "box-sizing": "border-box", "margin-top": "6px" }).val(draft.msgPath).appendTo(valueWrap).on("change", function() {
+            draft.msgPath = this.value.trim();
+          });
+          var staticRow = window.$("<div>").css({ "margin-top": "6px" }).appendTo(valueWrap);
+          var decl = decls.filter(function(d) {
+            return d.scopeId === draft.scope && d.variable.name === draft.name;
+          })[0];
+          buildTypedInputWidget(staticRow, decl && decl.variable.type || "string", draft.value !== void 0 ? draft.value : "", function(v) {
+            draft.value = v;
+          });
+          var sync = function() {
+            valueWrap.toggle(draft.op !== "toggle");
+            pathInput.toggle(draft.valueSource === "msg");
+            staticRow.toggle(draft.valueSource === "static");
+          };
+          opSel.on("change", function() {
+            draft.op = opSel.val();
+            sync();
+          });
+          srcSel.on("change", function() {
+            draft.valueSource = srcSel.val();
+            sync();
+          });
           sync();
-        });
-        sync();
+        }
       }
     });
   }
@@ -28806,11 +28892,16 @@
       var n = (node.states || []).length;
       return "Layer Control" + (n ? " (" + n + ")" : "");
     }
-    if (node.type === "set-variable") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
       var vScreen = getActiveScreen();
-      var owner = node.scope && vScreen ? tree_exports.find(vScreen, node.scope) : null;
-      var where = node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
-      return node.name ? "Set " + where + "." + node.name + (node.valueSource === "static" ? " = " + JSON.stringify(node.value) : "") : "Set Variable";
+      var owner = node.scope && node.scope !== "@app" && vScreen ? tree_exports.find(vScreen, node.scope) : null;
+      var where = node.scope === "@app" ? "App" : node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
+      var ref = where + "." + node.name;
+      if (!node.name) return kind.label;
+      if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
+      if (node.type === "on-variable-change") return "On change " + ref;
+      var OPS2 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
+      return (OPS2[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
     }
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
@@ -28940,7 +29031,7 @@
         openLayerControlNodeEditor(node);
       });
     }
-    if (node.type === "set-variable") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openSetVariableNodeEditor(node);
@@ -29949,7 +30040,7 @@
     });
     modeSel.val(screen.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
-    var HELP = {
+    var HELP2 = {
       fixed: function() {
         return "Shown at exactly " + screen.width + " \xD7 " + screen.height + " px \u2014 for a known panel / device.";
       },
@@ -29958,7 +30049,7 @@
       fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout."
     };
     var syncHelp = function() {
-      var h = HELP[modeSel.val()];
+      var h = HELP2[modeSel.val()];
       modeHelp.text(typeof h === "function" ? h() : h || "");
     };
     syncHelp();
@@ -29970,6 +30061,7 @@
     });
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
     renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
+    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), getApp(), "app");
     var checksWrap = window.$("<div>").css({
       "margin-top": "12px",
       "padding-top": "10px",

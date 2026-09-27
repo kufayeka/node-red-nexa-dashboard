@@ -45,11 +45,16 @@ export function logicNodeLabel(node) {
         var n = (node.states || []).length;
         return "Layer Control" + (n ? (" (" + n + ")") : "");
     }
-    if (node.type === "set-variable") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         var vScreen = getActiveScreen();
-        var owner = node.scope && vScreen ? Tree.find(vScreen, node.scope) : null;
-        var where = node.scope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
-        return node.name ? "Set " + where + "." + node.name + (node.valueSource === "static" ? " = " + JSON.stringify(node.value) : "") : "Set Variable";
+        var owner = node.scope && node.scope !== "@app" && vScreen ? Tree.find(vScreen, node.scope) : null;
+        var where = node.scope === "@app" ? "App" : node.scope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
+        var ref = where + "." + node.name;
+        if (!node.name) return kind.label;
+        if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " → msg." + node.target : "");
+        if (node.type === "on-variable-change") return "On change " + ref;
+        var OPS = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
+        return (OPS[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " ← msg." + node.msgPath : "");
     }
     if (node.type === "set-template-param") {
         var instComp = findComponent(node.instanceId);
@@ -154,7 +159,7 @@ export function renderLogicNode(node) {
             openLayerControlNodeEditor(node);
         });
     }
-    if (node.type === "set-variable") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openSetVariableNodeEditor(node);
