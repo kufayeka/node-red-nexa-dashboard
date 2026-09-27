@@ -47,7 +47,10 @@ var FRAME_META = {
         stroke: prop("stroke", "color", "Stroke"),
         strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
         radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
-        clip: prop("clip", "boolean", "Clip content")
+        clip: prop("clip", "boolean", "Clip content"),
+        scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
+            { value: "none", label: "No scrolling" }, { value: "vertical", label: "Vertical" },
+            { value: "horizontal", label: "Horizontal" }, { value: "both", label: "Both directions" }] })
     }
 };
 
@@ -75,7 +78,7 @@ function frameView(frame) {
         align: { x: l.alignX, y: l.alignY },
         gap: l.gap === "auto" ? 0 : l.gap, gapAuto: l.gap === "auto", rowGap: l.rowGap === undefined ? "" : l.rowGap,
         padding: l.padding, wrap: !!l.wrap, columns: l.columns, rows: l.rows,
-        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip
+        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip, scroll: s.scroll || "none"
     };
 }
 
@@ -99,6 +102,7 @@ function writeFrame(frame, key, v) {
             if (v !== "none" && !frame.layout) { layout.padding = { t: 8, r: 8, b: 8, l: 8 }; layout.gap = 8; }
             break;
         case "fill": case "stroke": case "strokeWidth": case "radius": case "clip": style[key] = v; break;
+        case "scroll": if (v === "none") delete style.scroll; else style.scroll = v; break;
         default: layout[key] = v;
     }
     frame.layout = layout;
@@ -174,6 +178,7 @@ export function renderFrameInspector(container, frame) {
                     <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
                     <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
                     <nx-checkbox ${bind("clip")}></nx-checkbox>
+                    <nx-select ${bind("scroll")}></nx-select>
                 </nx-section>`;
         }
     });

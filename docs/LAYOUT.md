@@ -7,6 +7,7 @@ keep to their frame's edges, and variables flow down the tree.
 - [1. The node tree](#1-the-node-tree)
 - [2. Selecting and arranging (Figma rules)](#2-selecting-and-arranging-figma-rules)
 - [3. Frames and auto layout](#3-frames-and-auto-layout)
+- [3b. The screen in the browser window](#3b-the-screen-in-the-browser-window)
 - [4. Constraints](#4-constraints)
 - [5. Variables and the scope chain](#5-variables-and-the-scope-chain)
 - [6. Where the code lives](#6-where-the-code-lives)
@@ -130,6 +131,24 @@ layoutChild = {
   over a frame goes into it.
 - **Selected auto-layout frame:** it shows its padding and gaps as pink
   bands.
+
+**Scrolling:** `style.scroll` is `"none" | "vertical" | "horizontal" | "both"`.
+A scrolling frame scrolls its overflow on the live page, which is how a long
+list goes in a fixed-size box. In the editor the frame follows **Clip
+content** instead, so what's outside stays visible and editable, as in
+Figma.
+
+## 3b. The screen in the browser window
+
+`screen.displayMode` (Screens tab → "On the live page", next to the
+**Device** presets):
+
+| Mode | The live page |
+| --- | --- |
+| `fixed` (default) | Exactly the screen's size (a known panel / device), centred. |
+| `fit` | Scaled so the whole screen fits the window; proportions kept (letterbox). |
+| `fitWidth` | Scaled to the window's width; taller content scrolls down. Good for web pages. |
+| `fill` | The screen *is* the window, and nothing is scaled. The top-level items keep to the window's edges by their constraints (§4); use frames with auto layout inside. This is the responsive mode. |
 
 ## 4. Constraints
 

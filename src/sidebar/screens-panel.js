@@ -177,8 +177,55 @@ export function renderScreenForm() {
 
     row("Name", "name", screen.name);
     row("URL path", "path", screen.path);
-    row("Width (px)", "width", screen.width, "number");
-    row("Height (px)", "height", screen.height, "number");
+    // a device preset fills in width / height (the root's children keep to their constraints)
+    var DEVICES = [
+        ["", "Custom size"], ["1920x1080", "Full HD 1920 × 1080"], ["1366x768", "Laptop 1366 × 768"],
+        ["1280x800", "HMI panel 10\" 1280 × 800"], ["1024x768", "HMI panel 1024 × 768"], ["800x480", "HMI panel 7\" 800 × 480"],
+        ["1180x820", "Tablet landscape 1180 × 820"], ["820x1180", "Tablet portrait 820 × 1180"], ["390x844", "Phone 390 × 844"]
+    ];
+    var presetRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Device").appendTo(presetRow);
+    var presetSel = window.$("<select>").css({ width: "100%" }).appendTo(presetRow);
+    DEVICES.forEach(function (d) { window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel); });
+    presetSel.val(screen.width + "x" + screen.height);
+    if (!presetSel.val()) presetSel.val("");
+    var widthInput = row("Width (px)", "width", screen.width, "number");
+    var heightInput = row("Height (px)", "height", screen.height, "number");
+    presetSel.on("change", function () {
+        var m = /^(\d+)x(\d+)$/.exec(presetSel.val());
+        if (!m) return;
+        var oldSize = { w: screen.width, h: screen.height };
+        screen.width = Number(m[1]); screen.height = Number(m[2]);
+        widthInput.val(screen.width); heightInput.val(screen.height);
+        applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
+        markDirty();
+        renderActiveScreen();
+        syncHelp();
+    });
+    [widthInput, heightInput].forEach(function (inp) { inp.on("change", function () { presetSel.val(screen.width + "x" + screen.height); if (!presetSel.val()) presetSel.val(""); syncHelp(); }); });
+
+    // how the live page sits in the browser window (lib/nexa-runtime-client.js applyDisplayMode)
+    var modeRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("On the live page").appendTo(modeRow);
+    var modeSel = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
+    [["fixed", "Exact size (this device), centred"], ["fit", "Scale to fit the window (keep proportions)"],
+        ["fitWidth", "Scale to the window width (scroll down)"], ["fill", "Fill the window (responsive, by constraints)"]]
+        .forEach(function (o) { window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel); });
+    modeSel.val(screen.displayMode || "fixed");
+    var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
+    var HELP = {
+        fixed: function () { return "Shown at exactly " + screen.width + " × " + screen.height + " px — for a known panel / device."; },
+        fit: "Everything scales together so the whole screen fits any window.",
+        fitWidth: "Scales to the window's width; taller content scrolls — good for web pages.",
+        fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale…) on top-level items and use frames with auto layout."
+    };
+    var syncHelp = function () { var h = HELP[modeSel.val()]; modeHelp.text(typeof h === "function" ? h() : (h || "")); };
+    syncHelp();
+    modeSel.on("change", function () {
+        if (modeSel.val() === "fixed") delete screen.displayMode; else screen.displayMode = modeSel.val();
+        syncHelp();
+        markDirty();
+    });
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
 
     // the screen's variables: the root of every {name} binding on it

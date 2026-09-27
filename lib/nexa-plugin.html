@@ -450,7 +450,8 @@
     sizeW: "fixed",
     sizeH: "fixed"
   };
-  var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false };
+  var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none" };
+  var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
   function num(v, d) {
     var n = typeof v === "number" ? v : parseFloat(v);
     return isFinite(n) ? n : d || 0;
@@ -504,7 +505,7 @@
   function tracksCss(list) {
     return (list || []).map(track).join(" ");
   }
-  function frameCss(frame) {
+  function frameCss(frame, opts) {
     var l = layoutOf(frame);
     var s = styleOf(frame);
     var css2 = {
@@ -512,8 +513,16 @@
       border: num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) + "px solid " + s.stroke : "",
       "border-radius": num(s.radius) ? num(s.radius) + "px" : "",
       overflow: s.clip ? "hidden" : "",
+      "overflow-x": "",
+      "overflow-y": "",
       "box-sizing": "border-box"
     };
+    var axes = opts && opts.scroll && SCROLL_AXES[s.scroll];
+    if (axes) {
+      css2.overflow = "";
+      css2["overflow-x"] = axes[0];
+      css2["overflow-y"] = axes[1];
+    }
     if (l.mode === "none") {
       css2.display = "";
       css2.padding = "";
@@ -26858,7 +26867,13 @@
       stroke: prop("stroke", "color", "Stroke"),
       strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
       radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
-      clip: prop("clip", "boolean", "Clip content")
+      clip: prop("clip", "boolean", "Clip content"),
+      scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
+        { value: "none", label: "No scrolling" },
+        { value: "vertical", label: "Vertical" },
+        { value: "horizontal", label: "Horizontal" },
+        { value: "both", label: "Both directions" }
+      ] })
     }
   };
   var CHILD_META = {
@@ -26902,7 +26917,8 @@
       stroke: s.stroke,
       strokeWidth: s.strokeWidth,
       radius: s.radius,
-      clip: !!s.clip
+      clip: !!s.clip,
+      scroll: s.scroll || "none"
     };
   }
   function writeFrame(frame, key, v) {
@@ -26943,6 +26959,10 @@
       case "radius":
       case "clip":
         style[key] = v;
+        break;
+      case "scroll":
+        if (v === "none") delete style.scroll;
+        else style.scroll = v;
         break;
       default:
         layout[key] = v;
@@ -27026,6 +27046,7 @@
                     <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
                     <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
                     <nx-checkbox ${bind("clip")}></nx-checkbox>
+                    <nx-select ${bind("scroll")}></nx-select>
                 </nx-section>`;
       }
     });
@@ -29874,8 +29895,79 @@
     }
     row("Name", "name", screen.name);
     row("URL path", "path", screen.path);
-    row("Width (px)", "width", screen.width, "number");
-    row("Height (px)", "height", screen.height, "number");
+    var DEVICES = [
+      ["", "Custom size"],
+      ["1920x1080", "Full HD 1920 \xD7 1080"],
+      ["1366x768", "Laptop 1366 \xD7 768"],
+      ["1280x800", 'HMI panel 10" 1280 \xD7 800'],
+      ["1024x768", "HMI panel 1024 \xD7 768"],
+      ["800x480", 'HMI panel 7" 800 \xD7 480'],
+      ["1180x820", "Tablet landscape 1180 \xD7 820"],
+      ["820x1180", "Tablet portrait 820 \xD7 1180"],
+      ["390x844", "Phone 390 \xD7 844"]
+    ];
+    var presetRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Device").appendTo(presetRow);
+    var presetSel = window.$("<select>").css({ width: "100%" }).appendTo(presetRow);
+    DEVICES.forEach(function(d) {
+      window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel);
+    });
+    presetSel.val(screen.width + "x" + screen.height);
+    if (!presetSel.val()) presetSel.val("");
+    var widthInput = row("Width (px)", "width", screen.width, "number");
+    var heightInput = row("Height (px)", "height", screen.height, "number");
+    presetSel.on("change", function() {
+      var m = /^(\d+)x(\d+)$/.exec(presetSel.val());
+      if (!m) return;
+      var oldSize = { w: screen.width, h: screen.height };
+      screen.width = Number(m[1]);
+      screen.height = Number(m[2]);
+      widthInput.val(screen.width);
+      heightInput.val(screen.height);
+      applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
+      markDirty();
+      renderActiveScreen();
+      syncHelp();
+    });
+    [widthInput, heightInput].forEach(function(inp) {
+      inp.on("change", function() {
+        presetSel.val(screen.width + "x" + screen.height);
+        if (!presetSel.val()) presetSel.val("");
+        syncHelp();
+      });
+    });
+    var modeRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("On the live page").appendTo(modeRow);
+    var modeSel = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
+    [
+      ["fixed", "Exact size (this device), centred"],
+      ["fit", "Scale to fit the window (keep proportions)"],
+      ["fitWidth", "Scale to the window width (scroll down)"],
+      ["fill", "Fill the window (responsive, by constraints)"]
+    ].forEach(function(o) {
+      window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel);
+    });
+    modeSel.val(screen.displayMode || "fixed");
+    var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
+    var HELP = {
+      fixed: function() {
+        return "Shown at exactly " + screen.width + " \xD7 " + screen.height + " px \u2014 for a known panel / device.";
+      },
+      fit: "Everything scales together so the whole screen fits any window.",
+      fitWidth: "Scales to the window's width; taller content scrolls \u2014 good for web pages.",
+      fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout."
+    };
+    var syncHelp = function() {
+      var h = HELP[modeSel.val()];
+      modeHelp.text(typeof h === "function" ? h() : h || "");
+    };
+    syncHelp();
+    modeSel.on("change", function() {
+      if (modeSel.val() === "fixed") delete screen.displayMode;
+      else screen.displayMode = modeSel.val();
+      syncHelp();
+      markDirty();
+    });
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
     renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
     var checksWrap = window.$("<div>").css({

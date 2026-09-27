@@ -265,4 +265,13 @@ ok('scope: a template surface = params + variables (a param wins); visibleVariab
     assert.deepStrictEqual(decl.map((d) => (d.scopeId || '-') + '.' + d.variable.name), ['-.line', '-.label', 'p.label']);
 });
 
+ok('layout: a scrolling frame scrolls on the live page only (the editor shows it per clip)', () => {
+    const f = { type: '@frame', style: { scroll: 'vertical' } };
+    const live = L.frameCss(f, { scroll: true });
+    assert.deepStrictEqual([live.overflow, live['overflow-x'], live['overflow-y']], ['', 'hidden', 'auto']);
+    assert.deepStrictEqual([L.frameCss(f).overflow, L.frameCss(f)['overflow-y']], ['', ''], 'editor: not clipped');
+    assert.strictEqual(L.frameCss({ type: '@frame', style: { scroll: 'vertical', clip: true } }).overflow, 'hidden', 'editor: clip content');
+    assert.deepStrictEqual([L.frameCss({ type: '@frame', style: { scroll: 'both' } }, { scroll: true })['overflow-x'], L.frameCss({ type: '@frame', style: { scroll: 'horizontal' } }, { scroll: true })['overflow-y']], ['auto', 'hidden']);
+});
+
 console.log(`\n${passed} passed\nALL OK`);

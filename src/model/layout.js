@@ -41,7 +41,10 @@ var DEFAULT_LAYOUT = {
     sizeH: "fixed"
 };
 
-var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false };
+// scroll: "none" | "vertical" | "horizontal" | "both" — on the deployed page
+// (the editor shows the frame per `clip`, so what's outside stays editable)
+var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none" };
+var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
 
 function num(v, d) {
     var n = typeof v === "number" ? v : parseFloat(v);
@@ -113,7 +116,7 @@ export function tracksCss(list) {
  * left / top / width / height): its style, and the display that lays out its
  * children. `inFlow` = the frame itself is a child in its parent's flow.
  */
-export function frameCss(frame) {
+export function frameCss(frame, opts) {
     var l = layoutOf(frame);
     var s = styleOf(frame);
     var css = {
@@ -121,8 +124,17 @@ export function frameCss(frame) {
         border: num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) + "px solid " + s.stroke : "",
         "border-radius": num(s.radius) ? num(s.radius) + "px" : "",
         overflow: s.clip ? "hidden" : "",
+        "overflow-x": "",
+        "overflow-y": "",
         "box-sizing": "border-box"
     };
+    // opts.scroll (the deployed page): a scrolling frame scrolls its overflow
+    var axes = opts && opts.scroll && SCROLL_AXES[s.scroll];
+    if (axes) {
+        css.overflow = "";
+        css["overflow-x"] = axes[0];
+        css["overflow-y"] = axes[1];
+    }
     if (l.mode === "none") {
         css.display = "";
         css.padding = "";
