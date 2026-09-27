@@ -5,6 +5,7 @@ export * from "./tree.js";
 export * from "./layout.js";
 export * from "./scope.js";
 export * from "./types.js";
+export * from "./breakpoints.js";
 export { migrateSurface, TREE_VERSION } from "./migrate.js";
 
 import { migrateSurface } from "./migrate.js";

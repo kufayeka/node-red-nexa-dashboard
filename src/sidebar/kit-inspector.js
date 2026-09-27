@@ -37,6 +37,8 @@ function ensureKitHost() {
             });
             list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 → {a, b})", owner: route });
             list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+            // the breakpoint in use on the page (the window's width)
+            list.push({ name: "$breakpoint", type: "string", value: "desktop | tablet | phone", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
             return list;
         }
     });

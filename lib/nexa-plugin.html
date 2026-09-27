@@ -26972,6 +26972,9 @@
     chip(state.eventsPane, "On Close", function() {
       return { type: "onclose" };
     }, "", "onclose");
+    chip(state.eventsPane, "On Breakpoint Change", function() {
+      return { type: "on-variable-change", scope: "@app", name: "$breakpoint" };
+    }, "", "on-variable-change");
     if (state.editingMode === "template") {
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
@@ -27262,6 +27265,7 @@
         });
         list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
         list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+        list.push({ name: "$breakpoint", type: "string", value: "desktop | tablet | phone", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
         return list;
       }
     });
