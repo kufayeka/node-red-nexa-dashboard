@@ -32,13 +32,6 @@ function ensureKitHost() {
                 list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
             });
             list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 → {a, b})", owner: route });
-            // a query variable's state
-            Scope.allDeclarations(screen, Tree.walk, getApp()).forEach(function (d) {
-                if (!d.variable.source) return;
-                ["loading", "error", "updatedAt"].forEach(function (k) {
-                    list.push({ name: "$status." + d.variable.name + "." + k, type: k === "loading" ? "boolean" : "string", value: "(query " + d.variable.name + ")", owner: { id: "$status", name: "query state", kind: "route" } });
-                });
-            });
             list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
             return list;
         }

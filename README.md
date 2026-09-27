@@ -208,7 +208,7 @@ node-red-nexa-dashboard/
 ├── docs/
 │   ├── SDK.md                 # the Nexa Component SDK guide
 │   ├── LAYOUT.md              # hierarchy, frames, auto layout, constraints, variables
-│   ├── STATE.md               # app state: variables, $route, queries, web / data nodes, Function API
+│   ├── STATE.md               # variables and app state, web & data Logic nodes, Function API
 │   └── LIT_COMPONENT_GUIDE.md # deep-dive companion to §9
 └── dist/                      # 100% generated, gitignored — nothing here is ever hand-edited
     ├── nexa-editor.bundle.js      # ⚠️ AUTO-GENERATED — the raw editor bundle (lib/nexa-plugin.html wraps this)

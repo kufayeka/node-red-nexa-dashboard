@@ -54,7 +54,7 @@ export function logicNodeLabel(node) {
         var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
         return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
     }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change" || node.type === "refetch-query") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         var vScreen = getActiveScreen();
         var owner = node.scope && node.scope !== "@app" && vScreen ? Tree.find(vScreen, node.scope) : null;
         var where = node.scope === "@app" ? "App" : node.scope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
@@ -62,7 +62,6 @@ export function logicNodeLabel(node) {
         if (!node.name) return kind.label;
         if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " → msg." + node.target : "");
         if (node.type === "on-variable-change") return "On change " + ref;
-        if (node.type === "refetch-query") return "Refetch " + ref;
         var OPS = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
         return (OPS[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " ← msg." + node.msgPath : "");
     }
@@ -175,7 +174,7 @@ export function renderLogicNode(node) {
             openWebIoNodeEditor(node);
         });
     }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change" || node.type === "refetch-query") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openSetVariableNodeEditor(node);
