@@ -13,7 +13,7 @@ const { withPage, startServer } = require('../sdk/testkit');
 let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
-const IDS = ['route', 'user', 'counter', 'log', 'items', 'cfg', 'flag', 'copy', 'fetched', 'badge::inT', 'apiItems', 'err', 'stored', 'cookie'];
+const IDS = ['route', 'user', 'counter', 'log', 'items', 'cfg', 'flag', 'copy', 'fetched', 'badge::inT', 'apiItems', 'err', 'stored', 'cookie', 'flag2', 'cfg2', 'status'];
 
 async function main() {
     const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
@@ -50,6 +50,20 @@ async function main() {
             });
             await ok('an app variable changed on the page shows through the template boundary', async () => {
                 await settle({ user: 'ann', 'badge::inT': 'ann|{local}' });
+            });
+            await ok('a component writes to a variable, a path in one, the URL query; the message is read-only', async () => {
+                const r = await js(`(async function () {
+                    var w = window.__writers.wr, out = {};
+                    await w.writeTag("toVar", true);
+                    await w.writeTag("toPath", 5);
+                    await w.writeTag("toQuery", "open");
+                    try { await w.writeTag("toMsg", 1); out.msg = "written?!"; } catch (e) { out.msg = "refused"; }
+                    out.url = location.search;
+                    return out;
+                })()`);
+                await settle({ flag2: 'true', cfg2: '{"limit":5,"unit":"rpm"}', status: 'open' });
+                assert.strictEqual(r.msg, 'refused');
+                assert.ok(/status=open/.test(r.url), r.url);
             });
             await ok('persisted app variables survive a reload (local: the user; session: the counter)', async () => {
                 const stored = await js('[localStorage.getItem("nexa:app:user"), sessionStorage.getItem("nexa:app:counter")]');

@@ -82,6 +82,16 @@ export function parseTag(raw) {
 }
 
 /** true for a whole-value reference of a REGISTERED provider. */
+// A write target: a tag, a variable ({speed}, {cfg.limit}) or a URL query
+// parameter ({$route.query.status}). Not the message, the route path / params.
+var WRITABLE_VAR_RE = /^\{(?!msg\b)(?!\$route\.(?:params|path|hash)\b)(\$route\.query\.[A-Za-z_$][\w$]*|[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\}$/;
+export function isWriteTarget(raw) {
+    if (typeof raw !== "string") return false;
+    var t = parseTag(raw);
+    if (t && t.valid) return true;
+    return WRITABLE_VAR_RE.test(raw.trim());
+}
+
 export function isTag(raw) {
     var t = parseTag(raw);
     return !!(t && t.known);

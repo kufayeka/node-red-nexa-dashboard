@@ -74,6 +74,18 @@ Every prop of a component can be bound; a plugin can opt a prop out with
 - **One value, many components:** use a variable. The flow does
   **Set Variable** once, and every component binds `{name}`.
 
+**Writing (fields, buttons, knobs…):** a component's write target (its
+"Write Tag", or its read binding when that is left empty) can be:
+- a **tag**;
+- a **variable** (`{speed}`, or a path into one, `{cfg.limit}`), set on the
+  scope that declares it, so watchers fire;
+- a **URL query parameter** (`{$route.query.status}`). The address bar
+  updates without a reload, and whatever binds it re-renders.
+
+The message, `$route.params`, `$route.path` and text expressions are
+read-only. A field bound to `{speed}` with no write target writes `{speed}`
+back: a two-way binding. Writes never fire component events.
+
 ## 3. Changing and watching (Logic)
 
 | Node | Does |

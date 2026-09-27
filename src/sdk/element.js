@@ -21,7 +21,7 @@
 // updated must call super.
 import { LitElement } from "lit";
 import { buildStylesheet, defaultValues } from "./schema.js";
-import { parseTag, getTagProvider } from "./tags.js";
+import { parseTag, getTagProvider, isWriteTarget } from "./tags.js";
 import F from "./format.js";
 
 export function isUnknown(v) {
@@ -135,11 +135,16 @@ export class NexaElement extends LitElement {
     _makeOutputs() {
         var self = this;
         return {
-            /** The prop a write goes to: the output's tag, else its fallback input's; null = none. */
+            /**
+             * The prop a write goes to: the output's target, else its fallback
+             * input's; null = none. A target is a tag, a variable or a URL query
+             * parameter (tags.js isWriteTarget) — a field bound to {speed} with no
+             * write target writes {speed} back: a two-way binding.
+             */
             target: function (name) {
                 var o = self._outputDecl(name);
-                if (parseTag(self.raw[o.key])) return o.key;
-                if (o.fallbackKey && parseTag(self.raw[o.fallbackKey])) return o.fallbackKey;
+                if (isWriteTarget(self.raw[o.key])) return o.key;
+                if (o.fallbackKey && isWriteTarget(self.raw[o.fallbackKey])) return o.fallbackKey;
                 return null;
             },
             canWrite: function (name) {

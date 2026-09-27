@@ -123,4 +123,10 @@ ok('codecs: float / int / text parse, format, edit text, equals, live grouping; 
     assert.throws(() => C.getCodec('nope'), /unknown codec/);
 });
 
+ok('write targets: a tag, a variable (and a path into it) or a URL query parameter; not the message / route path', () => {
+    const w = T.isWriteTarget;
+    assert.deepStrictEqual(['{sparkplug:G::N::D::M}', '{speed}', '{cfg.limit}', '{$route.query.status}', '{msgCount}'].map(w), [true, true, true, true, true]);
+    assert.deepStrictEqual(['{msg.payload}', '{$route.params.id}', '{$route.path}', 'Line {x}', '', null, 'plain'].map(w), [false, false, false, false, false, false, false]);
+});
+
 console.log(`\n${passed} passed\nALL OK`);

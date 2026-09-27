@@ -126,6 +126,12 @@ export class NxTag extends NxCombobox {
             var p = sdk.getTagProvider(t.provider);
             return html`<div class="nx-tag-status nx-ok"><i class="${(p && p.icon) || "fa fa-check"}"></i><span>${p ? p.label + ": " : ""}${t.display}</span></div>`;
         }
+        if (/^\{\$route\.query\.[A-Za-z_$][\w$]*\}$/.test(v)) {
+            return html`<div class="nx-tag-status nx-ok"><i class="fa fa-link"></i><span>URL query parameter ?${v.slice(14, -1)}=…${this.access === "write" ? " (written to the address bar)" : ""}</span></div>`;
+        }
+        if (this.access === "write" && /^\{(msg\b|\$route\.(params|path|hash)\b)/.test(v)) {
+            return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>read-only — write to a tag, a variable or {$route.query.name}</span></div>`;
+        }
         if (PARAM_RE.test(v)) {
             var known = this._variables().filter((x) => "{" + x.name + "}" === v)[0];
             return known

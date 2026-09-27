@@ -8,6 +8,9 @@
 <div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
 <script src="/lib/nexa-registry-client.js"></script>
 <script>
+// a component that writes (an SDK field / button does the same through ctx.writeTag)
+window.__writers = {};
+NEXA.registerComponent("writer", { render: function (el, p, ctx) { window.__writers[el.getAttribute ? el.getAttribute("data-id") : "wr"] = ctx; } });
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : p.text; } });
 function label(id, text, y) { return { id: id, type: "label", x: 0, y: y || 0, w: 400, h: 20, props: { text: text } }; }
 function v(name, type, value, persist) { var o = { id: "v-" + name, name: name, type: type, defaultValue: value }; if (persist) o.persist = persist; return o; }
@@ -17,12 +20,14 @@ window.__NEXA_TEMPLATES__ = [{ id: "T", name: "Badge", width: 200, height: 20, p
 var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
 window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orphans: [],
   variables: [v("local", "string", "screen-only"), v("log", "string", ""), v("items", "array", []), v("cfg", "object", { a: 1 }), v("flag", "boolean", false), v("copy", "number", -1), v("fetched", "number", 0),
-    v("file", "string", "data"), v("apiItems", "array", []), v("err", "string", ""), v("stored", "string", ""), v("cookie", "string", "")],
+    v("file", "string", "data"), v("flag2", "boolean", false), v("cfg2", "object", { limit: 1, unit: "rpm" }), v("apiItems", "array", []), v("err", "string", ""), v("stored", "string", ""), v("cookie", "string", "")],
   components: [
     label("route", "{$route.params.id}/{$route.query.tab}", 0),
     label("user", "{user}", 20), label("counter", "{counter}", 40), label("log", "{log}", 60),
     label("items", "{items}", 80), label("cfg", "{cfg}", 100), label("flag", "{flag}", 120), label("copy", "{copy}", 140), label("fetched", "{fetched}", 160),
     { id: "badge", type: "@template", templateId: "T", x: 0, y: 200, w: 200, h: 20, paramValues: {} },
+    { id: "wr", type: "writer", x: 500, y: 0, w: 10, h: 10, props: { toVar: "{flag2}", toPath: "{cfg2.limit}", toQuery: "{$route.query.status}", toMsg: "{msg.payload}" } },
+    label("flag2", "{flag2}", 320), label("cfg2", "{cfg2}", 340), label("status", "{$route.query.status}", 360),
     label("apiItems", "{apiItems}", 240), label("err", "{err}", 260), label("stored", "{stored}", 280), label("cookie", "{cookie}", 300)
   ],
   logic: { nodes: [
