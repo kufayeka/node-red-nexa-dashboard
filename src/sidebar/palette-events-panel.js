@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope, getApp } from "../state.js";
+import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope, Layout, getApp } from "../state.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -61,6 +61,7 @@ function getLogicNodeMeta(type) {
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
+    if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -391,17 +392,11 @@ export function renderEventsPanel() {
     }
 
     sectionHeader(state.eventsPane, "Lists");
-    chip(state.eventsPane, "Populate (repeat a template)", function () { return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" }; }, "", "populate");
-    // one per frame on this surface, the container already chosen
-    if (screen) {
-        Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }).forEach(function (f) {
-            chip(state.eventsPane, "Populate " + (f.name || "Frame") + " #" + f.id.slice(-4), function () {
-                var first = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); })[0];
-                var p0 = first && (first.params || [])[0];
-                return { type: "populate", container: f.id, template: first ? first.id : "", itemParam: p0 ? p0.name : undefined, mode: "append", key: "id", valueSource: "payload" };
-            }, f.id, "populate");
-        });
-    }
+    chip(state.eventsPane, "Populate (repeat a template)", function () {
+        var first = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); })[0];
+        var p0 = first && (first.params || [])[0];
+        return { type: "populate", container: "", template: first ? first.id : "", itemParam: p0 ? p0.name : undefined, mode: "append", key: "id", valueSource: "payload" };
+    }, "", "populate");
 
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");
@@ -422,6 +417,18 @@ export function renderEventsPanel() {
             if (typeof v === "string" && v.indexOf("{sparkplug:") !== -1) return true;
         }
         return false;
+    }
+
+    // every frame: a Layout node to wire a Populate into (selecting the frame on the canvas highlights it)
+    var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
+    if (frames.length) {
+        sectionHeader(state.eventsPane, "Layouts on this screen");
+        frames.forEach(function (f) {
+            var kind = Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[Layout.layoutOf(f).mode] : "frame";
+            chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function () {
+                return { type: "layout", container: f.id };
+            }, f.id, "layout");
+        });
     }
 
     // every component at any depth (groups / frames have no events of their own)

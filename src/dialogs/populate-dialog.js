@@ -13,6 +13,37 @@ var MODES = [
     ["remove", "Remove by key"], ["clear", "Clear"]
 ];
 
+function frameLabel(f) {
+    return (f.name || "Frame") + " #" + f.id.slice(-4) + "  ·  " + (Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[Layout.layoutOf(f).mode] : "no auto layout") + "  ·  " + Tree.kids(f).length + " children";
+}
+
+// The "Layout" Logic node: one frame of this surface. A Populate wired into it fills it.
+export function openLayoutNodeEditor(node) {
+    var screen = getActiveScreen();
+    var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
+    var chosen = node.container || "";
+    window.RED.tray.show({
+        id: "nexa-logic-layout-editor",
+        title: "Configure Layout Node",
+        width: 420,
+        buttons: [
+            { text: "Cancel", click: function () { window.RED.tray.close(); } },
+            { text: "Save", "class": "primary", click: function () { node.container = chosen; markDirty(); renderLogicCanvas(); window.RED.tray.close(); } }
+        ],
+        open: function (tray) {
+            var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+            window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
+                .text("A frame of this screen as a Logic node. Wire a Populate node into it: the cards go into this frame. Tip: select the frame on the canvas — its chip lights up in the Events tab.").appendTo(body);
+            var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+            if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
+            frames.forEach(function (f) { window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel); });
+            sel.val(chosen);
+            chosen = sel.val() || "";
+            sel.on("change", function () { chosen = sel.val(); });
+        }
+    });
+}
+
 export function openPopulateNodeEditor(node) {
     var screen = getActiveScreen();
     var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
@@ -55,8 +86,8 @@ export function openPopulateNodeEditor(node) {
                 sel.on("change", function () { d[key] = sel.val(); if (onChange) onChange(); });
                 return sel;
             };
-            label("Container — where the cards go (a Row / Column / Grid lays them out)");
-            select("container", frames.length ? frames.map(function (f) { return [f.id, (f.name || "Frame") + "  ·  " + (Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[Layout.layoutOf(f).mode] : "no auto layout") + "  ·  " + Tree.kids(f).length + " children"]; }) : [["", "(no frame on this surface — add a Row / Column / Grid)"]]);
+            label("Container — where the cards go");
+            select("container", [["", "The Layout node(s) this is wired to  (recommended)"]].concat(frames.map(function (f) { return [f.id, frameLabel(f)]; })));
             label("Template (one card per item)");
             select("template", templates.length ? templates.map(function (t) { return [t.id, t.name]; }) : [["", "(no templates yet)"]], function () { d.itemParam = undefined; fillParams(); });
             label("Pass each item into the template's param");

@@ -60,6 +60,13 @@ async function main() {
                 assert.deepStrictEqual(await cards(), []);
                 assert.strictEqual(await js('document.querySelector(\'[data-id="head"]\').textContent'), 'Products');
             });
+            await ok('Populate -> two Layout nodes (two rows): the same data fills both, each row keeps its own list', async () => {
+                await send('both', { id: 7, name: 'Roti', price: 12 });
+                await send('both', { id: 8, name: 'Gula', price: 9 });
+                const rows = await js(`(function () { return ["rowA", "rowB"].map(function (r) { return Array.from(document.querySelector('[data-id="' + r + '"]').children).map(function (e) { return e.getAttribute("data-id") + "=" + e.querySelector('[data-id$="::title"]').textContent; }); }); })()`);
+                assert.deepStrictEqual(rows, [['rowA#7=0: Roti @ 12', 'rowA#8=1: Gula @ 9'], ['rowB#7=0: Roti @ 12', 'rowB#8=1: Gula @ 9']]);
+                assert.deepStrictEqual(await cards(), [], 'the other container is untouched');
+            });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;
         }, { ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 });

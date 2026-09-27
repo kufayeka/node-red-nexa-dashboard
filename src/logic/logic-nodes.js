@@ -12,7 +12,7 @@ import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
 import { openWebIoNodeEditor } from "../dialogs/web-io-dialog.js";
-import { openPopulateNodeEditor } from "../dialogs/populate-dialog.js";
+import { openPopulateNodeEditor, openLayoutNodeEditor } from "../dialogs/populate-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
@@ -46,6 +46,16 @@ export function logicNodeLabel(node) {
     if (node.type === "layer-control") {
         var n = (node.states || []).length;
         return "Layer Control" + (n ? (" (" + n + ")") : "");
+    }
+    if (node.type === "layout") {
+        var lScreen = getActiveScreen();
+        var lf = node.container && lScreen ? Tree.find(lScreen, node.container) : null;
+        return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+    }
+    if (node.type === "populate" && !node.container) {
+        var tplP = node.template ? findTemplate(node.template) : null;
+        var mw = { append: "Append ", prepend: "Prepend ", upsert: "Update ", remove: "Remove ", clear: "Clear " }[node.mode] || "Populate ";
+        return mw + (node.mode === "clear" || node.mode === "remove" ? "cards" : (tplP ? tplP.name : "?") + (node.itemParam ? " → " + node.itemParam : "")) + " → layout";
     }
     if (node.type === "populate") {
         var pScreen = getActiveScreen();
@@ -174,6 +184,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openLayerControlNodeEditor(node);
+        });
+    }
+    if (node.type === "layout") {
+        box.attr("title", "Double-click to choose the frame").on("dblclick", function (e) {
+            e.stopPropagation();
+            openLayoutNodeEditor(node);
         });
     }
     if (node.type === "populate") {

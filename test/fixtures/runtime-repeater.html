@@ -34,6 +34,8 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
   components: [
     { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 },
       children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
+    { id: "rowA", type: "@frame", name: "Row", x: 10, y: 420, w: 700, h: 50, layout: { mode: "horizontal", gap: 4 }, children: [] },
+    { id: "rowB", type: "@frame", name: "Row", x: 10, y: 480, w: 700, h: 50, layout: { mode: "horizontal", gap: 4 }, children: [] },
     { id: "ctl", type: "btn", x: 400, y: 0, w: 10, h: 10, props: {} },
     { id: "last", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } }
   ],
@@ -42,8 +44,11 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
     { id: "e2", type: "ui-event", compId: "ctl", event: "upsert" }, node("p2", "upsert"),
     { id: "e3", type: "ui-event", compId: "ctl", event: "remove" }, node("p3", "remove"),
     { id: "e4", type: "ui-event", compId: "ctl", event: "prepend" }, node("p4", "prepend"),
-    { id: "e5", type: "ui-event", compId: "ctl", event: "clear" }, node("p5", "clear")
-  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5")] } };
+    { id: "e5", type: "ui-event", compId: "ctl", event: "clear" }, node("p5", "clear"),
+    // no container of its own: fan out into two Layout nodes (two rows, same data)
+    { id: "e6", type: "ui-event", compId: "ctl", event: "both" }, node("p6", "append", { container: "" }),
+    { id: "lA", type: "layout", container: "rowA" }, { id: "lB", type: "layout", container: "rowB" }
+  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("p6", "lA"), W("p6", "lB")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

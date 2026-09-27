@@ -141,9 +141,20 @@ tables. The container's own children (a header) stay; cards come after them.
 `{product.name}`, `{product.price}`, and `{index}` for the position. The
 item is also always available as `{item}` / `msg.item`.
 
-The Events tab has a **"Populate ‹frame›"** chip for every frame, with the
-container already chosen. To fill several containers with the same data,
-wire the same flow into one Populate node per container (fan-out).
+**Which container: the Layout node.** Every frame of the screen is also a
+Logic node. Select a Row / Column / Grid on the canvas, and its chip lights
+up in the Events tab under **"Layouts on this screen"** (labelled with name,
+id and kind, so two Rows are told apart). Drag it into the Logic canvas and
+wire a Populate into it:
+
+```
+[button: click] → [Function: msg.payload = {id, …}] → [Populate: Template 1 → param1, append] ─┬→ [Layout: Column #a928]
+                                                                                               └→ [Layout: Grid #07fd]
+```
+
+A Populate wired to several Layout nodes fills each of them with the same
+data, and each container keeps its own list. A Populate can still name a
+container itself instead.
 - **The template's own Logic runs per card**, like a React component. For
   example, `[Buy: on click] → [HTTP Request POST /api/order/{item.id}, body {item}]`
   (the body can be a binding).

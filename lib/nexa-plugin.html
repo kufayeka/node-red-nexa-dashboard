@@ -1002,6 +1002,8 @@
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // the repeater: a container filled with a template, one card per item
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
+    // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
+    "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
@@ -26502,6 +26504,7 @@
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
+    if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -26848,21 +26851,12 @@
     }
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function() {
-      return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" };
+      var first = (state.templates || []).filter(function(t2) {
+        return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
+      })[0];
+      var p0 = first && (first.params || [])[0];
+      return { type: "populate", container: "", template: first ? first.id : "", itemParam: p0 ? p0.name : void 0, mode: "append", key: "id", valueSource: "payload" };
     }, "", "populate");
-    if (screen) {
-      tree_exports.allNodes(screen).filter(function(n) {
-        return n.type === "@frame";
-      }).forEach(function(f) {
-        chip(state.eventsPane, "Populate " + (f.name || "Frame") + " #" + f.id.slice(-4), function() {
-          var first = (state.templates || []).filter(function(t2) {
-            return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
-          })[0];
-          var p0 = first && (first.params || [])[0];
-          return { type: "populate", container: f.id, template: first ? first.id : "", itemParam: p0 ? p0.name : void 0, mode: "append", key: "id", valueSource: "payload" };
-        }, f.id, "populate");
-      });
-    }
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function() {
       return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 1e4 };
@@ -26890,6 +26884,18 @@
         if (typeof v === "string" && v.indexOf("{sparkplug:") !== -1) return true;
       }
       return false;
+    }
+    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return n.type === "@frame";
+    }) : [];
+    if (frames.length) {
+      sectionHeader(state.eventsPane, "Layouts on this screen");
+      frames.forEach(function(f) {
+        var kind = layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "frame";
+        chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function() {
+          return { type: "layout", container: f.id };
+        }, f.id, "layout");
+      });
     }
     var eventComps = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return !tree_exports.isContainer(n);
@@ -29092,6 +29098,46 @@
     ["remove", "Remove by key"],
     ["clear", "Clear"]
   ];
+  function frameLabel(f) {
+    return (f.name || "Frame") + " #" + f.id.slice(-4) + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children";
+  }
+  function openLayoutNodeEditor(node) {
+    var screen = getActiveScreen();
+    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return n.type === "@frame";
+    }) : [];
+    var chosen = node.container || "";
+    window.RED.tray.show({
+      id: "nexa-logic-layout-editor",
+      title: "Configure Layout Node",
+      width: 420,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        { text: "Save", "class": "primary", click: function() {
+          node.container = chosen;
+          markDirty();
+          renderLogicCanvas();
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("A frame of this screen as a Logic node. Wire a Populate node into it: the cards go into this frame. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.").appendTo(body);
+        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
+        frames.forEach(function(f) {
+          window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel);
+        });
+        sel.val(chosen);
+        chosen = sel.val() || "";
+        sel.on("change", function() {
+          chosen = sel.val();
+        });
+      }
+    });
+  }
   function openPopulateNodeEditor(node) {
     var screen = getActiveScreen();
     var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
@@ -29164,10 +29210,10 @@
           });
           return sel;
         };
-        label("Container \u2014 where the cards go (a Row / Column / Grid lays them out)");
-        select("container", frames.length ? frames.map(function(f) {
-          return [f.id, (f.name || "Frame") + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children"];
-        }) : [["", "(no frame on this surface \u2014 add a Row / Column / Grid)"]]);
+        label("Container \u2014 where the cards go");
+        select("container", [["", "The Layout node(s) this is wired to  (recommended)"]].concat(frames.map(function(f) {
+          return [f.id, frameLabel(f)];
+        })));
         label("Template (one card per item)");
         select("template", templates.length ? templates.map(function(t2) {
           return [t2.id, t2.name];
@@ -29368,6 +29414,16 @@
       var n = (node.states || []).length;
       return "Layer Control" + (n ? " (" + n + ")" : "");
     }
+    if (node.type === "layout") {
+      var lScreen = getActiveScreen();
+      var lf = node.container && lScreen ? tree_exports.find(lScreen, node.container) : null;
+      return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+    }
+    if (node.type === "populate" && !node.container) {
+      var tplP = node.template ? findTemplate(node.template) : null;
+      var mw = { append: "Append ", prepend: "Prepend ", upsert: "Update ", remove: "Remove ", clear: "Clear " }[node.mode] || "Populate ";
+      return mw + (node.mode === "clear" || node.mode === "remove" ? "cards" : (tplP ? tplP.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : "")) + " \u2192 layout";
+    }
     if (node.type === "populate") {
       var pScreen = getActiveScreen();
       var target = node.container && pScreen ? tree_exports.find(pScreen, node.container) : null;
@@ -29520,6 +29576,12 @@
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openLayerControlNodeEditor(node);
+      });
+    }
+    if (node.type === "layout") {
+      box.attr("title", "Double-click to choose the frame").on("dblclick", function(e) {
+        e.stopPropagation();
+        openLayoutNodeEditor(node);
       });
     }
     if (node.type === "populate") {

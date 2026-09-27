@@ -46,6 +46,8 @@ export const LOGIC_NODE_KINDS = {
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // the repeater: a container filled with a template, one card per item
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
+    // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
+    "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
