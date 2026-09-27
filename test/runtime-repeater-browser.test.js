@@ -67,6 +67,18 @@ async function main() {
                 assert.deepStrictEqual(rows, [['rowA#7=0: Roti @ 12', 'rowA#8=1: Gula @ 9'], ['rowB#7=0: Roti @ 12', 'rowB#8=1: Gula @ 9']]);
                 assert.deepStrictEqual(await cards(), [], 'the other container is untouched');
             });
+            await ok('Send to Host: a copy\'s message comes out of ITS Layout node (msg.output / item / index); a placed instance\'s out of its On Template Output node', async () => {
+                const click = (id) => js(`(function () { window.__ctx[${JSON.stringify(id)}].emit("click", null); return new Promise(function (r) { setTimeout(r, 80); }); })()`);
+                const text = (id) => js(`document.querySelector('[data-id="${id}"]').textContent`);
+                await click('rowA#8::buy');
+                assert.strictEqual(await text('last'), 'Gula', "the copy's own Logic ran too");
+                assert.strictEqual(await text('vOut'), 'remove:Gula@1', 'out of Layout rowA, with the output name, the item and its index');
+                await click('rowB#7::buy');
+                assert.strictEqual(await text('vOut'), 'remove:Gula@1', "a copy in rowB comes out of rowB's Layout node (not wired here), not rowA's");
+                await click('inst::buy');
+                assert.strictEqual(await text('vInst'), 'remove', 'a placed instance: its On Template Output node for that output');
+                assert.strictEqual(await text('vOther'), '', 'the node listening to another output did not fire');
+            });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;
         }, { ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 });

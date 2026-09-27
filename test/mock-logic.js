@@ -361,12 +361,22 @@ const onloadBefore = { x: onloadNode.x, y: onloadNode.y };
 const fnBefore = { x: fnNode.x, y: fnNode.y };
 const debugBefore = { x: debugNode.x, y: debugNode.y };
 const onloadDrag = draggables.find(d => d.el === logicNodeBoxesById[onloadNode.id]);
+// Alt held: placed freely, exactly by the pointer's delta
 onloadDrag.opts.start({ pageX: 0, pageY: 0 });
-onloadDrag.opts.drag({ pageX: 30, pageY: 5 }, { position: {} });
-onloadDrag.opts.stop({ pageX: 30, pageY: 5 });
-console.log('dragged node moved?', onloadNode.x === onloadBefore.x + 30 && onloadNode.y === onloadBefore.y + 5);
+onloadDrag.opts.drag({ pageX: 30, pageY: 5, altKey: true }, { position: {} });
+onloadDrag.opts.stop({ pageX: 30, pageY: 5, altKey: true });
+console.log('dragged node moved (Alt: no snapping)?', onloadNode.x === onloadBefore.x + 30 && onloadNode.y === onloadBefore.y + 5);
 console.log('other SELECTED node moved by the same delta?', fnNode.x === fnBefore.x + 30 && fnNode.y === fnBefore.y + 5);
 console.log('NON-selected node did not move?', debugNode.x === debugBefore.x && debugNode.y === debugBefore.y);
+
+console.log('--- snap to grid: a drag lands the node on the 20 px grid; the others move by the same step ---');
+onloadNode.x = 40; onloadNode.y = 60;
+const fnSnapBefore = { x: fnNode.x, y: fnNode.y };
+onloadDrag.opts.start({ pageX: 0, pageY: 0 });
+onloadDrag.opts.drag({ pageX: 33, pageY: 8 }, { position: {} });
+onloadDrag.opts.stop({ pageX: 33, pageY: 8 });
+console.log('dragged node on the grid (40+33 -> 80, 60+8 -> 60)?', onloadNode.x === 80 && onloadNode.y === 60);
+console.log('the other selected node moved by the same snapped step (+40, +0)?', fnNode.x === fnSnapBefore.x + 40 && fnNode.y === fnSnapBefore.y);
 
 console.log('--- marquee-select: drag a box covering only the function+debug nodes ---');
 // Reset positions to known values so the marquee math is easy to reason about.

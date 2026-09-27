@@ -1,4 +1,5 @@
 import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen } from "../state.js";
+import { logicNodeWidth } from "./logic-nodes.js";
 
 export function applyLogicZoomTransform() {
     if (!state.logicStageEl || !state.logicSizerEl) return;
@@ -39,7 +40,7 @@ export function zoomLogicToFit() {
     if (!nodes.length) { zoomLogicReset(); return; }
     var minX = Math.min.apply(null, nodes.map(function (n) { return n.x; }));
     var minY = Math.min.apply(null, nodes.map(function (n) { return n.y; }));
-    var maxX = Math.max.apply(null, nodes.map(function (n) { return n.x + LOGIC_NODE_W; }));
+    var maxX = Math.max.apply(null, nodes.map(function (n) { return n.x + logicNodeWidth(n); }));
     var maxY = Math.max.apply(null, nodes.map(function (n) { return n.y + LOGIC_NODE_H; }));
     var boxW = Math.max(maxX - minX, 10), boxH = Math.max(maxY - minY, 10);
     var availW = Math.max(vp.clientWidth - pad * 2, 10);

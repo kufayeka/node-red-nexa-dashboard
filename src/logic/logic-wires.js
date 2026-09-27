@@ -1,10 +1,11 @@
 import { state, SVG_NS, LOGIC_NODE_W, LOGIC_NODE_H, LOGIC_NODE_KINDS, getActiveScreen, findLogicNode, genId, markDirty } from "../state.js";
 import { pushHistory } from "../history.js";
+import { logicNodeWidth } from "./logic-nodes.js";
 
 var LOGIC_PORT_HIT_RADIUS = 26;
 
 export function logicNodePortPoint(node, role) {
-    return { x: role === "input" ? node.x : node.x + LOGIC_NODE_W, y: node.y + LOGIC_NODE_H / 2 };
+    return { x: role === "input" ? node.x : node.x + logicNodeWidth(node), y: node.y + LOGIC_NODE_H / 2 };
 }
 
 export function logicWirePath(p1, p2) {

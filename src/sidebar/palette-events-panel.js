@@ -29,6 +29,8 @@ function getComponentIcon(label, typeId) {
 }
 
 function getLogicNodeMeta(type) {
+    if (type === "template-output") return { color: "#e3d3ee", icon: "fa-sign-out", portOut: false, portIn: true };
+    if (type === "template-event") return { color: "#e6e0f8", icon: "fa-sign-in", portOut: true, portIn: false };
     if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
         return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
     }
@@ -70,6 +72,16 @@ function getLogicNodeMeta(type) {
     return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
 }
 
+/** The output names a template sends to its host ("Send to Host" nodes), in order. */
+export function templateOutputs(template) {
+    var out = [];
+    ((template && template.logic && template.logic.nodes) || []).forEach(function (n) {
+        var name = n.type === "template-output" ? (n.output || "out") : null;
+        if (name && out.indexOf(name) === -1) out.push(name);
+    });
+    return out;
+}
+
 function sectionHeader(parentEl, title) {
     return window.$("<div>", { "class": "red-ui-palette-header" }).css({
         padding: "5px 8px",
@@ -97,14 +109,11 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
         "class": "nexa-palette-item",
         "data-type-id": dropTypeId || ""
     }).css({
-        display: "flex",
+        display: "inline-flex",
         "align-items": "center",
-        width: "250px",
-        // Centered via the flex parent's align-self, NOT "margin: auto" —
-        // see the comment on state.componentsPane's own creation for why an
-        // auto margin here throws jQuery UI draggable's drag-ghost tracking
-        // off by however many px it takes to center a box in this pane.
-        "align-self": "center",
+        width: "max-content",
+        "min-width": "140px",
+        "align-self": "flex-start",
         margin: "4px 0",
         height: "26px",
         "border-radius": "5px",
@@ -139,17 +148,15 @@ function makeComponentChip(paletteEl, label, dropTypeId, category, icon) {
     }).appendTo(chip);
     window.$("<i>", { "class": "fa " + iconClass }).appendTo(iconContainer);
 
-    // Label Element (centered text)
+    // Label Element (left-aligned text, fits title)
     window.$("<div>", { "class": "red-ui-palette-label" }).css({
         flex: "1 1 auto",
         "margin-left": "28px",
         "font-size": "12px",
         "font-weight": "500",
-        "text-align": "center",
+        "text-align": "left",
         color: "var(--red-ui-node-label-color, #222)",
-        padding: "0 6px",
-        overflow: "hidden",
-        "text-overflow": "ellipsis",
+        padding: "0 8px 0 6px",
         "white-space": "nowrap",
         "pointer-events": "none"
     }).text(label).appendTo(chip);
@@ -255,12 +262,11 @@ export function renderEventsPanel() {
             "data-comp-id": compId || "",
             "data-palette-type": nodeType || ""
         }).css({
-            display: "flex",
+            display: "inline-flex",
             "align-items": "center",
-            width: "250px",
-            // Centered via the flex parent's align-self, NOT "margin: auto"
-            // — see the comment on state.eventsPane's own creation for why.
-            "align-self": "center",
+            width: "max-content",
+            "min-width": "140px",
+            "align-self": "flex-start",
             margin: "4px 0",
             height: "26px",
             "border-radius": "5px",
@@ -302,12 +308,12 @@ export function renderEventsPanel() {
         }).appendTo(item);
         window.$("<i>", { "class": "fa " + meta.icon }).appendTo(iconContainer);
 
-        // Label Element (centered text)
+        // Label Element (left-aligned text, fits title)
         window.$("<div>", { "class": "red-ui-palette-label" }).css({
-            flex: "1 1 auto", "margin-left": "28px", "margin-right": meta.portOut ? "4px" : "0",
+            flex: "1 1 auto", "margin-left": "28px", "margin-right": meta.portOut ? "8px" : "4px",
             "font-size": "11px", "font-weight": "500",
-            "text-align": "center", color: "var(--red-ui-node-label-color, #222)",
-            padding: "0 4px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap",
+            "text-align": "left", color: "var(--red-ui-node-label-color, #222)",
+            padding: "0 8px 0 6px", "white-space": "nowrap",
             "pointer-events": "none"
         }).text(label).appendTo(item);
 
@@ -363,6 +369,9 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "On Close", function () { return { type: "onclose" }; }, "", "onclose");
     if (state.editingMode === "template") {
         chip(state.eventsPane, "On Params Change", function () { return { type: "param-input" }; }, "", "param-input");
+        sectionHeader(state.eventsPane, "Template");
+        // out to the host: the Layout node that populated this copy, or the instance's own node
+        chip(state.eventsPane, "Send to Host", function () { return { type: "template-output", output: "out" }; }, "", "template-output");
     }
 
     sectionHeader(state.eventsPane, "Utility");
@@ -445,6 +454,12 @@ export function renderEventsPanel() {
                         return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
                     }, comp.id, "ui-event");
                 }
+                // what the template sends out (its "Send to Host" nodes, by output name)
+                templateOutputs(template).forEach(function (name) {
+                    chip(state.eventsPane, instanceName + " → on " + name, function () {
+                        return { type: "template-event", instanceId: comp.id, output: name };
+                    }, comp.id, "template-event");
+                });
                 (template && template.params || []).forEach(function (param) {
                     chip(state.eventsPane, instanceName + " → Set " + param.label, function () {
                         return { type: "set-template-param", instanceId: comp.id, paramName: param.name };

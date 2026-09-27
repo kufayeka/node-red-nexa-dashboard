@@ -154,6 +154,19 @@ available as `{item}` / `msg.item`.
   example, `[button: click] → [HTTP Request POST /api/order/{product.id}, body {product}]`.
 - **Events from inside a copy** carry `msg.item` and `msg.index`.
 - **"Each copy fills the frame's width"** makes list / table rows.
+- **Send to Host** (inside a template, Events → Template) sends a message out
+  of the template, to where it is used: to open a dialog or a popup, or to
+  delete an item. Give each output a name (`msg.output`, e.g. `open-dialog`).
+  - A copy a Populate made: the message comes out of the **Layout** node that
+    holds it, with `msg.item` and `msg.index`. That is the Layout node's
+    output; it no longer passes the Populate message on.
+  - An instance placed on a screen: its **On Template Output** node there
+    (Events → Components → "Instance … → on open-dialog"), for one output or
+    for any.
+  ```
+  inside ProductCard:   [Buy: click] → [Send to Host: open-dialog]
+  on the screen:        [Populate] → [Layout: Column] → [Function: msg.item → the dialog] → …
+  ```
 - **"Virtualize"** is for thousands to hundreds of thousands of items. Every
   item is kept, but only the copies in (or near) the frame's scrolled view
   exist, about a screenful plus 3 lines each side. Scrolling mounts what

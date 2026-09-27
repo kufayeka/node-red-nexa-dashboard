@@ -33,7 +33,7 @@ export function openLayoutNodeEditor(node) {
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
             window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
-                .text("A frame of this screen as a Logic node. Wire a Populate node into it: the template's copies go into this frame. Tip: select the frame on the canvas — its chip lights up in the Events tab.").appendTo(body);
+                .text("A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a \"Send to Host\" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas — its chip lights up in the Events tab.").appendTo(body);
             var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
             if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
             frames.forEach(function (f) { window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel); });

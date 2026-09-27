@@ -1,6 +1,6 @@
 import {
     state, ZOOM_STEP, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_GRID_SIZE,
-    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty, Tree
+    LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty, Tree, snapLogic
 } from "./state.js";
 import { undo, redo, pushHistory } from "./history.js";
 import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
@@ -9,8 +9,8 @@ import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refres
 import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
 import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
-import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect } from "./logic/logic-selection.js";
-import { removeLogicNodes, renderLogicCanvas, addLogicNode } from "./logic/logic-nodes.js";
+import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect, selectLogicForComponents, scrollLogicToSelection } from "./logic/logic-selection.js";
+import { removeLogicNodes, renderLogicCanvas, addLogicNode, logicNodeWidth } from "./logic/logic-nodes.js";
 import { buildPalette, renderEventsPanel, refreshEventsHighlight } from "./sidebar/palette-events-panel.js";
 import { renderPropertiesPanel } from "./sidebar/properties-panel.js";
 
@@ -268,17 +268,17 @@ export function buildCanvasArea(trayBody) {
             var x = (event.pageX - offset.left) / state.logicZoomLevel;
             var y = (event.pageY - offset.top) / state.logicZoomLevel;
             if (x < 0 || y < 0) return;
-            var nodeX = Math.max(0, Math.round(x - LOGIC_NODE_W / 2));
-            var nodeY = Math.max(0, Math.round(y - LOGIC_NODE_H / 2));
 
             var metricRef = ui.draggable.data("nexaSparkplugMetric");
-            if (metricRef) {
-                addLogicNode({ type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) }, nodeX, nodeY);
-                return;
-            }
             var makeNode = ui.draggable.data("nexaMakeNode");
-            if (typeof makeNode !== "function") return;
-            addLogicNode(makeNode(), nodeX, nodeY);
+            var nodeData = metricRef ? { type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) } : (typeof makeNode === "function" ? makeNode() : null);
+            if (!nodeData) return;
+            var nodeW = logicNodeWidth(nodeData);
+            var nodeX = Math.max(0, x - nodeW / 2);
+            var nodeY = Math.max(0, y - LOGIC_NODE_H / 2);
+            // on the grid, like a dragged node (Alt: where it was dropped)
+            if (!(event.altKey || (event.originalEvent && event.originalEvent.altKey))) { nodeX = snapLogic(nodeX); nodeY = snapLogic(nodeY); }
+            addLogicNode(nodeData, Math.round(nodeX), Math.round(nodeY));
         }
     });
     scaledDropArea(state.logicArtboardEl);
@@ -302,8 +302,11 @@ export function buildCanvasArea(trayBody) {
             uiPane.toggle(tab.id === "ui");
             logicPane.toggle(tab.id === "logic");
             if (tab.id === "logic") {
+                // what is selected on the UI canvas: its nodes selected here, and in view
+                selectLogicForComponents(state.selectedIds);
                 renderLogicCanvas();
                 refreshEventsHighlight();
+                scrollLogicToSelection();
             } else {
                 state.logicSelectedIds = [];
                 refreshLogicSelectionVisuals();

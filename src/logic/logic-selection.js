@@ -1,8 +1,36 @@
 import { state, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen, genId, markDirty } from "../state.js";
 import { pushHistory } from "../history.js";
-import { removeLogicNodes, renderLogicCanvas } from "./logic-nodes.js";
+import { removeLogicNodes, renderLogicCanvas, logicNodeWidth } from "./logic-nodes.js";
 
 var logicClipboard = null; // { nodes: [], wires: [] }
+
+/**
+ * The Logic nodes of these components (a component's events / updates, an
+ * instance's params / outputs, a frame's Layout node) become the Logic
+ * selection: select a button on the UI canvas and its nodes are selected here.
+ */
+export function selectLogicForComponents(ids) {
+    var screen = getActiveScreen();
+    var set = {};
+    (ids || []).forEach(function (id) { set[id] = true; });
+    state.logicSelectedIds = ((screen && screen.logic && screen.logic.nodes) || []).filter(function (n) {
+        return (n.compId && set[n.compId]) || (n.instanceId && set[n.instanceId]) || (n.type === "layout" && n.container && set[n.container]);
+    }).map(function (n) { return n.id; });
+    refreshLogicSelectionVisuals();
+}
+
+/** Scroll the Logic canvas so the first selected node is in view (if it is not). */
+export function scrollLogicToSelection() {
+    var vp = state.logicViewportEl && state.logicViewportEl[0];
+    var id = state.logicSelectedIds[0];
+    if (!vp || !id || !state.logicArtboardEl) return;
+    var el = state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]')[0];
+    if (!el) return;
+    var v = vp.getBoundingClientRect(), r = el.getBoundingClientRect();
+    if (r.left >= v.left && r.right <= v.right && r.top >= v.top && r.bottom <= v.bottom) return;
+    vp.scrollLeft += (r.left + r.width / 2) - (v.left + v.width / 2);
+    vp.scrollTop += (r.top + r.height / 2) - (v.top + v.height / 2);
+}
 
 export function isLogicSelected(id) {
     return state.logicSelectedIds.indexOf(id) !== -1;
@@ -136,7 +164,7 @@ export function startLogicMarqueeSelect(e) {
         var screen = getActiveScreen();
         if (!screen || !screen.logic) return;
         var hits = (screen.logic.nodes || []).filter(function (n) {
-            return !(n.x > box.left + box.width || n.x + LOGIC_NODE_W < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
+            return !(n.x > box.left + box.width || n.x + logicNodeWidth(n) < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
         }).map(function (n) { return n.id; });
         if (shiftHeld) {
             hits.forEach(function (id) { if (!isLogicSelected(id)) state.logicSelectedIds.push(id); });

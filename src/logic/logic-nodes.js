@@ -1,6 +1,6 @@
 import {
     state, SVG_NS, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_NODE_W, LOGIC_NODE_H,
-    LOGIC_NODE_KINDS, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty, Tree
+    LOGIC_NODE_KINDS, snapLogic, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty, Tree
 } from "../state.js";
 import { pushHistory } from "../history.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
@@ -13,6 +13,7 @@ import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
 import { openWebIoNodeEditor } from "../dialogs/web-io-dialog.js";
 import { openPopulateNodeEditor, openLayoutNodeEditor } from "../dialogs/populate-dialog.js";
+import { openTemplateOutputNodeEditor } from "../dialogs/template-output-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
@@ -66,7 +67,7 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "http-request") {
         var u = node.url || "";
-        return (node.method || "GET") + " " + (u ? (u.length > 28 ? u.slice(0, 27) + "…" : u) : "(no URL)");
+        return (node.method || "GET") + " " + (u ? (u.length > 50 ? u.slice(0, 49) + "…" : u) : "(no URL)");
     }
     if (node.type === "storage" || node.type === "cookie") {
         var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
@@ -83,6 +84,12 @@ export function logicNodeLabel(node) {
         var OPS = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
         return (OPS[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " ← msg." + node.msgPath : "");
     }
+    if (node.type === "template-output") return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
+    if (node.type === "template-event") {
+        var evComp = findComponent(node.instanceId);
+        var evTemplate = evComp && findTemplate(evComp.templateId);
+        return (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?") + " on " + (node.output || "any output");
+    }
     if (node.type === "set-template-param") {
         var instComp = findComponent(node.instanceId);
         var instTemplate = instComp && findTemplate(instComp.templateId);
@@ -90,6 +97,45 @@ export function logicNodeLabel(node) {
         return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " → Set " + (param ? param.label : node.paramName);
     }
     return kind.label || node.type;
+}
+
+var _measureCanvasCtx = null;
+export function logicNodeWidth(node) {
+    if (!node) return LOGIC_NODE_W;
+    var label = logicNodeLabel(node);
+    if (!label) return LOGIC_NODE_W;
+
+    var textWidth = 0;
+    try {
+        if (typeof document !== "undefined" && typeof document.createElement === "function") {
+            if (!_measureCanvasCtx) {
+                var canvas = document.createElement("canvas");
+                if (canvas && typeof canvas.getContext === "function") {
+                    _measureCanvasCtx = canvas.getContext("2d");
+                }
+            }
+            if (_measureCanvasCtx) {
+                _measureCanvasCtx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+                var metrics = _measureCanvasCtx.measureText(label);
+                if (metrics && metrics.width) {
+                    textWidth = metrics.width;
+                }
+            }
+        }
+    } catch (e) {}
+
+    if (!textWidth) {
+        textWidth = label.length * 7.5;
+    }
+
+    var kind = LOGIC_NODE_KINDS[node.type] || {};
+    var padLeft = 16;
+    var padRight = kind.hasOutput ? 14 : 10;
+    var border = 2;
+    var extra = 8;
+
+    var needed = Math.ceil(textWidth + padLeft + padRight + border + extra);
+    return Math.max(LOGIC_NODE_W, needed);
 }
 
 export function addLogicNode(nodeData, x, y) {
@@ -123,18 +169,21 @@ export function removeLogicNodes(ids) {
 
 export function renderLogicNode(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
+    var label = logicNodeLabel(node);
+    var nodeW = logicNodeWidth(node);
+    node.w = nodeW;
     var box = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
         position: "absolute", left: node.x + "px", top: node.y + "px",
-        width: LOGIC_NODE_W + "px", height: LOGIC_NODE_H + "px",
+        width: nodeW + "px", height: LOGIC_NODE_H + "px",
         background: "var(--red-ui-view-background, #fff)",
         color: "var(--red-ui-node-label-color, #333)",
         "border-radius": "4px", "font-size": "12px",
         display: "flex", "align-items": "center",
-        "padding-left": "16px", "padding-right": "10px", "box-sizing": "border-box", cursor: "move",
+        "padding-left": "16px", "padding-right": (kind.hasOutput ? "14px" : "10px"), "box-sizing": "border-box", cursor: "move",
         overflow: "hidden", "white-space": "nowrap", "text-overflow": "ellipsis",
         border: "1px solid var(--red-ui-node-border, #999)",
         "box-shadow": "0 1px 3px rgba(0,0,0,0.3)"
-    }).text(logicNodeLabel(node)).appendTo(state.logicArtboardEl);
+    }).text(label).appendTo(state.logicArtboardEl);
 
     window.$("<div>").css({
         position: "absolute", left: "0", top: "0", bottom: "0", width: "6px",
@@ -186,8 +235,14 @@ export function renderLogicNode(node) {
             openLayerControlNodeEditor(node);
         });
     }
+    if (node.type === "template-output" || node.type === "template-event") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openTemplateOutputNodeEditor(node);
+        });
+    }
     if (node.type === "layout") {
-        box.attr("title", "Double-click to choose the frame").on("dblclick", function (e) {
+        box.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function (e) {
             e.stopPropagation();
             openLayoutNodeEditor(node);
         });
@@ -258,7 +313,8 @@ export function renderLogicNode(node) {
         drag: function (e, ui) {
             var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / state.logicZoomLevel;
             var localTop = moveStart.y + (e.pageY - dragStartPage.y) / state.logicZoomLevel;
-            localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
+            if (!e.altKey) { localLeft = snapLogic(localLeft); localTop = snapLogic(localTop); }
+            localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW));
             localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
             ui.position.left = localLeft;
             ui.position.top = localTop;
@@ -277,8 +333,17 @@ export function renderLogicNode(node) {
         stop: function (e) {
             var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / state.logicZoomLevel;
             var localTop = moveStart.y + (e.pageY - dragStartPage.y) / state.logicZoomLevel;
-            node.x = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
-            node.y = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+            if (!e.altKey) { localLeft = snapLogic(localLeft); localTop = snapLogic(localTop); }
+            // the others moved along by the same step (drag above): keep them there
+            var ddx = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW)) - node.x;
+            var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H)) - node.y;
+            node.x += ddx;
+            node.y += ddy;
+            state.logicSelectedIds.forEach(function (id) {
+                if (id === node.id || (!ddx && !ddy)) return;
+                var n = findLogicNode(getActiveScreen(), id);
+                if (n) { n.x += ddx; n.y += ddy; state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id + '"]').css({ left: n.x + "px", top: n.y + "px" }); }
+            });
             var moved = [];
             state.logicSelectedIds.forEach(function (id) {
                 var n = findLogicNode(getActiveScreen(), id);
@@ -309,4 +374,6 @@ export function renderLogicCanvas() {
     if (!screen || !screen.logic) return;
     (screen.logic.nodes || []).forEach(renderLogicNode);
     renderLogicWires();
+    // the nodes were re-created: show what is selected again
+    refreshLogicSelectionVisuals();
 }

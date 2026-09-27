@@ -17,6 +17,8 @@ export const LOGIC_CANVAS_H = 1400;
 export const LOGIC_NODE_W = 150;
 export const LOGIC_NODE_H = 34;
 export const LOGIC_GRID_SIZE = 20;
+/** A Logic node position on the canvas grid (hold Alt while dragging to place it freely). */
+export function snapLogic(v) { return Math.round(v / LOGIC_GRID_SIZE) * LOGIC_GRID_SIZE; }
 
 export const LOGIC_NODE_KINDS = {
     onload: { label: "On Load", hasInput: false, hasOutput: true, color: "#4b7d4b" },
@@ -36,6 +38,11 @@ export const LOGIC_NODE_KINDS = {
     // set-template-param is a SINK placed on any canvas that can see a
     // "@template" instance, setting ONE of its declared params by name.
     "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    // a template's output: inside the template, sends a message OUT to where it is used —
+    // a copy a Populate made: out of that Layout node; a placed instance: its
+    // "On Template Output" node on the surface around it (open a dialog, a popup…)
+    "template-output": { label: "Send to Host", hasInput: true, hasOutput: false, color: "#9c6b9e" },
+    "template-event": { label: "On Template Output", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },

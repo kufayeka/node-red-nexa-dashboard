@@ -977,6 +977,9 @@
   var LOGIC_NODE_W = 150;
   var LOGIC_NODE_H = 34;
   var LOGIC_GRID_SIZE = 20;
+  function snapLogic(v) {
+    return Math.round(v / LOGIC_GRID_SIZE) * LOGIC_GRID_SIZE;
+  }
   var LOGIC_NODE_KINDS = {
     onload: { label: "On Load", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     onrender: { label: "On Render", hasInput: false, hasOutput: true, color: "#4b7d4b" },
@@ -995,6 +998,11 @@
     // set-template-param is a SINK placed on any canvas that can see a
     // "@template" instance, setting ONE of its declared params by name.
     "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    // a template's output: inside the template, sends a message OUT to where it is used —
+    // a copy a Populate made: out of that Layout node; a placed instance: its
+    // "On Template Output" node on the surface around it (open a dialog, a popup…)
+    "template-output": { label: "Send to Host", hasInput: true, hasOutput: false, color: "#9c6b9e" },
+    "template-event": { label: "On Template Output", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
@@ -26475,6 +26483,8 @@
     return "fa-cube";
   }
   function getLogicNodeMeta(type) {
+    if (type === "template-output") return { color: "#e3d3ee", icon: "fa-sign-out", portOut: false, portIn: true };
+    if (type === "template-event") return { color: "#e6e0f8", icon: "fa-sign-in", portOut: true, portIn: false };
     if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
       return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
     }
@@ -26515,6 +26525,14 @@
     }
     return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
   }
+  function templateOutputs(template) {
+    var out = [];
+    (template && template.logic && template.logic.nodes || []).forEach(function(n) {
+      var name2 = n.type === "template-output" ? n.output || "out" : null;
+      if (name2 && out.indexOf(name2) === -1) out.push(name2);
+    });
+    return out;
+  }
   function sectionHeader(parentEl, title) {
     return window.$("<div>", { "class": "red-ui-palette-header" }).css({
       padding: "5px 8px",
@@ -26540,14 +26558,11 @@
       "class": "nexa-palette-item",
       "data-type-id": dropTypeId || ""
     }).css({
-      display: "flex",
+      display: "inline-flex",
       "align-items": "center",
-      width: "250px",
-      // Centered via the flex parent's align-self, NOT "margin: auto" —
-      // see the comment on state.componentsPane's own creation for why an
-      // auto margin here throws jQuery UI draggable's drag-ghost tracking
-      // off by however many px it takes to center a box in this pane.
-      "align-self": "center",
+      width: "max-content",
+      "min-width": "140px",
+      "align-self": "flex-start",
       margin: "4px 0",
       height: "26px",
       "border-radius": "5px",
@@ -26584,11 +26599,9 @@
       "margin-left": "28px",
       "font-size": "12px",
       "font-weight": "500",
-      "text-align": "center",
+      "text-align": "left",
       color: "var(--red-ui-node-label-color, #222)",
-      padding: "0 6px",
-      overflow: "hidden",
-      "text-overflow": "ellipsis",
+      padding: "0 8px 0 6px",
       "white-space": "nowrap",
       "pointer-events": "none"
     }).text(label).appendTo(chip);
@@ -26681,12 +26694,11 @@
         "data-comp-id": compId || "",
         "data-palette-type": nodeType || ""
       }).css({
-        display: "flex",
+        display: "inline-flex",
         "align-items": "center",
-        width: "250px",
-        // Centered via the flex parent's align-self, NOT "margin: auto"
-        // — see the comment on state.eventsPane's own creation for why.
-        "align-self": "center",
+        width: "max-content",
+        "min-width": "140px",
+        "align-self": "flex-start",
         margin: "4px 0",
         height: "26px",
         "border-radius": "5px",
@@ -26736,14 +26748,12 @@
       window.$("<div>", { "class": "red-ui-palette-label" }).css({
         flex: "1 1 auto",
         "margin-left": "28px",
-        "margin-right": meta2.portOut ? "4px" : "0",
+        "margin-right": meta2.portOut ? "8px" : "4px",
         "font-size": "11px",
         "font-weight": "500",
-        "text-align": "center",
+        "text-align": "left",
         color: "var(--red-ui-node-label-color, #222)",
-        padding: "0 4px",
-        overflow: "hidden",
-        "text-overflow": "ellipsis",
+        padding: "0 8px 0 6px",
         "white-space": "nowrap",
         "pointer-events": "none"
       }).text(label).appendTo(item);
@@ -26810,6 +26820,10 @@
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
       }, "", "param-input");
+      sectionHeader(state.eventsPane, "Template");
+      chip(state.eventsPane, "Send to Host", function() {
+        return { type: "template-output", output: "out" };
+      }, "", "template-output");
     }
     sectionHeader(state.eventsPane, "Utility");
     chip(state.eventsPane, "Function", function() {
@@ -26915,6 +26929,11 @@
               return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
             }, comp.id, "ui-event");
           }
+          templateOutputs(template).forEach(function(name3) {
+            chip(state.eventsPane, instanceName + " \u2192 on " + name3, function() {
+              return { type: "template-event", instanceId: comp.id, output: name3 };
+            }, comp.id, "template-event");
+          });
           (template && template.params || []).forEach(function(param) {
             chip(state.eventsPane, instanceName + " \u2192 Set " + param.label, function() {
               return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
@@ -27869,389 +27888,10 @@
     }
   }
 
-  // src/canvas/selection.js
-  var hierarchyListeners = [];
-  function onSelectionChange(fn) {
-    hierarchyListeners.push(fn);
-  }
-  function isSelected(id2) {
-    return state.selectedIds.indexOf(id2) !== -1;
-  }
-  function refreshSelectionVisuals(opts) {
-    if (!state.artboardEl) return;
-    state.artboardEl.find(".nexa-component").css("outline", "none");
-    state.selectedIds.forEach(function(id2) {
-      state.artboardEl.find('[data-id="' + id2 + '"]').css("outline", "2px solid #ff5722");
-    });
-    clearSelectionHandles();
-    if (state.selectedIds.length === 1) {
-      var comp = findComponent(state.selectedIds[0]);
-      if (comp) renderSelectionHandles(comp);
-    }
-    if (opts && opts.keepPanel) return;
-    renderPropertiesPanel();
-    refreshEventsHighlight();
-    hierarchyListeners.forEach(function(fn) {
-      try {
-        fn(state.selectedIds);
-      } catch (e) {
-      }
-    });
-    var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
-    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
-      state.sidebarTabs.activateTab("properties");
-    }
-  }
-  function selectOnly(id2) {
-    state.selectedIds = [id2];
-    refreshSelectionVisuals();
-  }
-  function selectMultiple(ids) {
-    state.selectedIds = ids.slice();
-    refreshSelectionVisuals();
-  }
-  function deselectAll() {
-    state.selectedIds = [];
-    refreshSelectionVisuals();
-  }
-  function pickSelectionTarget(nodeId, e) {
-    var screen = getActiveScreen();
-    if (!screen) return nodeId;
-    if (e && (e.ctrlKey || e.metaKey)) return nodeId;
-    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
-      return a.id;
-    }).concat([nodeId]);
-    for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) return chain[i2];
-    var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-    if (sel) {
-      var context = tree_exports.parentOf(screen, sel.id);
-      var contextId = context ? context.id : null;
-      for (var j = 0; j < chain.length; j++) {
-        var parent = tree_exports.parentOf(screen, chain[j]);
-        if ((parent ? parent.id : null) === contextId) return chain[j];
-      }
-    }
-    return chain[0];
-  }
-  function pickDeeperTarget(nodeId) {
-    var screen = getActiveScreen();
-    if (!screen) return null;
-    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
-      return a.id;
-    }).concat([nodeId]);
-    var at = -1;
-    for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) at = i2;
-    return at >= 0 && at < chain.length - 1 ? chain[at + 1] : null;
-  }
-  function setLockedForSelection(locked, idsOverride) {
-    var ids = idsOverride || state.selectedIds.slice();
-    var changed2 = false;
-    ids.forEach(function(id2) {
-      var c = findComponent(id2);
-      if (c && !!c.locked !== locked) {
-        pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
-        c.locked = locked;
-        changed2 = true;
-      }
-    });
-    if (!changed2) return;
-    markDirty();
-    renderActiveScreen();
-    selectMultiple(ids);
-  }
-  function toggleFlipForSelection(axis) {
-    var screen = getActiveScreen();
-    if (!screen || !state.selectedIds.length) return;
-    var events = [];
-    state.selectedIds.forEach(function(id2) {
-      var c = findComponent(id2);
-      if (!c || isNodeLocked(id2) || tree_exports.isContainer(c)) return;
-      var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
-      if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
-      var from = { flipH: !!c.flipH, flipV: !!c.flipV };
-      if (axis === "h") {
-        c.flipH = !c.flipH;
-      } else if (axis === "v") {
-        c.flipV = !c.flipV;
-      }
-      var to = { flipH: !!c.flipH, flipV: !!c.flipV };
-      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
-      updateComponentBox(c);
-    });
-    if (!events.length) return;
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
-    markDirty();
-    renderPropertiesPanel();
-  }
-  function nextGroupName(screen, type) {
-    var word = type === "@frame" ? "Frame" : "Group";
-    var re = new RegExp("^" + word + " (\\d+)$");
-    var n = 0;
-    tree_exports.allNodes(screen, { orphans: true }).forEach(function(node) {
-      var m = node.type === (type || "@group") && re.exec(node.name || "");
-      if (m) n = Math.max(n, Number(m[1]));
-    });
-    return word + " " + (n + 1);
-  }
-  function frameSelection() {
-    groupSelection("@frame");
-  }
-  function groupSelection(type) {
-    var asFrame = type === "@frame";
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var ids = state.selectedIds.filter(function(id2) {
-      return findComponent(id2) && isNodeInteractable(id2);
-    });
-    if (ids.length < 1) {
-      RED.notify("Select what to group", { type: "warning", timeout: 2e3 });
-      return;
-    }
-    var parents = ids.map(function(id2) {
-      var p = tree_exports.parentOf(screen, id2);
-      return p ? p.id : null;
-    });
-    if (parents.some(function(p) {
-      return p !== parents[0];
-    })) {
-      RED.notify("Select nodes that share one parent to group them", { type: "warning", timeout: 2500 });
-      return;
-    }
-    var before = treeSnapshot(screen);
-    var group = tree_exports.wrapIn(screen, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen) });
-    if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
-    pushTreeChange(screen, before);
-    markDirty();
-    renderActiveScreen();
-    selectOnly(group.id);
-  }
-  function ungroupSelection() {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var containers = state.selectedIds.map(findComponent).filter(function(c) {
-      return c && tree_exports.isContainer(c) && !isNodeLocked(c.id);
-    });
-    if (!containers.length) return;
-    var before = treeSnapshot(screen);
-    var released = [];
-    containers.forEach(function(g) {
-      released = released.concat(tree_exports.unwrap(screen, g.id).map(function(c) {
-        return c.id;
-      }));
-    });
-    pushTreeChange(screen, before);
-    markDirty();
-    renderActiveScreen();
-    selectMultiple(released);
-  }
-  function startMarqueeSelect(e) {
-    if (!state.artboardEl) return;
-    var offset = state.artboardEl.offset();
-    var startX = (e.pageX - offset.left) / state.zoomLevel;
-    var startY = (e.pageY - offset.top) / state.zoomLevel;
-    var box = { left: startX, top: startY, width: 0, height: 0 };
-    var shiftHeld = e.shiftKey;
-    var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
-      position: "absolute",
-      left: startX + "px",
-      top: startY + "px",
-      width: "0px",
-      height: "0px",
-      border: "1px dashed #2196f3",
-      background: "rgba(33,150,243,0.1)",
-      "pointer-events": "none",
-      "z-index": 999
-    }).appendTo(state.artboardEl);
-    function onMove2(ev) {
-      var curX = (ev.pageX - offset.left) / state.zoomLevel;
-      var curY = (ev.pageY - offset.top) / state.zoomLevel;
-      box.left = Math.min(startX, curX);
-      box.top = Math.min(startY, curY);
-      box.width = Math.abs(curX - startX);
-      box.height = Math.abs(curY - startY);
-      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
-    }
-    function onUp() {
-      document.removeEventListener("mousemove", onMove2);
-      document.removeEventListener("mouseup", onUp);
-      marqueeEl.remove();
-      if (box.width < 3 && box.height < 3) return;
-      var screen = getActiveScreen();
-      if (!screen) return;
-      var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-      var context = sel ? tree_exports.parentOf(screen, sel.id) : null;
-      var candidates = context ? tree_exports.kids(context) : screen.components;
-      var hits = candidates.filter(function(c) {
-        if (!isNodeInteractable(c.id)) return false;
-        var b = tree_exports.absBox(screen, c.id);
-        return !(b.x > box.left + box.width || b.x + b.w < box.left || b.y > box.top + box.height || b.y + b.h < box.top);
-      }).map(function(c) {
-        return c.id;
-      });
-      if (shiftHeld) {
-        hits.forEach(function(id2) {
-          if (!isSelected(id2)) state.selectedIds.push(id2);
-        });
-        refreshSelectionVisuals();
-      } else {
-        selectMultiple(hits);
-      }
-    }
-    document.addEventListener("mousemove", onMove2);
-    document.addEventListener("mouseup", onUp);
-  }
-
-  // src/canvas/canvas-ui.js
-  function renderActiveScreen(opts) {
-    var keepPanel = !!(opts && opts.keepPanel);
-    if (!state.artboardEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    ensureSparkplugCommsWired();
-    ensureSparkplugLiveRenderWired();
-    state.selectionHandlesEl = null;
-    if (!keepPanel) {
-      state.selectedIds = [];
-      renderPropertiesPanel();
-    }
-    state.artboardEl.empty();
-    state.artboardEl.css({
-      width: screen.width + "px",
-      height: screen.height + "px",
-      "background-color": "#fff",
-      "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
-      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
-    });
-    if (state.stageEl) {
-      state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
-    }
-    applyZoomTransform();
-    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
-    screen.components.forEach(function(node) {
-      renderComponent(node, null, null, rootScope);
-    });
-    var changed2 = readbackLayout(screen);
-    if (changed2.redraw && !renderActiveScreen._again) {
-      renderActiveScreen._again = true;
-      try {
-        renderActiveScreen(opts);
-      } finally {
-        renderActiveScreen._again = false;
-      }
-    }
-  }
-  function redrawCanvas() {
-    var screen = getActiveScreen();
-    renderActiveScreen({ keepPanel: true });
-    if (!screen) return;
-    state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen, id2);
-    });
-    refreshSelectionVisuals({ keepPanel: true });
-  }
-  registerScreenRenderer(renderActiveScreen);
-  if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
-  function applyZoomTransform() {
-    if (!state.stageEl || !state.sizerEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
-    state.sizerEl.css({
-      width: screen.width * state.zoomLevel + "px",
-      height: screen.height * state.zoomLevel + "px"
-    });
-    updateZoomLabel();
-    refreshSelectionVisuals({ keepPanel: true });
-  }
-  function updateZoomLabel() {
-    if (state.zoomLabelEl) state.zoomLabelEl.text(Math.round(state.zoomLevel * 100) + "%");
-  }
-  function setZoom(newZoom, focalPoint) {
-    if (!state.viewportEl || !state.sizerEl) return;
-    newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
-    if (newZoom === state.zoomLevel) return;
-    var vp = state.viewportEl.get(0);
-    if (!focalPoint) {
-      focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
-    }
-    var sizerOffset = state.sizerEl.position();
-    var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / state.zoomLevel;
-    var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / state.zoomLevel;
-    state.zoomLevel = newZoom;
-    applyZoomTransform();
-    var newOffset = state.sizerEl.position();
-    vp.scrollLeft = stageX * state.zoomLevel + newOffset.left - focalPoint.x;
-    vp.scrollTop = stageY * state.zoomLevel + newOffset.top - focalPoint.y;
-  }
-  function zoomIn() {
-    setZoom(state.zoomLevel + ZOOM_STEP);
-  }
-  function zoomOut() {
-    setZoom(state.zoomLevel - ZOOM_STEP);
-  }
-  function zoomReset() {
-    setZoom(1);
-  }
-  function zoomToFit() {
-    if (!state.viewportEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var vp = state.viewportEl.get(0);
-    var pad = 40;
-    var availW = Math.max(vp.clientWidth - pad * 2, 10);
-    var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
-    fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
-    state.zoomLevel = fitZoom;
-    applyZoomTransform();
-    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
-    vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
-    vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
-  }
-  function buildZoomToolbar(trayBody) {
-    var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
-      position: "absolute",
-      right: "16px",
-      bottom: "16px",
-      "z-index": "10",
-      display: "flex",
-      "align-items": "center",
-      background: "#fff",
-      "border-radius": "4px",
-      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
-      overflow: "hidden"
-    }).appendTo(trayBody);
-    function zoomBtn(icon, title, onClick) {
-      return window.$("<a>", { href: "#", title }).css({
-        width: "26px",
-        height: "26px",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        color: "#555",
-        cursor: "pointer"
-      }).append(window.$("<i>", { "class": "fa " + icon })).on("click", function(e) {
-        e.preventDefault();
-        onClick();
-      }).appendTo(bar);
-    }
-    zoomBtn("fa-minus", "Zoom out", zoomOut);
-    state.zoomLabelEl = window.$("<span>").css({
-      width: "44px",
-      "text-align": "center",
-      "font-size": "11px",
-      color: "#555"
-    }).appendTo(bar);
-    zoomBtn("fa-circle-o", "Reset zoom", zoomReset);
-    zoomBtn("fa-plus", "Zoom in", zoomIn);
-    zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
-    updateZoomLabel();
-  }
-
   // src/logic/logic-wires.js
   var LOGIC_PORT_HIT_RADIUS = 26;
   function logicNodePortPoint(node, role) {
-    return { x: role === "input" ? node.x : node.x + LOGIC_NODE_W, y: node.y + LOGIC_NODE_H / 2 };
+    return { x: role === "input" ? node.x : node.x + logicNodeWidth(node), y: node.y + LOGIC_NODE_H / 2 };
   }
   function logicWirePath(p1, p2) {
     var dx = p2.x - p1.x;
@@ -28356,151 +27996,6 @@
       document.addEventListener("mousemove", onMove2);
       document.addEventListener("mouseup", onUp);
     });
-  }
-
-  // src/logic/logic-selection.js
-  var logicClipboard = null;
-  function isLogicSelected(id2) {
-    return state.logicSelectedIds.indexOf(id2) !== -1;
-  }
-  function selectLogicOnly(id2) {
-    state.logicSelectedIds = [id2];
-    refreshLogicSelectionVisuals();
-  }
-  function selectLogicMultiple(ids) {
-    state.logicSelectedIds = ids.slice();
-    refreshLogicSelectionVisuals();
-  }
-  function deselectAllLogic() {
-    state.logicSelectedIds = [];
-    refreshLogicSelectionVisuals();
-  }
-  function copyLogicSelection(isCut) {
-    if (!state.logicSelectedIds.length) return;
-    var screen = getActiveScreen();
-    if (!screen || !screen.logic) return;
-    var selectedNodes = (screen.logic.nodes || []).filter(function(n) {
-      return state.logicSelectedIds.indexOf(n.id) !== -1;
-    });
-    if (!selectedNodes.length) return;
-    var selectedWires = (screen.logic.wires || []).filter(function(w) {
-      return state.logicSelectedIds.indexOf(w.from) !== -1 && state.logicSelectedIds.indexOf(w.to) !== -1;
-    });
-    logicClipboard = {
-      nodes: JSON.parse(JSON.stringify(selectedNodes)),
-      wires: JSON.parse(JSON.stringify(selectedWires))
-    };
-    if (isCut) {
-      removeLogicNodes(state.logicSelectedIds.slice());
-    }
-  }
-  function pasteLogicClipboard() {
-    if (!logicClipboard || !logicClipboard.nodes.length) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    if (!screen.logic) screen.logic = { nodes: [], wires: [] };
-    var idMap = {};
-    var newNodes = logicClipboard.nodes.map(function(n) {
-      var copy = JSON.parse(JSON.stringify(n));
-      var newId = genId();
-      idMap[copy.id] = newId;
-      copy.id = newId;
-      copy.x = (copy.x || 0) + 30;
-      copy.y = (copy.y || 0) + 30;
-      return copy;
-    });
-    logicClipboard.nodes.forEach(function(n) {
-      n.x = (n.x || 0) + 30;
-      n.y = (n.y || 0) + 30;
-    });
-    var newWires = logicClipboard.wires.map(function(w) {
-      return {
-        id: genId(),
-        from: idMap[w.from] || w.from,
-        to: idMap[w.to] || w.to
-      };
-    });
-    newNodes.forEach(function(n) {
-      screen.logic.nodes.push(n);
-    });
-    newWires.forEach(function(w) {
-      screen.logic.wires.push(w);
-    });
-    var historyEvents = newNodes.map(function(n) {
-      return { t: "addLogicNode", screenId: screen.id, node: n };
-    }).concat(newWires.map(function(w) {
-      return { t: "addLogicWire", screenId: screen.id, wire: w };
-    }));
-    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen.id, events: historyEvents });
-    selectLogicMultiple(newNodes.map(function(n) {
-      return n.id;
-    }));
-    renderLogicCanvas();
-    markDirty();
-  }
-  function refreshLogicSelectionVisuals() {
-    if (!state.logicArtboardEl) return;
-    state.logicArtboardEl.find(".nexa-logic-node").css({
-      "border-color": "var(--red-ui-node-border, #999)",
-      "outline": "none"
-    });
-    state.logicSelectedIds.forEach(function(id2) {
-      state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id2 + '"]').css({
-        "outline": "2px solid var(--red-ui-node-selected-color, #ffeb3b)",
-        "outline-offset": "1px"
-      });
-    });
-  }
-  function startLogicMarqueeSelect(e) {
-    if (!state.logicArtboardEl) return;
-    var offset = state.logicArtboardEl.offset();
-    var startX = (e.pageX - offset.left) / state.logicZoomLevel;
-    var startY = (e.pageY - offset.top) / state.logicZoomLevel;
-    var box = { left: startX, top: startY, width: 0, height: 0 };
-    var shiftHeld = e.shiftKey;
-    var marqueeEl = window.$("<div>").css({
-      position: "absolute",
-      left: startX + "px",
-      top: startY + "px",
-      width: "0px",
-      height: "0px",
-      border: "1px dashed #2196f3",
-      background: "rgba(33,150,243,0.1)",
-      "pointer-events": "none",
-      "z-index": 999
-    }).appendTo(state.logicArtboardEl);
-    function onMove2(ev) {
-      var curX = (ev.pageX - offset.left) / state.logicZoomLevel;
-      var curY = (ev.pageY - offset.top) / state.logicZoomLevel;
-      box.left = Math.min(startX, curX);
-      box.top = Math.min(startY, curY);
-      box.width = Math.abs(curX - startX);
-      box.height = Math.abs(curY - startY);
-      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
-    }
-    function onUp() {
-      document.removeEventListener("mousemove", onMove2);
-      document.removeEventListener("mouseup", onUp);
-      marqueeEl.remove();
-      if (box.width < 3 && box.height < 3) return;
-      var screen = getActiveScreen();
-      if (!screen || !screen.logic) return;
-      var hits = (screen.logic.nodes || []).filter(function(n) {
-        return !(n.x > box.left + box.width || n.x + LOGIC_NODE_W < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
-      }).map(function(n) {
-        return n.id;
-      });
-      if (shiftHeld) {
-        hits.forEach(function(id2) {
-          if (!isLogicSelected(id2)) state.logicSelectedIds.push(id2);
-        });
-        refreshLogicSelectionVisuals();
-      } else {
-        selectLogicMultiple(hits);
-      }
-    }
-    document.addEventListener("mousemove", onMove2);
-    document.addEventListener("mouseup", onUp);
   }
 
   // src/dialogs/function-dialog.js
@@ -29128,7 +28623,7 @@
       ],
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("A frame of this screen as a Logic node. Wire a Populate node into it: the template's copies go into this frame. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.").appendTo(body);
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a "Send to Host" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.').appendTo(body);
         var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
         if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
         frames.forEach(function(f) {
@@ -29272,6 +28767,63 @@
         }
         sync();
         srcSel.trigger("blur");
+      }
+    });
+  }
+
+  // src/dialogs/template-output-dialog.js
+  var NAME_RE2 = /^[A-Za-z_][\w-]*$/;
+  function openTemplateOutputNodeEditor(node) {
+    var sending = node.type === "template-output";
+    var d = { output: node.output === void 0 ? sending ? "out" : "" : node.output };
+    var inst = sending ? null : findComponent(node.instanceId);
+    var names = inst ? templateOutputs(findTemplate(inst.templateId)) : [];
+    window.RED.tray.show({
+      id: "nexa-logic-template-output-editor",
+      title: sending ? "Configure Send to Host" : "Configure On Template Output",
+      width: 420,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (sending && !NAME_RE2.test(d.output)) return;
+            node.output = d.output;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        var help = window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.5" }).appendTo(body);
+        if (sending) {
+          help.html("Sends the message <b>out of this template</b>, to where it is used:<br>\u2022 a copy a Populate made \u2192 out of the <b>Layout</b> node on the screen, with <code>msg.item</code> and <code>msg.index</code>;<br>\u2022 an instance placed on a screen \u2192 its <b>On Template Output</b> node there.<br><code>msg.output</code> is the name below: give each output its own (e.g. <code>open-dialog</code>, <code>delete</code>).");
+          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output name").appendTo(body);
+          var input = window.$("<input>", { type: "text", placeholder: "out" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.output).appendTo(body);
+          var err = window.$("<div>").css({ color: "#c00", "font-size": "11px", "margin-top": "4px" }).appendTo(body);
+          input.on("input change", function() {
+            d.output = this.value.trim();
+            err.text(NAME_RE2.test(d.output) ? "" : "A name: letters, digits, _ or -, not starting with a digit");
+          });
+        } else {
+          help.html("Fires when this instance's template sends a message out (a <b>Send to Host</b> node inside it). Wire it to what should happen here: open a dialog, a popup, set a variable\u2026");
+          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output").appendTo(body);
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          window.$("<option>", { value: "" }).text("(any output)").appendTo(sel);
+          names.concat(d.output && names.indexOf(d.output) === -1 ? [d.output] : []).forEach(function(n) {
+            window.$("<option>", { value: n }).text(n).appendTo(sel);
+          });
+          sel.val(d.output);
+          sel.on("change", function() {
+            d.output = sel.val();
+          });
+          if (!names.length) window.$("<div>").css({ "font-size": "11px", color: "#a60", "margin-top": "6px" }).text("This template has no Send to Host node yet.").appendTo(body);
+        }
       }
     });
   }
@@ -29435,7 +28987,7 @@
     }
     if (node.type === "http-request") {
       var u = node.url || "";
-      return (node.method || "GET") + " " + (u ? u.length > 28 ? u.slice(0, 27) + "\u2026" : u : "(no URL)");
+      return (node.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
     }
     if (node.type === "storage" || node.type === "cookie") {
       var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
@@ -29452,6 +29004,12 @@
       var OPS2 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
       return (OPS2[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
     }
+    if (node.type === "template-output") return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
+    if (node.type === "template-event") {
+      var evComp = findComponent(node.instanceId);
+      var evTemplate = evComp && findTemplate(evComp.templateId);
+      return (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?") + " on " + (node.output || "any output");
+    }
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
       var instTemplate = instComp && findTemplate(instComp.templateId);
@@ -29461,6 +29019,41 @@
       return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " \u2192 Set " + (param ? param.label : node.paramName);
     }
     return kind.label || node.type;
+  }
+  var _measureCanvasCtx = null;
+  function logicNodeWidth(node) {
+    if (!node) return LOGIC_NODE_W;
+    var label = logicNodeLabel(node);
+    if (!label) return LOGIC_NODE_W;
+    var textWidth = 0;
+    try {
+      if (typeof document !== "undefined" && typeof document.createElement === "function") {
+        if (!_measureCanvasCtx) {
+          var canvas = document.createElement("canvas");
+          if (canvas && typeof canvas.getContext === "function") {
+            _measureCanvasCtx = canvas.getContext("2d");
+          }
+        }
+        if (_measureCanvasCtx) {
+          _measureCanvasCtx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+          var metrics = _measureCanvasCtx.measureText(label);
+          if (metrics && metrics.width) {
+            textWidth = metrics.width;
+          }
+        }
+      }
+    } catch (e) {
+    }
+    if (!textWidth) {
+      textWidth = label.length * 7.5;
+    }
+    var kind = LOGIC_NODE_KINDS[node.type] || {};
+    var padLeft = 16;
+    var padRight = kind.hasOutput ? 14 : 10;
+    var border = 2;
+    var extra = 8;
+    var needed = Math.ceil(textWidth + padLeft + padRight + border + extra);
+    return Math.max(LOGIC_NODE_W, needed);
   }
   function addLogicNode(nodeData, x, y) {
     var screen = getActiveScreen();
@@ -29503,11 +29096,14 @@
   }
   function renderLogicNode(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
+    var label = logicNodeLabel(node);
+    var nodeW = logicNodeWidth(node);
+    node.w = nodeW;
     var box = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
       position: "absolute",
       left: node.x + "px",
       top: node.y + "px",
-      width: LOGIC_NODE_W + "px",
+      width: nodeW + "px",
       height: LOGIC_NODE_H + "px",
       background: "var(--red-ui-view-background, #fff)",
       color: "var(--red-ui-node-label-color, #333)",
@@ -29516,7 +29112,7 @@
       display: "flex",
       "align-items": "center",
       "padding-left": "16px",
-      "padding-right": "10px",
+      "padding-right": kind.hasOutput ? "14px" : "10px",
       "box-sizing": "border-box",
       cursor: "move",
       overflow: "hidden",
@@ -29524,7 +29120,7 @@
       "text-overflow": "ellipsis",
       border: "1px solid var(--red-ui-node-border, #999)",
       "box-shadow": "0 1px 3px rgba(0,0,0,0.3)"
-    }).text(logicNodeLabel(node)).appendTo(state.logicArtboardEl);
+    }).text(label).appendTo(state.logicArtboardEl);
     window.$("<div>").css({
       position: "absolute",
       left: "0",
@@ -29580,8 +29176,14 @@
         openLayerControlNodeEditor(node);
       });
     }
+    if (node.type === "template-output" || node.type === "template-event") {
+      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openTemplateOutputNodeEditor(node);
+      });
+    }
     if (node.type === "layout") {
-      box.attr("title", "Double-click to choose the frame").on("dblclick", function(e) {
+      box.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function(e) {
         e.stopPropagation();
         openLayoutNodeEditor(node);
       });
@@ -29659,7 +29261,11 @@
       drag: function(e, ui) {
         var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / state.logicZoomLevel;
         var localTop = moveStart.y + (e.pageY - dragStartPage.y) / state.logicZoomLevel;
-        localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
+        if (!e.altKey) {
+          localLeft = snapLogic(localLeft);
+          localTop = snapLogic(localTop);
+        }
+        localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW));
         localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
         ui.position.left = localLeft;
         ui.position.top = localTop;
@@ -29679,8 +29285,23 @@
       stop: function(e) {
         var localLeft = moveStart.x + (e.pageX - dragStartPage.x) / state.logicZoomLevel;
         var localTop = moveStart.y + (e.pageY - dragStartPage.y) / state.logicZoomLevel;
-        node.x = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - LOGIC_NODE_W));
-        node.y = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+        if (!e.altKey) {
+          localLeft = snapLogic(localLeft);
+          localTop = snapLogic(localTop);
+        }
+        var ddx = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW)) - node.x;
+        var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H)) - node.y;
+        node.x += ddx;
+        node.y += ddy;
+        state.logicSelectedIds.forEach(function(id2) {
+          if (id2 === node.id || !ddx && !ddy) return;
+          var n = findLogicNode(getActiveScreen(), id2);
+          if (n) {
+            n.x += ddx;
+            n.y += ddy;
+            state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id2 + '"]').css({ left: n.x + "px", top: n.y + "px" });
+          }
+        });
         var moved = [];
         state.logicSelectedIds.forEach(function(id2) {
           var n = findLogicNode(getActiveScreen(), id2);
@@ -29711,6 +29332,556 @@
     if (!screen || !screen.logic) return;
     (screen.logic.nodes || []).forEach(renderLogicNode);
     renderLogicWires();
+    refreshLogicSelectionVisuals();
+  }
+
+  // src/logic/logic-selection.js
+  var logicClipboard = null;
+  function selectLogicForComponents(ids) {
+    var screen = getActiveScreen();
+    var set = {};
+    (ids || []).forEach(function(id2) {
+      set[id2] = true;
+    });
+    state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
+      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container];
+    }).map(function(n) {
+      return n.id;
+    });
+    refreshLogicSelectionVisuals();
+  }
+  function scrollLogicToSelection() {
+    var vp = state.logicViewportEl && state.logicViewportEl[0];
+    var id2 = state.logicSelectedIds[0];
+    if (!vp || !id2 || !state.logicArtboardEl) return;
+    var el = state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id2 + '"]')[0];
+    if (!el) return;
+    var v = vp.getBoundingClientRect(), r = el.getBoundingClientRect();
+    if (r.left >= v.left && r.right <= v.right && r.top >= v.top && r.bottom <= v.bottom) return;
+    vp.scrollLeft += r.left + r.width / 2 - (v.left + v.width / 2);
+    vp.scrollTop += r.top + r.height / 2 - (v.top + v.height / 2);
+  }
+  function isLogicSelected(id2) {
+    return state.logicSelectedIds.indexOf(id2) !== -1;
+  }
+  function selectLogicOnly(id2) {
+    state.logicSelectedIds = [id2];
+    refreshLogicSelectionVisuals();
+  }
+  function selectLogicMultiple(ids) {
+    state.logicSelectedIds = ids.slice();
+    refreshLogicSelectionVisuals();
+  }
+  function deselectAllLogic() {
+    state.logicSelectedIds = [];
+    refreshLogicSelectionVisuals();
+  }
+  function copyLogicSelection(isCut) {
+    if (!state.logicSelectedIds.length) return;
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic) return;
+    var selectedNodes = (screen.logic.nodes || []).filter(function(n) {
+      return state.logicSelectedIds.indexOf(n.id) !== -1;
+    });
+    if (!selectedNodes.length) return;
+    var selectedWires = (screen.logic.wires || []).filter(function(w) {
+      return state.logicSelectedIds.indexOf(w.from) !== -1 && state.logicSelectedIds.indexOf(w.to) !== -1;
+    });
+    logicClipboard = {
+      nodes: JSON.parse(JSON.stringify(selectedNodes)),
+      wires: JSON.parse(JSON.stringify(selectedWires))
+    };
+    if (isCut) {
+      removeLogicNodes(state.logicSelectedIds.slice());
+    }
+  }
+  function pasteLogicClipboard() {
+    if (!logicClipboard || !logicClipboard.nodes.length) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    if (!screen.logic) screen.logic = { nodes: [], wires: [] };
+    var idMap = {};
+    var newNodes = logicClipboard.nodes.map(function(n) {
+      var copy = JSON.parse(JSON.stringify(n));
+      var newId = genId();
+      idMap[copy.id] = newId;
+      copy.id = newId;
+      copy.x = (copy.x || 0) + 30;
+      copy.y = (copy.y || 0) + 30;
+      return copy;
+    });
+    logicClipboard.nodes.forEach(function(n) {
+      n.x = (n.x || 0) + 30;
+      n.y = (n.y || 0) + 30;
+    });
+    var newWires = logicClipboard.wires.map(function(w) {
+      return {
+        id: genId(),
+        from: idMap[w.from] || w.from,
+        to: idMap[w.to] || w.to
+      };
+    });
+    newNodes.forEach(function(n) {
+      screen.logic.nodes.push(n);
+    });
+    newWires.forEach(function(w) {
+      screen.logic.wires.push(w);
+    });
+    var historyEvents = newNodes.map(function(n) {
+      return { t: "addLogicNode", screenId: screen.id, node: n };
+    }).concat(newWires.map(function(w) {
+      return { t: "addLogicWire", screenId: screen.id, wire: w };
+    }));
+    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen.id, events: historyEvents });
+    selectLogicMultiple(newNodes.map(function(n) {
+      return n.id;
+    }));
+    renderLogicCanvas();
+    markDirty();
+  }
+  function refreshLogicSelectionVisuals() {
+    if (!state.logicArtboardEl) return;
+    state.logicArtboardEl.find(".nexa-logic-node").css({
+      "border-color": "var(--red-ui-node-border, #999)",
+      "outline": "none"
+    });
+    state.logicSelectedIds.forEach(function(id2) {
+      state.logicArtboardEl.find('.nexa-logic-node[data-node-id="' + id2 + '"]').css({
+        "outline": "2px solid var(--red-ui-node-selected-color, #ffeb3b)",
+        "outline-offset": "1px"
+      });
+    });
+  }
+  function startLogicMarqueeSelect(e) {
+    if (!state.logicArtboardEl) return;
+    var offset = state.logicArtboardEl.offset();
+    var startX = (e.pageX - offset.left) / state.logicZoomLevel;
+    var startY = (e.pageY - offset.top) / state.logicZoomLevel;
+    var box = { left: startX, top: startY, width: 0, height: 0 };
+    var shiftHeld = e.shiftKey;
+    var marqueeEl = window.$("<div>").css({
+      position: "absolute",
+      left: startX + "px",
+      top: startY + "px",
+      width: "0px",
+      height: "0px",
+      border: "1px dashed #2196f3",
+      background: "rgba(33,150,243,0.1)",
+      "pointer-events": "none",
+      "z-index": 999
+    }).appendTo(state.logicArtboardEl);
+    function onMove2(ev) {
+      var curX = (ev.pageX - offset.left) / state.logicZoomLevel;
+      var curY = (ev.pageY - offset.top) / state.logicZoomLevel;
+      box.left = Math.min(startX, curX);
+      box.top = Math.min(startY, curY);
+      box.width = Math.abs(curX - startX);
+      box.height = Math.abs(curY - startY);
+      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove2);
+      document.removeEventListener("mouseup", onUp);
+      marqueeEl.remove();
+      if (box.width < 3 && box.height < 3) return;
+      var screen = getActiveScreen();
+      if (!screen || !screen.logic) return;
+      var hits = (screen.logic.nodes || []).filter(function(n) {
+        return !(n.x > box.left + box.width || n.x + logicNodeWidth(n) < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
+      }).map(function(n) {
+        return n.id;
+      });
+      if (shiftHeld) {
+        hits.forEach(function(id2) {
+          if (!isLogicSelected(id2)) state.logicSelectedIds.push(id2);
+        });
+        refreshLogicSelectionVisuals();
+      } else {
+        selectLogicMultiple(hits);
+      }
+    }
+    document.addEventListener("mousemove", onMove2);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // src/canvas/selection.js
+  var hierarchyListeners = [];
+  function onSelectionChange(fn) {
+    hierarchyListeners.push(fn);
+  }
+  function isSelected(id2) {
+    return state.selectedIds.indexOf(id2) !== -1;
+  }
+  function refreshSelectionVisuals(opts) {
+    if (!state.artboardEl) return;
+    state.artboardEl.find(".nexa-component").css("outline", "none");
+    state.selectedIds.forEach(function(id2) {
+      state.artboardEl.find('[data-id="' + id2 + '"]').css("outline", "2px solid #ff5722");
+    });
+    clearSelectionHandles();
+    if (state.selectedIds.length === 1) {
+      var comp = findComponent(state.selectedIds[0]);
+      if (comp) renderSelectionHandles(comp);
+    }
+    if (opts && opts.keepPanel) return;
+    renderPropertiesPanel();
+    refreshEventsHighlight();
+    selectLogicForComponents(state.selectedIds);
+    hierarchyListeners.forEach(function(fn) {
+      try {
+        fn(state.selectedIds);
+      } catch (e) {
+      }
+    });
+    var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
+    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+      state.sidebarTabs.activateTab("properties");
+    }
+  }
+  function selectOnly(id2) {
+    state.selectedIds = [id2];
+    refreshSelectionVisuals();
+  }
+  function selectMultiple(ids) {
+    state.selectedIds = ids.slice();
+    refreshSelectionVisuals();
+  }
+  function deselectAll() {
+    state.selectedIds = [];
+    refreshSelectionVisuals();
+  }
+  function pickSelectionTarget(nodeId, e) {
+    var screen = getActiveScreen();
+    if (!screen) return nodeId;
+    if (e && (e.ctrlKey || e.metaKey)) return nodeId;
+    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
+      return a.id;
+    }).concat([nodeId]);
+    for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) return chain[i2];
+    var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
+    if (sel) {
+      var context = tree_exports.parentOf(screen, sel.id);
+      var contextId = context ? context.id : null;
+      for (var j = 0; j < chain.length; j++) {
+        var parent = tree_exports.parentOf(screen, chain[j]);
+        if ((parent ? parent.id : null) === contextId) return chain[j];
+      }
+    }
+    return chain[0];
+  }
+  function pickDeeperTarget(nodeId) {
+    var screen = getActiveScreen();
+    if (!screen) return null;
+    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
+      return a.id;
+    }).concat([nodeId]);
+    var at = -1;
+    for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) at = i2;
+    return at >= 0 && at < chain.length - 1 ? chain[at + 1] : null;
+  }
+  function setLockedForSelection(locked, idsOverride) {
+    var ids = idsOverride || state.selectedIds.slice();
+    var changed2 = false;
+    ids.forEach(function(id2) {
+      var c = findComponent(id2);
+      if (c && !!c.locked !== locked) {
+        pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
+        c.locked = locked;
+        changed2 = true;
+      }
+    });
+    if (!changed2) return;
+    markDirty();
+    renderActiveScreen();
+    selectMultiple(ids);
+  }
+  function toggleFlipForSelection(axis) {
+    var screen = getActiveScreen();
+    if (!screen || !state.selectedIds.length) return;
+    var events = [];
+    state.selectedIds.forEach(function(id2) {
+      var c = findComponent(id2);
+      if (!c || isNodeLocked(id2) || tree_exports.isContainer(c)) return;
+      var typeDef = window.NEXA && window.NEXA.getComponent(c.type);
+      if (typeDef && typeDef.capabilities && typeDef.capabilities.flippable === false) return;
+      var from = { flipH: !!c.flipH, flipV: !!c.flipV };
+      if (axis === "h") {
+        c.flipH = !c.flipH;
+      } else if (axis === "v") {
+        c.flipV = !c.flipV;
+      }
+      var to = { flipH: !!c.flipH, flipV: !!c.flipV };
+      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
+      updateComponentBox(c);
+    });
+    if (!events.length) return;
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
+    markDirty();
+    renderPropertiesPanel();
+  }
+  function nextGroupName(screen, type) {
+    var word = type === "@frame" ? "Frame" : "Group";
+    var re = new RegExp("^" + word + " (\\d+)$");
+    var n = 0;
+    tree_exports.allNodes(screen, { orphans: true }).forEach(function(node) {
+      var m = node.type === (type || "@group") && re.exec(node.name || "");
+      if (m) n = Math.max(n, Number(m[1]));
+    });
+    return word + " " + (n + 1);
+  }
+  function frameSelection() {
+    groupSelection("@frame");
+  }
+  function groupSelection(type) {
+    var asFrame = type === "@frame";
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var ids = state.selectedIds.filter(function(id2) {
+      return findComponent(id2) && isNodeInteractable(id2);
+    });
+    if (ids.length < 1) {
+      RED.notify("Select what to group", { type: "warning", timeout: 2e3 });
+      return;
+    }
+    var parents = ids.map(function(id2) {
+      var p = tree_exports.parentOf(screen, id2);
+      return p ? p.id : null;
+    });
+    if (parents.some(function(p) {
+      return p !== parents[0];
+    })) {
+      RED.notify("Select nodes that share one parent to group them", { type: "warning", timeout: 2500 });
+      return;
+    }
+    var before = treeSnapshot(screen);
+    var group = tree_exports.wrapIn(screen, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen) });
+    if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
+    pushTreeChange(screen, before);
+    markDirty();
+    renderActiveScreen();
+    selectOnly(group.id);
+  }
+  function ungroupSelection() {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var containers = state.selectedIds.map(findComponent).filter(function(c) {
+      return c && tree_exports.isContainer(c) && !isNodeLocked(c.id);
+    });
+    if (!containers.length) return;
+    var before = treeSnapshot(screen);
+    var released = [];
+    containers.forEach(function(g) {
+      released = released.concat(tree_exports.unwrap(screen, g.id).map(function(c) {
+        return c.id;
+      }));
+    });
+    pushTreeChange(screen, before);
+    markDirty();
+    renderActiveScreen();
+    selectMultiple(released);
+  }
+  function startMarqueeSelect(e) {
+    if (!state.artboardEl) return;
+    var offset = state.artboardEl.offset();
+    var startX = (e.pageX - offset.left) / state.zoomLevel;
+    var startY = (e.pageY - offset.top) / state.zoomLevel;
+    var box = { left: startX, top: startY, width: 0, height: 0 };
+    var shiftHeld = e.shiftKey;
+    var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
+      position: "absolute",
+      left: startX + "px",
+      top: startY + "px",
+      width: "0px",
+      height: "0px",
+      border: "1px dashed #2196f3",
+      background: "rgba(33,150,243,0.1)",
+      "pointer-events": "none",
+      "z-index": 999
+    }).appendTo(state.artboardEl);
+    function onMove2(ev) {
+      var curX = (ev.pageX - offset.left) / state.zoomLevel;
+      var curY = (ev.pageY - offset.top) / state.zoomLevel;
+      box.left = Math.min(startX, curX);
+      box.top = Math.min(startY, curY);
+      box.width = Math.abs(curX - startX);
+      box.height = Math.abs(curY - startY);
+      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove2);
+      document.removeEventListener("mouseup", onUp);
+      marqueeEl.remove();
+      if (box.width < 3 && box.height < 3) return;
+      var screen = getActiveScreen();
+      if (!screen) return;
+      var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
+      var context = sel ? tree_exports.parentOf(screen, sel.id) : null;
+      var candidates = context ? tree_exports.kids(context) : screen.components;
+      var hits = candidates.filter(function(c) {
+        if (!isNodeInteractable(c.id)) return false;
+        var b = tree_exports.absBox(screen, c.id);
+        return !(b.x > box.left + box.width || b.x + b.w < box.left || b.y > box.top + box.height || b.y + b.h < box.top);
+      }).map(function(c) {
+        return c.id;
+      });
+      if (shiftHeld) {
+        hits.forEach(function(id2) {
+          if (!isSelected(id2)) state.selectedIds.push(id2);
+        });
+        refreshSelectionVisuals();
+      } else {
+        selectMultiple(hits);
+      }
+    }
+    document.addEventListener("mousemove", onMove2);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  // src/canvas/canvas-ui.js
+  function renderActiveScreen(opts) {
+    var keepPanel = !!(opts && opts.keepPanel);
+    if (!state.artboardEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    ensureSparkplugCommsWired();
+    ensureSparkplugLiveRenderWired();
+    state.selectionHandlesEl = null;
+    if (!keepPanel) {
+      state.selectedIds = [];
+      renderPropertiesPanel();
+    }
+    state.artboardEl.empty();
+    state.artboardEl.css({
+      width: screen.width + "px",
+      height: screen.height + "px",
+      "background-color": "#fff",
+      "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
+      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
+    });
+    if (state.stageEl) {
+      state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
+    }
+    applyZoomTransform();
+    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
+    screen.components.forEach(function(node) {
+      renderComponent(node, null, null, rootScope);
+    });
+    var changed2 = readbackLayout(screen);
+    if (changed2.redraw && !renderActiveScreen._again) {
+      renderActiveScreen._again = true;
+      try {
+        renderActiveScreen(opts);
+      } finally {
+        renderActiveScreen._again = false;
+      }
+    }
+  }
+  function redrawCanvas() {
+    var screen = getActiveScreen();
+    renderActiveScreen({ keepPanel: true });
+    if (!screen) return;
+    state.selectedIds = state.selectedIds.filter(function(id2) {
+      return !!tree_exports.find(screen, id2);
+    });
+    refreshSelectionVisuals({ keepPanel: true });
+  }
+  registerScreenRenderer(renderActiveScreen);
+  if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
+  function applyZoomTransform() {
+    if (!state.stageEl || !state.sizerEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
+    state.sizerEl.css({
+      width: screen.width * state.zoomLevel + "px",
+      height: screen.height * state.zoomLevel + "px"
+    });
+    updateZoomLabel();
+    refreshSelectionVisuals({ keepPanel: true });
+  }
+  function updateZoomLabel() {
+    if (state.zoomLabelEl) state.zoomLabelEl.text(Math.round(state.zoomLevel * 100) + "%");
+  }
+  function setZoom(newZoom, focalPoint) {
+    if (!state.viewportEl || !state.sizerEl) return;
+    newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+    if (newZoom === state.zoomLevel) return;
+    var vp = state.viewportEl.get(0);
+    if (!focalPoint) {
+      focalPoint = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
+    }
+    var sizerOffset = state.sizerEl.position();
+    var stageX = (vp.scrollLeft + focalPoint.x - sizerOffset.left) / state.zoomLevel;
+    var stageY = (vp.scrollTop + focalPoint.y - sizerOffset.top) / state.zoomLevel;
+    state.zoomLevel = newZoom;
+    applyZoomTransform();
+    var newOffset = state.sizerEl.position();
+    vp.scrollLeft = stageX * state.zoomLevel + newOffset.left - focalPoint.x;
+    vp.scrollTop = stageY * state.zoomLevel + newOffset.top - focalPoint.y;
+  }
+  function zoomIn() {
+    setZoom(state.zoomLevel + ZOOM_STEP);
+  }
+  function zoomOut() {
+    setZoom(state.zoomLevel - ZOOM_STEP);
+  }
+  function zoomReset() {
+    setZoom(1);
+  }
+  function zoomToFit() {
+    if (!state.viewportEl) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var vp = state.viewportEl.get(0);
+    var pad = 40;
+    var availW = Math.max(vp.clientWidth - pad * 2, 10);
+    var availH = Math.max(vp.clientHeight - pad * 2, 10);
+    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
+    fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
+    state.zoomLevel = fitZoom;
+    applyZoomTransform();
+    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
+    vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
+    vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+  }
+  function buildZoomToolbar(trayBody) {
+    var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
+      position: "absolute",
+      right: "16px",
+      bottom: "16px",
+      "z-index": "10",
+      display: "flex",
+      "align-items": "center",
+      background: "#fff",
+      "border-radius": "4px",
+      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+      overflow: "hidden"
+    }).appendTo(trayBody);
+    function zoomBtn(icon, title, onClick) {
+      return window.$("<a>", { href: "#", title }).css({
+        width: "26px",
+        height: "26px",
+        display: "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        color: "#555",
+        cursor: "pointer"
+      }).append(window.$("<i>", { "class": "fa " + icon })).on("click", function(e) {
+        e.preventDefault();
+        onClick();
+      }).appendTo(bar);
+    }
+    zoomBtn("fa-minus", "Zoom out", zoomOut);
+    state.zoomLabelEl = window.$("<span>").css({
+      width: "44px",
+      "text-align": "center",
+      "font-size": "11px",
+      color: "#555"
+    }).appendTo(bar);
+    zoomBtn("fa-circle-o", "Reset zoom", zoomReset);
+    zoomBtn("fa-plus", "Zoom in", zoomIn);
+    zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
+    updateZoomLabel();
   }
 
   // src/canvas/clipboard.js
@@ -29818,7 +29989,7 @@
       return n.y;
     }));
     var maxX = Math.max.apply(null, nodes.map(function(n) {
-      return n.x + LOGIC_NODE_W;
+      return n.x + logicNodeWidth(n);
     }));
     var maxY = Math.max.apply(null, nodes.map(function(n) {
       return n.y + LOGIC_NODE_H;
@@ -30086,16 +30257,18 @@
         var x = (event.pageX - offset.left) / state.logicZoomLevel;
         var y = (event.pageY - offset.top) / state.logicZoomLevel;
         if (x < 0 || y < 0) return;
-        var nodeX = Math.max(0, Math.round(x - LOGIC_NODE_W / 2));
-        var nodeY = Math.max(0, Math.round(y - LOGIC_NODE_H / 2));
         var metricRef = ui.draggable.data("nexaSparkplugMetric");
-        if (metricRef) {
-          addLogicNode({ type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) }, nodeX, nodeY);
-          return;
-        }
         var makeNode = ui.draggable.data("nexaMakeNode");
-        if (typeof makeNode !== "function") return;
-        addLogicNode(makeNode(), nodeX, nodeY);
+        var nodeData = metricRef ? { type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) } : typeof makeNode === "function" ? makeNode() : null;
+        if (!nodeData) return;
+        var nodeW = logicNodeWidth(nodeData);
+        var nodeX = Math.max(0, x - nodeW / 2);
+        var nodeY = Math.max(0, y - LOGIC_NODE_H / 2);
+        if (!(event.altKey || event.originalEvent && event.originalEvent.altKey)) {
+          nodeX = snapLogic(nodeX);
+          nodeY = snapLogic(nodeY);
+        }
+        addLogicNode(nodeData, Math.round(nodeX), Math.round(nodeY));
       }
     });
     scaledDropArea(state.logicArtboardEl);
@@ -30117,8 +30290,10 @@
         uiPane.toggle(tab.id === "ui");
         logicPane.toggle(tab.id === "logic");
         if (tab.id === "logic") {
+          selectLogicForComponents(state.selectedIds);
           renderLogicCanvas();
           refreshEventsHighlight();
+          scrollLogicToSelection();
         } else {
           state.logicSelectedIds = [];
           refreshLogicSelectionVisuals();

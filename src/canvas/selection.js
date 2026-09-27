@@ -9,6 +9,7 @@ import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { clearSelectionHandles, renderSelectionHandles, updateComponentBox } from "./selection-handles.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { refreshEventsHighlight } from "../sidebar/palette-events-panel.js";
+import { selectLogicForComponents } from "../logic/logic-selection.js";
 import { renderActiveScreen } from "./canvas-ui.js";
 
 var hierarchyListeners = [];
@@ -34,6 +35,8 @@ export function refreshSelectionVisuals(opts) {
     if (opts && opts.keepPanel) return;
     renderPropertiesPanel();
     refreshEventsHighlight();
+    // the Logic canvas follows: the nodes of what is selected here
+    selectLogicForComponents(state.selectedIds);
     hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
     // (not away from the Hierarchy: selecting there — or arranging the tree —
     // must keep the tree in view)
