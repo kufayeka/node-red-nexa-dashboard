@@ -115,58 +115,45 @@ frame that declares it) and name. The Events tab has **Set …** and
   non-2xx status, network error or timeout.
 - **Timing:** it is async; the wire continues when the response is in.
 
-## 4b. Lists: the repeater (Populate)
+## 4b. Lists: the repeater (Populate + Layout)
 
-**Populate** (Events tab → Lists) fills a **container** (a Row, Column or
-Grid frame) with a **template**, one card per item of an array. The array
-comes from `msg.payload`, a msg property, or a fixed list.
+**Populate** (Events tab → Lists) repeats a **template**, one copy per item of
+an array. The array comes from `msg.payload`, a msg property, or a fixed
+list. The copies go into the frame(s) of the **Layout** node(s) it is wired
+to.
 
-**Modes:**
-
-| Mode | Does |
-| --- | --- |
-| **replace** | By key: cards are kept, updated, added or removed, then ordered as given. Without a key, everything is replaced. |
-| **append** / **prepend** | Adds cards at the end / start. |
-| **update by key** | Updates a card in place, or adds it when new. |
-| **remove by key** | Removes cards. |
-| **clear** | Removes all cards. |
-
-The **key** is the item field that identifies a card (e.g. `id`). A known
-key updates the same card in place, which matters for realtime data and
-tables. The container's own children (a header) stay; cards come after them.
-
-**The template declares a param** (Templates tab → Parameters, e.g.
-`product`), and the Populate node chooses which param each item goes into
-("Pass each item into the template's param"). Inside the template, bind
-`{product.name}`, `{product.price}`, and `{index}` for the position. The
-item is also always available as `{item}` / `msg.item`.
-
-**Which container: the Layout node.** Every frame of the screen is also a
-Logic node. Select a Row / Column / Grid on the canvas, and its chip lights
-up in the Events tab under **"Layouts on this screen"** (labelled with name,
-id and kind, so two Rows are told apart). Drag it into the Logic canvas and
-wire a Populate into it:
+**The Layout node.** Every frame of the screen (Row, Column, Grid) is listed
+in the Events tab under **"Layouts on this screen"**, by name, id and kind,
+so two Rows are told apart. Select a frame on the canvas and its chip lights
+up; drag it into the Logic canvas.
 
 ```
 [button: click] → [Function: msg.payload = {id, …}] → [Populate: Template 1 → param1, append] ─┬→ [Layout: Column #a928]
                                                                                                └→ [Layout: Grid #07fd]
 ```
 
-A Populate wired to several Layout nodes fills each of them with the same
-data, and each container keeps its own list. A Populate can still name a
-container itself instead.
-- **The template's own Logic runs per card**, like a React component. For
-  example, `[Buy: on click] → [HTTP Request POST /api/order/{item.id}, body {item}]`
-  (the body can be a binding).
-- **Events from inside a card** carry `msg.item` and `msg.index`, for a flow
-  outside the card that handles every card.
-- **"Cards fill the container's width"** makes list / table rows.
+- Wired to several Layout nodes, one Populate fills each with the same data;
+  each frame keeps its own list.
+- A frame's own children (e.g. a header) stay first.
 
-Example:
+**Modes:**
 
-```
-[On Load] → [HTTP Request GET /api/products] → [Populate: Grid "Products" × ProductCard, key id, items msg.payload]
-```
+| Mode | Does |
+| --- | --- |
+| **replace** | By key: copies are kept, updated, added or removed, then ordered as given. Without a key, everything is replaced. |
+| **append** / **prepend** | Adds copies at the end / start. |
+| **update by key** | Updates a copy in place (not re-created), or adds it when new. |
+| **remove by key** | Removes copies. |
+| **clear** | Removes all copies. |
+
+**The template declares a param** (Templates tab → Parameters, e.g.
+`product`). Populate chooses the param each item goes into; inside, bind
+`{product.name}`, and `{index}` for the position. The item is also
+available as `{item}` / `msg.item`.
+- **The template's own Logic runs per copy**, like a React component. For
+  example, `[button: click] → [HTTP Request POST /api/order/{product.id}, body {product}]`.
+- **Events from inside a copy** carry `msg.item` and `msg.index`.
+- **"Each copy fills the frame's width"** makes list / table rows.
 
 ## 5. The Function node API
 

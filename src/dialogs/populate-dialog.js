@@ -2,10 +2,10 @@ import { markDirty, getActiveScreen, Tree, Layout, state } from "../state.js";
 import { renderLogicCanvas } from "../logic/logic-nodes.js";
 
 // The "Populate" Logic node (the repeater, see lib/nexa-runtime-client.js
-// runPopulate): a container (a row / column / grid frame) filled with a
-// template, one card per item of an array. Each card gets the params `item`
-// (its object) and `index`; its own Logic runs per card, and an event from
-// inside it carries msg.item / msg.index.
+// runPopulate): a template repeated, one copy per item of an array, into the
+// frame(s) of the Layout node(s) it is wired to. Each copy gets the item in the
+// param the template declares, and `index`; its own Logic runs per copy, and an
+// event from inside it carries msg.item / msg.index.
 var MODES = [
     ["replace", "Replace the list (kept / updated / added / removed by key)"],
     ["append", "Append"], ["prepend", "Prepend"],
@@ -33,7 +33,7 @@ export function openLayoutNodeEditor(node) {
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
             window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
-                .text("A frame of this screen as a Logic node. Wire a Populate node into it: the cards go into this frame. Tip: select the frame on the canvas — its chip lights up in the Events tab.").appendTo(body);
+                .text("A frame of this screen as a Logic node. Wire a Populate node into it: the template's copies go into this frame. Tip: select the frame on the canvas — its chip lights up in the Events tab.").appendTo(body);
             var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
             if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
             frames.forEach(function (f) { window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel); });
@@ -45,10 +45,8 @@ export function openLayoutNodeEditor(node) {
 }
 
 export function openPopulateNodeEditor(node) {
-    var screen = getActiveScreen();
-    var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
     var templates = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); });
-    var d = { container: node.container || "", template: node.template || "", mode: node.mode || "replace", key: node.key === undefined ? "id" : node.key,
+    var d = { template: node.template || "", mode: node.mode || "replace", key: node.key === undefined ? "id" : node.key,
         valueSource: node.valueSource || "payload", msgPath: node.msgPath || "payload.items", value: node.value, fill: !!node.fill,
         itemParam: node.itemParam };
     // the template declares its params; each card's item goes into the one chosen here
@@ -64,6 +62,7 @@ export function openPopulateNodeEditor(node) {
                 text: "Save", "class": "primary",
                 click: function () {
                     Object.keys(d).forEach(function (k) { node[k] = d[k]; });
+                    delete node.container;   // where it goes: the Layout node(s) it is wired to
                     if (d.valueSource !== "static") delete node.value;
                     if (d.valueSource !== "msg") delete node.msgPath;
                     markDirty();
@@ -75,7 +74,7 @@ export function openPopulateNodeEditor(node) {
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
             window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
-                .text("Fills a container with a template, one card per item. Inside the template, bind {item.name}, {index}; the template's own Logic runs per card (e.g. Buy → HTTP Request with body {item}), and an event from inside a card gives msg.item / msg.index.")
+                .text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button → HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.")
                 .appendTo(body);
             var label = function (text) { return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body); };
             var select = function (key, options, onChange) {
@@ -86,9 +85,7 @@ export function openPopulateNodeEditor(node) {
                 sel.on("change", function () { d[key] = sel.val(); if (onChange) onChange(); });
                 return sel;
             };
-            label("Container — where the cards go");
-            select("container", [["", "The Layout node(s) this is wired to  (recommended)"]].concat(frames.map(function (f) { return [f.id, frameLabel(f)]; })));
-            label("Template (one card per item)");
+            label("Template (one copy per item)");
             select("template", templates.length ? templates.map(function (t) { return [t.id, t.name]; }) : [["", "(no templates yet)"]], function () { d.itemParam = undefined; fillParams(); });
             label("Pass each item into the template's param");
             var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function () { d.itemParam = paramSel.val(); });
@@ -116,7 +113,7 @@ export function openPopulateNodeEditor(node) {
                 .on("change", function () { try { d.value = this.value.trim() ? JSON.parse(this.value) : []; window.$(this).css("border-color", ""); } catch (e) { window.$(this).css("border-color", "#d00"); } });
             var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
             window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function () { d.fill = this.checked; });
-            window.$("<span>").text("Cards fill the container's width (a list / table row)").appendTo(fillRow);
+            window.$("<span>").text("Each copy fills the frame's width (a list / table row)").appendTo(fillRow);
             function sync() { path.toggle(d.valueSource === "msg"); json.toggle(d.valueSource === "static"); }
             sync();
             srcSel.trigger("blur");

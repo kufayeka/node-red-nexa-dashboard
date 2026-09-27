@@ -55,7 +55,7 @@ export function logicNodeLabel(node) {
     if (node.type === "populate" && !node.container) {
         var tplP = node.template ? findTemplate(node.template) : null;
         var mw = { append: "Append ", prepend: "Prepend ", upsert: "Update ", remove: "Remove ", clear: "Clear " }[node.mode] || "Populate ";
-        return mw + (node.mode === "clear" || node.mode === "remove" ? "cards" : (tplP ? tplP.name : "?") + (node.itemParam ? " → " + node.itemParam : "")) + " → layout";
+        return mw + (node.mode === "clear" || node.mode === "remove" ? "items" : (tplP ? tplP.name : "?") + (node.itemParam ? " → " + node.itemParam : "")) + " → layout";
     }
     if (node.type === "populate") {
         var pScreen = getActiveScreen();
