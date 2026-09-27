@@ -879,6 +879,10 @@
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
     "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    // web / data: an API call (async, continues when the response is in), browser storage, cookies
+    "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
+    "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
+    "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
     // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
     // "function", they're asynchronous (an HTTP round-trip) and only
@@ -26354,6 +26358,9 @@
     if (type === "on-variable-change") {
       return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
+    if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
+    if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
       return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
     }
@@ -26696,6 +26703,16 @@
         }, "", "on-variable-change");
       });
     }
+    sectionHeader(state.eventsPane, "Web & data");
+    chip(state.eventsPane, "HTTP Request", function() {
+      return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 1e4 };
+    }, "", "http-request");
+    chip(state.eventsPane, "Storage", function() {
+      return { type: "storage", action: "get", store: "local", key: "", target: "payload", valueSource: "payload" };
+    }, "", "storage");
+    chip(state.eventsPane, "Cookie", function() {
+      return { type: "cookie", action: "get", name: "", target: "payload", valueSource: "payload", path: "/", sameSite: "Lax" };
+    }, "", "cookie");
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function() {
       return { type: "sparkplug-write", tag: "" };
@@ -28752,6 +28769,129 @@
     });
   }
 
+  // src/dialogs/web-io-dialog.js
+  var TITLES2 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
+  var HELP2 = {
+    "http-request": "Calls a web API. The URL and header values take bindings \u2014 {variable}, {$route.params.id}, {msg.payload.id}. The request body is msg.payload (JSON). Out: msg.payload = the response (parsed JSON or text), msg.statusCode, msg.ok and msg.error (non-2xx, network error or timeout). msg.url / msg.method / msg.headers override the node's.",
+    storage: `Reads or writes the browser's storage. "Local" is kept across visits, "session" until the tab closes. Values are stored as JSON.`,
+    cookie: "Reads, writes or removes a cookie \u2014 for example a session token after a login. Set / remove run in the page, so they are not HttpOnly (a server-set HttpOnly cookie is sent with HTTP Request calls automatically)."
+  };
+  function openWebIoNodeEditor(node) {
+    var type = node.type;
+    var d = JSON.parse(JSON.stringify(node));
+    window.RED.tray.show({
+      id: "nexa-logic-webio-editor",
+      title: "Configure " + TITLES2[type] + " Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            Object.keys(d).forEach(function(k) {
+              if (k !== "id" && k !== "x" && k !== "y" && k !== "type") node[k] = d[k];
+            });
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
+        var label = function(text2, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
+        };
+        var text = function(key, placeholder, parent) {
+          return window.$("<input>", { type: "text", placeholder: placeholder || "" }).css({ width: "100%", "box-sizing": "border-box" }).val(d[key] === void 0 ? "" : d[key]).appendTo(parent || body).on("change", function() {
+            d[key] = this.value;
+          });
+        };
+        var select = function(key, options, parent, onChange) {
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(parent || body);
+          options.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+          });
+          sel.val(d[key] !== void 0 ? d[key] : options[0][0]);
+          d[key] = sel.val();
+          sel.on("change", function() {
+            d[key] = sel.val();
+            if (onChange) onChange();
+          });
+          return sel;
+        };
+        if (type === "http-request") {
+          label("Method");
+          select("method", [["GET", "GET"], ["POST", "POST"], ["PUT", "PUT"], ["PATCH", "PATCH"], ["DELETE", "DELETE"]]);
+          label("URL");
+          text("url", "https://api.example.com/orders/{msg.payload.id}?line={line}");
+          label("Headers (JSON \u2014 values take bindings)");
+          var h = window.$("<textarea>", { rows: 3, placeholder: '{"Authorization": "Bearer {token}"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(typeof d.headers === "string" ? d.headers : d.headers ? JSON.stringify(d.headers, null, 1) : "").appendTo(body).on("change", function() {
+            d.headers = this.value.trim();
+          });
+          h.attr("spellcheck", "false");
+          label("Body");
+          select("body", [["payload", "msg.payload (JSON)"], ["none", "No body"]]);
+          label("Timeout (ms, 0 = none)");
+          text("timeout", "10000");
+          label("Cookies");
+          select("credentials", [["same-origin", "Same site only (default)"], ["include", "Always send (cross-site API with cookies)"], ["omit", "Never"]]);
+          return;
+        }
+        label("Action");
+        var valueWrap, targetWrap, cookieOpts;
+        var sync = function() {
+          if (valueWrap) valueWrap.toggle(d.action === "set");
+          if (targetWrap) targetWrap.toggle(!d.action || d.action === "get");
+          if (cookieOpts) cookieOpts.toggle(d.action !== "get");
+        };
+        select("action", [["get", "Get (into the message)"], ["set", "Set"], ["remove", "Remove"]], body, sync);
+        if (type === "storage") {
+          label("Store");
+          select("store", [["local", "Local (kept across visits)"], ["session", "Session (until the tab closes)"]]);
+          label("Key");
+          text("key", "e.g. cart or prefs-{user}");
+        } else {
+          label("Cookie name");
+          text("name", "e.g. session");
+        }
+        targetWrap = window.$("<div>").appendTo(body);
+        label("Into msg property", targetWrap);
+        text("target", "payload", targetWrap);
+        valueWrap = window.$("<div>").appendTo(body);
+        label("Value", valueWrap);
+        var staticRow = window.$("<div>").css({ "margin-top": "6px" });
+        select("valueSource", [["payload", "msg.payload"], ["static", "A fixed value"]], valueWrap, function() {
+          staticRow.toggle(d.valueSource === "static");
+        });
+        staticRow.appendTo(valueWrap);
+        buildTypedInputWidget(staticRow, "string", d.value !== void 0 ? d.value : "", function(v) {
+          d.value = v;
+        });
+        staticRow.toggle(d.valueSource === "static");
+        if (type === "cookie") {
+          cookieOpts = window.$("<div>").appendTo(body);
+          label("Expires after (days; empty = when the browser closes)", cookieOpts);
+          text("days", "7", cookieOpts);
+          label("Path", cookieOpts);
+          text("path", "/", cookieOpts);
+          label("SameSite", cookieOpts);
+          select("sameSite", [["Lax", "Lax (default)"], ["Strict", "Strict"], ["None", "None (needs Secure)"]], cookieOpts);
+          var secRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "8px", "font-size": "12px" }).appendTo(cookieOpts);
+          window.$("<input>", { type: "checkbox" }).prop("checked", !!d.secure).appendTo(secRow).on("change", function() {
+            d.secure = this.checked;
+          });
+          window.$("<span>").text("Secure (HTTPS only)").appendTo(secRow);
+        }
+        sync();
+      }
+    });
+  }
+
   // src/dialogs/sparkplug-write-dialog.js
   function openSparkplugWriteNodeEditor(node) {
     var tagInput, listSelect;
@@ -28892,6 +29032,14 @@
       var n = (node.states || []).length;
       return "Layer Control" + (n ? " (" + n + ")" : "");
     }
+    if (node.type === "http-request") {
+      var u = node.url || "";
+      return (node.method || "GET") + " " + (u ? u.length > 28 ? u.slice(0, 27) + "\u2026" : u : "(no URL)");
+    }
+    if (node.type === "storage" || node.type === "cookie") {
+      var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
+      return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
+    }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
       var vScreen = getActiveScreen();
       var owner = node.scope && node.scope !== "@app" && vScreen ? tree_exports.find(vScreen, node.scope) : null;
@@ -29029,6 +29177,12 @@
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openLayerControlNodeEditor(node);
+      });
+    }
+    if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
+      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openWebIoNodeEditor(node);
       });
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
@@ -30040,7 +30194,7 @@
     });
     modeSel.val(screen.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
-    var HELP2 = {
+    var HELP3 = {
       fixed: function() {
         return "Shown at exactly " + screen.width + " \xD7 " + screen.height + " px \u2014 for a known panel / device.";
       },
@@ -30049,7 +30203,7 @@
       fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout."
     };
     var syncHelp = function() {
-      var h = HELP2[modeSel.val()];
+      var h = HELP3[modeSel.val()];
       modeHelp.text(typeof h === "function" ? h() : h || "");
     };
     syncHelp();

@@ -16,12 +16,14 @@ window.__NEXA_APP__ = { variables: [v("user", "string", "guest", "local"), v("co
 window.__NEXA_TEMPLATES__ = [{ id: "T", name: "Badge", width: 200, height: 20, params: [], components: [label("inT", "{user}|{local}")], logic: { nodes: [], wires: [] } }];
 var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
 window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orphans: [],
-  variables: [v("local", "string", "screen-only"), v("log", "string", ""), v("items", "array", []), v("cfg", "object", { a: 1 }), v("flag", "boolean", false), v("copy", "number", -1), v("fetched", "number", 0)],
+  variables: [v("local", "string", "screen-only"), v("log", "string", ""), v("items", "array", []), v("cfg", "object", { a: 1 }), v("flag", "boolean", false), v("copy", "number", -1), v("fetched", "number", 0),
+    v("file", "string", "data"), v("apiItems", "array", []), v("err", "string", ""), v("stored", "string", ""), v("cookie", "string", "")],
   components: [
     label("route", "{$route.params.id}/{$route.query.tab}", 0),
     label("user", "{user}", 20), label("counter", "{counter}", 40), label("log", "{log}", 60),
     label("items", "{items}", 80), label("cfg", "{cfg}", 100), label("flag", "{flag}", 120), label("copy", "{copy}", 140), label("fetched", "{fetched}", 160),
-    { id: "badge", type: "@template", templateId: "T", x: 0, y: 200, w: 200, h: 20, paramValues: {} }
+    { id: "badge", type: "@template", templateId: "T", x: 0, y: 200, w: 200, h: 20, paramValues: {} },
+    label("apiItems", "{apiItems}", 240), label("err", "{err}", 260), label("stored", "{stored}", 280), label("cookie", "{cookie}", 300)
   ],
   logic: { nodes: [
     { id: "go", type: "inject", once: true, onceDelay: 300, intervalMs: 0, payloadType: "str", payload: "b" },
@@ -34,8 +36,18 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orp
     { id: "tgl", type: "set-variable", scope: "", name: "flag", op: "toggle" },
     { id: "get", type: "get-variable", scope: "@app", name: "counter", target: "payload" },
     { id: "cp", type: "set-variable", scope: "", name: "copy", op: "set", valueSource: "payload" },
-    { id: "who", type: "set-variable", scope: "@app", name: "user", op: "set", valueSource: "static", value: "ann" }
-  ], wires: [W("go", "inc"), W("watch", "fn"), W("go", "app1"), W("app1", "app2"), W("go", "mrg"), W("go", "tgl"), W("inc", "get"), W("get", "cp"), W("go", "who")] } };
+    { id: "who", type: "set-variable", scope: "@app", name: "user", op: "set", valueSource: "static", value: "ann" },
+    { id: "api", type: "http-request", method: "GET", url: "/fx/{file}.json", timeout: 5000 },
+    { id: "keep", type: "set-variable", scope: "", name: "apiItems", op: "set", valueSource: "msg", msgPath: "payload.items" },
+    { id: "bad", type: "http-request", method: "GET", url: "/fx/missing-{msg.payload}.json" },
+    { id: "keepErr", type: "set-variable", scope: "", name: "err", op: "set", valueSource: "msg", msgPath: "error" },
+    { id: "st1", type: "storage", action: "set", store: "session", key: "k-{file}", valueSource: "static", value: "hello" },
+    { id: "st2", type: "storage", action: "get", store: "session", key: "k-{file}", target: "payload" },
+    { id: "keepSt", type: "set-variable", scope: "", name: "stored", op: "set", valueSource: "payload" },
+    { id: "ck1", type: "cookie", action: "set", name: "token", valueSource: "static", value: "t-9", days: 1, path: "/", sameSite: "Lax" },
+    { id: "ck2", type: "cookie", action: "get", name: "token", target: "payload" },
+    { id: "keepCk", type: "set-variable", scope: "", name: "cookie", op: "set", valueSource: "payload" }
+  ], wires: [W("go", "api"), W("api", "keep"), W("go", "bad"), W("bad", "keepErr"), W("go", "st1"), W("st1", "st2"), W("st2", "keepSt"), W("go", "ck1"), W("ck1", "ck2"), W("ck2", "keepCk"),W("go", "inc"), W("watch", "fn"), W("go", "app1"), W("app1", "app2"), W("go", "mrg"), W("go", "tgl"), W("inc", "get"), W("get", "cp"), W("go", "who")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

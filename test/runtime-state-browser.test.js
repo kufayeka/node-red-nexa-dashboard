@@ -13,7 +13,7 @@ const { withPage, startServer } = require('../sdk/testkit');
 let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
-const IDS = ['route', 'user', 'counter', 'log', 'items', 'cfg', 'flag', 'copy', 'fetched', 'badge::inT'];
+const IDS = ['route', 'user', 'counter', 'log', 'items', 'cfg', 'flag', 'copy', 'fetched', 'badge::inT', 'apiItems', 'err', 'stored', 'cookie'];
 
 async function main() {
     const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
@@ -44,6 +44,9 @@ async function main() {
                 const side = await js(`(function () { return [localStorage.getItem("nexa-test"), document.cookie]; })()`);
                 assert.strictEqual(side[0], '{"n":5}');
                 assert.ok(/sid=abc%201/.test(side[1]), side[1]);
+            });
+            await ok('HTTP Request (URL with a {variable}; a 404 gives msg.error), Storage and Cookie set -> get', async () => {
+                await settle({ apiItems: '["x","y"]', err: 'HTTP 404', stored: 'hello', cookie: 't-9' });
             });
             await ok('an app variable changed on the page shows through the template boundary', async () => {
                 await settle({ user: 'ann', 'badge::inT': 'ann|{local}' });

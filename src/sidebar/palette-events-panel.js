@@ -59,6 +59,9 @@ function getLogicNodeMeta(type) {
     if (type === "on-variable-change") {
         return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
+    if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
+    if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
         return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
     }
@@ -385,6 +388,11 @@ export function renderEventsPanel() {
             }, "", "on-variable-change");
         });
     }
+
+    sectionHeader(state.eventsPane, "Web & data");
+    chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");
+    chip(state.eventsPane, "Storage", function () { return { type: "storage", action: "get", store: "local", key: "", target: "payload", valueSource: "payload" }; }, "", "storage");
+    chip(state.eventsPane, "Cookie", function () { return { type: "cookie", action: "get", name: "", target: "payload", valueSource: "payload", path: "/", sameSite: "Lax" }; }, "", "cookie");
 
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function () { return { type: "sparkplug-write", tag: "" }; }, "", "sparkplug-write");

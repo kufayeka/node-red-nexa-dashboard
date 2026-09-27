@@ -11,6 +11,7 @@ import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
 import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
+import { openWebIoNodeEditor } from "../dialogs/web-io-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
@@ -44,6 +45,14 @@ export function logicNodeLabel(node) {
     if (node.type === "layer-control") {
         var n = (node.states || []).length;
         return "Layer Control" + (n ? (" (" + n + ")") : "");
+    }
+    if (node.type === "http-request") {
+        var u = node.url || "";
+        return (node.method || "GET") + " " + (u ? (u.length > 28 ? u.slice(0, 27) + "…" : u) : "(no URL)");
+    }
+    if (node.type === "storage" || node.type === "cookie") {
+        var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
+        return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         var vScreen = getActiveScreen();
@@ -157,6 +166,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openLayerControlNodeEditor(node);
+        });
+    }
+    if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openWebIoNodeEditor(node);
         });
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
