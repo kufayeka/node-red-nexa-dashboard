@@ -27,6 +27,9 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1200, height: 800, treeVersion: 1, or
       children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
     { id: "grid", type: "@frame", name: "Grid", x: 350, y: 10, w: 640, h: 300, layout: { mode: "grid", gap: 10, columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }] }, children: [] },
     { id: "gridC", type: "@frame", name: "GridC", x: 350, y: 400, w: 640, h: 120, layout: { mode: "grid", gap: 10, alignX: "center", columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }] }, style: { scroll: "vertical", scrollbar: "hidden" }, children: [] },
+    // a zoomable grid filled by a virtual list: the zoom's viewport scrolls it
+    { id: "gz", type: "@frame", name: "GridZ", x: 10, y: 540, w: 320, h: 200, layout: { mode: "grid", gap: 0, columns: [{ size: 1, unit: "fr" }] },
+      style: { scroll: "both", clip: true }, zoom: { enabled: true, min: 0.5, max: 4, start: "100", controls: true }, children: [] },
     { id: "row", type: "@frame", name: "Row", x: 350, y: 330, w: 640, h: 60, layout: { mode: "horizontal", gap: 10 }, children: [] },
     { id: "ctl", type: "btn", x: 1000, y: 0, w: 10, h: 10, props: {} },
     { id: "last", type: "label", x: 1000, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } }
@@ -40,8 +43,9 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1200, height: 800, treeVersion: 1, or
     { id: "e6", type: "ui-event", compId: "ctl", event: "grid" }, node("p6", "grid", "replace", { fill: true }),
     // through a Layout node, like the editor wires it
     { id: "e8", type: "ui-event", compId: "ctl", event: "gridC" }, node("p8", "gridC", "replace"),
+    { id: "e9", type: "ui-event", compId: "ctl", event: "gz" }, node("p9", "gz", "replace"),
     { id: "e7", type: "ui-event", compId: "ctl", event: "row" }, node("p7", "", "replace"), { id: "lR", type: "layout", container: "row" }
-  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p7", "lR"), W("e8", "p8")] } };
+  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p7", "lR"), W("e8", "p8"), W("e9", "p9")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

@@ -69,7 +69,9 @@ function extractEditorScript() {
 }
 
 function runOne(file, args) {
-    const result = spawnSync(process.execPath, [path.join(__dirname, file), ...args], { encoding: "utf8" });
+    // a test that hangs fails (instead of holding up the whole run)
+    const result = spawnSync(process.execPath, [path.join(__dirname, file), ...args], { encoding: "utf8", timeout: 240000 });
+    if (result.error && result.error.code === "ETIMEDOUT") result.stderr = (result.stderr || "") + " [test] timed out after 240 s";
     const output = (result.stdout || "") + (result.stderr || "");
     const crashed = result.status !== 0 && !/ALL OK/.test(output);
     const hasAllOk = /ALL OK/.test(output);

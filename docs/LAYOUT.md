@@ -192,14 +192,20 @@ constraints = {
 - **Its scroll container** is the nearest frame that scrolls, else the page. It also works while the screen is scaled (Fit width).
 - **A child of an auto layout** has "Sticky while the frame scrolls", for example the header row of a scrolling column. This uses CSS sticky, at the start of the flow.
 
-**Zoom & pan** (a frame, live page): Frame → **Zoomable**.
+**Zoom & pan** (a frame, live page): Frame → **Zoomable**. It works exactly like the editor's canvas.
 
-- **Zoom**: Ctrl + wheel, a trackpad or two-finger pinch, or the − + fit 100 % buttons.
-  - Optionally the wheel zooms without Ctrl.
-  - A zoom keeps the point under the pointer where it is.
-- **Pan**: drag the frame's background, drag with the middle button, or use one finger on a touch screen. Buttons inside it still take their clicks.
-- **Limits**: a min / max zoom. It starts at **Fit** (all its content in view) or **100 %**.
+- **The frame** always clips and scrolls both ways while it is zoomable; the inspector locks Clip content and Scroll.
+  - Its scrollbars stay as they are and are not zoomed. Their length follows the zoom: zoomed in, there is more to scroll.
+  - Zoomed out below the frame, the content is centred.
+  - Nothing is drawn outside the frame.
+- **Zoom**:
+  - Ctrl + wheel (or a trackpad pinch) zooms at the pointer, 20 % a step like the editor. Optionally the wheel zooms without Ctrl.
+  - A two-finger pinch zooms on a touch screen.
+  - The editor's toolbar: **− 100% ○ + ⤢** (zoom out, the level, reset, zoom in, fit). "Show the zoom toolbar" shows or hides it.
+- **Pan** (scrolling): a plain wheel, a drag on the background, the middle button, or one finger. A drag that starts on a component (a button, a field) stays that component's, and no text gets selected while you drag.
+- **Double-click / double-tap** goes back to the start. The start is **Fit** (all its content in view) or **100 %**, within a min / max zoom.
 - The rest of the screen keeps its size, e.g. a P&ID drawing that zooms between a fixed header and a fixed side panel.
+- A frame inside the zoomed content zooms with it, its own scrollbars too (it is content).
 - A frame's scrollbar can be hidden: Fill & stroke → Hide the scrollbar. It still scrolls.
 
 Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, `test/runtime-carousel-browser.test.js`, `test/runtime-virtual-browser.test.js`.

@@ -107,6 +107,19 @@ async function main() {
                 const sb = await js(`(function () { var f = document.querySelector('[data-id="gridC"]'); return [f.classList.contains("nexa-no-scrollbar"), getComputedStyle(f).scrollbarWidth, f.scrollHeight > f.clientHeight]; })()`);
                 assert.deepStrictEqual(sb, [true, 'none', true]);
             });
+            await ok('in a zoomable frame: the zoom viewport scrolls the list (the zoomed content has no scrollbar of its own)', async () => {
+                await send('gz', items(1000, 'Z'));
+                await js('new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(r, 50); }); }); })');
+                const st = await js(`(function () { var f = document.querySelector('[data-id="gz"]'), stage = f.querySelector(".nexa-zoom-stage"), vp = f.querySelector(".nexa-zoom-viewport");
+                    return { stageScrolls: /(auto|scroll)/.test(getComputedStyle(stage).overflowY + getComputedStyle(stage).overflowX), vpH: vp.scrollHeight }; })()`);
+                assert.strictEqual(st.stageScrolls, false, 'the stage does not scroll');
+                assert.strictEqual(st.vpH, 1000 * 40, 'the viewport scrolls the whole list (40 each, no gap, at 100 %)');
+                // 200 %, scrolled to the middle: the copies there are drawn, in view
+                await js(`(function () { var f = document.querySelector('[data-id="gz"]'); f.__zoom.zoomTo(2, 0, 0); f.querySelector(".nexa-zoom-viewport").scrollTop = 500 * 40 * 2; return 1; })()`);
+                await js('new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(r, 50); }); }); })');
+                const vis = await js(`(function () { var f = document.querySelector('[data-id="gz"]'), r = f.getBoundingClientRect(); var e = document.querySelector('[data-id="gz#500"]'); if (!e) return "not mounted"; var b = e.getBoundingClientRect(); return [Math.round(b.top - r.top), Math.round(b.height)]; })()`);
+                assert.deepStrictEqual(vis, [0, 80], 'copy 500 at the top of the view, 40 * 2 high');
+            });
             await ok('a row (through a Layout node): along x, scrolled horizontally', async () => {
                 await send('row', items(N, 'R'));
                 let c = await copies('row');

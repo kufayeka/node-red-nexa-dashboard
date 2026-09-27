@@ -99,11 +99,12 @@ export function layoutOf(frame) {
     return out;
 }
 
-// A zoomable frame (frame.zoom): on the live page its content zooms and pans inside
-// it — Ctrl + wheel / a trackpad pinch, a two-finger pinch, the buttons; a drag on
-// its background (or with the middle button) pans — while the rest of the screen
-// keeps its size.
-export var ZOOM_DEFAULT = { enabled: false, min: 0.25, max: 4, wheel: "ctrl", controls: true, start: "fit" };
+// A zoomable frame (frame.zoom): on the live page, exactly the editor's canvas — the frame
+// clips and scrolls both ways (always: it cannot be turned off), its scrollbars stay as
+// they are and their length follows the zoom; only the content zooms (Ctrl + wheel / a
+// pinch at the pointer) and pans (scrolling, a drag on the background). dblclick: a double
+// click / tap goes back to the start (Fit / 100 %); controls: the editor's zoom toolbar.
+export var ZOOM_DEFAULT = { enabled: false, min: 0.25, max: 4, wheel: "ctrl", controls: true, start: "fit", dblclick: true };
 export function zoomOf(frame) {
     if (!frame || frame.type !== "@frame" || !frame.zoom || !frame.zoom.enabled) return null;
     if (layoutOf(frame).mode === "carousel") return null;   // a carousel scrolls its slides instead

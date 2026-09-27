@@ -67,7 +67,8 @@ var FRAME_META = {
         zMax: prop("zMax", "number", "Max zoom", { min: 100, max: 2000, step: 50, unit: "%" }),
         zStart: prop("zStart", "enum", "Starts", { options: [{ value: "fit", label: "Fit" }, { value: "100", label: "100 %" }] }),
         zWheel: prop("zWheel", "boolean", "The mouse wheel zooms without Ctrl"),
-        zControls: prop("zControls", "boolean", "Buttons (− + fit 100 %)"),
+        zControls: prop("zControls", "boolean", "Show the zoom toolbar (− 100% ○ + ⤢)"),
+        zDbl: prop("zDbl", "boolean", "Double-click / double-tap: back to the start"),
         // a carousel's slide cell: padding inside it, a fixed-size template aligned in it
         iPadX: prop("iPadX", "number", "Padding ↔", { min: 0, unit: "px" }),
         iPadY: prop("iPadY", "number", "Padding ↕", { min: 0, unit: "px" }),
@@ -103,13 +104,15 @@ function frameView(frame) {
         align: { x: l.alignX, y: l.alignY },
         gap: l.gap === "auto" ? 0 : l.gap, gapAuto: l.gap === "auto", rowGap: l.rowGap === undefined ? "" : l.rowGap,
         padding: l.padding, wrap: !!l.wrap, columns: l.columns, rows: l.rows,
-        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip, scroll: s.scroll || "none",
+        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius,
+        clip: !!s.clip || !!(frame.zoom && frame.zoom.enabled), scroll: frame.zoom && frame.zoom.enabled ? "both" : (s.scroll || "none"),
         cDirection: l.carousel.direction, cPerView: l.carousel.perView, cTransition: l.carousel.transition, cLoop: !!l.carousel.loop,
         cAutoplay: l.carousel.autoplay, cPauseOnHover: !!l.carousel.pauseOnHover, cArrows: !!l.carousel.arrows, cDots: !!l.carousel.dots,
         cSwipe: !!l.carousel.swipe, cIndex: l.carousel.index || "",
         scrollbarHidden: s.scrollbar === "hidden",
         zEnabled: !!(frame.zoom && frame.zoom.enabled), zMin: Math.round(zoomSettings(frame).min * 100), zMax: Math.round(zoomSettings(frame).max * 100),
         zStart: zoomSettings(frame).start, zWheel: zoomSettings(frame).wheel === "always", zControls: !!zoomSettings(frame).controls,
+        zDbl: zoomSettings(frame).dblclick !== false,
         iPadX: l.items.padX, iPadY: l.items.padY, iAlign: { x: l.items.alignX, y: l.items.alignY }
     };
 }
@@ -125,6 +128,7 @@ function writeFrame(frame, key, v) {
         else if (key === "zStart") z.start = v;
         else if (key === "zWheel") z.wheel = v ? "always" : "ctrl";
         else if (key === "zControls") z.controls = !!v;
+        else if (key === "zDbl") z.dblclick = !!v;
         if (z.enabled) frame.zoom = z; else delete frame.zoom;
         return;
     }
@@ -272,16 +276,18 @@ export function renderFrameInspector(container, frame) {
                 <nx-section heading="Fill & stroke" persist-key="nexa-frame:style">
                     <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
                     <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
-                    <nx-checkbox ${bind("clip")}></nx-checkbox>
-                    <nx-select ${bind("scroll")}></nx-select>
-                    ${p.scroll !== "none" ? html`<nx-checkbox ${bind("scrollbarHidden")}></nx-checkbox>` : nothing}
+                    <nx-checkbox ${bind("clip")} ?disabled="${p.zEnabled}"></nx-checkbox>
+                    <nx-select ${bind("scroll")} ?disabled="${p.zEnabled}"></nx-select>
+                    ${p.zEnabled ? html`<div class="nx-help">Zoomable: it always clips and scrolls both ways.</div>` : nothing}
+                    ${p.scroll !== "none" || p.zEnabled ? html`<nx-checkbox ${bind("scrollbarHidden")}></nx-checkbox>` : nothing}
                 </nx-section>
                 ${p.mode === "carousel" ? nothing : html`<nx-section heading="Zoom & pan" persist-key="nexa-frame:zoom">
                     <nx-checkbox ${bind("zEnabled")}></nx-checkbox>
                     ${p.zEnabled ? html`
-                        <div class="nx-help">On the live page what is inside zooms (Ctrl + wheel, a trackpad or two-finger pinch, the buttons) and pans (drag its background, or with the middle button); the rest of the screen keeps its size.</div>
+                        <div class="nx-help">Like the editor's canvas, on the live page: the frame clips and scrolls both ways (always, while zoomable); only its content zooms (Ctrl + wheel, a pinch, at the pointer) and pans (the wheel, a drag on the background) — the scrollbars' length follows the zoom. The rest of the screen keeps its size.</div>
                         <nx-row><nx-number ${bind("zMin")}></nx-number><nx-number ${bind("zMax")}></nx-number></nx-row>
                         <nx-segmented ${bind("zStart")}></nx-segmented>
+                        <nx-checkbox ${bind("zDbl")}></nx-checkbox>
                         <nx-checkbox ${bind("zWheel")}></nx-checkbox>
                         <nx-checkbox ${bind("zControls")}></nx-checkbox>` : nothing}
                 </nx-section>`}`;

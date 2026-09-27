@@ -36,8 +36,8 @@ async function main() {
             });
             await ok('a hidden frame is drawn but not shown; shown again it hugs its content (flex back)', async () => {
                 assert.strictEqual(await js('getComputedStyle(document.querySelector(\'[data-id="hug"]\')).display'), 'none');
-                // an inject (once, after 600 ms) -> Layer Control "Hug": show
-                await js('new Promise(function (r) { setTimeout(r, 900); })');
+                // an inject (once, after 2.5 s: well after the checks above, on a busy machine too) -> Layer Control "Hug": show
+                await js('new Promise(function (r) { setTimeout(r, 2900); })');
                 assert.strictEqual(await js('getComputedStyle(document.querySelector(\'[data-id="hug"]\')).display'), 'flex');
                 assert.deepStrictEqual(await box('hug'), [20, 200, 120, 65], '100 + 2*10 wide, 10 + 20 + 5 + 20 + 10 high');
                 assert.deepStrictEqual(await box('h2'), [50, 235, 60, 20], 'centred across');

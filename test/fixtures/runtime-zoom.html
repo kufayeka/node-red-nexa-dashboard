@@ -3,19 +3,28 @@
 <style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
 <body>
 <!-- A zoomable frame on a deployed page (test/runtime-zoom-browser.test.js). -->
-<div id="nexa-runtime-artboard" style="width:1000px;height:700px;"></div>
+<div id="nexa-runtime-artboard" style="width:1000px;height:900px;"></div>
 <script src="/lib/nexa-registry-client.js"></script>
 <script>
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); el.style.background = "#ddd"; } });
 function label(id, x, y, w, h) { return { id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: id } }; }
 window.__NEXA_APP__ = { variables: [] };
 window.__NEXA_TEMPLATES__ = [];
-window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, orphans: [],
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 900, treeVersion: 1, orphans: [],
   components: [
     { id: "zf", type: "@frame", x: 10, y: 10, w: 400, h: 300, style: { fill: "#fff", clip: true },
       zoom: { enabled: true, min: 0.5, max: 4, start: "100", controls: true, wheel: "ctrl" },
       children: [label("a", 0, 0, 100, 100), label("b", 300, 200, 100, 100)] },
     label("out", 500, 10, 100, 100),
+    // no toolbar; a double click back to the start
+    { id: "zi", type: "@frame", x: 500, y: 350, w: 400, h: 300, style: { fill: "#fff", clip: true },
+      zoom: { enabled: true, min: 0.5, max: 4, start: "100", controls: false },
+      children: [label("c", 0, 0, 100, 100), label("d", 300, 200, 100, 100)] },
+    // designed 200 wide, 600 on the page (it fills a row): at 100 % its content is 600 wide, not shrunk to 200
+    { id: "row", type: "@frame", x: 10, y: 700, w: 600, h: 150, layout: { mode: "horizontal", gap: 0 }, children: [
+      { id: "zw", type: "@frame", x: 0, y: 0, w: 200, h: 120, layoutChild: { w: "fill", h: "fill" }, style: { fill: "#fff", clip: true },
+        layout: { mode: "vertical", gap: 0 }, zoom: { enabled: true, min: 0.25, max: 4, start: "fit", controls: true },
+        children: [{ id: "wide", type: "label", x: 0, y: 0, w: 200, h: 40, layoutChild: { w: "fill" }, props: { text: "wide" } }] }] },
     // content bigger than the frame: "Fit" shows all of it
     { id: "zfit", type: "@frame", x: 10, y: 350, w: 400, h: 300, style: { fill: "#fff", clip: true },
       zoom: { enabled: true, min: 0.1, max: 4, start: "fit", controls: false },

@@ -29,7 +29,7 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 500, treeVersion: 1, orp
         box("k-center", 20, 20, { x: 40, y: 60, constraints: { h: "center" } }),
         box("k-scale", 50, 10, { x: 25, y: 85, constraints: { h: "scale" } })] }] }
 ] };
-window.__NEXA_SCREEN__.logic.nodes.push({ id: "tick", type: "inject", once: true, onceDelay: 600, intervalMs: 0 },
+window.__NEXA_SCREEN__.logic.nodes.push({ id: "tick", type: "inject", once: true, onceDelay: 2500, intervalMs: 0 },
   { id: "show", type: "layer-control", states: [{ name: "Hug", state: "show" }] });
 window.__NEXA_SCREEN__.logic.wires.push({ id: "w", from: "tick", to: "show" });
 window.__NEXA_TEMPLATES__ = [];
