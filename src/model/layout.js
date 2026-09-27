@@ -99,6 +99,20 @@ export function layoutOf(frame) {
     return out;
 }
 
+// A zoomable frame (frame.zoom): on the live page its content zooms and pans inside
+// it — Ctrl + wheel / a trackpad pinch, a two-finger pinch, the buttons; a drag on
+// its background (or with the middle button) pans — while the rest of the screen
+// keeps its size.
+export var ZOOM_DEFAULT = { enabled: false, min: 0.25, max: 4, wheel: "ctrl", controls: true, start: "fit" };
+export function zoomOf(frame) {
+    if (!frame || frame.type !== "@frame" || !frame.zoom || !frame.zoom.enabled) return null;
+    if (layoutOf(frame).mode === "carousel") return null;   // a carousel scrolls its slides instead
+    var z = Object.assign({}, ZOOM_DEFAULT, frame.zoom);
+    z.min = Math.max(0.05, num(z.min, 0.25));
+    z.max = Math.max(z.min, num(z.max, 4));
+    return z;
+}
+
 /** A carousel frame's settings (defaults filled in), or null for any other node. */
 export function carouselOf(frame) {
     return frame && frame.type === "@frame" && layoutOf(frame).mode === "carousel" ? layoutOf(frame).carousel : null;

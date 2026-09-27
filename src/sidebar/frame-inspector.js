@@ -61,6 +61,13 @@ var FRAME_META = {
         radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
         clip: prop("clip", "boolean", "Clip content"),
         scrollbarHidden: prop("scrollbarHidden", "boolean", "Hide the scrollbar (it still scrolls)"),
+        // zoom & pan of what is inside (live page)
+        zEnabled: prop("zEnabled", "boolean", "Zoomable: its content zooms and pans (live page)"),
+        zMin: prop("zMin", "number", "Min zoom", { min: 5, max: 100, step: 5, unit: "%" }),
+        zMax: prop("zMax", "number", "Max zoom", { min: 100, max: 2000, step: 50, unit: "%" }),
+        zStart: prop("zStart", "enum", "Starts", { options: [{ value: "fit", label: "Fit" }, { value: "100", label: "100 %" }] }),
+        zWheel: prop("zWheel", "boolean", "The mouse wheel zooms without Ctrl"),
+        zControls: prop("zControls", "boolean", "Buttons (− + fit 100 %)"),
         // a carousel's slide cell: padding inside it, a fixed-size template aligned in it
         iPadX: prop("iPadX", "number", "Padding ↔", { min: 0, unit: "px" }),
         iPadY: prop("iPadY", "number", "Padding ↕", { min: 0, unit: "px" }),
@@ -101,11 +108,26 @@ function frameView(frame) {
         cAutoplay: l.carousel.autoplay, cPauseOnHover: !!l.carousel.pauseOnHover, cArrows: !!l.carousel.arrows, cDots: !!l.carousel.dots,
         cSwipe: !!l.carousel.swipe, cIndex: l.carousel.index || "",
         scrollbarHidden: s.scrollbar === "hidden",
+        zEnabled: !!(frame.zoom && frame.zoom.enabled), zMin: Math.round(zoomSettings(frame).min * 100), zMax: Math.round(zoomSettings(frame).max * 100),
+        zStart: zoomSettings(frame).start, zWheel: zoomSettings(frame).wheel === "always", zControls: !!zoomSettings(frame).controls,
         iPadX: l.items.padX, iPadY: l.items.padY, iAlign: { x: l.items.alignX, y: l.items.alignY }
     };
 }
 
+function zoomSettings(frame) { return Object.assign({}, Layout.ZOOM_DEFAULT, frame.zoom || {}); }
+
 function writeFrame(frame, key, v) {
+    if (/^z[A-Z]/.test(key)) {
+        var z = zoomSettings(frame);
+        if (key === "zEnabled") z.enabled = !!v;
+        else if (key === "zMin") z.min = Math.max(0.05, (Number(v) || 25) / 100);
+        else if (key === "zMax") z.max = Math.max(1, (Number(v) || 400) / 100);
+        else if (key === "zStart") z.start = v;
+        else if (key === "zWheel") z.wheel = v ? "always" : "ctrl";
+        else if (key === "zControls") z.controls = !!v;
+        if (z.enabled) frame.zoom = z; else delete frame.zoom;
+        return;
+    }
     var layout = Object.assign({}, frame.layout || {});
     var style = Object.assign({}, frame.style || {});
     switch (key) {
@@ -253,7 +275,16 @@ export function renderFrameInspector(container, frame) {
                     <nx-checkbox ${bind("clip")}></nx-checkbox>
                     <nx-select ${bind("scroll")}></nx-select>
                     ${p.scroll !== "none" ? html`<nx-checkbox ${bind("scrollbarHidden")}></nx-checkbox>` : nothing}
-                </nx-section>`;
+                </nx-section>
+                ${p.mode === "carousel" ? nothing : html`<nx-section heading="Zoom & pan" persist-key="nexa-frame:zoom">
+                    <nx-checkbox ${bind("zEnabled")}></nx-checkbox>
+                    ${p.zEnabled ? html`
+                        <div class="nx-help">On the live page what is inside zooms (Ctrl + wheel, a trackpad or two-finger pinch, the buttons) and pans (drag its background, or with the middle button); the rest of the screen keeps its size.</div>
+                        <nx-row><nx-number ${bind("zMin")}></nx-number><nx-number ${bind("zMax")}></nx-number></nx-row>
+                        <nx-segmented ${bind("zStart")}></nx-segmented>
+                        <nx-checkbox ${bind("zWheel")}></nx-checkbox>
+                        <nx-checkbox ${bind("zControls")}></nx-checkbox>` : nothing}
+                </nx-section>`}`;
         }
     });
     mountLive(container, meta, "nexa-frame", function () { return frameView(frame); },

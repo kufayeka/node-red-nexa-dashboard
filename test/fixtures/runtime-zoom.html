@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>zoom</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- A zoomable frame on a deployed page (test/runtime-zoom-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:700px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); el.style.background = "#ddd"; } });
+function label(id, x, y, w, h) { return { id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: id } }; }
+window.__NEXA_APP__ = { variables: [] };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, orphans: [],
+  components: [
+    { id: "zf", type: "@frame", x: 10, y: 10, w: 400, h: 300, style: { fill: "#fff", clip: true },
+      zoom: { enabled: true, min: 0.5, max: 4, start: "100", controls: true, wheel: "ctrl" },
+      children: [label("a", 0, 0, 100, 100), label("b", 300, 200, 100, 100)] },
+    label("out", 500, 10, 100, 100),
+    // content bigger than the frame: "Fit" shows all of it
+    { id: "zfit", type: "@frame", x: 10, y: 350, w: 400, h: 300, style: { fill: "#fff", clip: true },
+      zoom: { enabled: true, min: 0.1, max: 4, start: "fit", controls: false },
+      children: [label("big", 0, 0, 800, 600)] }
+  ],
+  logic: { nodes: [], wires: [] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

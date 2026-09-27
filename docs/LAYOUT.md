@@ -172,6 +172,38 @@ constraints = {
   `calc(50% + …)`, `%`). A frame that fills or hugs is a different size live
   than it was designed, and what it holds still follows.
 
+## 4b. Templates on the live page, scrolling, zoom
+
+**A template's size where it is used** is set in Templates → **On the live page**. It holds for every use: a Populate's copies, a carousel's slides, a list row or a grid cell.
+
+- **Per axis**, Width and Height are each one of:
+  - **Fixed**: the template's design size;
+  - **Fill**: the space its host gives it. What is inside then follows its **constraints**, like a screen in Fill mode. For example, give a card's background Left & Right + Top & Bottom.
+- **Min / max** width and height are optional.
+- **The host only places it**: alignment, padding and gap. A carousel's slide is a cell: Slides → padding ↔ ↕ and the alignment of a fixed-size template in it.
+- A Populate's older "each copy fills the width" still makes the width fill.
+
+**When scrolling** (live page):
+
+- **A node its parent does not lay out** has Constraints → When scrolling:
+  - **Scrolls with the content** (the default);
+  - **Fixed**: it stays where it is on the view, e.g. a header. With the **Bottom** (or Right) constraint it keeps that distance from the view's bottom (right) edge, e.g. a footer;
+  - **Sticky**: it scrolls until it reaches the top (left) edge, then stays there.
+- **Its scroll container** is the nearest frame that scrolls, else the page. It also works while the screen is scaled (Fit width).
+- **A child of an auto layout** has "Sticky while the frame scrolls", for example the header row of a scrolling column. This uses CSS sticky, at the start of the flow.
+
+**Zoom & pan** (a frame, live page): Frame → **Zoomable**.
+
+- **Zoom**: Ctrl + wheel, a trackpad or two-finger pinch, or the − + fit 100 % buttons.
+  - Optionally the wheel zooms without Ctrl.
+  - A zoom keeps the point under the pointer where it is.
+- **Pan**: drag the frame's background, drag with the middle button, or use one finger on a touch screen. Buttons inside it still take their clicks.
+- **Limits**: a min / max zoom. It starts at **Fit** (all its content in view) or **100 %**.
+- The rest of the screen keeps its size, e.g. a P&ID drawing that zooms between a fixed header and a fixed side panel.
+- A frame's scrollbar can be hidden: Fill & stroke → Hide the scrollbar. It still scrolls.
+
+Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, `test/runtime-carousel-browser.test.js`, `test/runtime-virtual-browser.test.js`.
+
 ## 5. Variables and the scope chain
 
 ```ts
