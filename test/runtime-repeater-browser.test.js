@@ -1,8 +1,8 @@
 'use strict';
 
 // The repeater on a deployed page, in headless Chrome: the "Populate" Logic
-// node fills a column frame with a template, one card per item (params
-// item / index), keyed by id — replace, upsert (the same card updated in
+// node fills a column frame with a template, one card per item — each item
+// passed into the param the template declares ("product"), plus index — keyed by id — replace, upsert (the same card updated in
 // place), remove, prepend, reorder, clear — and each card's own Logic runs per
 // card: a Buy button inside it gets msg.item, and its HTTP Request posts {item}.
 // Needs `npm run build`.   node test/runtime-repeater-browser.test.js   (skipped without Chrome)

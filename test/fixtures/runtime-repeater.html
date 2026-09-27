@@ -18,17 +18,18 @@ window.fetch = function (url, init) {
 };
 var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
 window.__NEXA_APP__ = { variables: [{ id: "lb", name: "lastBought", type: "string", defaultValue: "" }] };
-window.__NEXA_TEMPLATES__ = [{ id: "CARD", name: "ProductCard", width: 300, height: 40, params: [],
+// the template declares its param; the Populate node passes each item into it
+window.__NEXA_TEMPLATES__ = [{ id: "CARD", name: "ProductCard", width: 300, height: 40, params: [{ id: "pp", name: "product", label: "product", type: "object", defaultValue: {} }],
   components: [
-    { id: "title", type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: "{index}: {item.name} @ {item.price}" } },
+    { id: "title", type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: "{index}: {product.name} @ {product.price}" } },
     { id: "buy", type: "btn", x: 200, y: 0, w: 60, h: 20, props: { text: "Buy" } }
   ],
   logic: { nodes: [
     { id: "click", type: "ui-event", compId: "buy", event: "click" },
     { id: "keep", type: "set-variable", scope: "@app", name: "lastBought", op: "set", valueSource: "msg", msgPath: "item.name" },
-    { id: "post", type: "http-request", method: "POST", url: "/api/order/{item.id}", body: "binding", bodyText: "{item}" }
+    { id: "post", type: "http-request", method: "POST", url: "/api/order/{product.id}", body: "binding", bodyText: "{product}" }
   ], wires: [W("click", "keep"), W("click", "post")] } }];
-function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
+function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", itemParam: "product", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
 window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
   components: [
     { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 },

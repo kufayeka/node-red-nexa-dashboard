@@ -52,7 +52,7 @@ export function logicNodeLabel(node) {
         var target = node.container && pScreen ? Tree.find(pScreen, node.container) : null;
         var tpl = node.template ? findTemplate(node.template) : null;
         var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
-        return modeWord + (target ? (target.name || "Frame") : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " × " + (tpl ? tpl.name : "?"));
+        return modeWord + (target ? (target.name || "Frame") : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " × " + (tpl ? tpl.name : "?") + (node.itemParam ? " → " + node.itemParam : ""));
     }
     if (node.type === "http-request") {
         var u = node.url || "";

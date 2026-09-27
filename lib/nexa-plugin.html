@@ -26850,6 +26850,19 @@
     chip(state.eventsPane, "Populate (repeat a template)", function() {
       return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" };
     }, "", "populate");
+    if (screen) {
+      tree_exports.allNodes(screen).filter(function(n) {
+        return n.type === "@frame";
+      }).forEach(function(f) {
+        chip(state.eventsPane, "Populate " + (f.name || "Frame") + " #" + f.id.slice(-4), function() {
+          var first = (state.templates || []).filter(function(t2) {
+            return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
+          })[0];
+          var p0 = first && (first.params || [])[0];
+          return { type: "populate", container: f.id, template: first ? first.id : "", itemParam: p0 ? p0.name : void 0, mode: "append", key: "id", valueSource: "payload" };
+        }, f.id, "populate");
+      });
+    }
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function() {
       return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 1e4 };
@@ -29095,8 +29108,17 @@
       valueSource: node.valueSource || "payload",
       msgPath: node.msgPath || "payload.items",
       value: node.value,
-      fill: !!node.fill
+      fill: !!node.fill,
+      itemParam: node.itemParam
     };
+    function paramsOf(tid) {
+      var t2 = templates.filter(function(x) {
+        return x.id === tid;
+      })[0];
+      return (t2 && t2.params || []).map(function(p) {
+        return p.name;
+      }).filter(Boolean);
+    }
     window.RED.tray.show({
       id: "nexa-logic-populate-editor",
       title: "Configure Populate Node",
@@ -29142,14 +29164,34 @@
           });
           return sel;
         };
-        label("Container (a frame \u2014 a row / column / grid lays the cards out)");
+        label("Container \u2014 where the cards go (a Row / Column / Grid lays them out)");
         select("container", frames.length ? frames.map(function(f) {
-          return [f.id, (f.name || "Frame") + (layout_exports.hasAutoLayout(f) ? " (" + layout_exports.layoutOf(f).mode + ")" : " (no auto layout)")];
+          return [f.id, (f.name || "Frame") + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children"];
         }) : [["", "(no frame on this surface \u2014 add a Row / Column / Grid)"]]);
         label("Template (one card per item)");
         select("template", templates.length ? templates.map(function(t2) {
           return [t2.id, t2.name];
-        }) : [["", "(no templates yet)"]]);
+        }) : [["", "(no templates yet)"]], function() {
+          d.itemParam = void 0;
+          fillParams2();
+        });
+        label("Pass each item into the template's param");
+        var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function() {
+          d.itemParam = paramSel.val();
+        });
+        var paramHint = window.$("<div>").css({ "font-size": "11px", color: "#b00", "margin-top": "4px" }).appendTo(body);
+        function fillParams2() {
+          paramSel.empty();
+          var names = paramsOf(d.template);
+          if (names.indexOf(d.itemParam) === -1) d.itemParam = names[0];
+          names.forEach(function(n) {
+            window.$("<option>", { value: n }).text(n + "   \u2192 in the template: {" + n + ".field}").appendTo(paramSel);
+          });
+          paramSel.val(d.itemParam || "");
+          paramSel.toggle(names.length > 0);
+          paramHint.text(names.length ? "" : "This template declares no params yet: add one in the Templates tab (e.g. product), then bind {product.name} inside it.");
+        }
+        fillParams2();
         label("Mode");
         select("mode", MODES);
         label("Key (the item field that identifies it, e.g. id; empty = by position)");
@@ -29331,7 +29373,7 @@
       var target = node.container && pScreen ? tree_exports.find(pScreen, node.container) : null;
       var tpl = node.template ? findTemplate(node.template) : null;
       var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
-      return modeWord + (target ? target.name || "Frame" : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " \xD7 " + (tpl ? tpl.name : "?"));
+      return modeWord + (target ? target.name || "Frame" : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : ""));
     }
     if (node.type === "http-request") {
       var u = node.url || "";

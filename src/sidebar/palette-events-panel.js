@@ -392,6 +392,16 @@ export function renderEventsPanel() {
 
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function () { return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" }; }, "", "populate");
+    // one per frame on this surface, the container already chosen
+    if (screen) {
+        Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }).forEach(function (f) {
+            chip(state.eventsPane, "Populate " + (f.name || "Frame") + " #" + f.id.slice(-4), function () {
+                var first = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); })[0];
+                var p0 = first && (first.params || [])[0];
+                return { type: "populate", container: f.id, template: first ? first.id : "", itemParam: p0 ? p0.name : undefined, mode: "append", key: "id", valueSource: "payload" };
+            }, f.id, "populate");
+        });
+    }
 
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");

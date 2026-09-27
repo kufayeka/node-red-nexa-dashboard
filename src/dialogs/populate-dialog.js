@@ -18,7 +18,10 @@ export function openPopulateNodeEditor(node) {
     var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
     var templates = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); });
     var d = { container: node.container || "", template: node.template || "", mode: node.mode || "replace", key: node.key === undefined ? "id" : node.key,
-        valueSource: node.valueSource || "payload", msgPath: node.msgPath || "payload.items", value: node.value, fill: !!node.fill };
+        valueSource: node.valueSource || "payload", msgPath: node.msgPath || "payload.items", value: node.value, fill: !!node.fill,
+        itemParam: node.itemParam };
+    // the template declares its params; each card's item goes into the one chosen here
+    function paramsOf(tid) { var t = templates.filter(function (x) { return x.id === tid; })[0]; return (t && t.params || []).map(function (p) { return p.name; }).filter(Boolean); }
 
     window.RED.tray.show({
         id: "nexa-logic-populate-editor",
@@ -52,10 +55,23 @@ export function openPopulateNodeEditor(node) {
                 sel.on("change", function () { d[key] = sel.val(); if (onChange) onChange(); });
                 return sel;
             };
-            label("Container (a frame — a row / column / grid lays the cards out)");
-            select("container", frames.length ? frames.map(function (f) { return [f.id, (f.name || "Frame") + (Layout.hasAutoLayout(f) ? " (" + Layout.layoutOf(f).mode + ")" : " (no auto layout)")]; }) : [["", "(no frame on this surface — add a Row / Column / Grid)"]]);
+            label("Container — where the cards go (a Row / Column / Grid lays them out)");
+            select("container", frames.length ? frames.map(function (f) { return [f.id, (f.name || "Frame") + "  ·  " + (Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[Layout.layoutOf(f).mode] : "no auto layout") + "  ·  " + Tree.kids(f).length + " children"]; }) : [["", "(no frame on this surface — add a Row / Column / Grid)"]]);
             label("Template (one card per item)");
-            select("template", templates.length ? templates.map(function (t) { return [t.id, t.name]; }) : [["", "(no templates yet)"]]);
+            select("template", templates.length ? templates.map(function (t) { return [t.id, t.name]; }) : [["", "(no templates yet)"]], function () { d.itemParam = undefined; fillParams(); });
+            label("Pass each item into the template's param");
+            var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function () { d.itemParam = paramSel.val(); });
+            var paramHint = window.$("<div>").css({ "font-size": "11px", color: "#b00", "margin-top": "4px" }).appendTo(body);
+            function fillParams() {
+                paramSel.empty();
+                var names = paramsOf(d.template);
+                if (names.indexOf(d.itemParam) === -1) d.itemParam = names[0];
+                names.forEach(function (n) { window.$("<option>", { value: n }).text(n + "   → in the template: {" + n + ".field}").appendTo(paramSel); });
+                paramSel.val(d.itemParam || "");
+                paramSel.toggle(names.length > 0);
+                paramHint.text(names.length ? "" : "This template declares no params yet: add one in the Templates tab (e.g. product), then bind {product.name} inside it.");
+            }
+            fillParams();
             label("Mode");
             select("mode", MODES);
             label("Key (the item field that identifies it, e.g. id; empty = by position)");

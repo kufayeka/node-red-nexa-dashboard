@@ -135,8 +135,15 @@ The **key** is the item field that identifies a card (e.g. `id`). A known
 key updates the same card in place, which matters for realtime data and
 tables. The container's own children (a header) stay; cards come after them.
 
-**Inside the template** each card has the params `item` (its object) and
-`index`. Bind `{item.name}`, `{item.price}`, `{index}`.
+**The template declares a param** (Templates tab → Parameters, e.g.
+`product`), and the Populate node chooses which param each item goes into
+("Pass each item into the template's param"). Inside the template, bind
+`{product.name}`, `{product.price}`, and `{index}` for the position. The
+item is also always available as `{item}` / `msg.item`.
+
+The Events tab has a **"Populate ‹frame›"** chip for every frame, with the
+container already chosen. To fill several containers with the same data,
+wire the same flow into one Populate node per container (fan-out).
 - **The template's own Logic runs per card**, like a React component. For
   example, `[Buy: on click] → [HTTP Request POST /api/order/{item.id}, body {item}]`
   (the body can be a binding).
