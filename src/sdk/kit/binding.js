@@ -10,7 +10,7 @@
 // nothing until the new source's field is applied (Enter / pick / blur).
 // Host: getHost().listVariables() -> [{ name, value, owner }] (the kit-inspector).
 import { html, nothing } from "lit";
-import { KitElement, str, getHost } from "./base.js";
+import { KitElement, str, getHost, lookupBinding } from "./base.js";
 
 var WHOLE_PATH = /^\{([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*)\}$/;
 var ANY_BINDING = /\{[^{}]+\}/;
@@ -79,10 +79,11 @@ export class NxBinding extends KitElement {
         var text = String(v).replace(/\{([^{}]+)\}/g, function (whole, inner) {
             if (S) { var t = S.parseTag(whole); if (t && t.valid) return "‹" + (t.display || inner) + "›"; }
             if (/^msg(\.|\[|$)/.test(inner)) return "‹" + inner + "›";
-            var root = inner.split(/[.[]/)[0];
-            var known = vars.filter(function (x) { return x.name === inner || x.name === root; })[0];
-            if (!known) { missing.push(inner); return whole; }
-            return known.name === inner ? str(known.value) : "‹" + inner + "›";
+            var hit = lookupBinding(vars, inner);
+            if (!hit) { missing.push(inner); return whole; }
+            // the current value when known exactly; a placeholder for a path inside something (a URL part, a member)
+            var val = str(hit.entry.value);
+            return hit.exact && !/^\(/.test(val) ? val : "‹" + inner + "›";
         });
         return missing.length
             ? html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>not declared around this node: ${missing.join(", ")}</span></div>`

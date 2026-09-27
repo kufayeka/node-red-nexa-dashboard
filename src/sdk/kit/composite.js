@@ -9,7 +9,7 @@
 //           YOUR template, a container only adds its header / tab bar in front
 //           of them and shows / hides them.
 import { html, nothing } from "lit";
-import { KitElement, str, icon, getHost } from "./base.js";
+import { KitElement, str, icon, getHost, lookupBinding } from "./base.js";
 import { NxCombobox } from "./inputs.js";
 
 function store(key, value) {
@@ -133,7 +133,8 @@ export class NxTag extends NxCombobox {
             return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>read-only — write to a tag, a variable or {$route.query.name}</span></div>`;
         }
         if (PARAM_RE.test(v)) {
-            var known = this._variables().filter((x) => "{" + x.name + "}" === v)[0];
+            var hitW = lookupBinding(this._variables(), v.slice(1, -1));
+            var known = hitW && hitW.entry;
             return known
                 ? html`<div class="nx-tag-status nx-ok"><i class="fa fa-link"></i><span>${known.owner.kind === "template" ? "parameter / variable" : "variable"} of ${known.owner.name} (now ${str(known.value)})</span></div>`
                 : html`<div class="nx-tag-status"><i class="fa fa-link"></i><span>variable or template parameter ${v} (not declared around this node)</span></div>`;
@@ -144,10 +145,9 @@ export class NxTag extends NxCombobox {
             var vars = this._variables();
             var missing = [];
             var preview = v.replace(EMBEDDED_RE, function (whole, path) {
-                var root = path.split(/[.[]/)[0];
-                var known = vars.filter(function (x) { return x.name === path || x.name === root; })[0];
-                if (!known) { missing.push(path); return whole; }
-                return known.name === path ? str(known.value) : whole;
+                var hit = lookupBinding(vars, path);
+                if (!hit) { missing.push(path); return whole; }
+                return hit.exact && !/^\(/.test(str(hit.entry.value)) ? str(hit.entry.value) : "‹" + path + "›";
             });
             return missing.length
                 ? html`<div class="nx-tag-status"><i class="fa fa-font"></i><span>text with bindings — not declared around this node: ${missing.join(", ")}</span></div>`

@@ -17,6 +17,24 @@ var host = {};
 export function setHost(h) { host = Object.assign({}, host, h || {}); }
 export function getHost() { return host; }
 
+/**
+ * What a binding path means, against the host's list of visible variables
+ * ([{ name, value, owner }]): an exact entry, or a path INSIDE a known one
+ * ({$route.query.a} in $route.query, {M101.Speed}, {cfg.limit}). $route.* is
+ * always the page URL. -> { entry, exact } or null (not declared around the node).
+ */
+export function lookupBinding(vars, path) {
+    var exact = (vars || []).filter(function (x) { return x.name === path; })[0];
+    if (exact) return { entry: exact, exact: true };
+    var best = null;
+    (vars || []).forEach(function (x) {
+        if ((path.indexOf(x.name + ".") === 0 || path.indexOf(x.name + "[") === 0) && (!best || x.name.length > best.name.length)) best = x;
+    });
+    if (best) return { entry: best, exact: false };
+    if (/^\$route(\.|$)/.test(path)) return { entry: { name: path, value: "(from the URL)", owner: { name: "the URL", kind: "route" } }, exact: false };
+    return null;
+}
+
 export function str(v) {
     if (v === undefined || v === null) return "";
     if (typeof v === "object") { try { return JSON.stringify(v); } catch (e) { return ""; } }

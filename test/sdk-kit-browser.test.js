@@ -319,6 +319,14 @@ async function main() {
                 b.value = "Line {line}: {sparkplug:G::N::D::Speed} rpm"; await NexaTest.wait(); seen.push(src());
                 out.preview = (b.querySelector(".nx-tag-status") || {}).textContent.trim();
                 out.seen = seen;
+                // paths INSIDE something known are fine: a URL query parameter, a member
+                NexaKit.setHost({ listVariables: function () { return [{ name: "$route.query", value: "(?a=1)", owner: { name: "the URL", kind: "route" } }, { name: "M101", value: "(Motor)", owner: { name: "App", kind: "app" } }]; } });
+                b.value = "path: {$route.query.a}, speed {M101.Speed}"; await NexaTest.wait();
+                var st = b.querySelector(".nx-tag-status");
+                out.pathOk = st.classList.contains("nx-ok") && !/not declared/.test(st.textContent);
+                b.value = "{nope.x}"; await NexaTest.wait();
+                out.unknownFlagged = /not declared/.test(b.querySelector(".nx-tag-status").textContent);
+                NexaKit.setHost({ listVariables: function () { return [{ name: "line", value: "L1", owner: { name: "screen", kind: "screen" } }]; } });
                 // Message: type a path -> {msg.<path>}
                 b.value = ""; await NexaTest.wait();
                 b.querySelector(".nx-binding-source button[title='Message']").click(); await NexaTest.wait();
@@ -335,6 +343,8 @@ async function main() {
                 return out;
             })()`);
             assert.deepStrictEqual(r.seen, ['var', 'tag', 'msg', 'expr']);
+            assert.ok(r.pathOk, '{$route.query.a} / {M101.Speed}: paths inside known bindings are not "not declared"');
+            assert.ok(r.unknownFlagged, 'an unknown name is still flagged');
             assert.ok(/^Line L1: ‹.*› rpm$/.test(r.preview), r.preview);
             assert.deepStrictEqual(r.got, ['{msg.payload.temp}', 'Temp {line} C']);
         });
