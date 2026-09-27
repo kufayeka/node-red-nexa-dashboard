@@ -887,6 +887,23 @@ export function addComponentAt(type, artboardX, artboardY) {
         return;
     }
 
+    // An image from the Assets tab: "@asset:<name>" -> an Image component showing it
+    if (typeof type === "string" && type.indexOf("@asset:") === 0) {
+        var assetName = type.slice("@asset:".length);
+        var imgDef = window.NEXA.getComponent("kufayeka-image");
+        if (!imgDef) return;
+        var asset = window.NexaSDK && window.NexaSDK.getAsset ? window.NexaSDK.getAsset(assetName) : null;
+        var iw = asset && asset.w ? asset.w : 160, ih = asset && asset.h ? asset.h : 120;
+        // its own size, between 64 and 320 px on the longer side (a tiny icon stays grabbable)
+        var longer = Math.max(iw, ih);
+        var k = longer > 320 ? 320 / longer : longer < 64 ? 64 / longer : 1;
+        var imgProps = {};
+        Object.keys(imgDef.defaults || {}).forEach(function (key) { imgProps[key] = imgDef.defaults[key].value; });
+        imgProps.src = "{asset:" + assetName + "}";
+        placeNewNode(screen, { id: genId(), type: "kufayeka-image", w: Math.max(8, Math.round(iw * k)), h: Math.max(8, Math.round(ih * k)), rotation: 0, locked: false, props: imgProps }, artboardX, artboardY);
+        return;
+    }
+
     // A frame from the palette's "Layout" section: "@frame:<layout mode>"
     if (typeof type === "string" && type.indexOf("@frame:") === 0) {
         var mode = type.slice("@frame:".length);

@@ -57,13 +57,16 @@
                 if (/^msg(\.|\[|$)/.test(inner)) return inner === "msg" ? item.msg : path(item.msg || {}, inner.replace(/^msg\.?/, ""));
                 return path(T.vars, inner);
             }
+            // a tag of a registered provider (not e.g. {asset:name}, which the component reads itself)
+            function isTagRef(v) { var t = sdk().parseTag(v); return !!(t && t.known); }
             function resolve(v, tagKey) {
                 if (typeof v !== "string") return v;
-                if (sdk().parseTag(v)) return item.tags[tagKey] !== undefined ? item.tags[tagKey] : "???";
+                if (isTagRef(v)) return item.tags[tagKey] !== undefined ? item.tags[tagKey] : "???";
                 var whole = /^\{([^{}:]+)\}$/.exec(v.trim());
                 if (whole) { var hit = lookup(whole[1]); return hit === undefined ? v : hit; }
                 return v.replace(/\{[^{}]+\}/g, function (m) {
-                    if (sdk().parseTag(m)) return item.tags[tagKey] !== undefined ? String(item.tags[tagKey]) : "???";
+                    if (isTagRef(m)) return item.tags[tagKey] !== undefined ? String(item.tags[tagKey]) : "???";
+                    if (sdk().parseTag(m)) return m;
                     var x = lookup(m.slice(1, -1));
                     return x === undefined ? m : (x !== null && typeof x === "object" ? JSON.stringify(x) : String(x));
                 });

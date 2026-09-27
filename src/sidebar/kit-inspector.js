@@ -9,6 +9,7 @@ import { pushHistory } from "../history.js";
 import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { openCodeEditorTray } from "../dialogs/lit-code-dialog.js";
 import { listKnownSparkplugBindings } from "../canvas/sparkplug-live.js";
+import { uploadAssets, loadAssets } from "../assets-client.js";
 
 // Changes to the same prop within this window are one undo step (typing).
 var PROP_HISTORY_MERGE_MS = 1500;
@@ -17,8 +18,11 @@ var hostReady = false;
 function ensureKitHost() {
     if (hostReady || !window.NexaKit) return;
     hostReady = true;
+    loadAssets();
     window.NexaKit.setHost({
         openCode: openCodeEditorTray,
+        // nx-asset's Import…: the files go to the Assets tab's store
+        uploadAssets: function (files) { return uploadAssets(files); },
         // what the selected node can bind to as {name}: its containers' variables,
         // the screen's (a template: its params and variables), nearest first
         listVariables: function () {

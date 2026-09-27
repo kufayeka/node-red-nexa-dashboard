@@ -23,7 +23,8 @@ export const {
     LitElement, html, css, svg, nothing, unsafeCSS,
     bind, defineInspectorWidget,
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
-    defineCodec, getCodec, format, isUnknown
+    defineCodec, getCodec, format, isUnknown,
+    assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange
 } = SDK;
 
 export default SDK;

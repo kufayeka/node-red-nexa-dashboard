@@ -89,6 +89,7 @@ export class NxBinding extends KitElement {
         var text = String(v).replace(/\{([^{}]+)\}/g, function (whole, inner) {
             if (S) { var t = S.parseTag(whole); if (t && t.valid) return "‹" + (t.display || inner) + "›"; }
             if (/^msg(\.|\[|$)/.test(inner)) return "‹" + inner + "›";
+            if (/^asset:/.test(inner)) return "‹image " + inner.slice(6) + "›";
             var hit = lookupBinding(vars, inner);
             if (!hit) { missing.push(inner); return whole; }
             // the current value when known exactly; a placeholder for a path inside something (a URL part, a member)

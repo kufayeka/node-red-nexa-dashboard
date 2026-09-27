@@ -18,6 +18,7 @@ import { defineCodec, getCodec } from "./field/codecs.js";
 import { bind, withInspector } from "./bind.js";
 import { defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag } from "./tags.js";
 import F from "./format.js";
+import { setAssets, listAssets, getAsset, onAssetsChange, assetRef, resolveAsset, assetUrl } from "./assets.js";
 
 export var SDK_VERSION = "1.0.0";
 
@@ -40,7 +41,10 @@ if (!window.NexaSDK) {
         defineTagProvider: defineTagProvider, extendTagProvider: extendTagProvider, getTagProvider: getTagProvider,
         listTagProviders: listTagProviders, parseTag: parseTag, makeTag: makeTag, isTag: isTag,
         // values
-        defineCodec: defineCodec, getCodec: getCodec, format: F, isUnknown: isUnknown
+        defineCodec: defineCodec, getCodec: getCodec, format: F, isUnknown: isUnknown,
+        // image assets (the Assets tab): {asset:name} or a name -> a URL
+        assetUrl: assetUrl, resolveAsset: resolveAsset, assetRef: assetRef, listAssets: listAssets, getAsset: getAsset,
+        onAssetsChange: onAssetsChange, setAssets: setAssets
     };
     var NEXA = ensureRegistry();
     NEXA.sdk = window.NexaSDK;

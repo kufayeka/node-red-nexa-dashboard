@@ -78,6 +78,7 @@ export const state = {
     // canvas/Logic-canvas/palette/properties/layers machinery — becomes
     // template-aware for free, with zero call-site changes.
     templates: [],
+    assetsPane: null,
     templateCounter: 0,
     editingMode: "screen", // "screen" | "template"
     activeTemplateId: null,

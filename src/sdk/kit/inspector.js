@@ -30,11 +30,12 @@ function same(a, b) {
 
 // "{provider:address}" / "{param}" as the whole value, or embedded in text.
 function isBinding(v) {
-    return typeof v === "string" && /\{[^{}]+\}/.test(v);
+    // a whole {asset:name} is the picked image itself (nx-asset's own value), not a binding
+    return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{asset:[^{}]+\}$/.test(v.trim());
 }
 
 // Types whose widget can switch to a binding (⛓: Variable / Tag / Message / Expression).
-var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1 };
+var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1 };
 
 /** Built-in checks + prop.validate(value, p) -> message | null. */
 export function validateProp(prop, value, p) {
@@ -242,6 +243,7 @@ export function renderInspector(container, opts) {
             case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" @nx-change="${ch}"></nx-select>`;
             case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-color>`;
             case "tag": return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
+            case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-asset>`;
             default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" @nx-change="${ch}"></nx-text>`;
         }
     }
@@ -276,6 +278,7 @@ export function renderInspector(container, opts) {
             case "code": return html`<nx-code ${b} language="${prop.lang || "javascript"}"></nx-code>`;
             case "json": return html`<nx-code ${b} language="json"></nx-code>`;
             case "tag": return html`<nx-tag ${b}></nx-tag>`;
+            case "asset": return html`<nx-asset ${b}></nx-asset>`;
             case "list": return html`<nx-list ${b}></nx-list>`;
             default: return html`<nx-text ${b} addon-before="${prop.prefix || ""}" addon-after="${prop.suffix || ""}"></nx-text>`;
         }

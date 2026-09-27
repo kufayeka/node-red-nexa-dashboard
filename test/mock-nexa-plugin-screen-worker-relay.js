@@ -53,8 +53,11 @@ function makeFakeRED(opts) {
     },
     log: { info: function () {}, warn: function () {} },
     httpAdmin: {
-      get: function (p, h) { adminRoutes[p] = h; },
-      post: function (p, h) { adminRoutes[p] = h; }
+      // the handler is the last argument (a route may have middleware before it)
+      get: function (p) { adminRoutes[p] = arguments[arguments.length - 1]; },
+      post: function (p) { adminRoutes[p] = arguments[arguments.length - 1]; },
+      delete: function (p) { adminRoutes[p] = arguments[arguments.length - 1]; },
+      use: function () {}
     },
     nodes: { getNode: function (id) { return (opts.sparkplugNode && id === opts.sparkplugNodeId) ? opts.sparkplugNode : null; } },
     getAdminRoute: function (p) { return adminRoutes[p]; }

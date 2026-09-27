@@ -11,12 +11,12 @@
 
 var LEGACY_TYPE = {
     string: "text", text: "text", number: "number", range: "number", boolean: "checkbox",
-    enum: "text", color: "color", css: "css", code: "text", tag: "text", json: "text", list: "text"
+    enum: "text", color: "color", css: "css", code: "text", tag: "text", json: "text", list: "text", asset: "text"
 };
 
 var TYPE_DEFAULT = {
     string: "", text: "", number: 0, range: 0, boolean: false, enum: "", color: "",
-    css: "", code: "", tag: "", json: null, list: []
+    css: "", code: "", tag: "", json: null, list: [], asset: ""
 };
 
 export function humanize(key) {
