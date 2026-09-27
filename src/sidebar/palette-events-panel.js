@@ -60,6 +60,7 @@ function getLogicNodeMeta(type) {
         return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -388,6 +389,9 @@ export function renderEventsPanel() {
             }, "", "on-variable-change");
         });
     }
+
+    sectionHeader(state.eventsPane, "Lists");
+    chip(state.eventsPane, "Populate (repeat a template)", function () { return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" }; }, "", "populate");
 
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");

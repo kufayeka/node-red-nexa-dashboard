@@ -1000,6 +1000,8 @@
     "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
+    // the repeater: a container filled with a template, one card per item
+    "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
@@ -26499,6 +26501,7 @@
       return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -26843,6 +26846,10 @@
         }, "", "on-variable-change");
       });
     }
+    sectionHeader(state.eventsPane, "Lists");
+    chip(state.eventsPane, "Populate (repeat a template)", function() {
+      return { type: "populate", container: "", template: "", mode: "replace", key: "id", valueSource: "payload" };
+    }, "", "populate");
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function() {
       return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 1e4 };
@@ -29001,7 +29008,12 @@
           });
           h.attr("spellcheck", "false");
           label("Body");
-          select("body", [["payload", "msg.payload (JSON)"], ["none", "No body"]]);
+          var bodyText;
+          select("body", [["payload", "msg.payload (JSON)"], ["binding", "A binding / text, e.g. {item}"], ["none", "No body"]], body, function() {
+            bodyText.toggle(d.body === "binding");
+          });
+          bodyText = text("bodyText", '{item}  \u2014 or {"qty": 1, "id": "{item.id}"} as text');
+          bodyText.toggle(d.body === "binding");
           label("Timeout (ms, 0 = none)");
           text("timeout", "10000");
           label("Cookies");
@@ -29054,6 +29066,122 @@
           window.$("<span>").text("Secure (HTTPS only)").appendTo(secRow);
         }
         sync();
+      }
+    });
+  }
+
+  // src/dialogs/populate-dialog.js
+  var MODES = [
+    ["replace", "Replace the list (kept / updated / added / removed by key)"],
+    ["append", "Append"],
+    ["prepend", "Prepend"],
+    ["upsert", "Update by key (add when new)"],
+    ["remove", "Remove by key"],
+    ["clear", "Clear"]
+  ];
+  function openPopulateNodeEditor(node) {
+    var screen = getActiveScreen();
+    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return n.type === "@frame";
+    }) : [];
+    var templates = (state.templates || []).filter(function(t2) {
+      return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
+    });
+    var d = {
+      container: node.container || "",
+      template: node.template || "",
+      mode: node.mode || "replace",
+      key: node.key === void 0 ? "id" : node.key,
+      valueSource: node.valueSource || "payload",
+      msgPath: node.msgPath || "payload.items",
+      value: node.value,
+      fill: !!node.fill
+    };
+    window.RED.tray.show({
+      id: "nexa-logic-populate-editor",
+      title: "Configure Populate Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            Object.keys(d).forEach(function(k) {
+              node[k] = d[k];
+            });
+            if (d.valueSource !== "static") delete node.value;
+            if (d.valueSource !== "msg") delete node.msgPath;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Fills a container with a template, one card per item. Inside the template, bind {item.name}, {index}; the template's own Logic runs per card (e.g. Buy \u2192 HTTP Request with body {item}), and an event from inside a card gives msg.item / msg.index.").appendTo(body);
+        var label = function(text) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
+        };
+        var select = function(key, options, onChange) {
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          options.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+          });
+          sel.val(d[key]);
+          if (!sel.val() && options[0]) {
+            sel.val(options[0][0]);
+            d[key] = options[0][0];
+          }
+          sel.on("change", function() {
+            d[key] = sel.val();
+            if (onChange) onChange();
+          });
+          return sel;
+        };
+        label("Container (a frame \u2014 a row / column / grid lays the cards out)");
+        select("container", frames.length ? frames.map(function(f) {
+          return [f.id, (f.name || "Frame") + (layout_exports.hasAutoLayout(f) ? " (" + layout_exports.layoutOf(f).mode + ")" : " (no auto layout)")];
+        }) : [["", "(no frame on this surface \u2014 add a Row / Column / Grid)"]]);
+        label("Template (one card per item)");
+        select("template", templates.length ? templates.map(function(t2) {
+          return [t2.id, t2.name];
+        }) : [["", "(no templates yet)"]]);
+        label("Mode");
+        select("mode", MODES);
+        label("Key (the item field that identifies it, e.g. id; empty = by position)");
+        window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.key).appendTo(body).on("change", function() {
+          d.key = this.value.trim();
+        });
+        label("Items");
+        var srcSel = select("valueSource", [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed list (JSON)"]], function() {
+          sync();
+        });
+        var path = window.$("<input>", { type: "text", placeholder: "payload.data.items" }).css({ width: "100%", "box-sizing": "border-box", "margin-top": "6px" }).val(d.msgPath).appendTo(body).on("change", function() {
+          d.msgPath = this.value.trim();
+        });
+        var json = window.$("<textarea>", { rows: 4, placeholder: '[{"id": 1, "name": "Kopi", "price": 45000}]' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace", "margin-top": "6px" }).val(d.value !== void 0 ? JSON.stringify(d.value, null, 1) : "").appendTo(body).on("change", function() {
+          try {
+            d.value = this.value.trim() ? JSON.parse(this.value) : [];
+            window.$(this).css("border-color", "");
+          } catch (e) {
+            window.$(this).css("border-color", "#d00");
+          }
+        });
+        var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
+        window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function() {
+          d.fill = this.checked;
+        });
+        window.$("<span>").text("Cards fill the container's width (a list / table row)").appendTo(fillRow);
+        function sync() {
+          path.toggle(d.valueSource === "msg");
+          json.toggle(d.valueSource === "static");
+        }
+        sync();
+        srcSel.trigger("blur");
       }
     });
   }
@@ -29197,6 +29325,13 @@
     if (node.type === "layer-control") {
       var n = (node.states || []).length;
       return "Layer Control" + (n ? " (" + n + ")" : "");
+    }
+    if (node.type === "populate") {
+      var pScreen = getActiveScreen();
+      var target = node.container && pScreen ? tree_exports.find(pScreen, node.container) : null;
+      var tpl = node.template ? findTemplate(node.template) : null;
+      var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
+      return modeWord + (target ? target.name || "Frame" : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " \xD7 " + (tpl ? tpl.name : "?"));
     }
     if (node.type === "http-request") {
       var u = node.url || "";
@@ -29343,6 +29478,12 @@
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openLayerControlNodeEditor(node);
+      });
+    }
+    if (node.type === "populate") {
+      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openPopulateNodeEditor(node);
       });
     }
     if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {

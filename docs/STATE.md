@@ -115,6 +115,41 @@ frame that declares it) and name. The Events tab has **Set …** and
   non-2xx status, network error or timeout.
 - **Timing:** it is async; the wire continues when the response is in.
 
+## 4b. Lists: the repeater (Populate)
+
+**Populate** (Events tab → Lists) fills a **container** (a Row, Column or
+Grid frame) with a **template**, one card per item of an array. The array
+comes from `msg.payload`, a msg property, or a fixed list.
+
+**Modes:**
+
+| Mode | Does |
+| --- | --- |
+| **replace** | By key: cards are kept, updated, added or removed, then ordered as given. Without a key, everything is replaced. |
+| **append** / **prepend** | Adds cards at the end / start. |
+| **update by key** | Updates a card in place, or adds it when new. |
+| **remove by key** | Removes cards. |
+| **clear** | Removes all cards. |
+
+The **key** is the item field that identifies a card (e.g. `id`). A known
+key updates the same card in place, which matters for realtime data and
+tables. The container's own children (a header) stay; cards come after them.
+
+**Inside the template** each card has the params `item` (its object) and
+`index`. Bind `{item.name}`, `{item.price}`, `{index}`.
+- **The template's own Logic runs per card**, like a React component. For
+  example, `[Buy: on click] → [HTTP Request POST /api/order/{item.id}, body {item}]`
+  (the body can be a binding).
+- **Events from inside a card** carry `msg.item` and `msg.index`, for a flow
+  outside the card that handles every card.
+- **"Cards fill the container's width"** makes list / table rows.
+
+Example:
+
+```
+[On Load] → [HTTP Request GET /api/products] → [Populate: Grid "Products" × ProductCard, key id, items msg.payload]
+```
+
 ## 5. The Function node API
 
 ```js

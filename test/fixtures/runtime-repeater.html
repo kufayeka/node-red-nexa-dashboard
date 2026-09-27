@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>repeater</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- The repeater (Populate node) on a deployed page (test/runtime-repeater-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:800px;height:600px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+// what the card's HTTP Request sends (no server needed)
+window.__posted = [];
+var realFetch = window.fetch;
+window.fetch = function (url, init) {
+  if (init && init.method === "POST") { window.__posted.push({ url: String(url), body: init.body }); return Promise.resolve(new Response('{"ok":true}', { status: 200, headers: { "Content-Type": "application/json" } })); }
+  return realFetch.apply(this, arguments);
+};
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+window.__NEXA_APP__ = { variables: [{ id: "lb", name: "lastBought", type: "string", defaultValue: "" }] };
+window.__NEXA_TEMPLATES__ = [{ id: "CARD", name: "ProductCard", width: 300, height: 40, params: [],
+  components: [
+    { id: "title", type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: "{index}: {item.name} @ {item.price}" } },
+    { id: "buy", type: "btn", x: 200, y: 0, w: 60, h: 20, props: { text: "Buy" } }
+  ],
+  logic: { nodes: [
+    { id: "click", type: "ui-event", compId: "buy", event: "click" },
+    { id: "keep", type: "set-variable", scope: "@app", name: "lastBought", op: "set", valueSource: "msg", msgPath: "item.name" },
+    { id: "post", type: "http-request", method: "POST", url: "/api/order/{item.id}", body: "binding", bodyText: "{item}" }
+  ], wires: [W("click", "keep"), W("click", "post")] } }];
+function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
+  components: [
+    { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 },
+      children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
+    { id: "ctl", type: "btn", x: 400, y: 0, w: 10, h: 10, props: {} },
+    { id: "last", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } }
+  ],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ctl", event: "replace" }, node("p1", "replace"),
+    { id: "e2", type: "ui-event", compId: "ctl", event: "upsert" }, node("p2", "upsert"),
+    { id: "e3", type: "ui-event", compId: "ctl", event: "remove" }, node("p3", "remove"),
+    { id: "e4", type: "ui-event", compId: "ctl", event: "prepend" }, node("p4", "prepend"),
+    { id: "e5", type: "ui-event", compId: "ctl", event: "clear" }, node("p5", "clear")
+  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

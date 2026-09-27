@@ -12,6 +12,7 @@ import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
 import { openWebIoNodeEditor } from "../dialogs/web-io-dialog.js";
+import { openPopulateNodeEditor } from "../dialogs/populate-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 
@@ -45,6 +46,13 @@ export function logicNodeLabel(node) {
     if (node.type === "layer-control") {
         var n = (node.states || []).length;
         return "Layer Control" + (n ? (" (" + n + ")") : "");
+    }
+    if (node.type === "populate") {
+        var pScreen = getActiveScreen();
+        var target = node.container && pScreen ? Tree.find(pScreen, node.container) : null;
+        var tpl = node.template ? findTemplate(node.template) : null;
+        var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
+        return modeWord + (target ? (target.name || "Frame") : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " × " + (tpl ? tpl.name : "?"));
     }
     if (node.type === "http-request") {
         var u = node.url || "";
@@ -166,6 +174,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openLayerControlNodeEditor(node);
+        });
+    }
+    if (node.type === "populate") {
+        box.attr("title", "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openPopulateNodeEditor(node);
         });
     }
     if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {

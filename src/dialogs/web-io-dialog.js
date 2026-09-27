@@ -61,7 +61,10 @@ export function openWebIoNodeEditor(node) {
                     .on("change", function () { d.headers = this.value.trim(); });
                 h.attr("spellcheck", "false");
                 label("Body");
-                select("body", [["payload", "msg.payload (JSON)"], ["none", "No body"]]);
+                var bodyText;
+                select("body", [["payload", "msg.payload (JSON)"], ["binding", "A binding / text, e.g. {item}"], ["none", "No body"]], body, function () { bodyText.toggle(d.body === "binding"); });
+                bodyText = text("bodyText", "{item}  — or {\"qty\": 1, \"id\": \"{item.id}\"} as text");
+                bodyText.toggle(d.body === "binding");
                 label("Timeout (ms, 0 = none)");
                 text("timeout", "10000");
                 label("Cookies");
