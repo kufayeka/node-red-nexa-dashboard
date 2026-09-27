@@ -86,10 +86,10 @@ export class KitElement extends LitElement {
         return html`${this.invalid && this.message ? html`<div class="nx-message">${this.message}</div>` : nothing}${this.help ? html`<div class="nx-help">${this.help}</div>` : nothing}`;
     }
 
-    /** Label on top, the control (or the binding's tag picker), then the message / help. */
+    /** Label on top, the control (or, bound, the binding editor: nx-binding), then the message / help. */
     frame(control) {
         if (this.binding !== undefined && this.binding !== null) {
-            control = html`<nx-tag .value="${this.binding}" placeholder="{provider:address} or {param}" @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-tag>`;
+            control = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-binding>`;
         }
         return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${control}${this._foot()}</div>`;
     }

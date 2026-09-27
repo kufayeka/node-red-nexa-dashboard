@@ -31,6 +31,10 @@ function isEditableTarget(target) {
     return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
 }
 
+
+// On hold: dropping a Sparkplug tag onto a UI component (see the artboard droppable).
+var SPARKPLUG_DROP_ON_CANVAS = false;
+
 export function onKeyDown(e) {
     if (!state.trayContent) return;
     var isTextField = isEditableTarget(e.target);
@@ -140,7 +144,10 @@ export function buildCanvasArea(trayBody) {
     // reference (group/edge/device/name) doesn't reduce to a bare type-id
     // string the way a plain component drop does.
     state.artboardEl.droppable({
-        accept: "[data-type-id], [data-sparkplug-metric]",
+        // A Sparkplug tag dropped onto a component is ON HOLD while props bind
+        // their own sources (⛓ Variable / Tag / Message / Expression): the two
+        // ways of binding at once would confuse. SPARKPLUG_DROP_ON_CANVAS turns it back on.
+        accept: SPARKPLUG_DROP_ON_CANVAS ? "[data-type-id], [data-sparkplug-metric]" : "[data-type-id]",
         tolerance: "pointer",
         drop: function (event, ui) {
             var offset = state.artboardEl.offset();
@@ -148,7 +155,7 @@ export function buildCanvasArea(trayBody) {
             var y = (event.pageY - offset.top) / state.zoomLevel;
             if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
 
-            var metricRef = ui.draggable.data("nexaSparkplugMetric");
+            var metricRef = SPARKPLUG_DROP_ON_CANVAS && ui.draggable.data("nexaSparkplugMetric");
             if (metricRef) {
                 var screen = getActiveScreen();
                 var targetComp = null;

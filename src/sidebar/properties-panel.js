@@ -337,50 +337,9 @@ export function renderPropertiesPanel() {
         });
     }
 
-    // Sparkplug Tag Watch field — available on components unless explicitly opted out (e.g. Buttons with dedicated Read/Write tags)
-    if (!typeDef || !typeDef.hideSparkplugWatch) {
-        var spRow = window.$("<div>").css({
-            margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px"
-        }).appendTo(state.propertiesPane);
-        window.$("<label>").css({
-            display: "block", "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)"
-        }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
-
-        var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
-        var spInput = window.$("<input>", {
-            type: "text",
-            placeholder: "{sparkplug:Group::Node::Device::Metric}"
-        }).css({
-            flex: "1", "font-size": "11px", "font-family": "monospace", "box-sizing": "border-box"
-        }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
-
-        var spClearBtn = window.$("<button>", {
-            type: "button",
-            title: "Clear Sparkplug Watch"
-        }).css({
-            padding: "3px 8px", "font-size": "11px", cursor: "pointer"
-        }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
-
-        function onSparkplugBindingChanged(newVal) {
-            var trimmed = (newVal || "").trim();
-            if (trimmed) {
-                comp.sparkplugBinding = trimmed;
-            } else {
-                delete comp.sparkplugBinding;
-            }
-            markDirty();
-            refreshComponentRender(comp);
-            if (typeof renderEventsPanel === "function") renderEventsPanel();
-        }
-
-        spInput.on("change", function () {
-            onSparkplugBindingChanged(spInput.val());
-        });
-        spClearBtn.on("click", function () {
-            spInput.val("");
-            onSparkplugBindingChanged("");
-        });
-    }
+    // (The old "Sparkplug Tag Watch" field is gone: a prop binds its own source —
+    // tag, variable, message or an expression — with ⛓. A comp.sparkplugBinding
+    // saved by an older version still re-renders the component on that tag.)
 
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function (pair) {

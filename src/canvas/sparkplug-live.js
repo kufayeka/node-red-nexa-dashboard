@@ -55,6 +55,16 @@ export function refKeyOfBindingString(raw) {
     return ref ? refKey(ref) : null;
 }
 
+// Every tag binding in a string: the whole value, or each one inside a text
+// (an expression like "Speed {sparkplug:G::N::D::Speed} rpm").
+var EMBEDDED_TAG_RE = /\{sparkplug:[^{}]+\}/g;
+export function refKeysInString(raw) {
+    if (typeof raw !== "string") return [];
+    var whole = parseSparkplugBindingPath(raw);
+    if (whole) return [refKey(whole)];
+    return (raw.match(EMBEDDED_TAG_RE) || []).map(parseSparkplugBindingPath).filter(Boolean).map(refKey);
+}
+
 var liveCache = {}; // refKey(ref) -> {value, type, isNull, online}
 // Mirrors lib/sparkplug/sparkplugTree.js's own shape exactly (group ->
 // edge node -> device -> metric) — duplicated here rather than shared,
@@ -259,9 +269,20 @@ export function resolveSparkplugProps(props) {
         }
         if (typeof v !== "string") return;
         var ref = parseSparkplugBindingPath(v);
-        if (!ref) return;
-        if (!out) out = Object.assign({}, props);
-        out[k] = formatSparkplugValue(ref);
+        if (ref) {
+            if (!out) out = Object.assign({}, props);
+            out[k] = formatSparkplugValue(ref);
+            return;
+        }
+        // tags inside a text: each one replaced by its value
+        if (v.indexOf("{sparkplug:") === -1) return;
+        var replaced = v.replace(EMBEDDED_TAG_RE, function (whole) {
+            var r = parseSparkplugBindingPath(whole);
+            if (!r) return whole;
+            var val = formatSparkplugValue(r);
+            return val === null || val === undefined ? "" : String(val);
+        });
+        if (replaced !== v) { if (!out) out = Object.assign({}, props); out[k] = replaced; }
     });
     return out || props;
 }

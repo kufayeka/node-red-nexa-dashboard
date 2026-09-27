@@ -69,9 +69,12 @@ function sdkApi() {
 
 // {name}, or a path into one: {motor.Speed}, {$route.params.id}, {list[0].x}
 var PARAM_RE = /^\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*\}$/;
+// {path} bindings anywhere inside a text
+var EMBEDDED_RE = /\{([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*)\}/g;
 
 export class NxTag extends NxCombobox {
-    static properties = { access: { type: String }, providers: { attribute: false }, _provider: { state: true } };
+    // tags-only: just tag suggestions (inside nx-binding's Tag source; variables have their own)
+    static properties = { access: { type: String }, providers: { attribute: false }, tagsOnly: { type: Boolean, attribute: "tags-only" }, _provider: { state: true } };
     constructor() {
         super();
         this.mono = true;
@@ -85,6 +88,7 @@ export class NxTag extends NxCombobox {
         };
     }
     _variables() {
+        if (this.tagsOnly) return [];
         var h = getHost();
         try { return typeof h.listVariables === "function" ? (h.listVariables() || []) : []; } catch (e) { return []; }
     }
@@ -127,6 +131,21 @@ export class NxTag extends NxCombobox {
             return known
                 ? html`<div class="nx-tag-status nx-ok"><i class="fa fa-link"></i><span>${known.owner.kind === "template" ? "parameter / variable" : "variable"} of ${known.owner.name} (now ${str(known.value)})</span></div>`
                 : html`<div class="nx-tag-status"><i class="fa fa-link"></i><span>variable or template parameter ${v} (not declared around this node)</span></div>`;
+        }
+        // text with bindings in it: "Line {line} — {count} pcs" (each {name} is replaced, the rest stays text)
+        var embedded = v.match(EMBEDDED_RE);
+        if (embedded && !(t && t.valid)) {
+            var vars = this._variables();
+            var missing = [];
+            var preview = v.replace(EMBEDDED_RE, function (whole, path) {
+                var root = path.split(/[.[]/)[0];
+                var known = vars.filter(function (x) { return x.name === path || x.name === root; })[0];
+                if (!known) { missing.push(path); return whole; }
+                return known.name === path ? str(known.value) : whole;
+            });
+            return missing.length
+                ? html`<div class="nx-tag-status"><i class="fa fa-font"></i><span>text with bindings — not declared around this node: ${missing.join(", ")}</span></div>`
+                : html`<div class="nx-tag-status nx-ok"><i class="fa fa-font"></i><span>text with bindings → "${preview}"</span></div>`;
         }
         if (t && !t.known) return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>unknown tag provider "${t.provider}"</span></div>`;
         return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>not a valid tag${t ? " for " + t.provider : ""} — {provider:address}</span></div>`;

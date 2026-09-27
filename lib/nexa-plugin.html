@@ -1590,9 +1590,12 @@
   function refKey(ref) {
     return ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "") + "::" + ref.metricName;
   }
-  function refKeyOfBindingString(raw) {
-    var ref = parseSparkplugBindingPath(raw);
-    return ref ? refKey(ref) : null;
+  var EMBEDDED_TAG_RE = /\{sparkplug:[^{}]+\}/g;
+  function refKeysInString(raw) {
+    if (typeof raw !== "string") return [];
+    var whole = parseSparkplugBindingPath(raw);
+    if (whole) return [refKey(whole)];
+    return (raw.match(EMBEDDED_TAG_RE) || []).map(parseSparkplugBindingPath).filter(Boolean).map(refKey);
   }
   var liveCache = {};
   var rawTree = {};
@@ -1754,9 +1757,22 @@
       }
       if (typeof v !== "string") return;
       var ref = parseSparkplugBindingPath(v);
-      if (!ref) return;
-      if (!out) out = Object.assign({}, props);
-      out[k] = formatSparkplugValue(ref);
+      if (ref) {
+        if (!out) out = Object.assign({}, props);
+        out[k] = formatSparkplugValue(ref);
+        return;
+      }
+      if (v.indexOf("{sparkplug:") === -1) return;
+      var replaced = v.replace(EMBEDDED_TAG_RE, function(whole) {
+        var r = parseSparkplugBindingPath(whole);
+        if (!r) return whole;
+        var val = formatSparkplugValue(r);
+        return val === null || val === void 0 ? "" : String(val);
+      });
+      if (replaced !== v) {
+        if (!out) out = Object.assign({}, props);
+        out[k] = replaced;
+      }
     });
     return out || props;
   }
@@ -1923,12 +1939,10 @@
         });
       });
       list.forEach(function(v) {
-        var key = refKeyOfBindingString(v);
-        if (!key) return;
-        if (!index[key]) index[key] = [];
-        if (index[key].indexOf(comp) === -1) {
-          index[key].push(comp);
-        }
+        refKeysInString(v).forEach(function(key) {
+          if (!index[key]) index[key] = [];
+          if (index[key].indexOf(comp) === -1) index[key].push(comp);
+        });
       });
     });
     return index;
@@ -27569,56 +27583,6 @@
         eventList.editableList("addItem", evt);
       });
     }
-    if (!typeDef || !typeDef.hideSparkplugWatch) {
-      let onSparkplugBindingChanged = function(newVal) {
-        var trimmed = (newVal || "").trim();
-        if (trimmed) {
-          comp.sparkplugBinding = trimmed;
-        } else {
-          delete comp.sparkplugBinding;
-        }
-        markDirty();
-        refreshComponentRender(comp);
-        if (typeof renderEventsPanel === "function") renderEventsPanel();
-      };
-      var spRow = window.$("<div>").css({
-        margin: "14px 0 8px",
-        "border-top": "1px solid #ddd",
-        "padding-top": "10px"
-      }).appendTo(state.propertiesPane);
-      window.$("<label>").css({
-        display: "block",
-        "font-weight": "bold",
-        "font-size": "12px",
-        "margin-bottom": "4px",
-        color: "var(--red-ui-secondary-text-color, #475569)"
-      }).html('<i class="fa fa-bolt" style="color:#f59e0b; margin-right:4px;"></i> Sparkplug Tag Watch').appendTo(spRow);
-      var spInputWrap = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(spRow);
-      var spInput = window.$("<input>", {
-        type: "text",
-        placeholder: "{sparkplug:Group::Node::Device::Metric}"
-      }).css({
-        flex: "1",
-        "font-size": "11px",
-        "font-family": "monospace",
-        "box-sizing": "border-box"
-      }).val(comp.sparkplugBinding || "").appendTo(spInputWrap);
-      var spClearBtn = window.$("<button>", {
-        type: "button",
-        title: "Clear Sparkplug Watch"
-      }).css({
-        padding: "3px 8px",
-        "font-size": "11px",
-        cursor: "pointer"
-      }).html('<i class="fa fa-times"></i>').appendTo(spInputWrap);
-      spInput.on("change", function() {
-        onSparkplugBindingChanged(spInput.val());
-      });
-      spClearBtn.on("click", function() {
-        spInput.val("");
-        onSparkplugBindingChanged("");
-      });
-    }
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair2) {
       var field = pair2[0], label = pair2[1];
@@ -28444,7 +28408,25 @@
           return;
         }
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.").appendTo(body);
+        var msgBound = {};
+        Object.keys(comp.props || {}).forEach(function(k) {
+          var v = comp.props[k];
+          if (typeof v !== "string" || v.indexOf("{msg") === -1) return;
+          msgBound[k] = (v.match(/\{(msg[^{}]*)\}/g) || []).map(function(m) {
+            return m.slice(1, -1);
+          });
+        });
+        var boundKeys = Object.keys(msgBound);
+        if (boundKeys.length) {
+          var box = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
+          window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box);
+          boundKeys.forEach(function(k) {
+            window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  \u2190  " + msgBound[k].join(", ")).appendTo(box);
+          });
+          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box);
+        }
         function field(key, label, type) {
+          if (msgBound[key]) return;
           var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
           window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
           var current = node.config && node.config[key] !== void 0 ? node.config[key] : "";
@@ -29502,6 +29484,7 @@
     if ($t.is("input,textarea")) return true;
     return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
   }
+  var SPARKPLUG_DROP_ON_CANVAS = false;
   function onKeyDown(e) {
     if (!state.trayContent) return;
     var isTextField = isEditableTarget(e.target);
@@ -29600,14 +29583,17 @@
       startMarqueeSelect(e);
     });
     state.artboardEl.droppable({
-      accept: "[data-type-id], [data-sparkplug-metric]",
+      // A Sparkplug tag dropped onto a component is ON HOLD while props bind
+      // their own sources (⛓ Variable / Tag / Message / Expression): the two
+      // ways of binding at once would confuse. SPARKPLUG_DROP_ON_CANVAS turns it back on.
+      accept: SPARKPLUG_DROP_ON_CANVAS ? "[data-type-id], [data-sparkplug-metric]" : "[data-type-id]",
       tolerance: "pointer",
       drop: function(event, ui) {
         var offset = state.artboardEl.offset();
         var x = (event.pageX - offset.left) / state.zoomLevel;
         var y = (event.pageY - offset.top) / state.zoomLevel;
         if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
-        var metricRef = ui.draggable.data("nexaSparkplugMetric");
+        var metricRef = SPARKPLUG_DROP_ON_CANVAS && ui.draggable.data("nexaSparkplugMetric");
         if (metricRef) {
           var screen = getActiveScreen();
           var targetComp = null;

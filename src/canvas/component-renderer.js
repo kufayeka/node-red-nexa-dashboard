@@ -4,7 +4,7 @@ import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
 import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } from "./drag-feedback.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
-import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeyOfBindingString } from "./sparkplug-live.js";
+import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString } from "./sparkplug-live.js";
 
 // Re-invokes just one component's render() with its current props
 // The variable scope each drawn node was rendered with (src/model/scope.js) —
@@ -81,12 +81,11 @@ function buildSparkplugBindingIndex(screen) {
             else if (Array.isArray(v)) v.forEach(function (x) { if (typeof x === "string") list.push(x); }); // `multiple` inputs
         });
         list.forEach(function (v) {
-            var key = refKeyOfBindingString(v);
-            if (!key) return;
-            if (!index[key]) index[key] = [];
-            if (index[key].indexOf(comp) === -1) {
-                index[key].push(comp);
-            }
+            // the whole value, or every tag inside a text
+            refKeysInString(v).forEach(function (key) {
+                if (!index[key]) index[key] = [];
+                if (index[key].indexOf(comp) === -1) index[key].push(comp);
+            });
         });
     });
     return index;

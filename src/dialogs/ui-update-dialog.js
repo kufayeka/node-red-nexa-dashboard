@@ -44,7 +44,28 @@ export function openUiUpdateNodeEditor(node) {
                 .text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.")
                 .appendTo(body);
 
+            // Props bound to the message ({msg.payload.speed}, set with ⛓ in the
+            // component's inspector) take their value from what this node sends —
+            // this list follows the component's bindings, it isn't fixed.
+            var msgBound = {};
+            Object.keys(comp.props || {}).forEach(function (k) {
+                var v = comp.props[k];
+                if (typeof v !== "string" || v.indexOf("{msg") === -1) return;
+                msgBound[k] = (v.match(/\{(msg[^{}]*)\}/g) || []).map(function (m) { return m.slice(1, -1); });
+            });
+            var boundKeys = Object.keys(msgBound);
+            if (boundKeys.length) {
+                var box = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
+                window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box);
+                boundKeys.forEach(function (k) {
+                    window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  ←  " + msgBound[k].join(", ")).appendTo(box);
+                });
+                window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" })
+                    .text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box);
+            }
+
             function field(key, label, type) {
+                if (msgBound[key]) return; // bound to the message: listed above
                 var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
                 window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
                 var current = node.config && node.config[key] !== undefined ? node.config[key] : "";

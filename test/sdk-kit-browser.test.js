@@ -189,8 +189,8 @@ async function main() {
                 w("A").querySelector("[title='Reset to default']").click(); await NexaTest.wait();
                 out.aReset = ins.props.a;
                 w("Fill").querySelector("[title^='Bind']").click(); await NexaTest.wait();
-                out.bindMode = w("Fill").binding === "" && !!w("Fill").querySelector("nx-tag");
-                var tagIn = w("Fill").querySelector("nx-tag input");
+                out.bindMode = w("Fill").binding === "" && !!w("Fill").querySelector("nx-binding");
+                var tagIn = w("Fill").querySelector("nx-binding nx-combobox input");   // the Variable source
                 tagIn.focus(); tagIn.value = "{color}"; tagIn.dispatchEvent(new Event("input")); tagIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
                 await NexaTest.wait();
                 out.fill = ins.props.fill;
@@ -202,7 +202,7 @@ async function main() {
             assert.ok(r.aModified);
             assert.ok(r.focusKept && r.dShown, 'visibleWhen re-evaluated in place');
             assert.deepStrictEqual([r.aMax, r.aReset], ['Maximum is 10', 1]);
-            assert.ok(r.bindMode, 'the same widget switches to a tag picker');
+            assert.ok(r.bindMode, 'the same widget switches to the binding editor');
             assert.strictEqual(r.fill, '{color}');
         });
 
@@ -303,6 +303,40 @@ async function main() {
             })()`);
             assert.strictEqual(r.rows, '[{"name":"speed","type":"number"},{"name":"","type":"string"}]');
             assert.deepStrictEqual(r.shown, ['speed', ''], 'the list shows both rows at once');
+        });
+
+        await ok('nx-binding: the source is read from the value; Variable / Tag / Message / Expression each write the right syntax', async () => {
+            const r = await js(`(async function () {
+                NexaKit.setHost({ listVariables: function () { return [{ name: "line", value: "L1", owner: { name: "screen", kind: "screen" } }]; } });
+                var b = document.createElement("nx-binding"); document.body.appendChild(b);
+                var got = []; b.addEventListener("nx-change", function (e) { got.push(e.detail.value); });
+                var src = function () { return b.querySelector(".nx-binding-source").value; };
+                var out = {};
+                var seen = [];
+                b.value = "{line}"; await NexaTest.wait(); seen.push(src());
+                b.value = "{sparkplug:G::N::D::Speed}"; await NexaTest.wait(); seen.push(src());
+                b.value = "{msg.payload.speed}"; await NexaTest.wait(); seen.push(src());
+                b.value = "Line {line}: {sparkplug:G::N::D::Speed} rpm"; await NexaTest.wait(); seen.push(src());
+                out.preview = (b.querySelector(".nx-tag-status") || {}).textContent.trim();
+                out.seen = seen;
+                // Message: type a path -> {msg.<path>}
+                b.value = ""; await NexaTest.wait();
+                b.querySelector(".nx-binding-source button[title='Message']").click(); await NexaTest.wait();
+                var mi = b.querySelector("nx-text input"); mi.value = "payload.temp"; mi.dispatchEvent(new Event("input")); mi.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+                await NexaTest.wait();
+                // Expression: insert a binding at the caret, then Enter
+                b.querySelector(".nx-binding-source button[title='Expression']").click(); await NexaTest.wait();
+                var ta = b.querySelector(".nx-binding-expr textarea"); ta.value = "Temp  C"; ta.selectionStart = 5; ta.dispatchEvent(new Event("click"));
+                var sel = b.querySelector(".nx-binding-expr nx-select select");
+                sel.value = String(Array.from(sel.options).findIndex(function (o) { return o.text.indexOf("{line}") === 0; })); sel.dispatchEvent(new Event("change"));
+                await NexaTest.wait();
+                out.got = got;
+                b.remove();
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.seen, ['var', 'tag', 'msg', 'expr']);
+            assert.ok(/^Line L1: ‹.*› rpm$/.test(r.preview), r.preview);
+            assert.deepStrictEqual(r.got, ['{msg.payload.temp}', 'Temp {line} C']);
         });
 
         await ok('nx-tree: nested rows, select, collapse, actions, rename, drag & drop (never into itself)', async () => {

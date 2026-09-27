@@ -33,8 +33,8 @@ function isBinding(v) {
     return typeof v === "string" && /\{[^{}]+\}/.test(v);
 }
 
-// Types whose widget can switch to a tag / parameter binding (⛓).
-var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1 };
+// Types whose widget can switch to a binding (⛓: Variable / Tag / Message / Expression).
+var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1 };
 
 /** Built-in checks + prop.validate(value, p) -> message | null. */
 export function validateProp(prop, value, p) {

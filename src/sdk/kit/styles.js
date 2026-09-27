@@ -231,6 +231,14 @@ nx-tab[hidden] { display: none !important; }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
+/* nx-binding (binding.js) */
+.nx-kit .nx-binding { display: flex; flex-direction: column; gap: 6px; }
+.nx-kit .nx-binding-source { width: 100%; }
+.nx-kit.nx-kit .nx-binding-source .nx-seg-item { flex: 1 1 0; min-width: 0; padding-left: 2px; padding-right: 2px; font-size: 11px; }
+.nx-kit.nx-kit .nx-binding-source .nx-seg-item i { display: none; }
+.nx-kit.nx-kit .nx-binding-source .nx-seg-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-kit .nx-binding-expr { display: flex; flex-direction: column; gap: 4px; }
+.nx-kit.nx-kit .nx-binding-expr textarea { width: 100%; box-sizing: border-box; resize: vertical; }
 /* nx-align, nx-spacing (layout-widgets.js) */
 .nx-kit .nx-align { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 22px); gap: 2px; padding: 3px; width: max-content;
     border: 1px solid var(--nx-border); border-radius: var(--nx-radius); background: var(--nx-bg); }

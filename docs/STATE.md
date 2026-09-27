@@ -48,6 +48,32 @@ A value that is exactly one binding keeps its type (a whole object or
 array). A binding inside more text becomes text. A name that can't be
 resolved stays as written.
 
+## 2b. Choosing where a prop's value comes from (⛓)
+
+Every prop of a component can be bound; a plugin can opt a prop out with
+`bindable: false`. Click ⛓ next to a field and pick the **source**:
+
+| Source | Writes | Updates when |
+| --- | --- | --- |
+| **Variable** | `{speed}`, `{motor.speed}`: the nearest declaration, from frame to screen to app | the variable changes |
+| **Tag** | `{sparkplug:G::N::D::Speed}` | a live value arrives |
+| **Message** | `{msg.payload.speed}` | a Logic flow sends a message to the component (an **Update Component** node) |
+| **Expression** | text mixing any of them: `Line {line}: {sparkplug:G::N::D::Speed} rpm, order {msg.payload.id}` | any part changes; a tag inside the text updates live too |
+
+- **The source comes from the value itself.** The editor shows a preview of
+  the result and warns about names that aren't declared around the node.
+- **"Insert a binding…"** puts a variable, `msg.payload` or a known tag at
+  the caret.
+- **Message:** the component keeps the last message it was sent. A
+  `{msg.*}` binding reads from that message, and shows as empty until one
+  arrives.
+- **The Update Component node** lists the props that take their value from
+  the message (the list follows the component's bindings, it isn't fixed).
+  For such a component, nothing is guessed from `msg.payload` and those props
+  are never overwritten.
+- **One value, many components:** use a variable. The flow does
+  **Set Variable** once, and every component binds `{name}`.
+
 ## 3. Changing and watching (Logic)
 
 | Node | Does |
