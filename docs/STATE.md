@@ -154,6 +154,18 @@ available as `{item}` / `msg.item`.
   example, `[button: click] → [HTTP Request POST /api/order/{product.id}, body {product}]`.
 - **Events from inside a copy** carry `msg.item` and `msg.index`.
 - **"Each copy fills the frame's width"** makes list / table rows.
+- **"Virtualize"** is for thousands to hundreds of thousands of items. Every
+  item is kept, but only the copies in (or near) the frame's scrolled view
+  exist, about a screenful plus 3 lines each side. Scrolling mounts what
+  comes into view and unmounts what leaves it. 100 000 items populate in
+  about 0.4 s, with about a dozen copies in the DOM.
+  - The frame scrolls along its layout (a column vertically, a row
+    horizontally, a grid by rows), even if its Scroll is off.
+  - Every copy has the template's size (with "fills", the column's width).
+  - A copy's own variables reset when it scrolls out: keep such state in the
+    item or in a screen / app variable.
+  - A browser caps an element at about 33 million px, so at 44 px a line
+    that is about 750 000 lines.
 - **Reading a param in the template's Logic:** `{product.id}` in a node's
   text field (e.g. an HTTP URL), Get Variable → scope "Template" → `product`,
   `getVariable("product")` in a Function, or "On Params Change"
@@ -189,5 +201,6 @@ Tests:
 | Test | Covers |
 | --- | --- |
 | `test/runtime-state-browser.test.js` | the state core and the Web & data nodes |
+| `test/runtime-virtual-browser.test.js` | the virtual list: 100 000 items in a column, a grid and a row |
 | `test/runtime-variables-browser.test.js` | the scope chain |
 | `test/model-tree.test.js` | the scope model |

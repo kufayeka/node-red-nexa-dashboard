@@ -29154,6 +29154,7 @@
       msgPath: node.msgPath || "payload.items",
       value: node.value,
       fill: !!node.fill,
+      virtualize: !!node.virtualize,
       itemParam: node.itemParam
     };
     function paramsOf(tid) {
@@ -29260,6 +29261,11 @@
           d.fill = this.checked;
         });
         window.$("<span>").text("Each copy fills the frame's width (a list / table row)").appendTo(fillRow);
+        var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
+        window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function() {
+          d.virtualize = this.checked;
+        });
+        window.$("<span>").html(`Virtualize: only the copies in view are drawn, for thousands of items. The frame scrolls; every copy has the template's size.<br><span style="color:#888">A copy's own variables reset when it scrolls out: keep such state in the item or a screen / app variable.</span>`).appendTo(virtRow);
         function sync() {
           path.toggle(d.valueSource === "msg");
           json.toggle(d.valueSource === "static");

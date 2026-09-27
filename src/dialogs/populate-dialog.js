@@ -48,7 +48,7 @@ export function openPopulateNodeEditor(node) {
     var templates = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); });
     var d = { template: node.template || "", mode: node.mode || "replace", key: node.key === undefined ? "id" : node.key,
         valueSource: node.valueSource || "payload", msgPath: node.msgPath || "payload.items", value: node.value, fill: !!node.fill,
-        itemParam: node.itemParam };
+        virtualize: !!node.virtualize, itemParam: node.itemParam };
     // the template declares its params; each card's item goes into the one chosen here
     function paramsOf(tid) { var t = templates.filter(function (x) { return x.id === tid; })[0]; return (t && t.params || []).map(function (p) { return p.name; }).filter(Boolean); }
 
@@ -114,6 +114,9 @@ export function openPopulateNodeEditor(node) {
             var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
             window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function () { d.fill = this.checked; });
             window.$("<span>").text("Each copy fills the frame's width (a list / table row)").appendTo(fillRow);
+            var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
+            window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function () { d.virtualize = this.checked; });
+            window.$("<span>").html("Virtualize: only the copies in view are drawn, for thousands of items. The frame scrolls; every copy has the template's size.<br><span style=\"color:#888\">A copy's own variables reset when it scrolls out: keep such state in the item or a screen / app variable.</span>").appendTo(virtRow);
             function sync() { path.toggle(d.valueSource === "msg"); json.toggle(d.valueSource === "static"); }
             sync();
             srcSel.trigger("blur");
