@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, appScope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, Types, appScope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
@@ -294,7 +294,7 @@ export function interpolateProps(props, paramState) {
 export function resolveInstanceParamState(comp, template, enclosingParamState) {
     // on the app scope (app variables), not the screen's: a template is a boundary
     var paramState = appScope();
-    (template.variables || []).forEach(function (v) { if (v && v.name) paramState[v.name] = v.defaultValue; });
+    (template.variables || []).forEach(function (v) { if (v && v.name) paramState[v.name] = Types.variableValue(v); });
     (template.params || []).forEach(function (p) { paramState[p.name] = p.defaultValue; });
     Object.keys(comp.paramValues || {}).forEach(function (name) {
         var raw = comp.paramValues[name];

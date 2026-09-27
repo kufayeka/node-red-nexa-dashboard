@@ -4,6 +4,7 @@ import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
 import { normalizeParamType, buildTypedInputWidget, buildEditableListWidget } from "../param-types.js";
+import { renderVariablesInspector } from "./variables-inspector.js";
 
 function refreshComponentsPaletteIfVisible() {
     if (state.componentsPane && state.componentsPane.is(":visible")) {
@@ -243,6 +244,10 @@ export function renderTemplateForm() {
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
     renderTemplateParamsSection();
+    // the same Variables block as a screen's (types / UDT included): each instance gets its own
+    state.templateFormEl.find(".nexa-template-vars-section").remove();
+    var tmpl = findTemplate(state.activeTemplateId);
+    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
 }
 
 function renderTemplateParamsSection() {

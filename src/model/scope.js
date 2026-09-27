@@ -83,7 +83,9 @@ export function visibleVariables(surface, ancestors, isTemplate, self, app) {
 export function allDeclarations(surface, walk, app) {
     var out = [];
     if (app) (app.variables || []).forEach(function (v) { out.push({ scopeId: "@app", scopeName: "App", variable: v }); });
-    (surface.variables || []).forEach(function (v) { out.push({ scopeId: "", scopeName: "Screen", variable: v }); });
+    // a template's params: its Logic reads them like variables ({param1}, Get Variable, vars.get)
+    (surface.params || []).forEach(function (p) { if (p && p.name) out.push({ scopeId: "", scopeName: "Template", variable: { id: p.id, name: p.name, type: p.type, defaultValue: p.defaultValue }, param: true }); });
+    (surface.variables || []).forEach(function (v) { out.push({ scopeId: "", scopeName: surface.params ? "Template" : "Screen", variable: v }); });
     walk(surface, function (node) {
         if (hasVariables(node)) node.variables.forEach(function (v) { out.push({ scopeId: node.id, scopeName: node.name || node.type, variable: v }); });
     });

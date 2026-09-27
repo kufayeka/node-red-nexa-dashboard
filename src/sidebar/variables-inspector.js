@@ -61,7 +61,8 @@ export function renderVariablesInspector(container, owner, kind) {
     if (!window.NexaKit || !window.NEXA_LIT) return false;
     var html = window.NEXA_LIT.html;
     var isApp = kind === "app";
-    var isSurface = kind === true || kind === "screen" || isApp;
+    var isTemplate = kind === "template";
+    var isSurface = kind === true || kind === "screen" || isApp || isTemplate;
     var view = function () {
         return { variables: (owner.variables || []).map(function (v) {
             var it = { name: v.name, type: v.type || "string", value: Types.isTypeRef(v.type) ? showParams(v.params) : show(v.defaultValue, v.type) };
@@ -90,7 +91,7 @@ export function renderVariablesInspector(container, owner, kind) {
             return html`<nx-section heading="${isApp ? "App variables (every screen)" : "Variables"}" persist-key="${isApp ? "nexa-app-variables" : "nexa-variables"}">
                 <div class="nx-help" style="margin-bottom:6px">${isApp
                     ? "Shared by every screen (global state). \"Kept for\" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change."
-                    : "Bind with {name} in the props of anything " + (isSurface ? "on this screen" : "inside") + "; the nearest declaration wins. Change one live with the Logic \"Set Variable\" node."}</div>
+                    : "Bind with {name} in the props of anything " + (isTemplate ? "in this template (each copy / instance has its own)" : isSurface ? "on this screen" : "inside") + "; the nearest declaration wins. Change one live with the Logic \"Set Variable\" node, or getVariable() / setVariable() in a Function."}</div>
                 ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
                 <nx-list ${o.bind("variables")}></nx-list>
             </nx-section>`;

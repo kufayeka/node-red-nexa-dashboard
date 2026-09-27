@@ -864,8 +864,11 @@
     if (app) (app.variables || []).forEach(function(v) {
       out.push({ scopeId: "@app", scopeName: "App", variable: v });
     });
+    (surface.params || []).forEach(function(p) {
+      if (p && p.name) out.push({ scopeId: "", scopeName: "Template", variable: { id: p.id, name: p.name, type: p.type, defaultValue: p.defaultValue }, param: true });
+    });
     (surface.variables || []).forEach(function(v) {
-      out.push({ scopeId: "", scopeName: "Screen", variable: v });
+      out.push({ scopeId: "", scopeName: surface.params ? "Template" : "Screen", variable: v });
     });
     walk2(surface, function(node) {
       if (hasVariables(node)) node.variables.forEach(function(v) {
@@ -2217,7 +2220,7 @@
   function resolveInstanceParamState(comp, template, enclosingParamState) {
     var paramState = appScope();
     (template.variables || []).forEach(function(v) {
-      if (v && v.name) paramState[v.name] = v.defaultValue;
+      if (v && v.name) paramState[v.name] = types_exports.variableValue(v);
     });
     (template.params || []).forEach(function(p) {
       paramState[p.name] = p.defaultValue;
@@ -27452,7 +27455,8 @@
     if (!window.NexaKit || !window.NEXA_LIT) return false;
     var html = window.NEXA_LIT.html;
     var isApp = kind === "app";
-    var isSurface = kind === true || kind === "screen" || isApp;
+    var isTemplate = kind === "template";
+    var isSurface = kind === true || kind === "screen" || isApp || isTemplate;
     var view = function() {
       return { variables: (owner.variables || []).map(function(v) {
         var it = { name: v.name, type: v.type || "string", value: types_exports.isTypeRef(v.type) ? showParams(v.params) : show(v.defaultValue, v.type) };
@@ -27485,7 +27489,7 @@
       inspector: function(o) {
         var problems = variableProblems(owner.variables);
         return html`<nx-section heading="${isApp ? "App variables (every screen)" : "Variables"}" persist-key="${isApp ? "nexa-app-variables" : "nexa-variables"}">
-                <div class="nx-help" style="margin-bottom:6px">${isApp ? 'Shared by every screen (global state). "Kept for" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change.' : "Bind with {name} in the props of anything " + (isSurface ? "on this screen" : "inside") + '; the nearest declaration wins. Change one live with the Logic "Set Variable" node.'}</div>
+                <div class="nx-help" style="margin-bottom:6px">${isApp ? 'Shared by every screen (global state). "Kept for" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change.' : "Bind with {name} in the props of anything " + (isTemplate ? "in this template (each copy / instance has its own)" : isSurface ? "on this screen" : "inside") + '; the nearest declaration wins. Change one live with the Logic "Set Variable" node, or getVariable() / setVariable() in a Function.'}</div>
                 ${problems.map(function(p) {
           return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
         })}
@@ -30067,6 +30071,7 @@
       if (!e.shiftKey) deselectAllLogic();
       startLogicMarqueeSelect(e);
     });
+    scaledDropArea(state.artboardEl);
     state.logicArtboardEl.droppable({
       accept: "[data-palette-type], [data-sparkplug-metric]",
       tolerance: "pointer",
@@ -30087,6 +30092,7 @@
         addLogicNode(makeNode(), nodeX, nodeY);
       }
     });
+    scaledDropArea(state.logicArtboardEl);
     state.logicViewportEl.on("wheel", function(e) {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
@@ -30167,6 +30173,15 @@
         }
       });
     });
+  }
+  function scaledDropArea($el) {
+    if (!(window.$.ui && window.$.ui.ddmanager)) return;
+    var inst = $el.droppable("instance");
+    if (!inst || typeof inst.proportions !== "function") return;
+    inst.proportions = function() {
+      var r = $el[0].getBoundingClientRect();
+      return { width: r.width, height: r.height };
+    };
   }
 
   // src/sidebar/hierarchy-panel.js
@@ -30895,6 +30910,9 @@
     });
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
     renderTemplateParamsSection();
+    state.templateFormEl.find(".nexa-template-vars-section").remove();
+    var tmpl = findTemplate(state.activeTemplateId);
+    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
   }
   function renderTemplateParamsSection() {
     if (!state.templateFormEl) return;

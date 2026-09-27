@@ -259,6 +259,7 @@ export function buildCanvasArea(trayBody) {
     // artboard, it creates a pre-filled "Sparkplug Write" node for that
     // exact tag rather than a bound read-only label — same tag reference,
     // same drag gesture, symmetric with the read-side DX.
+    scaledDropArea(state.artboardEl);
     state.logicArtboardEl.droppable({
         accept: "[data-palette-type], [data-sparkplug-metric]",
         tolerance: "pointer",
@@ -280,6 +281,7 @@ export function buildCanvasArea(trayBody) {
             addLogicNode(makeNode(), nodeX, nodeY);
         }
     });
+    scaledDropArea(state.logicArtboardEl);
 
     state.logicViewportEl.on("wheel", function (e) {
         if (!e.ctrlKey && !e.metaKey) return;
@@ -365,4 +367,17 @@ export function registerPagesEditorAction() {
             }
         });
     });
+}
+
+// jQuery UI sizes a droppable from offsetWidth / offsetHeight, which ignore the
+// canvas zoom (transform: scale): on a zoomed-in small screen only its top-left
+// part accepted a drop. Measure the element as drawn instead.
+function scaledDropArea($el) {
+    if (!(window.$.ui && window.$.ui.ddmanager)) return;
+    var inst = $el.droppable("instance");
+    if (!inst || typeof inst.proportions !== "function") return;
+    inst.proportions = function () {
+        var r = $el[0].getBoundingClientRect();
+        return { width: r.width, height: r.height };
+    };
 }

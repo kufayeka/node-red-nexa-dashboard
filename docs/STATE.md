@@ -20,7 +20,7 @@ $route                  the page URL: params (:id in the screen path), query (?a
 | **App** | Screens tab → "App variables (every screen)" | The page. With **Kept for**: *tab session* (sessionStorage) or *browser* (localStorage), across pages and reloads. |
 | **Screen** | Screens tab → "Variables" | The page. |
 | **Group / Frame** | Properties → "Variables" | The page. |
-| **Template** | Its params (and variables) | Each instance. |
+| **Template** | Templates tab → "Parameters" and "Variables" (the same block as a screen's, types / UDT included) | Each instance / copy. |
 
 - **Template boundary.** Inside an instance you see the app and the
   template's own params and variables, not the screen around the instance.
@@ -154,6 +154,10 @@ available as `{item}` / `msg.item`.
   example, `[button: click] → [HTTP Request POST /api/order/{product.id}, body {product}]`.
 - **Events from inside a copy** carry `msg.item` and `msg.index`.
 - **"Each copy fills the frame's width"** makes list / table rows.
+- **Reading a param in the template's Logic:** `{product.id}` in a node's
+  text field (e.g. an HTTP URL), Get Variable → scope "Template" → `product`,
+  `getVariable("product")` in a Function, or "On Params Change"
+  (`msg.payload.product`).
 
 ## 5. The Function node API
 
@@ -162,6 +166,8 @@ vars.get("filter")                 // nearest declaration, up to the app
 vars.get("user", "@app")           // explicit scope: "@app", "" (the screen) or a group / frame id
 vars.set("filter", "open")         // on the scope that declares it (watchers fire)
 vars.update("cart", "append", item)   // merge / append / remove / toggle / increment
+getVariable("speed"); getVariable("user", "@app")      // the same as vars.get
+setVariable("speed", 10); setVariable("cart", item, "@app", "append")   // vars.set, with an optional op
 route.params.id; route.query.tab; route.path
 storage.local.get("prefs"); storage.local.set("prefs", {...}); storage.session.remove("k")
 cookies.get("session"); cookies.set("session", token, { days: 7 }); cookies.remove("session")
