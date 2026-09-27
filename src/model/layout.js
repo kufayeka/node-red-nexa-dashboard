@@ -356,7 +356,8 @@ export function boxCss(node, parent, opts) {
         "max-width": node.maxW ? num(node.maxW) + "px" : "",
         "min-height": node.minH ? num(node.minH) + "px" : "",
         "max-height": node.maxH ? num(node.maxH) + "px" : "",
-        "scroll-snap-align": ""
+        "scroll-snap-align": "",
+        "z-index": ""
     };
     if (opts && opts.constraints && hasConstraints(node, parent)) {
         var ps = parent ? innerSize(parent) : opts.parentSize;
@@ -375,6 +376,12 @@ export function boxCss(node, parent, opts) {
     css.top = "auto";
     css.right = "";
     css.bottom = "";
+    // sticky while its frame scrolls (a header in a scrolling column): it stays at the edge
+    if (node.scrollBehavior === "sticky") {
+        css.position = "sticky";
+        css[flowAxis(parent) === "horizontal" ? "left" : "top"] = "0px";
+        css["z-index"] = "2";
+    }
     if (mode === "carousel") {
         // a slide: perView of them fill the track; the other axis is the track's
         var c = layoutOf(parent).carousel, alongX = c.direction !== "vertical";

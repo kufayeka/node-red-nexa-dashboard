@@ -78,6 +78,7 @@ var CHILD_META = {
         childW: prop("childW", "enum", "Width", { options: SIZING_CHILD }),
         childH: prop("childH", "enum", "Height", { options: SIZING_CHILD }),
         absolute: prop("absolute", "boolean", "Absolute position (out of the layout)"),
+        sticky: prop("sticky", "boolean", "Sticky while the frame scrolls (stays at its edge)"),
         col: prop("col", "number", "Column", { min: 0, help: "0 = next free cell" }),
         row: prop("row", "number", "Row", { min: 0 }),
         colSpan: prop("colSpan", "number", "Column span", { min: 1 }),
@@ -150,13 +151,14 @@ function writeFrame(frame, key, v) {
 function childView(node) {
     var lc = node.layoutChild || {};
     return {
-        childW: lc.w || "fixed", childH: lc.h || "fixed", absolute: !!lc.absolute,
+        childW: lc.w || "fixed", childH: lc.h || "fixed", absolute: !!lc.absolute, sticky: node.scrollBehavior === "sticky",
         col: lc.col || 0, row: lc.row || 0, colSpan: lc.colSpan || 1, rowSpan: lc.rowSpan || 1,
         minW: node.minW || 0, maxW: node.maxW || 0, minH: node.minH || 0, maxH: node.maxH || 0
     };
 }
 
 function writeChild(node, key, v) {
+    if (key === "sticky") { if (v) node.scrollBehavior = "sticky"; else delete node.scrollBehavior; return; }
     if (/^(min|max)[WH]$/.test(key)) {
         if (Number(v) > 0) node[key] = Number(v); else delete node[key];
         return;
@@ -281,7 +283,8 @@ export function renderLayoutChildInspector(container, node, parent) {
                             <nx-row><nx-number ${bind("col")}></nx-number><nx-number ${bind("row")}></nx-number></nx-row>
                             <nx-row><nx-number ${bind("colSpan")}></nx-number><nx-number ${bind("rowSpan")}></nx-number></nx-row>` : nothing}
                         <nx-row><nx-number ${bind("minW")}></nx-number><nx-number ${bind("maxW")}></nx-number></nx-row>
-                        <nx-row><nx-number ${bind("minH")}></nx-number><nx-number ${bind("maxH")}></nx-number></nx-row>`}
+                        <nx-row><nx-number ${bind("minH")}></nx-number><nx-number ${bind("maxH")}></nx-number></nx-row>
+                        <nx-checkbox ${bind("sticky")}></nx-checkbox>`}
                 </nx-section>`;
         }
     });
@@ -300,7 +303,11 @@ var CONSTRAINT_META = {
             { value: "center", label: "Center" }, { value: "scale", label: "Scale" }] }),
         v: prop("v", "enum", "Vertical", { options: [
             { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }, { value: "topBottom", label: "Top & bottom" },
-            { value: "center", label: "Center" }, { value: "scale", label: "Scale" }] })
+            { value: "center", label: "Center" }, { value: "scale", label: "Scale" }] }),
+        scrollBehavior: prop("scrollBehavior", "enum", "When scrolling (live page)", { options: [
+            { value: "scrolls", label: "Scrolls with the content" },
+            { value: "fixed", label: "Fixed (stays in view: a header / footer)" },
+            { value: "sticky", label: "Sticky (scrolls, then stays at the edge)" }] })
     }
 };
 
@@ -316,11 +323,14 @@ export function renderConstraintsInspector(container, node, parent) {
             var bind = o.bind;
             return html`<nx-section heading="Constraints (${parent ? (parent.name || "frame") : "screen"})" persist-key="nexa-constraints">
                 <nx-row><nx-select ${bind("h")}></nx-select><nx-select ${bind("v")}></nx-select></nx-row>
+                <nx-select ${bind("scrollBehavior")}></nx-select>
+                ${o.p.scrollBehavior === "fixed" ? html`<div class="nx-help">It stays where it is on the view while ${parent ? "this frame" : "the page"} scrolls. With the Bottom (Right) constraint: that far from the bottom (right) edge — a footer.</div>` : ""}
             </nx-section>`;
         }
     });
-    mountLive(container, meta, "nexa-constraints", function () { return Layout.constraintsOf(node); }, function (key, v) {
+    mountLive(container, meta, "nexa-constraints", function () { return Object.assign({}, Layout.constraintsOf(node), { scrollBehavior: node.scrollBehavior || "scrolls" }); }, function (key, v) {
         commit(node, function () {
+            if (key === "scrollBehavior") { if (v === "scrolls") delete node.scrollBehavior; else node.scrollBehavior = v; return; }
             var c = Object.assign({}, Layout.constraintsOf(node));
             c[key] = v;
             if (c.h === "left" && c.v === "top") delete node.constraints; else node.constraints = c;

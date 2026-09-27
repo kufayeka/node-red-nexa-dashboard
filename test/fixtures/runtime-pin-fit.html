@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>pins</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- "When scrolling": Fixed / Sticky on a deployed page (test/runtime-pin-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:800px;height:2000px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+function label(id, x, y, w, h, extra) { return Object.assign({ id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: id } }, extra || {}); }
+var rows = []; for (var i = 0; i < 20; i++) rows.push(label("r" + i, 0, 0, 230, 30));
+window.__NEXA_APP__ = { variables: [] };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 2000, displayMode: "fitWidth", treeVersion: 1, orphans: [],
+  components: [
+    label("hdr", 0, 0, 800, 40, { scrollBehavior: "fixed" }),
+    label("ftr", 0, 1960, 800, 40, { scrollBehavior: "fixed", constraints: { h: "left", v: "bottom" } }),
+    label("stk", 0, 300, 200, 30, { scrollBehavior: "sticky" }),
+    // a scrolling frame (no auto layout): its own Fixed / Sticky children
+    { id: "sf", type: "@frame", x: 500, y: 100, w: 250, h: 200, style: { scroll: "vertical" }, children: [
+      label("long", 0, 0, 230, 1000),
+      label("sfFix", 0, 0, 100, 20, { scrollBehavior: "fixed" }),
+      label("sfStk", 120, 150, 100, 20, { scrollBehavior: "sticky" })
+    ] },
+    // a scrolling column: its header sticky in the flow (CSS)
+    { id: "col", type: "@frame", x: 100, y: 100, w: 250, h: 200, style: { scroll: "vertical" }, layout: { mode: "vertical", gap: 0 },
+      children: [label("head", 0, 0, 230, 30, { scrollBehavior: "sticky" })].concat(rows) }
+  ],
+  logic: { nodes: [], wires: [] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>
