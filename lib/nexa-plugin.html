@@ -418,8 +418,11 @@
   __export(layout_exports, {
     CAROUSEL_DEFAULT: () => CAROUSEL_DEFAULT,
     H_CONSTRAINTS: () => H_CONSTRAINTS,
+    ITEMS_DEFAULT: () => ITEMS_DEFAULT,
     LAYOUT_MODES: () => LAYOUT_MODES,
+    TEMPLATE_LIVE_DEFAULT: () => TEMPLATE_LIVE_DEFAULT,
     V_CONSTRAINTS: () => V_CONSTRAINTS,
+    alignFraction: () => alignFraction,
     boxCss: () => boxCss,
     canRotate: () => canRotate,
     carouselOf: () => carouselOf,
@@ -439,6 +442,7 @@
     makeFrame: () => makeFrame,
     resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
+    templateLiveOf: () => templateLiveOf,
     tracksCss: () => tracksCss
   });
   var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid", "carousel"];
@@ -471,9 +475,15 @@
     rows: [],
     sizeW: "fixed",
     sizeH: "fixed",
-    carousel: null
+    carousel: null,
+    items: null
   };
-  var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none" };
+  var ITEMS_DEFAULT = { padX: 0, padY: 0, alignX: "center", alignY: "center" };
+  var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" };
+  function templateLiveOf(template) {
+    return Object.assign({}, TEMPLATE_LIVE_DEFAULT, template && template.live || {});
+  }
+  var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none", scrollbar: "auto" };
   var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
   function num(v, d) {
     var n = typeof v === "number" ? v : parseFloat(v);
@@ -491,12 +501,16 @@
     if (!Array.isArray(out.columns)) out.columns = DEFAULT_LAYOUT.columns;
     if (!Array.isArray(out.rows)) out.rows = [];
     out.carousel = Object.assign({}, CAROUSEL_DEFAULT, l.carousel || {});
+    out.items = Object.assign({}, ITEMS_DEFAULT, l.items || {});
     var pv = num(out.carousel.perView, 1);
     out.carousel.perView = pv > 0 ? pv : 1;
     return out;
   }
   function carouselOf(frame) {
     return frame && frame.type === "@frame" && layoutOf(frame).mode === "carousel" ? layoutOf(frame).carousel : null;
+  }
+  function alignFraction(a) {
+    return a === "center" ? 0.5 : a === "end" ? 1 : 0;
   }
   function flowAxis(frame) {
     var l = layoutOf(frame);
@@ -557,6 +571,7 @@
       css2["overflow-x"] = axes[0];
       css2["overflow-y"] = axes[1];
     }
+    css2["scrollbar-width"] = opts && opts.scroll && s.scrollbar === "hidden" ? "none" : "";
     if (l.mode === "none") {
       css2.display = "";
       css2.padding = "";
@@ -27334,6 +27349,11 @@
       strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
       radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
       clip: prop("clip", "boolean", "Clip content"),
+      scrollbarHidden: prop("scrollbarHidden", "boolean", "Hide the scrollbar (it still scrolls)"),
+      // a carousel's slide cell: padding inside it, a fixed-size template aligned in it
+      iPadX: prop("iPadX", "number", "Padding \u2194", { min: 0, unit: "px" }),
+      iPadY: prop("iPadY", "number", "Padding \u2195", { min: 0, unit: "px" }),
+      iAlign: prop("iAlign", "align", "Align in the slide"),
       scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
         { value: "none", label: "No scrolling" },
         { value: "vertical", label: "Vertical" },
@@ -27394,7 +27414,11 @@
       cArrows: !!l.carousel.arrows,
       cDots: !!l.carousel.dots,
       cSwipe: !!l.carousel.swipe,
-      cIndex: l.carousel.index || ""
+      cIndex: l.carousel.index || "",
+      scrollbarHidden: s.scrollbar === "hidden",
+      iPadX: l.items.padX,
+      iPadY: l.items.padY,
+      iAlign: { x: l.items.alignX, y: l.items.alignY }
     };
   }
   function writeFrame(frame, key, v) {
@@ -27458,6 +27482,23 @@
         if (v === "none") delete style.scroll;
         else style.scroll = v;
         break;
+      case "scrollbarHidden":
+        if (v) style.scrollbar = "hidden";
+        else delete style.scrollbar;
+        break;
+      case "iPadX":
+      case "iPadY":
+      case "iAlign": {
+        var items = Object.assign({}, layout_exports.ITEMS_DEFAULT, layout.items || {});
+        if (key === "iPadX") items.padX = Math.max(0, Number(v) || 0);
+        else if (key === "iPadY") items.padY = Math.max(0, Number(v) || 0);
+        else {
+          items.alignX = v.x;
+          items.alignY = v.y;
+        }
+        layout.items = items;
+        break;
+      }
       default:
         layout[key] = v;
     }
@@ -27564,11 +27605,17 @@
                         ${p.mode === "grid" ? html`<nx-list ${bind("columns")}></nx-list><nx-list ${bind("rows")}></nx-list><nx-number ${bind("rowGap")}></nx-number>` : nothing}
                     ` : nothing}
                 </nx-section>
+                ${p.mode === "carousel" ? html`<nx-section heading="Slides" persist-key="nexa-frame:items">
+                    <div class="nx-help">Each slide is a cell: padding inside it, and a template of a fixed size aligned in it. Fixed or filling is the template's own setting (Templates → On the live page).</div>
+                    <nx-row><nx-number ${bind("iPadX")}></nx-number><nx-number ${bind("iPadY")}></nx-number></nx-row>
+                    <nx-align ${bind("iAlign")}></nx-align>
+                </nx-section>` : nothing}
                 <nx-section heading="Fill & stroke" persist-key="nexa-frame:style">
                     <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
                     <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
                     <nx-checkbox ${bind("clip")}></nx-checkbox>
                     <nx-select ${bind("scroll")}></nx-select>
+                    ${p.scroll !== "none" ? html`<nx-checkbox ${bind("scrollbarHidden")}></nx-checkbox>` : nothing}
                 </nx-section>`;
       }
     });
@@ -29015,7 +29062,7 @@
         window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function() {
           d.fill = this.checked;
         });
-        window.$("<span>").text("Each copy fills the frame's width (a list / table row)").appendTo(fillRow);
+        window.$("<span>").text("Each copy fills the frame's width (or once, on the template: On the live page \u2192 Width: Fill)").appendTo(fillRow);
         var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
         window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function() {
           d.virtualize = this.checked;
@@ -31351,10 +31398,57 @@
       markDirty();
     });
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
+    renderTemplateLiveSection(template);
     renderTemplateParamsSection();
     state.templateFormEl.find(".nexa-template-vars-section").remove();
     var tmpl = findTemplate(state.activeTemplateId);
     if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
+  }
+  function renderTemplateLiveSection(template) {
+    var $2 = window.$;
+    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" }, template.live || {});
+    var box = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
+    $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box);
+    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> \u2014 e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box);
+    function save() {
+      var out = {};
+      Object.keys(live).forEach(function(k) {
+        if (live[k] !== "" && live[k] !== "fixed") out[k] = live[k];
+      });
+      if (Object.keys(out).length) template.live = out;
+      else delete template.live;
+      markDirty();
+      renderActiveScreen();
+    }
+    var grid = $2("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box);
+    function sizing(axis, label) {
+      var cell = $2("<div>").appendTo(grid);
+      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+      var sel = $2("<select>").css({ width: "100%" }).appendTo(cell);
+      [["fixed", "Fixed"], ["fill", "Fill"]].forEach(function(o) {
+        $2("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+      });
+      sel.val(live[axis]).on("change", function() {
+        live[axis] = sel.val();
+        save();
+      });
+    }
+    sizing("w", "Width");
+    sizing("h", "Height");
+    function limit(key, label) {
+      var cell = $2("<div>").appendTo(grid);
+      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+      var input = $2("<input>", { type: "number", min: 0, placeholder: "none" }).css({ width: "100%", "box-sizing": "border-box" }).val(live[key]).appendTo(cell);
+      input.on("change", function() {
+        var v = input.val().trim();
+        live[key] = v === "" ? "" : Math.max(0, Number(v) || 0);
+        save();
+      });
+    }
+    limit("minW", "Min width (px)");
+    limit("maxW", "Max width (px)");
+    limit("minH", "Min height (px)");
+    limit("maxH", "Max height (px)");
   }
   function renderTemplateParamsSection() {
     if (!state.templateFormEl) return;

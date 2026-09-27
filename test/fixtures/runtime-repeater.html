@@ -32,12 +32,16 @@ window.__NEXA_TEMPLATES__ = [{ id: "CARD", name: "ProductCard", width: 300, heig
     // out to the host: a copy -> its Layout node; a placed instance -> its On Template Output node
     { id: "toHost", type: "template-output", output: "remove" }
   ], wires: [W("click", "keep"), W("click", "post"), W("click", "toHost")] } }];
+// a template that fills the width it is given (at most 300 px): its label keeps to both edges
+window.__NEXA_TEMPLATES__.push({ id: "WIDE", name: "Wide", width: 120, height: 30, live: { w: "fill", maxW: 300 }, params: [{ id: "wp", name: "product", label: "product", type: "object", defaultValue: {} }],
+  components: [{ id: "t", type: "label", x: 0, y: 0, w: 120, h: 20, constraints: { h: "leftRight", v: "top" }, props: { text: "{product.name}" } }], logic: { nodes: [], wires: [] } });
 function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", itemParam: "product", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
 window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
   components: [
     { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 },
       children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
     { id: "rowA", type: "@frame", name: "Row", x: 10, y: 420, w: 700, h: 50, layout: { mode: "horizontal", gap: 4 }, children: [] },
+    { id: "wideCol", type: "@frame", name: "Wide", x: 360, y: 540, w: 400, h: 100, layout: { mode: "vertical", gap: 4 }, children: [] },
     { id: "rowB", type: "@frame", name: "Row", x: 10, y: 480, w: 700, h: 50, layout: { mode: "horizontal", gap: 4 }, children: [] },
     { id: "ctl", type: "btn", x: 400, y: 0, w: 10, h: 10, props: {} },
     { id: "last", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } },
@@ -53,12 +57,13 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
     { id: "e4", type: "ui-event", compId: "ctl", event: "prepend" }, node("p4", "prepend"),
     { id: "e5", type: "ui-event", compId: "ctl", event: "clear" }, node("p5", "clear"),
     // no container of its own: fan out into two Layout nodes (two rows, same data)
+    { id: "e7", type: "ui-event", compId: "ctl", event: "wide" }, node("p7", "replace", { container: "wideCol", template: "WIDE" }),
     { id: "e6", type: "ui-event", compId: "ctl", event: "both" }, node("p6", "append", { container: "" }),
     { id: "lA", type: "layout", container: "rowA" }, { id: "lB", type: "layout", container: "rowB" },
     { id: "fOut", type: "function", code: "setVariable('lastOut', msg.output + ':' + msg.item.name + '@' + msg.index, '@app'); return msg;" },
     { id: "tI", type: "template-event", instanceId: "inst", output: "remove" }, { id: "fI", type: "function", code: "setVariable('lastInst', msg.output, '@app'); return msg;" },
     { id: "tX", type: "template-event", instanceId: "inst", output: "other" }, { id: "fX", type: "function", code: "setVariable('lastOther', 'fired', '@app'); return msg;" }
-  ], wires: [W("lA", "fOut"), W("tI", "fI"), W("tX", "fX"), W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("p6", "lA"), W("p6", "lB")] } };
+  ], wires: [W("lA", "fOut"), W("tI", "fI"), W("tX", "fX"), W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p6", "lA"), W("p6", "lB")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

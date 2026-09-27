@@ -17,9 +17,13 @@ function carousel(id, x, y, w, h, c, children, extra) {
 }
 window.__NEXA_APP__ = { variables: [{ id: "ls", name: "lastSlide", type: "string", defaultValue: "" }] };
 // a slide template: its label keeps to both edges (constraints), so it follows the slide's width
-window.__NEXA_TEMPLATES__ = [{ id: "SLIDE", name: "Slide", width: 100, height: 80, params: [{ id: "pp", name: "product", label: "product", type: "object", defaultValue: {} }],
+// SLIDE fills what it is given (its On-the-live-page setting); CARD keeps its design size
+var SLIDE_PARTS = { params: [{ id: "pp", name: "product", label: "product", type: "object", defaultValue: {} }],
   components: [{ id: "name", type: "label", x: 0, y: 0, w: 100, h: 20, constraints: { h: "leftRight", v: "top" }, props: { text: "{product.name}" } }],
-  logic: { nodes: [], wires: [] } }];
+  logic: { nodes: [], wires: [] } };
+window.__NEXA_TEMPLATES__ = [
+  Object.assign({ id: "SLIDE", name: "Slide", width: 100, height: 80, live: { w: "fill", h: "fill" } }, JSON.parse(JSON.stringify(SLIDE_PARTS))),
+  Object.assign({ id: "CARD", name: "Card", width: 100, height: 80 }, JSON.parse(JSON.stringify(SLIDE_PARTS)))];
 window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, orphans: [],
   variables: [{ id: "vs", name: "slide", type: "number", defaultValue: 0 }],
   components: [
@@ -28,6 +32,13 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, or
     carousel("pc", 10, 150, 300, 100, { direction: "horizontal", perView: 2, gap: 10, arrows: true, dots: true, swipe: true }),
     carousel("fd", 10, 300, 200, 100, { transition: "fade", autoplay: 500, pauseOnHover: true, arrows: false, dots: true },
       [slide("f0", "X"), slide("f1", "Y"), slide("f2", "Z")]),
+    // a fixed-size card centred in its slide, 20 / 10 px of padding
+    carousel("pcC", 10, 420, 300, 100, { direction: "horizontal", perView: 1, arrows: true, dots: true, swipe: true }, [],
+      { layout: { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: 0, carousel: { direction: "horizontal", perView: 1, arrows: true, dots: true },
+        items: { padX: 20, padY: 10, alignX: "center", alignY: "center" } } }),
+    // many slides: a counter, not a row of dots
+    carousel("many", 10, 540, 200, 60, { direction: "horizontal", perView: 1, arrows: true, dots: true },
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (i) { return slide("m" + i, "M" + i); })),
     { id: "vSlide", type: "label", x: 400, y: 10, w: 100, h: 20, props: { text: "{slide}" } },
     { id: "vLast", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastSlide}" } },
     { id: "ctl", type: "btn", x: 400, y: 80, w: 10, h: 10, props: {} }
@@ -38,8 +49,10 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, or
     { id: "pop", type: "populate", container: "", template: "SLIDE", itemParam: "product", mode: "replace", key: "id", valueSource: "payload" },
     { id: "lay", type: "layout", container: "pc" },
     { id: "eChg", type: "ui-event", compId: "pc", event: "slide-change" },
+    { id: "popC", type: "populate", container: "", template: "CARD", itemParam: "product", mode: "replace", key: "id", valueSource: "payload" },
+    { id: "layC", type: "layout", container: "pcC" },
     { id: "fChg", type: "function", code: "setVariable('lastSlide', msg.index + ':' + (msg.item ? msg.item.name : '-'), '@app'); return msg;" }
-  ], wires: [W("eGo", "setS"), W("eFill", "pop"), W("pop", "lay"), W("eChg", "fChg")] } };
+  ], wires: [W("eGo", "setS"), W("eFill", "pop"), W("pop", "lay"), W("eFill", "popC"), W("popC", "layC"), W("eChg", "fChg")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

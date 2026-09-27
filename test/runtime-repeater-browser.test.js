@@ -67,6 +67,12 @@ async function main() {
                 assert.deepStrictEqual(rows, [['rowA#7=0: Roti @ 12', 'rowA#8=1: Gula @ 9'], ['rowB#7=0: Roti @ 12', 'rowB#8=1: Gula @ 9']]);
                 assert.deepStrictEqual(await cards(), [], 'the other container is untouched');
             });
+            await ok('On the live page: a template set to fill the width fills it, up to its max; inside, its constraints follow', async () => {
+                await send('wide', [{ id: 1, name: 'W1' }]);
+                const r = await js(`(function () { var c = document.querySelector('[data-id="wideCol#1"]'), t = document.querySelector('[data-id="wideCol#1::t"]');
+                    return [Math.round(c.getBoundingClientRect().width), Math.round(t.getBoundingClientRect().width), t.textContent]; })()`);
+                assert.deepStrictEqual(r, [300, 300, 'W1'], 'the column is 400 wide; the template at most 300; its label keeps to both edges');
+            });
             await ok('Send to Host: a copy\'s message comes out of ITS Layout node (msg.output / item / index); a placed instance\'s out of its On Template Output node', async () => {
                 const click = (id) => js(`(function () { window.__ctx[${JSON.stringify(id)}].emit("click", null); return new Promise(function (r) { setTimeout(r, 80); }); })()`);
                 const text = (id) => js(`document.querySelector('[data-id="${id}"]').textContent`);

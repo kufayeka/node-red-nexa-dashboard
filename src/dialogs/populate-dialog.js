@@ -113,7 +113,7 @@ export function openPopulateNodeEditor(node) {
                 .on("change", function () { try { d.value = this.value.trim() ? JSON.parse(this.value) : []; window.$(this).css("border-color", ""); } catch (e) { window.$(this).css("border-color", "#d00"); } });
             var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
             window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function () { d.fill = this.checked; });
-            window.$("<span>").text("Each copy fills the frame's width (a list / table row)").appendTo(fillRow);
+            window.$("<span>").text("Each copy fills the frame's width (or once, on the template: On the live page → Width: Fill)").appendTo(fillRow);
             var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
             window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function () { d.virtualize = this.checked; });
             window.$("<span>").html("Virtualize: only the copies in view are drawn, for thousands of items. The frame scrolls; every copy has the template's size.<br><span style=\"color:#888\">A copy's own variables reset when it scrolls out: keep such state in the item or a screen / app variable.</span>").appendTo(virtRow);

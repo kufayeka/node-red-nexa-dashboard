@@ -243,11 +243,51 @@ export function renderTemplateForm() {
     });
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
+    renderTemplateLiveSection(template);
     renderTemplateParamsSection();
     // the same Variables block as a screen's (types / UDT included): each instance gets its own
     state.templateFormEl.find(".nexa-template-vars-section").remove();
     var tmpl = findTemplate(state.activeTemplateId);
     if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
+}
+
+// On the live page: how big this template is where it is used (a list row, a grid cell, a
+// carousel slide, a Populate's copies) — per axis its design size, or filling what its host
+// gives it (then what is inside follows its constraints, like a screen in Fill mode).
+function renderTemplateLiveSection(template) {
+    var $ = window.$;
+    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" }, template.live || {});
+    var box = $("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
+    $("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box);
+    $("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" })
+        .html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> — e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box);
+    function save() {
+        var out = {};
+        Object.keys(live).forEach(function (k) { if (live[k] !== "" && live[k] !== "fixed") out[k] = live[k]; });
+        if (Object.keys(out).length) template.live = out; else delete template.live;
+        markDirty();
+        renderActiveScreen();
+    }
+    var grid = $("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box);
+    function sizing(axis, label) {
+        var cell = $("<div>").appendTo(grid);
+        $("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+        var sel = $("<select>").css({ width: "100%" }).appendTo(cell);
+        [["fixed", "Fixed"], ["fill", "Fill"]].forEach(function (o) { $("<option>", { value: o[0] }).text(o[1]).appendTo(sel); });
+        sel.val(live[axis]).on("change", function () { live[axis] = sel.val(); save(); });
+    }
+    sizing("w", "Width");
+    sizing("h", "Height");
+    function limit(key, label) {
+        var cell = $("<div>").appendTo(grid);
+        $("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+        var input = $("<input>", { type: "number", min: 0, placeholder: "none" }).css({ width: "100%", "box-sizing": "border-box" }).val(live[key]).appendTo(cell);
+        input.on("change", function () { var v = input.val().trim(); live[key] = v === "" ? "" : Math.max(0, Number(v) || 0); save(); });
+    }
+    limit("minW", "Min width (px)");
+    limit("maxW", "Max width (px)");
+    limit("minH", "Min height (px)");
+    limit("maxH", "Max height (px)");
 }
 
 function renderTemplateParamsSection() {

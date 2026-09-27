@@ -26,6 +26,7 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1200, height: 800, treeVersion: 1, or
     { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 }, style: { scroll: "vertical" },
       children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
     { id: "grid", type: "@frame", name: "Grid", x: 350, y: 10, w: 640, h: 300, layout: { mode: "grid", gap: 10, columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }] }, children: [] },
+    { id: "gridC", type: "@frame", name: "GridC", x: 350, y: 400, w: 640, h: 120, layout: { mode: "grid", gap: 10, alignX: "center", columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }] }, style: { scroll: "vertical", scrollbar: "hidden" }, children: [] },
     { id: "row", type: "@frame", name: "Row", x: 350, y: 330, w: 640, h: 60, layout: { mode: "horizontal", gap: 10 }, children: [] },
     { id: "ctl", type: "btn", x: 1000, y: 0, w: 10, h: 10, props: {} },
     { id: "last", type: "label", x: 1000, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } }
@@ -38,8 +39,9 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1200, height: 800, treeVersion: 1, or
     { id: "e5", type: "ui-event", compId: "ctl", event: "clear" }, node("p5", "list", "clear"),
     { id: "e6", type: "ui-event", compId: "ctl", event: "grid" }, node("p6", "grid", "replace", { fill: true }),
     // through a Layout node, like the editor wires it
+    { id: "e8", type: "ui-event", compId: "ctl", event: "gridC" }, node("p8", "gridC", "replace"),
     { id: "e7", type: "ui-event", compId: "ctl", event: "row" }, node("p7", "", "replace"), { id: "lR", type: "layout", container: "row" }
-  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p7", "lR")] } };
+  ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p7", "lR"), W("e8", "p8")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

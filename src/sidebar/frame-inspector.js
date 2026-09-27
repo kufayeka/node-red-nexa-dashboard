@@ -60,6 +60,11 @@ var FRAME_META = {
         strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
         radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
         clip: prop("clip", "boolean", "Clip content"),
+        scrollbarHidden: prop("scrollbarHidden", "boolean", "Hide the scrollbar (it still scrolls)"),
+        // a carousel's slide cell: padding inside it, a fixed-size template aligned in it
+        iPadX: prop("iPadX", "number", "Padding ↔", { min: 0, unit: "px" }),
+        iPadY: prop("iPadY", "number", "Padding ↕", { min: 0, unit: "px" }),
+        iAlign: prop("iAlign", "align", "Align in the slide"),
         scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
             { value: "none", label: "No scrolling" }, { value: "vertical", label: "Vertical" },
             { value: "horizontal", label: "Horizontal" }, { value: "both", label: "Both directions" }] })
@@ -93,7 +98,9 @@ function frameView(frame) {
         fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip, scroll: s.scroll || "none",
         cDirection: l.carousel.direction, cPerView: l.carousel.perView, cTransition: l.carousel.transition, cLoop: !!l.carousel.loop,
         cAutoplay: l.carousel.autoplay, cPauseOnHover: !!l.carousel.pauseOnHover, cArrows: !!l.carousel.arrows, cDots: !!l.carousel.dots,
-        cSwipe: !!l.carousel.swipe, cIndex: l.carousel.index || ""
+        cSwipe: !!l.carousel.swipe, cIndex: l.carousel.index || "",
+        scrollbarHidden: s.scrollbar === "hidden",
+        iPadX: l.items.padX, iPadY: l.items.padY, iAlign: { x: l.items.alignX, y: l.items.alignY }
     };
 }
 
@@ -126,6 +133,14 @@ function writeFrame(frame, key, v) {
         }
         case "fill": case "stroke": case "strokeWidth": case "radius": case "clip": style[key] = v; break;
         case "scroll": if (v === "none") delete style.scroll; else style.scroll = v; break;
+        case "scrollbarHidden": if (v) style.scrollbar = "hidden"; else delete style.scrollbar; break;
+        case "iPadX": case "iPadY": case "iAlign": {
+            var items = Object.assign({}, Layout.ITEMS_DEFAULT, layout.items || {});
+            if (key === "iPadX") items.padX = Math.max(0, Number(v) || 0); else if (key === "iPadY") items.padY = Math.max(0, Number(v) || 0);
+            else { items.alignX = v.x; items.alignY = v.y; }
+            layout.items = items;
+            break;
+        }
         default: layout[key] = v;
     }
     frame.layout = layout;
@@ -225,11 +240,17 @@ export function renderFrameInspector(container, frame) {
                         ${p.mode === "grid" ? html`<nx-list ${bind("columns")}></nx-list><nx-list ${bind("rows")}></nx-list><nx-number ${bind("rowGap")}></nx-number>` : nothing}
                     ` : nothing}
                 </nx-section>
+                ${p.mode === "carousel" ? html`<nx-section heading="Slides" persist-key="nexa-frame:items">
+                    <div class="nx-help">Each slide is a cell: padding inside it, and a template of a fixed size aligned in it. Fixed or filling is the template's own setting (Templates → On the live page).</div>
+                    <nx-row><nx-number ${bind("iPadX")}></nx-number><nx-number ${bind("iPadY")}></nx-number></nx-row>
+                    <nx-align ${bind("iAlign")}></nx-align>
+                </nx-section>` : nothing}
                 <nx-section heading="Fill & stroke" persist-key="nexa-frame:style">
                     <nx-row><nx-color ${bind("fill")}></nx-color><nx-number ${bind("radius")}></nx-number></nx-row>
                     <nx-row><nx-color ${bind("stroke")}></nx-color><nx-number ${bind("strokeWidth")}></nx-number></nx-row>
                     <nx-checkbox ${bind("clip")}></nx-checkbox>
                     <nx-select ${bind("scroll")}></nx-select>
+                    ${p.scroll !== "none" ? html`<nx-checkbox ${bind("scrollbarHidden")}></nx-checkbox>` : nothing}
                 </nx-section>`;
         }
     });

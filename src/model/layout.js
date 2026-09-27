@@ -55,12 +55,26 @@ var DEFAULT_LAYOUT = {
     rows: [],
     sizeW: "fixed",
     sizeH: "fixed",
-    carousel: null
+    carousel: null,
+    items: null
 };
+
+// A carousel's slide is a cell: `padX` / `padY` inside it, and a template of a fixed
+// size aligned in it (alignX / alignY: start | center | end). How big the template
+// is — fixed or filling — is the template's own setting (templateLiveOf).
+export var ITEMS_DEFAULT = { padX: 0, padY: 0, alignX: "center", alignY: "center" };
+
+// A template on the live page, per axis: "fixed" (its design size) or "fill" (the
+// space its host gives it: a list row, a grid cell, a slide; what is inside then
+// follows its constraints, like a screen in Fill mode), with an optional min / max.
+export var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" };
+export function templateLiveOf(template) {
+    return Object.assign({}, TEMPLATE_LIVE_DEFAULT, (template && template.live) || {});
+}
 
 // scroll: "none" | "vertical" | "horizontal" | "both" — on the deployed page
 // (the editor shows the frame per `clip`, so what's outside stays editable)
-var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none" };
+var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none", scrollbar: "auto" };
 var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
 
 function num(v, d) {
@@ -79,6 +93,7 @@ export function layoutOf(frame) {
     if (!Array.isArray(out.columns)) out.columns = DEFAULT_LAYOUT.columns;
     if (!Array.isArray(out.rows)) out.rows = [];
     out.carousel = Object.assign({}, CAROUSEL_DEFAULT, l.carousel || {});
+    out.items = Object.assign({}, ITEMS_DEFAULT, l.items || {});
     var pv = num(out.carousel.perView, 1);
     out.carousel.perView = pv > 0 ? pv : 1;
     return out;
@@ -88,6 +103,9 @@ export function layoutOf(frame) {
 export function carouselOf(frame) {
     return frame && frame.type === "@frame" && layoutOf(frame).mode === "carousel" ? layoutOf(frame).carousel : null;
 }
+
+/** 0 / 0.5 / 1 for start / center / end (an alignment as a fraction of the free space). */
+export function alignFraction(a) { return a === "center" ? 0.5 : a === "end" ? 1 : 0; }
 
 /** The axis a frame's children flow along: "horizontal" | "vertical" | "grid" | "none" (a carousel: its direction). */
 export function flowAxis(frame) {
@@ -167,6 +185,8 @@ export function frameCss(frame, opts) {
         css["overflow-x"] = axes[0];
         css["overflow-y"] = axes[1];
     }
+    // it still scrolls (wheel, touch, keys), without the bar (WebKit: the page's .nexa-no-scrollbar)
+    css["scrollbar-width"] = opts && opts.scroll && s.scrollbar === "hidden" ? "none" : "";
     if (l.mode === "none") {
         css.display = "";
         css.padding = "";

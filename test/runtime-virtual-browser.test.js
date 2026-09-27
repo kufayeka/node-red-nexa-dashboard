@@ -82,11 +82,30 @@ async function main() {
                 await send('grid', items(N, 'G'));
                 let c = await copies('grid');
                 assert.ok(c.length > 4 && c.length < 40, 'copies: ' + c.length);
-                assert.deepStrictEqual(c.slice(0, 3), [['0: G0', 0, 0], ['1: G1', 0, 325], ['2: G2', 50, 0]], '(640 - 10) / 2 = 315 wide, + 10 gap = x 325; rows 40 + 10');
-                assert.strictEqual(await js(`document.querySelector('[data-id="grid#1"]').style.width`), '315px');
+                // the grid's inner width (640, less a scrollbar once it scrolls): two equal columns, a 10 px gap
+                const gw = await js(`document.querySelector('[data-virtual-sizer="grid"]').clientWidth`);
+                const cw = (gw - 10) / 2;
+                assert.deepStrictEqual(c.slice(0, 3), [['0: G0', 0, 0], ['1: G1', 0, Math.round(cw + 10)], ['2: G2', 50, 0]], 'x = a column + the gap; rows 40 + 10');
+                assert.strictEqual(Math.round(parseFloat(await js(`document.querySelector('[data-id="grid#1"]').style.width`))), Math.round(cw), 'each fills its column');
                 await scroll('grid', 'scrollTop', 1000 * 50);
                 c = await copies('grid');
                 assert.ok(c.some((x) => x[0] === '2000: G2000' && x[1] === 50000 && x[2] === 0), JSON.stringify(c.slice(0, 4)));
+                // after a scroll too, the second column is where it was (the sizer spans the grid's columns)
+                const sw = await js(`document.querySelector('[data-virtual-sizer="grid"]').clientWidth`);
+                const col2 = Math.round((sw - 10) / 2 + 10);
+                assert.ok(c.some((x) => x[0] === '2001: G2001' && x[1] === 50000 && x[2] === col2), 'second column after the scroll at ' + col2 + ' (the grid width, less a scrollbar): ' + JSON.stringify(c.slice(0, 4)));
+            });
+            await ok('a grid aligned centre (not filling): equal columns, each copy centred in its cell; the scrollbar hidden, it still scrolls', async () => {
+                await send('gridC', items(1000, 'C'));
+                let c = await copies('gridC');
+                assert.deepStrictEqual(c.slice(0, 2).map((x) => x[2]), [8, 333], '(640 - 10) / 2 = 315 per cell; (315 - 300) / 2 = 7.5; the second cell at 325');
+                await scroll('gridC', 'scrollTop', 300);
+                c = await copies('gridC');
+                const sw = await js(`document.querySelector('[data-virtual-sizer="gridC"]').clientWidth`);
+                const cell = (sw - 10) / 2, x1 = Math.round((cell - 300) / 2), x2 = Math.round(cell + 10 + (cell - 300) / 2);
+                assert.ok(c.length && c.every((x) => x[2] === x1 || x[2] === x2), 'centred in their cells after a scroll (no overlap): ' + x1 + ' / ' + x2 + ' ' + JSON.stringify(c.slice(0, 6)));
+                const sb = await js(`(function () { var f = document.querySelector('[data-id="gridC"]'); return [f.classList.contains("nexa-no-scrollbar"), getComputedStyle(f).scrollbarWidth, f.scrollHeight > f.clientHeight]; })()`);
+                assert.deepStrictEqual(sb, [true, 'none', true]);
             });
             await ok('a row (through a Layout node): along x, scrolled horizontally', async () => {
                 await send('row', items(N, 'R'));

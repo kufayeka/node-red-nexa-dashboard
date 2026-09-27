@@ -81,6 +81,17 @@ async function main() {
                 assert.strictEqual(await text('vLast'), '1:P2');
                 assert.strictEqual((await car('pc')).scroll, 155, 'one slide + the gap');
             });
+            await ok('a fixed-size template in a slide: centred in the slide, inside its padding', async () => {
+                const pos = () => js(`(function () { var s = document.querySelector('[data-id="pcC#1"]'), inner = s.firstElementChild; var a = s.getBoundingClientRect(), b = inner.getBoundingClientRect();
+                    return [Math.round(b.left - a.left), Math.round(b.top - a.top), Math.round(b.width), Math.round(b.height)]; })()`);
+                assert.deepStrictEqual(await pos(), [100, 10, 100, 80], '20 + (300 - 40 - 100) / 2 = 100; 10 + (100 - 20 - 80) / 2 = 10');
+            });
+            await ok('more than 10 slides: a counter "1 / 12" instead of a row of dots; it follows', async () => {
+                const count = () => js(`(function () { var d = document.querySelector('[data-id="many"] .nexa-carousel-dots'); return [d.classList.contains("nexa-count"), d.textContent.trim(), d.querySelectorAll(".nexa-carousel-dot").length]; })()`);
+                assert.deepStrictEqual(await count(), [true, '1 / 12', 0]);
+                await click('many', 1); await wait(700);
+                assert.deepStrictEqual((await count()).slice(0, 2), [true, '2 / 12']);
+            });
             await ok('fade + autoplay: one slide shown at a time; it moves on by itself', async () => {
                 // sampled every 150 ms for 1.6 s (every 500 ms it moves on, round the three)
                 const seen = new Set();

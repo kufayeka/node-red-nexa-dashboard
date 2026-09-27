@@ -117,6 +117,8 @@ async function main() {
             const ev = await js('NexaTest.item("g").events.filter(function (e) { return e[0] === "overMax"; }).pop()');
             assert.deepStrictEqual(ev, ['overMax', { value: 45 }]);
             assert.strictEqual(await js('NexaTest.invoke("g", "bump", { by: 5 })'), 50);
+            // a throttled input still on its way (150 ms, later on a busy machine) would raise the peak again
+            await js('new Promise(function (r) { setTimeout(r, 400); })'); await settle();
             await js('NexaTest.invoke("g", "reset")'); await settle();
             assert.strictEqual((await gauge('g')).peak, '0');
             assert.ok(await js('NexaTest.wc("g").ticks > 0'), 'every() is running');
