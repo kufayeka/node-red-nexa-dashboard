@@ -8,10 +8,11 @@ import { buildTypedInputWidget } from "../param-types.js";
 //   on-variable-change  which variable (fires with payload = new, previous = old)
 // A variable is a scope (the app, the screen / template, or the group / frame
 // that declares it) and a name.
-var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change" };
+var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change", "refetch-query": "Refetch Query" };
 var HELP = {
     "set-variable": "Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and \"On Variable Change\" nodes watching it fire. The message goes on unchanged.",
     "get-variable": "Puts the variable's current value into the message and passes it on.",
+    "refetch-query": "Fetches a query variable (a variable filled from an API) again now — e.g. after saving something, or on a Refresh button. The message goes on right away; watch the variable (On Variable Change) for the new data.",
     "on-variable-change": "Starts a flow whenever the variable changes — by a Set Variable node, a Function node (vars.set) or a query. msg.payload = the new value, msg.previous = the old one."
 };
 var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];

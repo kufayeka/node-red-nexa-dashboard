@@ -60,6 +60,7 @@ function getLogicNodeMeta(type) {
         return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "refetch-query") return { color: "#cde6f2", icon: "fa-refresh", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -386,6 +387,11 @@ export function renderEventsPanel() {
             chip(state.eventsPane, "On change " + label, function () {
                 return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
             }, "", "on-variable-change");
+            if (d.variable.source) {
+                chip(state.eventsPane, "Refetch " + label, function () {
+                    return { type: "refetch-query", scope: d.scopeId, name: d.variable.name };
+                }, "", "refetch-query");
+            }
         });
     }
 

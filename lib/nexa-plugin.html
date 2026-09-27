@@ -877,6 +877,7 @@
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "refetch-query": { label: "Refetch Query", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
     "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
@@ -26359,6 +26360,7 @@
       return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "refetch-query") return { color: "#cde6f2", icon: "fa-refresh", portOut: true, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -26701,6 +26703,11 @@
         chip(state.eventsPane, "On change " + label, function() {
           return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
         }, "", "on-variable-change");
+        if (d.variable.source) {
+          chip(state.eventsPane, "Refetch " + label, function() {
+            return { type: "refetch-query", scope: d.scopeId, name: d.variable.name };
+          }, "", "refetch-query");
+        }
       });
     }
     sectionHeader(state.eventsPane, "Web & data");
@@ -26830,6 +26837,12 @@
           list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
         });
         list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
+        scope_exports.allDeclarations(screen, tree_exports.walk, getApp()).forEach(function(d) {
+          if (!d.variable.source) return;
+          ["loading", "error", "updatedAt"].forEach(function(k) {
+            list.push({ name: "$status." + d.variable.name + "." + k, type: k === "loading" ? "boolean" : "string", value: "(query " + d.variable.name + ")", owner: { id: "$status", name: "query state", kind: "route" } });
+          });
+        });
         list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
         return list;
       }
@@ -27245,13 +27258,37 @@
     var html = window.NEXA_LIT.html;
     var isApp = kind === "app";
     var isSurface = kind === true || kind === "screen" || isApp;
-    var view = function() {
-      return { variables: (owner.variables || []).map(function(v) {
-        var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
-        if (isApp) it.persist = v.persist || "none";
-        return it;
-      }) };
+    var plain = function() {
+      return (owner.variables || []).filter(function(v) {
+        return !v.source;
+      });
     };
+    var queries = function() {
+      return (owner.variables || []).filter(function(v) {
+        return v.source;
+      });
+    };
+    var view = function() {
+      return {
+        variables: plain().map(function(v) {
+          var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+          if (isApp) it.persist = v.persist || "none";
+          return it;
+        }),
+        queries: queries().map(function(v) {
+          var src = v.source || {};
+          return {
+            name: v.name,
+            method: src.method || "GET",
+            url: src.url || "",
+            path: src.path || "",
+            every: src.intervalMs ? src.intervalMs / 1e3 : 0,
+            onLoad: src.onLoad !== false
+          };
+        })
+      };
+    };
+    var current = view();
     var fields = {
       name: { type: "string", label: "Name", default: "" },
       type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function(t2) {
@@ -27273,6 +27310,21 @@
           default: [],
           noReset: true,
           item: { row: !isApp, fields }
+        },
+        queries: {
+          key: "queries",
+          type: "list",
+          label: "",
+          default: [],
+          noReset: true,
+          item: { fields: {
+            name: { type: "string", label: "Name", default: "" },
+            method: { type: "enum", label: "Method", default: "GET", options: [{ value: "GET", label: "GET" }, { value: "POST", label: "POST" }] },
+            url: { type: "string", label: "URL ({variables} re-fetch when they change)", default: "" },
+            path: { type: "string", label: "Keep (response path, e.g. data.items; empty = all)", default: "" },
+            every: { type: "number", label: "Every (seconds, 0 = no polling)", default: 0, min: 0 },
+            onLoad: { type: "boolean", label: "Fetch when the page opens", default: true }
+          } }
         }
       },
       inspector: function(o) {
@@ -27283,22 +27335,44 @@
           return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
         })}
                 <nx-list ${o.bind("variables")}></nx-list>
+            </nx-section>
+            <nx-section heading="${isApp ? "App queries (from an API)" : "Queries (from an API)"}" persist-key="${isApp ? "nexa-app-queries" : "nexa-queries"}">
+                <div class="nx-help" style="margin-bottom:6px">A variable filled from an API: fetched when the page opens, every N seconds and when a {variable} in its URL changes; the "Refetch" Logic node fetches it on demand. Bind the data as {name}, the state as {$status.name.loading} / .error / .updatedAt.</div>
+                <nx-list ${o.bind("queries")}></nx-list>
             </nx-section>`;
       }
     };
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: meta2,
-      props: view(),
+      props: current,
       persistKey: "nexa-variables",
       set: function(key, items) {
         if (!isSurface && isNodeLocked(owner.id)) return;
         var old = owner.variables || [];
-        var next = (items || []).map(function(it, i2) {
-          var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-          var v = { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
-          if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
-          return v;
-        });
+        var next;
+        if (key === "queries") {
+          var oldQ = queries();
+          next = plain().concat((items || []).map(function(it, i2) {
+            var prev = oldQ[i2] || {};
+            var src = Object.assign({}, prev.source || {}, {
+              kind: "http",
+              method: it.method === "POST" ? "POST" : "GET",
+              url: String(it.url || "").trim(),
+              path: String(it.path || "").trim(),
+              intervalMs: Math.max(0, Math.round(Number(it.every) * 1e3) || 0),
+              onLoad: it.onLoad !== false
+            });
+            return { id: prev.id || genId(), name: String(it.name || "").trim() || "query" + (i2 + 1), type: prev.type || "object", defaultValue: prev.defaultValue === void 0 ? null : prev.defaultValue, source: src };
+          }));
+        } else {
+          var oldP = plain();
+          next = (items || []).map(function(it, i2) {
+            var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
+            var v = { id: oldP[i2] && oldP[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
+            if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
+            return v;
+          }).concat(queries());
+        }
         var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
         if (next.length || isApp) owner.variables = next;
         else delete owner.variables;
@@ -27308,6 +27382,7 @@
         var keep = state.selectedIds.slice();
         renderActiveScreen();
         if (!isSurface && keep.length === 1) selectOnly(keep[0]);
+        Object.assign(current, view());
         handle.update();
       }
     });
@@ -28629,10 +28704,11 @@
   }
 
   // src/dialogs/set-variable-dialog.js
-  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change" };
+  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change", "refetch-query": "Refetch Query" };
   var HELP = {
     "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "On Variable Change" nodes watching it fire. The message goes on unchanged.',
     "get-variable": "Puts the variable's current value into the message and passes it on.",
+    "refetch-query": "Fetches a query variable (a variable filled from an API) again now \u2014 e.g. after saving something, or on a Refresh button. The message goes on right away; watch the variable (On Variable Change) for the new data.",
     "on-variable-change": "Starts a flow whenever the variable changes \u2014 by a Set Variable node, a Function node (vars.set) or a query. msg.payload = the new value, msg.previous = the old one."
   };
   var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
@@ -29040,7 +29116,7 @@
       var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
       return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
     }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change" || node.type === "refetch-query") {
       var vScreen = getActiveScreen();
       var owner = node.scope && node.scope !== "@app" && vScreen ? tree_exports.find(vScreen, node.scope) : null;
       var where = node.scope === "@app" ? "App" : node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
@@ -29048,6 +29124,7 @@
       if (!node.name) return kind.label;
       if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
       if (node.type === "on-variable-change") return "On change " + ref;
+      if (node.type === "refetch-query") return "Refetch " + ref;
       var OPS2 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
       return (OPS2[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
     }
@@ -29185,7 +29262,7 @@
         openWebIoNodeEditor(node);
       });
     }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
+    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change" || node.type === "refetch-query") {
       box.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openSetVariableNodeEditor(node);

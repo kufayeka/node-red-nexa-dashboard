@@ -48,13 +48,24 @@ export function renderVariablesInspector(container, owner, kind) {
     var html = window.NEXA_LIT.html;
     var isApp = kind === "app";
     var isSurface = kind === true || kind === "screen" || isApp;
+    // two lists over owner.variables: plain ones, and queries (a `source`: filled from an API)
+    var plain = function () { return (owner.variables || []).filter(function (v) { return !v.source; }); };
+    var queries = function () { return (owner.variables || []).filter(function (v) { return v.source; }); };
     var view = function () {
-        return { variables: (owner.variables || []).map(function (v) {
-            var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
-            if (isApp) it.persist = v.persist || "none";
-            return it;
-        }) };
+        return {
+            variables: plain().map(function (v) {
+                var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+                if (isApp) it.persist = v.persist || "none";
+                return it;
+            }),
+            queries: queries().map(function (v) {
+                var src = v.source || {};
+                return { name: v.name, method: src.method || "GET", url: src.url || "", path: src.path || "",
+                    every: src.intervalMs ? src.intervalMs / 1000 : 0, onLoad: src.onLoad !== false };
+            })
+        };
     };
+    var current = view();
     var fields = {
         name: { type: "string", label: "Name", default: "" },
         type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function (t) { return { value: t, label: t }; }) },
@@ -67,6 +78,16 @@ export function renderVariablesInspector(container, owner, kind) {
             variables: {
                 key: "variables", type: "list", label: "", default: [], noReset: true,
                 item: { row: !isApp, fields: fields }
+            },
+            queries: {
+                key: "queries", type: "list", label: "", default: [], noReset: true,
+                item: { fields: {
+                    name: { type: "string", label: "Name", default: "" },
+                    method: { type: "enum", label: "Method", default: "GET", options: [{ value: "GET", label: "GET" }, { value: "POST", label: "POST" }] },
+                    url: { type: "string", label: "URL ({variables} re-fetch when they change)", default: "" },
+                    path: { type: "string", label: "Keep (response path, e.g. data.items; empty = all)", default: "" },
+                    every: { type: "number", label: "Every (seconds, 0 = no polling)", default: 0, min: 0 },
+                    onLoad: { type: "boolean", label: "Fetch when the page opens", default: true } } }
             }
         },
         inspector: function (o) {
@@ -77,22 +98,38 @@ export function renderVariablesInspector(container, owner, kind) {
                     : "Bind with {name} in the props of anything " + (isSurface ? "on this screen" : "inside") + "; the nearest declaration wins. Change one live with the Logic \"Set Variable\" node."}</div>
                 ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
                 <nx-list ${o.bind("variables")}></nx-list>
+            </nx-section>
+            <nx-section heading="${isApp ? "App queries (from an API)" : "Queries (from an API)"}" persist-key="${isApp ? "nexa-app-queries" : "nexa-queries"}">
+                <div class="nx-help" style="margin-bottom:6px">A variable filled from an API: fetched when the page opens, every N seconds and when a {variable} in its URL changes; the "Refetch" Logic node fetches it on demand. Bind the data as {name}, the state as {$status.name.loading} / .error / .updatedAt.</div>
+                <nx-list ${o.bind("queries")}></nx-list>
             </nx-section>`;
         }
     };
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
         meta: meta,
-        props: view(),
+        props: current,
         persistKey: "nexa-variables",
         set: function (key, items) {
             if (!isSurface && isNodeLocked(owner.id)) return;
             var old = owner.variables || [];
-            var next = (items || []).map(function (it, i) {
-                var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-                var v = { id: (old[i] && old[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type, defaultValue: parse(it.value, type) };
-                if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
-                return v;
-            });
+            var next;
+            if (key === "queries") {
+                var oldQ = queries();
+                next = plain().concat((items || []).map(function (it, i) {
+                    var prev = oldQ[i] || {};
+                    var src = Object.assign({}, prev.source || {}, { kind: "http", method: it.method === "POST" ? "POST" : "GET", url: String(it.url || "").trim(),
+                        path: String(it.path || "").trim(), intervalMs: Math.max(0, Math.round(Number(it.every) * 1000) || 0), onLoad: it.onLoad !== false });
+                    return { id: prev.id || genId(), name: String(it.name || "").trim() || ("query" + (i + 1)), type: prev.type || "object", defaultValue: prev.defaultValue === undefined ? null : prev.defaultValue, source: src };
+                }));
+            } else {
+                var oldP = plain();
+                next = (items || []).map(function (it, i) {
+                    var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
+                    var v = { id: (oldP[i] && oldP[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type, defaultValue: parse(it.value, type) };
+                    if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
+                    return v;
+                }).concat(queries());
+            }
             var before = old.length ? JSON.parse(JSON.stringify(old)) : undefined;
             if (next.length || isApp) owner.variables = next; else delete owner.variables;
             var screen = getActiveScreen();
@@ -101,6 +138,7 @@ export function renderVariablesInspector(container, owner, kind) {
             var keep = state.selectedIds.slice();
             renderActiveScreen();           // {name} bindings show the new defaults
             if (!isSurface && keep.length === 1) selectOnly(keep[0]);
+            Object.assign(current, view());
             handle.update();
         }
     });

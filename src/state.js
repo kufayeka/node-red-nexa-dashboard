@@ -39,6 +39,7 @@ export const LOGIC_NODE_KINDS = {
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "refetch-query": { label: "Refetch Query", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
     "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
