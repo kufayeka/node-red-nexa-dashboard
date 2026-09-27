@@ -25,7 +25,23 @@
 // src/canvas/layout-readback.js) so selection, handles and snapping work on
 // them like on any other node.
 
-export var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid"];
+export var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid", "carousel"];
+
+// A carousel: its children (or the copies a Populate puts in it) are slides, `perView`
+// at a time (1.2 lets the next one peek in), scrolled (snapping) or faded one by one.
+// `index` names a variable that holds the current slide (two-way: set it to go there).
+export var CAROUSEL_DEFAULT = {
+    direction: "horizontal",   // "horizontal" | "vertical"
+    perView: 1,
+    transition: "slide",       // "slide" | "fade"
+    loop: false,
+    autoplay: 0,               // ms between slides, 0 = off
+    pauseOnHover: true,
+    arrows: true,
+    dots: true,
+    swipe: true,
+    index: ""                  // a variable name: the current slide (0-based)
+};
 
 var DEFAULT_LAYOUT = {
     mode: "none",
@@ -38,7 +54,8 @@ var DEFAULT_LAYOUT = {
     columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }],
     rows: [],
     sizeW: "fixed",
-    sizeH: "fixed"
+    sizeH: "fixed",
+    carousel: null
 };
 
 // scroll: "none" | "vertical" | "horizontal" | "both" — on the deployed page
@@ -61,7 +78,22 @@ export function layoutOf(frame) {
     if (LAYOUT_MODES.indexOf(out.mode) === -1) out.mode = "none";
     if (!Array.isArray(out.columns)) out.columns = DEFAULT_LAYOUT.columns;
     if (!Array.isArray(out.rows)) out.rows = [];
+    out.carousel = Object.assign({}, CAROUSEL_DEFAULT, l.carousel || {});
+    var pv = num(out.carousel.perView, 1);
+    out.carousel.perView = pv > 0 ? pv : 1;
     return out;
+}
+
+/** A carousel frame's settings (defaults filled in), or null for any other node. */
+export function carouselOf(frame) {
+    return frame && frame.type === "@frame" && layoutOf(frame).mode === "carousel" ? layoutOf(frame).carousel : null;
+}
+
+/** The axis a frame's children flow along: "horizontal" | "vertical" | "grid" | "none" (a carousel: its direction). */
+export function flowAxis(frame) {
+    var l = layoutOf(frame);
+    if (l.mode === "carousel") return l.carousel.direction === "vertical" ? "vertical" : "horizontal";
+    return l.mode;
 }
 
 export function styleOf(frame) {
@@ -141,6 +173,7 @@ export function frameCss(frame, opts) {
         return css;
     }
     css.padding = l.padding.t + "px " + l.padding.r + "px " + l.padding.b + "px " + l.padding.l + "px";
+    if (l.mode === "carousel") return Object.assign(css, carouselTrackCss(frame, opts && opts.scroll));
     if (l.mode === "grid") {
         css.display = "grid";
         css["grid-template-columns"] = tracksCss(l.columns) || "1fr";
@@ -167,6 +200,48 @@ export function frameCss(frame, opts) {
         css[horizontal ? "row-gap" : "column-gap"] = (horizontal && l.wrap ? num(l.rowGap !== undefined && l.rowGap !== "" ? l.rowGap : l.gap) : 0) + "px";
     }
     return css;
+}
+
+/**
+ * The slides' track: a row (or column) of slides that scrolls and snaps on a
+ * deployed page (live: true), clipped in the editor; a fade: one grid cell.
+ */
+export function carouselTrackCss(frame, live) {
+    var l = layoutOf(frame), c = l.carousel;
+    var horizontal = c.direction !== "vertical";
+    var gap = l.gap === "auto" ? 0 : num(l.gap);
+    var css = { "flex-wrap": "nowrap", "justify-content": "flex-start", "align-items": "stretch", "align-content": "",
+        "column-gap": "0px", "row-gap": "0px", "grid-template-columns": "", "grid-template-rows": "", "scroll-snap-type": "", "overscroll-behavior": "", "scrollbar-width": "" };
+    if (c.transition === "fade") {
+        css.display = "grid";
+        css["grid-template-columns"] = "100%";
+        css["grid-template-rows"] = "100%";
+        css.overflow = "hidden";
+        css["overflow-x"] = ""; css["overflow-y"] = "";
+        return css;
+    }
+    css.display = "flex";
+    css["flex-direction"] = horizontal ? "row" : "column";
+    css[horizontal ? "column-gap" : "row-gap"] = gap + "px";
+    if (live) {
+        css.overflow = "";
+        css["overflow-x"] = horizontal ? "auto" : "hidden";
+        css["overflow-y"] = horizontal ? "hidden" : "auto";
+        css["scroll-snap-type"] = (horizontal ? "x" : "y") + " mandatory";
+        css["overscroll-behavior"] = "contain";
+        css["scrollbar-width"] = "none";
+    } else {
+        css.overflow = "hidden";
+        css["overflow-x"] = ""; css["overflow-y"] = "";
+    }
+    return css;
+}
+
+/** A slide's size along the track: perView of them (and the gaps between) fill it. */
+export function carouselSlideSize(frame) {
+    var l = layoutOf(frame), n = l.carousel.perView;
+    var gap = l.gap === "auto" ? 0 : num(l.gap);
+    return gap && n !== 1 ? "calc((100% - " + (gap * (n - 1)) + "px) / " + n + ")" : (100 / n) + "%";
 }
 
 // ---- constraints (Figma) ----------------------------------------------------------
@@ -260,7 +335,8 @@ export function boxCss(node, parent, opts) {
         "min-width": node.minW ? num(node.minW) + "px" : "",
         "max-width": node.maxW ? num(node.maxW) + "px" : "",
         "min-height": node.minH ? num(node.minH) + "px" : "",
-        "max-height": node.maxH ? num(node.maxH) + "px" : ""
+        "max-height": node.maxH ? num(node.maxH) + "px" : "",
+        "scroll-snap-align": ""
     };
     if (opts && opts.constraints && hasConstraints(node, parent)) {
         var ps = parent ? innerSize(parent) : opts.parentSize;
@@ -279,6 +355,19 @@ export function boxCss(node, parent, opts) {
     css.top = "auto";
     css.right = "";
     css.bottom = "";
+    if (mode === "carousel") {
+        // a slide: perView of them fill the track; the other axis is the track's
+        var c = layoutOf(parent).carousel, alongX = c.direction !== "vertical";
+        css.flex = "0 0 auto";
+        // (grid-column / grid-row, not the grid-area shorthand: that would reset a grid child's span)
+        if (c.transition === "fade") { css["grid-column"] = "1"; css["grid-row"] = "1"; css.width = "100%"; css.height = "100%"; return css; }
+        css[alongX ? "width" : "height"] = carouselSlideSize(parent);
+        css[alongX ? "height" : "width"] = "auto";
+        css["align-self"] = "stretch";
+        css[alongX ? "min-width" : "min-height"] = "0px";
+        css["scroll-snap-align"] = "start";
+        return css;
+    }
     if (mode === "grid") {
         var lc = node.layoutChild || {};
         if (lc.col) css["grid-column"] = num(lc.col, 1) + (lc.colSpan > 1 ? " / span " + num(lc.colSpan, 1) : "");
@@ -315,7 +404,13 @@ export function canRotate(node, parent) {
 /** A new frame (without id / x / y). */
 export function makeFrame(mode, w, h) {
     var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
-    if (mode && mode !== "none") {
+    if (mode === "carousel") {
+        // edge to edge, clipped: the slides are the content
+        frame.layout = { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: 0, carousel: Object.assign({}, CAROUSEL_DEFAULT) };
+        frame.style.clip = true;
+        frame.style.stroke = "";
+        frame.style.strokeWidth = 0;
+    } else if (mode && mode !== "none") {
         frame.layout = { mode: mode, padding: { t: 8, r: 8, b: 8, l: 8 }, gap: 8 };
         if (mode === "grid") frame.layout.columns = [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }];
     }

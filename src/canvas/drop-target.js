@@ -40,7 +40,7 @@ export function flowInsert(screen, frame, x, y, excludeIds) {
     var fb = Tree.absBox(screen, frame.id);
     var list = flowKids(frame, excludeIds);
     var boxes = list.map(function (c) { return Tree.absBox(screen, c.id); });
-    var horizontal = l.mode === "horizontal";
+    var horizontal = Layout.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || (horizontal && l.wrap);
     var at = list.length;
     for (var i = 0; i < boxes.length; i++) {

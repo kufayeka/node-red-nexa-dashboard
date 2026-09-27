@@ -222,6 +222,7 @@ export function buildPalette(paletteEl) {
     makeComponentChip(paletteEl, "Row (auto layout)", "@frame:horizontal", "Layout", "fa-columns");
     makeComponentChip(paletteEl, "Column (auto layout)", "@frame:vertical", "Layout", "fa-bars");
     makeComponentChip(paletteEl, "Grid", "@frame:grid", "Layout", "fa-th");
+    makeComponentChip(paletteEl, "Carousel", "@frame:carousel", "Layout", "fa-film");
 
     // Group components by category
     var categories = {};
@@ -433,10 +434,16 @@ export function renderEventsPanel() {
     if (frames.length) {
         sectionHeader(state.eventsPane, "Layouts on this screen");
         frames.forEach(function (f) {
-            var kind = Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[Layout.layoutOf(f).mode] : "frame";
+            var kind = Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid", carousel: "carousel" }[Layout.layoutOf(f).mode] : "frame";
             chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function () {
                 return { type: "layout", container: f.id };
             }, f.id, "layout");
+            // a carousel: which slide is shown (msg.index, and msg.item for a populated one)
+            if (Layout.layoutOf(f).mode === "carousel") {
+                chip(state.eventsPane, (f.name || "Carousel") + " #" + f.id.slice(-4) + " → on Slide Change", function () {
+                    return { type: "ui-event", compId: f.id, event: "slide-change" };
+                }, f.id, "ui-event");
+            }
         });
     }
 

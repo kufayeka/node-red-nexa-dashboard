@@ -907,9 +907,9 @@ export function addComponentAt(type, artboardX, artboardY) {
     // A frame from the palette's "Layout" section: "@frame:<layout mode>"
     if (typeof type === "string" && type.indexOf("@frame:") === 0) {
         var mode = type.slice("@frame:".length);
-        var frame = Layout.makeFrame(mode, mode === "vertical" ? 160 : 240, mode === "horizontal" ? 80 : 160);
+        var frame = Layout.makeFrame(mode, mode === "vertical" ? 160 : mode === "carousel" ? 360 : 240, mode === "horizontal" ? 80 : mode === "carousel" ? 200 : 160);
         frame.id = genId();
-        frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid" }[mode] || "Frame";
+        frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[mode] || "Frame";
         placeNewNode(screen, frame, artboardX, artboardY);
         return;
     }

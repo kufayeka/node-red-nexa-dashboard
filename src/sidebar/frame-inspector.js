@@ -32,7 +32,19 @@ var FRAME_META = {
             { value: "none", label: "None", icon: "fa fa-ban" },
             { value: "horizontal", label: "Row", icon: "fa fa-long-arrow-right" },
             { value: "vertical", label: "Column", icon: "fa fa-long-arrow-down" },
-            { value: "grid", label: "Grid", icon: "fa fa-th" }] }),
+            { value: "grid", label: "Grid", icon: "fa fa-th" },
+            { value: "carousel", label: "Carousel", icon: "fa fa-film" }] }),
+        // a carousel's settings (layout.carousel)
+        cDirection: prop("cDirection", "enum", "Direction", { options: [{ value: "horizontal", label: "Across" }, { value: "vertical", label: "Down" }] }),
+        cPerView: prop("cPerView", "number", "Slides in view", { min: 0.1, step: 0.1, help: "1.2: the next slide peeks in" }),
+        cTransition: prop("cTransition", "enum", "Transition", { options: [{ value: "slide", label: "Slide" }, { value: "fade", label: "Fade" }] }),
+        cLoop: prop("cLoop", "boolean", "Loop (after the last, the first)"),
+        cAutoplay: prop("cAutoplay", "number", "Autoplay every", { min: 0, step: 500, unit: "ms", help: "0 = off" }),
+        cPauseOnHover: prop("cPauseOnHover", "boolean", "Pause while the pointer is over it"),
+        cArrows: prop("cArrows", "boolean", "Arrows"),
+        cDots: prop("cDots", "boolean", "Dots"),
+        cSwipe: prop("cSwipe", "boolean", "Swipe / drag"),
+        cIndex: prop("cIndex", "string", "Current slide → variable", { placeholder: "e.g. slide", help: "A declared variable: it holds the slide shown (0, 1, …); set it (Set Variable) to go to a slide." }),
         sizeW: prop("sizeW", "enum", "Width", { options: SIZING_FRAME }),
         sizeH: prop("sizeH", "enum", "Height", { options: SIZING_FRAME }),
         align: prop("align", "align", "Alignment"),
@@ -78,7 +90,10 @@ function frameView(frame) {
         align: { x: l.alignX, y: l.alignY },
         gap: l.gap === "auto" ? 0 : l.gap, gapAuto: l.gap === "auto", rowGap: l.rowGap === undefined ? "" : l.rowGap,
         padding: l.padding, wrap: !!l.wrap, columns: l.columns, rows: l.rows,
-        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip, scroll: s.scroll || "none"
+        fill: s.fill, stroke: s.stroke, strokeWidth: s.strokeWidth, radius: s.radius, clip: !!s.clip, scroll: s.scroll || "none",
+        cDirection: l.carousel.direction, cPerView: l.carousel.perView, cTransition: l.carousel.transition, cLoop: !!l.carousel.loop,
+        cAutoplay: l.carousel.autoplay, cPauseOnHover: !!l.carousel.pauseOnHover, cArrows: !!l.carousel.arrows, cDots: !!l.carousel.dots,
+        cSwipe: !!l.carousel.swipe, cIndex: l.carousel.index || ""
     };
 }
 
@@ -98,9 +113,17 @@ function writeFrame(frame, key, v) {
         case "gap": layout.gap = Number(v) || 0; break;
         case "mode":
             layout.mode = v;
-            // a new auto layout starts with some breathing room
-            if (v !== "none" && !frame.layout) { layout.padding = { t: 8, r: 8, b: 8, l: 8 }; layout.gap = 8; }
+            // a new auto layout starts with some breathing room (a carousel: edge to edge, clipped)
+            if (v === "carousel") { layout.carousel = Object.assign({}, Layout.CAROUSEL_DEFAULT, layout.carousel || {}); style.clip = true; }
+            else if (v !== "none" && !frame.layout) { layout.padding = { t: 8, r: 8, b: 8, l: 8 }; layout.gap = 8; }
             break;
+        case "cDirection": case "cPerView": case "cTransition": case "cLoop": case "cAutoplay": case "cPauseOnHover":
+        case "cArrows": case "cDots": case "cSwipe": case "cIndex": {
+            var ck = key.charAt(1).toLowerCase() + key.slice(2);
+            var cv = ck === "perView" ? Math.max(0.1, Number(v) || 1) : ck === "autoplay" ? Math.max(0, Number(v) || 0) : ck === "index" ? String(v || "").trim() : v;
+            layout.carousel = Object.assign({}, Layout.CAROUSEL_DEFAULT, layout.carousel || {}, { [ck]: cv });
+            break;
+        }
         case "fill": case "stroke": case "strokeWidth": case "radius": case "clip": style[key] = v; break;
         case "scroll": if (v === "none") delete style.scroll; else style.scroll = v; break;
         default: layout[key] = v;
@@ -190,6 +213,15 @@ export function renderFrameInspector(container, frame) {
                         </nx-row>
                         <nx-spacing ${bind("padding")}></nx-spacing>
                         ${p.mode === "horizontal" ? html`<nx-row><nx-checkbox ${bind("wrap")}></nx-checkbox>${p.wrap ? html`<nx-number ${bind("rowGap")}></nx-number>` : nothing}</nx-row>` : nothing}
+                        ${p.mode === "carousel" ? html`
+                            <nx-row><nx-segmented ${bind("cTransition")}></nx-segmented>${p.cTransition !== "fade" ? html`<nx-segmented ${bind("cDirection")}></nx-segmented>` : nothing}</nx-row>
+                            ${p.cTransition !== "fade" ? html`<nx-number ${bind("cPerView")}></nx-number>` : nothing}
+                            <nx-row><nx-checkbox ${bind("cArrows")}></nx-checkbox><nx-checkbox ${bind("cDots")}></nx-checkbox></nx-row>
+                            <nx-row><nx-checkbox ${bind("cLoop")}></nx-checkbox><nx-checkbox ${bind("cSwipe")}></nx-checkbox></nx-row>
+                            <nx-number ${bind("cAutoplay")}></nx-number>
+                            ${Number(p.cAutoplay) > 0 ? html`<nx-checkbox ${bind("cPauseOnHover")}></nx-checkbox>` : nothing}
+                            <nx-text ${bind("cIndex")}></nx-text>
+                            <div class="nx-help">Slides: this frame's children, or the copies a Populate puts in it (wire it to this frame's Layout node).</div>` : nothing}
                         ${p.mode === "grid" ? html`<nx-list ${bind("columns")}></nx-list><nx-list ${bind("rows")}></nx-list><nx-number ${bind("rowGap")}></nx-number>` : nothing}
                     ` : nothing}
                 </nx-section>

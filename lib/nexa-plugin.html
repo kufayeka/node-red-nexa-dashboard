@@ -416,14 +416,19 @@
   // src/model/layout.js
   var layout_exports = {};
   __export(layout_exports, {
+    CAROUSEL_DEFAULT: () => CAROUSEL_DEFAULT,
     H_CONSTRAINTS: () => H_CONSTRAINTS,
     LAYOUT_MODES: () => LAYOUT_MODES,
     V_CONSTRAINTS: () => V_CONSTRAINTS,
     boxCss: () => boxCss,
     canRotate: () => canRotate,
+    carouselOf: () => carouselOf,
+    carouselSlideSize: () => carouselSlideSize,
+    carouselTrackCss: () => carouselTrackCss,
     childSizing: () => childSizing,
     constraintCss: () => constraintCss,
     constraintsOf: () => constraintsOf,
+    flowAxis: () => flowAxis,
     frameCss: () => frameCss,
     frameHugs: () => frameHugs,
     hasAutoLayout: () => hasAutoLayout,
@@ -436,7 +441,23 @@
     styleOf: () => styleOf,
     tracksCss: () => tracksCss
   });
-  var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid"];
+  var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid", "carousel"];
+  var CAROUSEL_DEFAULT = {
+    direction: "horizontal",
+    // "horizontal" | "vertical"
+    perView: 1,
+    transition: "slide",
+    // "slide" | "fade"
+    loop: false,
+    autoplay: 0,
+    // ms between slides, 0 = off
+    pauseOnHover: true,
+    arrows: true,
+    dots: true,
+    swipe: true,
+    index: ""
+    // a variable name: the current slide (0-based)
+  };
   var DEFAULT_LAYOUT = {
     mode: "none",
     padding: { t: 0, r: 0, b: 0, l: 0 },
@@ -449,7 +470,8 @@
     columns: [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }],
     rows: [],
     sizeW: "fixed",
-    sizeH: "fixed"
+    sizeH: "fixed",
+    carousel: null
   };
   var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none" };
   var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
@@ -468,7 +490,18 @@
     if (LAYOUT_MODES.indexOf(out.mode) === -1) out.mode = "none";
     if (!Array.isArray(out.columns)) out.columns = DEFAULT_LAYOUT.columns;
     if (!Array.isArray(out.rows)) out.rows = [];
+    out.carousel = Object.assign({}, CAROUSEL_DEFAULT, l.carousel || {});
+    var pv = num(out.carousel.perView, 1);
+    out.carousel.perView = pv > 0 ? pv : 1;
     return out;
+  }
+  function carouselOf(frame) {
+    return frame && frame.type === "@frame" && layoutOf(frame).mode === "carousel" ? layoutOf(frame).carousel : null;
+  }
+  function flowAxis(frame) {
+    var l = layoutOf(frame);
+    if (l.mode === "carousel") return l.carousel.direction === "vertical" ? "vertical" : "horizontal";
+    return l.mode;
   }
   function styleOf(frame) {
     var s = frame && frame.style || {};
@@ -530,6 +563,7 @@
       return css2;
     }
     css2.padding = l.padding.t + "px " + l.padding.r + "px " + l.padding.b + "px " + l.padding.l + "px";
+    if (l.mode === "carousel") return Object.assign(css2, carouselTrackCss(frame, opts && opts.scroll));
     if (l.mode === "grid") {
       css2.display = "grid";
       css2["grid-template-columns"] = tracksCss(l.columns) || "1fr";
@@ -556,6 +590,54 @@
       css2[horizontal ? "row-gap" : "column-gap"] = (horizontal && l.wrap ? num(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) : 0) + "px";
     }
     return css2;
+  }
+  function carouselTrackCss(frame, live) {
+    var l = layoutOf(frame), c = l.carousel;
+    var horizontal = c.direction !== "vertical";
+    var gap = l.gap === "auto" ? 0 : num(l.gap);
+    var css2 = {
+      "flex-wrap": "nowrap",
+      "justify-content": "flex-start",
+      "align-items": "stretch",
+      "align-content": "",
+      "column-gap": "0px",
+      "row-gap": "0px",
+      "grid-template-columns": "",
+      "grid-template-rows": "",
+      "scroll-snap-type": "",
+      "overscroll-behavior": "",
+      "scrollbar-width": ""
+    };
+    if (c.transition === "fade") {
+      css2.display = "grid";
+      css2["grid-template-columns"] = "100%";
+      css2["grid-template-rows"] = "100%";
+      css2.overflow = "hidden";
+      css2["overflow-x"] = "";
+      css2["overflow-y"] = "";
+      return css2;
+    }
+    css2.display = "flex";
+    css2["flex-direction"] = horizontal ? "row" : "column";
+    css2[horizontal ? "column-gap" : "row-gap"] = gap + "px";
+    if (live) {
+      css2.overflow = "";
+      css2["overflow-x"] = horizontal ? "auto" : "hidden";
+      css2["overflow-y"] = horizontal ? "hidden" : "auto";
+      css2["scroll-snap-type"] = (horizontal ? "x" : "y") + " mandatory";
+      css2["overscroll-behavior"] = "contain";
+      css2["scrollbar-width"] = "none";
+    } else {
+      css2.overflow = "hidden";
+      css2["overflow-x"] = "";
+      css2["overflow-y"] = "";
+    }
+    return css2;
+  }
+  function carouselSlideSize(frame) {
+    var l = layoutOf(frame), n = l.carousel.perView;
+    var gap = l.gap === "auto" ? 0 : num(l.gap);
+    return gap && n !== 1 ? "calc((100% - " + gap * (n - 1) + "px) / " + n + ")" : 100 / n + "%";
   }
   var H_CONSTRAINTS = ["left", "right", "leftRight", "center", "scale"];
   var V_CONSTRAINTS = ["top", "bottom", "topBottom", "center", "scale"];
@@ -627,7 +709,8 @@
       "min-width": node.minW ? num(node.minW) + "px" : "",
       "max-width": node.maxW ? num(node.maxW) + "px" : "",
       "min-height": node.minH ? num(node.minH) + "px" : "",
-      "max-height": node.maxH ? num(node.maxH) + "px" : ""
+      "max-height": node.maxH ? num(node.maxH) + "px" : "",
+      "scroll-snap-align": ""
     };
     if (opts && opts.constraints && hasConstraints(node, parent)) {
       var ps = parent ? innerSize(parent) : opts.parentSize;
@@ -644,6 +727,23 @@
     css2.top = "auto";
     css2.right = "";
     css2.bottom = "";
+    if (mode === "carousel") {
+      var c = layoutOf(parent).carousel, alongX = c.direction !== "vertical";
+      css2.flex = "0 0 auto";
+      if (c.transition === "fade") {
+        css2["grid-column"] = "1";
+        css2["grid-row"] = "1";
+        css2.width = "100%";
+        css2.height = "100%";
+        return css2;
+      }
+      css2[alongX ? "width" : "height"] = carouselSlideSize(parent);
+      css2[alongX ? "height" : "width"] = "auto";
+      css2["align-self"] = "stretch";
+      css2[alongX ? "min-width" : "min-height"] = "0px";
+      css2["scroll-snap-align"] = "start";
+      return css2;
+    }
     if (mode === "grid") {
       var lc = node.layoutChild || {};
       if (lc.col) css2["grid-column"] = num(lc.col, 1) + (lc.colSpan > 1 ? " / span " + num(lc.colSpan, 1) : "");
@@ -682,7 +782,12 @@
   }
   function makeFrame(mode, w, h) {
     var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
-    if (mode && mode !== "none") {
+    if (mode === "carousel") {
+      frame.layout = { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: 0, carousel: Object.assign({}, CAROUSEL_DEFAULT) };
+      frame.style.clip = true;
+      frame.style.stroke = "";
+      frame.style.strokeWidth = 0;
+    } else if (mode && mode !== "none") {
       frame.layout = { mode, padding: { t: 8, r: 8, b: 8, l: 8 }, gap: 8 };
       if (mode === "grid") frame.layout.columns = [{ size: 1, unit: "fr" }, { size: 1, unit: "fr" }];
     }
@@ -1570,7 +1675,7 @@
     var boxes = list.map(function(c) {
       return tree_exports.absBox(screen, c.id);
     });
-    var horizontal = l.mode === "horizontal";
+    var horizontal = layout_exports.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || horizontal && l.wrap;
     var at = list.length;
     for (var i2 = 0; i2 < boxes.length; i2++) {
@@ -2740,9 +2845,9 @@
     }
     if (typeof type === "string" && type.indexOf("@frame:") === 0) {
       var mode = type.slice("@frame:".length);
-      var frame = layout_exports.makeFrame(mode, mode === "vertical" ? 160 : 240, mode === "horizontal" ? 80 : 160);
+      var frame = layout_exports.makeFrame(mode, mode === "vertical" ? 160 : mode === "carousel" ? 360 : 240, mode === "horizontal" ? 80 : mode === "carousel" ? 200 : 160);
       frame.id = genId();
-      frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid" }[mode] || "Frame";
+      frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[mode] || "Frame";
       placeNewNode(screen, frame, artboardX, artboardY);
       return;
     }
@@ -3034,7 +3139,7 @@
     });
     for (var i2 = 1; i2 < kids2.length; i2++) {
       var a = kids2[i2 - 1], b = kids2[i2];
-      if (l.mode === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
+      if (layout_exports.flowAxis(comp) === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
       else band(inner.x + p.l, a.y + a.h, inner.w - p.l - p.r, b.y - a.y - a.h, "nexa-gap");
     }
   }
@@ -26680,6 +26785,7 @@
     makeComponentChip(paletteEl, "Row (auto layout)", "@frame:horizontal", "Layout", "fa-columns");
     makeComponentChip(paletteEl, "Column (auto layout)", "@frame:vertical", "Layout", "fa-bars");
     makeComponentChip(paletteEl, "Grid", "@frame:grid", "Layout", "fa-th");
+    makeComponentChip(paletteEl, "Carousel", "@frame:carousel", "Layout", "fa-film");
     var categories = {};
     components.forEach(function(def) {
       var cat = def.category || "Components";
@@ -26926,10 +27032,15 @@
     if (frames.length) {
       sectionHeader(state.eventsPane, "Layouts on this screen");
       frames.forEach(function(f) {
-        var kind = layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "frame";
+        var kind = layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid", carousel: "carousel" }[layout_exports.layoutOf(f).mode] : "frame";
         chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function() {
           return { type: "layout", container: f.id };
         }, f.id, "layout");
+        if (layout_exports.layoutOf(f).mode === "carousel") {
+          chip(state.eventsPane, (f.name || "Carousel") + " #" + f.id.slice(-4) + " \u2192 on Slide Change", function() {
+            return { type: "ui-event", compId: f.id, event: "slide-change" };
+          }, f.id, "ui-event");
+        }
       });
     }
     var eventComps = screen ? tree_exports.allNodes(screen).filter(function(n) {
@@ -27194,8 +27305,20 @@
         { value: "none", label: "None", icon: "fa fa-ban" },
         { value: "horizontal", label: "Row", icon: "fa fa-long-arrow-right" },
         { value: "vertical", label: "Column", icon: "fa fa-long-arrow-down" },
-        { value: "grid", label: "Grid", icon: "fa fa-th" }
+        { value: "grid", label: "Grid", icon: "fa fa-th" },
+        { value: "carousel", label: "Carousel", icon: "fa fa-film" }
       ] }),
+      // a carousel's settings (layout.carousel)
+      cDirection: prop("cDirection", "enum", "Direction", { options: [{ value: "horizontal", label: "Across" }, { value: "vertical", label: "Down" }] }),
+      cPerView: prop("cPerView", "number", "Slides in view", { min: 0.1, step: 0.1, help: "1.2: the next slide peeks in" }),
+      cTransition: prop("cTransition", "enum", "Transition", { options: [{ value: "slide", label: "Slide" }, { value: "fade", label: "Fade" }] }),
+      cLoop: prop("cLoop", "boolean", "Loop (after the last, the first)"),
+      cAutoplay: prop("cAutoplay", "number", "Autoplay every", { min: 0, step: 500, unit: "ms", help: "0 = off" }),
+      cPauseOnHover: prop("cPauseOnHover", "boolean", "Pause while the pointer is over it"),
+      cArrows: prop("cArrows", "boolean", "Arrows"),
+      cDots: prop("cDots", "boolean", "Dots"),
+      cSwipe: prop("cSwipe", "boolean", "Swipe / drag"),
+      cIndex: prop("cIndex", "string", "Current slide \u2192 variable", { placeholder: "e.g. slide", help: "A declared variable: it holds the slide shown (0, 1, \u2026); set it (Set Variable) to go to a slide." }),
       sizeW: prop("sizeW", "enum", "Width", { options: SIZING_FRAME }),
       sizeH: prop("sizeH", "enum", "Height", { options: SIZING_FRAME }),
       align: prop("align", "align", "Alignment"),
@@ -27261,7 +27384,17 @@
       strokeWidth: s.strokeWidth,
       radius: s.radius,
       clip: !!s.clip,
-      scroll: s.scroll || "none"
+      scroll: s.scroll || "none",
+      cDirection: l.carousel.direction,
+      cPerView: l.carousel.perView,
+      cTransition: l.carousel.transition,
+      cLoop: !!l.carousel.loop,
+      cAutoplay: l.carousel.autoplay,
+      cPauseOnHover: !!l.carousel.pauseOnHover,
+      cArrows: !!l.carousel.arrows,
+      cDots: !!l.carousel.dots,
+      cSwipe: !!l.carousel.swipe,
+      cIndex: l.carousel.index || ""
     };
   }
   function writeFrame(frame, key, v) {
@@ -27291,11 +27424,29 @@
         break;
       case "mode":
         layout.mode = v;
-        if (v !== "none" && !frame.layout) {
+        if (v === "carousel") {
+          layout.carousel = Object.assign({}, layout_exports.CAROUSEL_DEFAULT, layout.carousel || {});
+          style.clip = true;
+        } else if (v !== "none" && !frame.layout) {
           layout.padding = { t: 8, r: 8, b: 8, l: 8 };
           layout.gap = 8;
         }
         break;
+      case "cDirection":
+      case "cPerView":
+      case "cTransition":
+      case "cLoop":
+      case "cAutoplay":
+      case "cPauseOnHover":
+      case "cArrows":
+      case "cDots":
+      case "cSwipe":
+      case "cIndex": {
+        var ck = key.charAt(1).toLowerCase() + key.slice(2);
+        var cv = ck === "perView" ? Math.max(0.1, Number(v) || 1) : ck === "autoplay" ? Math.max(0, Number(v) || 0) : ck === "index" ? String(v || "").trim() : v;
+        layout.carousel = Object.assign({}, layout_exports.CAROUSEL_DEFAULT, layout.carousel || {}, { [ck]: cv });
+        break;
+      }
       case "fill":
       case "stroke":
       case "strokeWidth":
@@ -27401,6 +27552,15 @@
                         </nx-row>
                         <nx-spacing ${bind("padding")}></nx-spacing>
                         ${p.mode === "horizontal" ? html`<nx-row><nx-checkbox ${bind("wrap")}></nx-checkbox>${p.wrap ? html`<nx-number ${bind("rowGap")}></nx-number>` : nothing}</nx-row>` : nothing}
+                        ${p.mode === "carousel" ? html`
+                            <nx-row><nx-segmented ${bind("cTransition")}></nx-segmented>${p.cTransition !== "fade" ? html`<nx-segmented ${bind("cDirection")}></nx-segmented>` : nothing}</nx-row>
+                            ${p.cTransition !== "fade" ? html`<nx-number ${bind("cPerView")}></nx-number>` : nothing}
+                            <nx-row><nx-checkbox ${bind("cArrows")}></nx-checkbox><nx-checkbox ${bind("cDots")}></nx-checkbox></nx-row>
+                            <nx-row><nx-checkbox ${bind("cLoop")}></nx-checkbox><nx-checkbox ${bind("cSwipe")}></nx-checkbox></nx-row>
+                            <nx-number ${bind("cAutoplay")}></nx-number>
+                            ${Number(p.cAutoplay) > 0 ? html`<nx-checkbox ${bind("cPauseOnHover")}></nx-checkbox>` : nothing}
+                            <nx-text ${bind("cIndex")}></nx-text>
+                            <div class="nx-help">Slides: this frame's children, or the copies a Populate puts in it (wire it to this frame's Layout node).</div>` : nothing}
                         ${p.mode === "grid" ? html`<nx-list ${bind("columns")}></nx-list><nx-list ${bind("rows")}></nx-list><nx-number ${bind("rowGap")}></nx-number>` : nothing}
                     ` : nothing}
                 </nx-section>
@@ -29040,12 +29200,13 @@
     if (node.type === "ui-event" || node.type === "ui-update") {
       var comp = findComponent(node.compId);
       var typeDef = comp && window.NEXA.getComponent(comp.type);
-      var typeLabel = comp ? comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : typeDef ? typeDef.label : comp.type : "?";
+      var typeLabel = comp ? comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? comp.name || "Frame" : typeDef ? typeDef.label : comp.type : "?";
       var name2 = typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
       if (node.type === "ui-event") {
         if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
           return name2 + " on Sparkplug Update";
         }
+        if (node.event === "slide-change") return name2 + " on Slide Change";
         var evtDef = typeDef && typeDef.events && typeDef.events.find(function(e) {
           return e.name === node.event;
         });

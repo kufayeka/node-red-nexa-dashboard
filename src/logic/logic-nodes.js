@@ -22,12 +22,13 @@ export function logicNodeLabel(node) {
     if (node.type === "ui-event" || node.type === "ui-update") {
         var comp = findComponent(node.compId);
         var typeDef = comp && window.NEXA.getComponent(comp.type);
-        var typeLabel = comp ? (comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : (typeDef ? typeDef.label : comp.type)) : "?";
+        var typeLabel = comp ? (comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? (comp.name || "Frame") : (typeDef ? typeDef.label : comp.type)) : "?";
         var name = typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
         if (node.type === "ui-event") {
             if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
                 return name + " on Sparkplug Update";
             }
+            if (node.event === "slide-change") return name + " on Slide Change";
             var evtDef = typeDef && typeDef.events && typeDef.events.find(function (e) { return e.name === node.event; });
             return name + " " + (evtDef ? evtDef.label : "on " + node.event);
         }

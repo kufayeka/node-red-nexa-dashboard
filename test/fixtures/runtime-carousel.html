@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>carousel</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- A carousel (a frame with layout mode "carousel") on a deployed page (test/runtime-carousel-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:700px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+function slide(id, text) { return { id: id, type: "label", x: 0, y: 0, w: 50, h: 50, props: { text: text } }; }
+function carousel(id, x, y, w, h, c, children, extra) {
+  return Object.assign({ id: id, type: "@frame", name: id, x: x, y: y, w: w, h: h, style: { clip: true },
+    layout: { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: c.gap || 0, carousel: c }, children: children || [] }, extra || {});
+}
+window.__NEXA_APP__ = { variables: [{ id: "ls", name: "lastSlide", type: "string", defaultValue: "" }] };
+// a slide template: its label keeps to both edges (constraints), so it follows the slide's width
+window.__NEXA_TEMPLATES__ = [{ id: "SLIDE", name: "Slide", width: 100, height: 80, params: [{ id: "pp", name: "product", label: "product", type: "object", defaultValue: {} }],
+  components: [{ id: "name", type: "label", x: 0, y: 0, w: 100, h: 20, constraints: { h: "leftRight", v: "top" }, props: { text: "{product.name}" } }],
+  logic: { nodes: [], wires: [] } }];
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, orphans: [],
+  variables: [{ id: "vs", name: "slide", type: "number", defaultValue: 0 }],
+  components: [
+    carousel("car", 10, 10, 300, 100, { direction: "horizontal", perView: 1, arrows: true, dots: true, swipe: true, index: "slide" },
+      [slide("s0", "A"), slide("s1", "B"), slide("s2", "C")]),
+    carousel("pc", 10, 150, 300, 100, { direction: "horizontal", perView: 2, gap: 10, arrows: true, dots: true, swipe: true }),
+    carousel("fd", 10, 300, 200, 100, { transition: "fade", autoplay: 500, pauseOnHover: true, arrows: false, dots: true },
+      [slide("f0", "X"), slide("f1", "Y"), slide("f2", "Z")]),
+    { id: "vSlide", type: "label", x: 400, y: 10, w: 100, h: 20, props: { text: "{slide}" } },
+    { id: "vLast", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastSlide}" } },
+    { id: "ctl", type: "btn", x: 400, y: 80, w: 10, h: 10, props: {} }
+  ],
+  logic: { nodes: [
+    { id: "eGo", type: "ui-event", compId: "ctl", event: "go" }, { id: "setS", type: "set-variable", scope: "", name: "slide", op: "set", valueSource: "payload" },
+    { id: "eFill", type: "ui-event", compId: "ctl", event: "fill" },
+    { id: "pop", type: "populate", container: "", template: "SLIDE", itemParam: "product", mode: "replace", key: "id", valueSource: "payload" },
+    { id: "lay", type: "layout", container: "pc" },
+    { id: "eChg", type: "ui-event", compId: "pc", event: "slide-change" },
+    { id: "fChg", type: "function", code: "setVariable('lastSlide', msg.index + ':' + (msg.item ? msg.item.name : '-'), '@app'); return msg;" }
+  ], wires: [W("eGo", "setS"), W("eFill", "pop"), W("pop", "lay"), W("eChg", "fChg")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

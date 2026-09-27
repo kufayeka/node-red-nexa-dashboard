@@ -237,7 +237,7 @@ function renderLayoutOverlay(comp, box) {
     });
     for (var i = 1; i < kids.length; i++) {
         var a = kids[i - 1], b = kids[i];
-        if (l.mode === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
+        if (Layout.flowAxis(comp) === "horizontal") band(a.x + a.w, inner.y + p.t, b.x - a.x - a.w, inner.h - p.t - p.b, "nexa-gap");
         else band(inner.x + p.l, a.y + a.h, inner.w - p.l - p.r, b.y - a.y - a.h, "nexa-gap");
     }
 }

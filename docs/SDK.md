@@ -188,6 +188,7 @@ properties: {
 | `code` | string | `nx-code` (`lang: "javascript"`) |
 | `json` | any JSON | `nx-code` (JSON) |
 | `tag` | `"{provider:address}"` | `nx-tag` |
+| `asset` | `"{asset:name}"`, a URL, or `""` | `nx-asset`: the app's images (the Assets tab) as thumbnails, Import…, a URL. In the view, `assetUrl(this.p.key)` gives what to show. See [MEDIA.md](MEDIA.md). |
 | `list` | array | `nx-list`. `item` is one schema (a list of values) or `{ fields: {…}, row: true }` (a list of objects). |
 
 These attributes apply to every type:
