@@ -698,15 +698,130 @@
     surfaceScope: () => surfaceScope,
     visibleVariables: () => visibleVariables
   });
+
+  // src/model/types.js
+  var types_exports = {};
+  __export(types_exports, {
+    BindingRef: () => BindingRef,
+    buildInstance: () => buildInstance,
+    findType: () => findType,
+    getTypes: () => getTypes,
+    isBindingRef: () => isBindingRef,
+    isTypeRef: () => isTypeRef,
+    memberAt: () => memberAt,
+    memberPaths: () => memberPaths,
+    setTypes: () => setTypes,
+    variableValue: () => variableValue
+  });
+  var TYPES = [];
+  function setTypes(list) {
+    TYPES = Array.isArray(list) ? list : [];
+  }
+  function getTypes() {
+    return TYPES;
+  }
+  function findType(ref) {
+    var id2 = typeof ref === "string" && ref.indexOf("type:") === 0 ? ref.slice(5) : ref;
+    return TYPES.filter(function(t2) {
+      return t2.id === id2 || t2.name === id2;
+    })[0] || null;
+  }
+  function isTypeRef(dataType) {
+    return typeof dataType === "string" && dataType.indexOf("type:") === 0;
+  }
+  function BindingRef(text, access) {
+    this.__nexaBinding = text;
+    this.access = access || "read";
+  }
+  BindingRef.prototype.toString = function() {
+    return this.__nexaBinding;
+  };
+  BindingRef.prototype.toJSON = function() {
+    return this.__nexaBinding;
+  };
+  function isBindingRef(v) {
+    return !!v && typeof v === "object" && typeof v.__nexaBinding === "string";
+  }
+  function clone(v) {
+    return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
+  }
+  function fillParams(text, params) {
+    return String(text).replace(/\{([A-Za-z_$][\w$]*)\}/g, function(whole, name2) {
+      return Object.prototype.hasOwnProperty.call(params, name2) && params[name2] !== void 0 && params[name2] !== null ? String(params[name2]) : whole;
+    });
+  }
+  function buildInstance(type, instName, params, overrides2, depth, parentName) {
+    depth = depth || 0;
+    if (!type || depth > 8) return null;
+    var p = {};
+    (type.params || []).forEach(function(x) {
+      if (x && x.name) p[x.name] = x.defaultValue;
+    });
+    Object.keys(params || {}).forEach(function(k) {
+      p[k] = params[k];
+    });
+    p.InstanceName = instName;
+    if (parentName) p.ParentInstanceName = parentName;
+    overrides2 = overrides2 || {};
+    var out = {};
+    Object.defineProperty(out, "__type", { value: type.id, enumerable: false });
+    (type.members || []).forEach(function(m) {
+      if (!m || !m.name) return;
+      var ov = Object.prototype.hasOwnProperty.call(overrides2, m.id) ? overrides2[m.id] : Object.prototype.hasOwnProperty.call(overrides2, m.name) ? overrides2[m.name] : void 0;
+      if (isTypeRef(m.dataType)) {
+        var sub = findType(m.dataType);
+        out[m.name] = sub ? buildInstance(sub, m.name, Object.assign({}, p, ov && typeof ov === "object" ? ov : {}), {}, depth + 1, instName) : null;
+      } else if (m.source) {
+        out[m.name] = new BindingRef(fillParams(m.source, p), m.access);
+      } else {
+        out[m.name] = clone(ov !== void 0 ? ov : m.defaultValue);
+      }
+    });
+    return out;
+  }
+  function variableValue(v) {
+    if (v && isTypeRef(v.type)) {
+      var t2 = findType(v.type);
+      return t2 ? buildInstance(t2, v.name, v.params, v.overrides) : null;
+    }
+    return clone(v ? v.defaultValue : void 0);
+  }
+  function memberAt(instance, path) {
+    var cur2 = instance, member = null;
+    for (var i2 = 0; i2 < path.length; i2++) {
+      if (!cur2 || typeof cur2 !== "object" || !cur2.__type) return null;
+      var t2 = findType(cur2.__type);
+      member = t2 && (t2.members || []).filter(function(m) {
+        return m.name === path[i2];
+      })[0];
+      if (!member) return null;
+      cur2 = cur2[path[i2]];
+    }
+    return member;
+  }
+  function memberPaths(type, prefix, depth) {
+    depth = depth || 0;
+    var out = [];
+    if (!type || depth > 4) return out;
+    (type.members || []).forEach(function(m) {
+      if (!m || !m.name) return;
+      var path = prefix ? prefix + "." + m.name : m.name;
+      out.push({ path, member: m });
+      if (isTypeRef(m.dataType)) out = out.concat(memberPaths(findType(m.dataType), path, depth + 1));
+    });
+    return out;
+  }
+
+  // src/model/scope.js
   var NAME_RE = /^[A-Za-z_$][\w$]*$/;
   function makeScope(parent, variables) {
     var scope = Object.create(parent || null);
     (variables || []).forEach(function(v) {
-      if (v && typeof v.name === "string" && NAME_RE.test(v.name)) scope[v.name] = clone(v.defaultValue);
+      if (v && typeof v.name === "string" && NAME_RE.test(v.name)) scope[v.name] = variableValue(v);
     });
     return scope;
   }
-  function clone(v) {
+  function clone2(v) {
     return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
   }
   function hasVariables(node) {
@@ -716,7 +831,7 @@
     var scope = makeScope(parent || null, surface && surface.variables);
     if (isTemplate) {
       (surface.params || []).forEach(function(p) {
-        if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone(p.defaultValue);
+        if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone2(p.defaultValue);
       });
     }
     return scope;
@@ -727,7 +842,11 @@
       (list || []).forEach(function(v) {
         if (!v || !NAME_RE.test(v.name || "") || seen[v.name]) return;
         seen[v.name] = true;
-        out.push({ name: v.name, type: v.type || "string", value: v[valueKey], owner });
+        var t2 = isTypeRef(v.type) ? findType(v.type) : null;
+        out.push({ name: v.name, type: t2 ? t2.name : v.type || "string", value: t2 ? "(" + t2.name + ")" : v[valueKey], owner, typeId: t2 ? t2.id : void 0 });
+        if (t2) memberPaths(t2).forEach(function(mp) {
+          out.push({ name: v.name + "." + mp.path, type: mp.member.dataType || "string", value: mp.member.source ? "(" + (mp.member.access === "readwrite" ? "read / write" : "read") + " tag)" : mp.member.defaultValue, owner, member: true });
+        });
       });
     }
     var chain = (ancestors2 || []).slice();
@@ -1014,7 +1133,10 @@
   function getApp() {
     var p = state.projectConfigNode;
     if (p && !Array.isArray(p.variables)) p.variables = [];
-    return p || { variables: [] };
+    if (p && !Array.isArray(p.types)) p.types = [];
+    var app = p || { variables: [], types: [] };
+    setTypes(app.types);
+    return app;
   }
   function appScope() {
     return makeScope(null, getApp().variables);
@@ -1324,8 +1446,8 @@
     return out;
   }
   function applyConstraints(parent, list, oldInner, newInner, orig) {
-    var changed = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed;
+    var changed2 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed2;
     orig = orig || snapshotBoxes(list);
     list.forEach(function(c) {
       if (!layout_exports.hasConstraints(c, parent)) return;
@@ -1342,12 +1464,12 @@
       c.y = nb.y;
       c.w = nb.w;
       c.h = nb.h;
-      changed.push(c.id);
+      changed2.push(c.id);
       if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed = changed.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+        changed2 = changed2.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
       }
     });
-    return changed;
+    return changed2;
   }
   function constrainFrameChildren(frame, oldBox, orig) {
     if (!frame || frame.type !== "@frame") return [];
@@ -1362,9 +1484,9 @@
   }
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
-    var changed = [];
+    var changed2 = [];
     var redraw = false;
-    if (!screen) return changed;
+    if (!screen) return changed2;
     tree_exports.walk(screen, function(node, parent) {
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
@@ -1385,22 +1507,22 @@
         node.y = box.y;
         node.w = box.w;
         node.h = box.h;
-        changed.push(node.id);
+        changed2.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
           redraw = true;
-          changed = changed.concat(moved);
+          changed2 = changed2.concat(moved);
         }
       }
     });
-    changed.forEach(function(id2) {
+    changed2.forEach(function(id2) {
       if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
-    changed.redraw = redraw;
-    return changed;
+    changed2.redraw = redraw;
+    return changed2;
   }
 
   // src/canvas/drop-target.js
@@ -1623,7 +1745,7 @@
   }
   function applyDelta(delta) {
     if (!delta) return;
-    var changed = [];
+    var changed2 = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
     var metricsTarget;
     if (delta.type === "death") {
@@ -1638,7 +1760,7 @@
         if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
         if (liveCache[key].online) {
           liveCache[key] = Object.assign({}, liveCache[key], { online: false });
-          changed.push(key);
+          changed2.push(key);
         }
       });
     } else {
@@ -1682,10 +1804,10 @@
           isHistorical: !!m.isHistorical,
           isTransient: !!m.isTransient
         };
-        changed.push(key);
+        changed2.push(key);
       });
     }
-    if (changed.length) notify(changed);
+    if (changed2.length) notify(changed2);
   }
   function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
@@ -2064,12 +2186,16 @@
     var whole = WHOLE_BINDING_RE.exec(raw.trim());
     if (whole) {
       var resolved = resolvePath(scope, whole[1]);
-      return resolved === void 0 ? raw : resolved;
+      if (resolved === void 0) return raw;
+      if (resolved && typeof resolved.__nexaBinding === "string") return resolved.__nexaBinding;
+      return resolved;
     }
     if (raw.indexOf("{") === -1) return raw;
     return raw.replace(INTERPOLATION_RE, function(wholeMatch, path) {
       var resolved2 = resolvePath(scope, path);
-      return resolved2 === void 0 ? wholeMatch : String(resolved2);
+      if (resolved2 === void 0) return wholeMatch;
+      if (resolved2 && typeof resolved2.__nexaBinding === "string") return resolved2.__nexaBinding;
+      return resolved2 !== null && typeof resolved2 === "object" ? JSON.stringify(resolved2) : String(resolved2);
     });
   }
   function interpolateProps(props, paramState) {
@@ -4792,11 +4918,11 @@
     return true;
   }
   function ensureAll(state2, addrs) {
-    let changed = false;
+    let changed2 = false;
     for (let addr of addrs)
       if (ensureAddr(state2, addr) & 1)
-        changed = true;
-    return changed;
+        changed2 = true;
+    return changed2;
   }
   function dynamicFacetSlot(addresses, facet, providers) {
     let providerAddrs = providers.map((p) => addresses[p.id]);
@@ -5117,8 +5243,8 @@
     if (status & 2)
       return status;
     state2.status[idx] = 4;
-    let changed = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
-    return state2.status[idx] = 2 | changed;
+    let changed2 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
+    return state2.status[idx] = 2 | changed2;
   }
   function getAddr(state2, addr) {
     return addr & 1 ? state2.config.staticValues[addr >> 1] : state2.values[addr >> 1];
@@ -6964,11 +7090,11 @@
     }
   }
   function updateAttrs(dom, prev, attrs) {
-    let changed = false;
+    let changed2 = false;
     if (prev) {
       for (let name2 in prev)
         if (!(attrs && name2 in attrs)) {
-          changed = true;
+          changed2 = true;
           if (name2 == "style")
             dom.style.cssText = "";
           else
@@ -6978,14 +7104,14 @@
     if (attrs) {
       for (let name2 in attrs)
         if (!(prev && prev[name2] == attrs[name2])) {
-          changed = true;
+          changed2 = true;
           if (name2 == "style")
             dom.style.cssText = attrs[name2];
           else
             dom.setAttribute(name2, attrs[name2]);
         }
     }
-    return changed;
+    return changed2;
   }
   function getAttrs(dom) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -11810,13 +11936,13 @@
     }
     refresh(whiteSpace, lineHeight, charWidth, textHeight, lineLength, knownHeights) {
       let lineWrapping = wrappingWhiteSpace.indexOf(whiteSpace) > -1;
-      let changed = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
+      let changed2 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
       this.lineWrapping = lineWrapping;
       this.lineHeight = lineHeight;
       this.charWidth = charWidth;
       this.textHeight = textHeight;
       this.lineLength = lineLength;
-      if (changed) {
+      if (changed2) {
         this.heightSamples = {};
         for (let i2 = 0; i2 < knownHeights.length; i2++) {
           let h = knownHeights[i2];
@@ -11826,7 +11952,7 @@
             this.heightSamples[Math.floor(h * 10)] = true;
         }
       }
-      return changed;
+      return changed2;
     }
   };
   var MeasuredHeights = class {
@@ -12950,21 +13076,21 @@
         point() {
         }
       }, 20);
-      let changed = 0;
+      let changed2 = 0;
       if (ranges.length != this.visibleRanges.length) {
-        changed = 8 | 4;
+        changed2 = 8 | 4;
       } else {
-        for (let i2 = 0; i2 < ranges.length && !(changed & 8); i2++) {
+        for (let i2 = 0; i2 < ranges.length && !(changed2 & 8); i2++) {
           let old = this.visibleRanges[i2], nw = ranges[i2];
           if (old.from != nw.from || old.to != nw.to) {
-            changed |= 4;
+            changed2 |= 4;
             if (!(changes && changes.mapPos(old.from, -1) == nw.from && changes.mapPos(old.to, 1) == nw.to))
-              changed |= 8;
+              changed2 |= 8;
           }
         }
       }
       this.visibleRanges = ranges;
-      return changed;
+      return changed2;
     }
     lineBlockAt(pos) {
       return pos >= this.viewport.from && pos <= this.viewport.to && this.viewportLines.find((b) => b.from <= pos && b.to >= pos) || scaleBlock(this.heightMap.lineAt(pos, QueryType.ByPos, this.heightOracle, 0, 0), this.scaler);
@@ -13593,15 +13719,15 @@
     }
     listenForScroll() {
       this.parentCheck = -1;
-      let i2 = 0, changed = null;
+      let i2 = 0, changed2 = null;
       for (let dom = this.dom; dom; ) {
         if (dom.nodeType == 1) {
-          if (!changed && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
+          if (!changed2 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
             i2++;
-          else if (!changed)
-            changed = this.scrollTargets.slice(0, i2);
-          if (changed)
-            changed.push(dom);
+          else if (!changed2)
+            changed2 = this.scrollTargets.slice(0, i2);
+          if (changed2)
+            changed2.push(dom);
           dom = dom.assignedSlot || dom.parentNode;
         } else if (dom.nodeType == 11) {
           dom = dom.host;
@@ -13609,12 +13735,12 @@
           break;
         }
       }
-      if (i2 < this.scrollTargets.length && !changed)
-        changed = this.scrollTargets.slice(0, i2);
-      if (changed) {
+      if (i2 < this.scrollTargets.length && !changed2)
+        changed2 = this.scrollTargets.slice(0, i2);
+      if (changed2) {
         for (let dom of this.scrollTargets)
           dom.removeEventListener("scroll", this.onScroll);
-        for (let dom of this.scrollTargets = changed)
+        for (let dom of this.scrollTargets = changed2)
           dom.addEventListener("scroll", this.onScroll);
       }
     }
@@ -14398,15 +14524,15 @@
             scrollScale = this.viewState.scaleY;
           }
           this.updateState = 1;
-          let changed = this.viewState.measure();
-          if (!changed && !this.measureRequests.length && this.viewState.scrollTarget == null)
+          let changed2 = this.viewState.measure();
+          if (!changed2 && !this.measureRequests.length && this.viewState.scrollTarget == null)
             break;
           if (i2 > 5) {
             console.warn(this.measureRequests.length ? "Measure loop restarted more than 5 times" : "Viewport failed to stabilize");
             break;
           }
           let measuring = [];
-          if (!(changed & 4))
+          if (!(changed2 & 4))
             [this.measureRequests, measuring] = [measuring, this.measureRequests];
           let measured = measuring.map((m) => {
             try {
@@ -14417,11 +14543,11 @@
             }
           });
           let update = ViewUpdate.create(this, this.state, []), redrawn = false;
-          update.flags |= changed;
+          update.flags |= changed2;
           if (!updated)
             updated = update;
           else
-            updated.flags |= changed;
+            updated.flags |= changed2;
           this.updateState = 2;
           if (!update.empty) {
             this.updatePlugins(update);
@@ -14502,14 +14628,14 @@
       if (this.state.readOnly)
         contentAttrs["aria-readonly"] = "true";
       attrsFromFacet(this, contentAttributes, contentAttrs);
-      let changed = this.observer.ignore(() => {
+      let changed2 = this.observer.ignore(() => {
         let changedContent = updateAttrs(this.contentDOM, this.contentAttrs, contentAttrs);
         let changedEditor = updateAttrs(this.dom, this.editorAttrs, editorAttrs);
         return changedContent || changedEditor;
       });
       this.editorAttrs = editorAttrs;
       this.contentAttrs = contentAttrs;
-      return changed;
+      return changed2;
     }
     showAnnouncements(trs) {
       let first = true;
@@ -26859,7 +26985,7 @@
       });
     }
   }
-  function clone2(v) {
+  function clone3(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
@@ -26870,11 +26996,11 @@
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
     if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
-      last2.to = clone2(value);
+      last2.to = clone3(value);
       last2.at = now;
       state.redoStack = [];
     } else if (screen) {
-      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone2(from), to: clone2(value), at: now });
+      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone3(from), to: clone3(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -27243,7 +27369,27 @@
   }
 
   // src/sidebar/variables-inspector.js
-  var TYPES = ["string", "number", "boolean", "object", "array", "color"];
+  var TYPES2 = ["string", "number", "boolean", "object", "array", "color"];
+  function showParams(p) {
+    return Object.keys(p || {}).map(function(k) {
+      return k + "=" + p[k];
+    }).join(", ");
+  }
+  function parseParams(text) {
+    var out = {};
+    String(text || "").split(",").forEach(function(pair2) {
+      var i2 = pair2.indexOf("=");
+      if (i2 > 0) out[pair2.slice(0, i2).trim()] = pair2.slice(i2 + 1).trim();
+    });
+    return out;
+  }
+  function typeOptions() {
+    return TYPES2.map(function(t2) {
+      return { value: t2, label: t2 };
+    }).concat((getApp().types || []).map(function(t2) {
+      return { value: "type:" + t2.id, label: t2.name + " (type)" };
+    }));
+  }
   function show(v, type) {
     if (v === void 0 || v === null) return "";
     if (type === "object" || type === "array") return JSON.stringify(v);
@@ -27283,16 +27429,14 @@
     var isSurface = kind === true || kind === "screen" || isApp;
     var view = function() {
       return { variables: (owner.variables || []).map(function(v) {
-        var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+        var it = { name: v.name, type: v.type || "string", value: types_exports.isTypeRef(v.type) ? showParams(v.params) : show(v.defaultValue, v.type) };
         if (isApp) it.persist = v.persist || "none";
         return it;
       }) };
     };
     var fields = {
       name: { type: "string", label: "Name", default: "" },
-      type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function(t2) {
-        return { value: t2, label: t2 };
-      }) },
+      type: { type: "enum", label: "Type", default: "string", options: typeOptions() },
       value: { type: "string", label: "Default", default: "" }
     };
     if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
@@ -27331,8 +27475,13 @@
         if (!isSurface && isNodeLocked(owner.id)) return;
         var old = owner.variables || [];
         var next = (items || []).map(function(it, i2) {
-          var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-          var v = { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type, defaultValue: parse(it.value, type) };
+          var isInst = types_exports.isTypeRef(it.type) && !!types_exports.findType(it.type);
+          var type = isInst ? it.type : TYPES2.indexOf(it.type) === -1 ? "string" : it.type;
+          var v = { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type };
+          if (isInst) {
+            v.params = parseParams(it.value);
+            v.overrides = old[i2] && old[i2].overrides || {};
+          } else v.defaultValue = parse(it.value, type);
           if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
           return v;
         });
@@ -27766,16 +27915,16 @@
   }
   function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
-    var changed = false;
+    var changed2 = false;
     ids.forEach(function(id2) {
       var c = findComponent(id2);
       if (c && !!c.locked !== locked) {
         pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
         c.locked = locked;
-        changed = true;
+        changed2 = true;
       }
     });
-    if (!changed) return;
+    if (!changed2) return;
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
@@ -27951,8 +28100,8 @@
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed = readbackLayout(screen);
-    if (changed.redraw && !renderActiveScreen._again) {
+    var changed2 = readbackLayout(screen);
+    if (changed2.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen(opts);
@@ -31205,6 +31354,256 @@
     }
   }
 
+  // src/sidebar/types-panel.js
+  var BASE_TYPES = ["number", "boolean", "string", "object", "array", "color"];
+  var selectedId = null;
+  function lit2() {
+    return window.NEXA_LIT;
+  }
+  function typeRefOptions(exceptId) {
+    return BASE_TYPES.map(function(t2) {
+      return { value: t2, label: t2 };
+    }).concat((getApp().types || []).filter(function(t2) {
+      return t2.id !== exceptId;
+    }).map(function(t2) {
+      return { value: "type:" + t2.id, label: t2.name + " (type)" };
+    }));
+  }
+  function uniqueName(base2, list) {
+    var n = 1, name2 = base2;
+    while (list.some(function(x) {
+      return x.name === name2;
+    })) name2 = base2 + ++n;
+    return name2;
+  }
+  function changed() {
+    markDirty();
+    redrawCanvas();
+  }
+  function renderTypesPanel() {
+    var pane = state.typesPane;
+    if (!pane) return;
+    pane.empty();
+    var app = getApp();
+    if (!window.NexaKit || !lit2()) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Types tab needs the Nexa property kit.").appendTo(pane);
+      return;
+    }
+    var html = lit2().html, nothing = lit2().nothing;
+    var types2 = app.types;
+    if (!types2.some(function(t2) {
+      return t2.id === selectedId;
+    })) selectedId = types2[0] ? types2[0].id : null;
+    var type = types2.filter(function(t2) {
+      return t2.id === selectedId;
+    })[0] || null;
+    var bar = window.$("<div>", { "class": "nx-kit" }).css({ display: "flex", gap: "6px", "align-items": "center", "margin-bottom": "8px" }).appendTo(pane);
+    var sel = window.$("<select>").css({ flex: "1" }).appendTo(bar);
+    if (!types2.length) window.$("<option>").text("(no types yet)").appendTo(sel);
+    types2.forEach(function(t2) {
+      window.$("<option>", { value: t2.id }).text(t2.name).appendTo(sel);
+    });
+    sel.val(selectedId || "");
+    sel.on("change", function() {
+      selectedId = sel.val();
+      renderTypesPanel();
+    });
+    window.$("<button>", { type: "button", "class": "nx-btn", title: "New type" }).html('<i class="fa fa-plus"></i> Type').appendTo(bar).on("click", function() {
+      var t2 = { id: genId(), name: uniqueName("Motor", types2), params: [{ id: genId(), name: "Device", defaultValue: "" }], members: [] };
+      types2.push(t2);
+      selectedId = t2.id;
+      changed();
+      renderTypesPanel();
+    });
+    if (type) {
+      window.$("<button>", { type: "button", "class": "nx-icon-btn", title: "Delete this type" }).html('<i class="fa fa-trash-o"></i>').appendTo(bar).on("click", function() {
+        var users = app.variables.filter(function(v) {
+          return v.type === "type:" + type.id;
+        }).length;
+        if (users && !window.confirm(type.name + " has " + users + " app instance(s). Delete the type anyway? (The instances stay, without a type.)")) return;
+        types2.splice(types2.indexOf(type), 1);
+        changed();
+        renderTypesPanel();
+      });
+    }
+    window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-bottom": "8px" }).text("A type is a class for data: members (with defaults, or a tag address using the type's parameters) that every instance shares. Bind {M101.Speed}; pass {M101} to a template param.").appendTo(pane);
+    if (!type) return;
+    var host = window.$("<div>").appendTo(pane).get(0);
+    var view = function() {
+      return {
+        name: type.name,
+        params: (type.params || []).map(function(p) {
+          return { name: p.name, value: p.defaultValue === void 0 ? "" : String(p.defaultValue) };
+        }),
+        members: (type.members || []).map(function(m) {
+          return {
+            name: m.name,
+            dataType: m.dataType || "number",
+            value: m.defaultValue === void 0 ? "" : typeof m.defaultValue === "object" ? JSON.stringify(m.defaultValue) : String(m.defaultValue),
+            unit: m.unit || "",
+            access: m.access || "read",
+            source: m.source || ""
+          };
+        })
+      };
+    };
+    var current = view();
+    var meta2 = {
+      id: "@type",
+      stateList: [],
+      inputs: [],
+      outputs: [],
+      props: {
+        name: { key: "name", type: "string", label: "Type name", default: "", noReset: true },
+        params: { key: "params", type: "list", label: "", default: [], noReset: true, item: { row: true, fields: {
+          name: { type: "string", label: "Parameter", default: "" },
+          value: { type: "string", label: "Default", default: "" }
+        } } },
+        members: { key: "members", type: "list", label: "", default: [], noReset: true, item: { fields: {
+          name: { type: "string", label: "Member", default: "" },
+          dataType: { type: "enum", label: "Data type", default: "number", options: typeRefOptions(type.id) },
+          source: { type: "string", label: "Tag (with {Params}); empty = a value", placeholder: "{sparkplug:{Group}::{Node}::{Device}::Speed}", default: "" },
+          value: { type: "string", label: "Default (a value member)", default: "" },
+          unit: { type: "string", label: "Unit", default: "" },
+          access: { type: "enum", label: "Access", default: "read", options: [{ value: "read", label: "read" }, { value: "readwrite", label: "read / write" }] }
+        } } }
+      },
+      inspector: function(o) {
+        var problems = [];
+        var names = {};
+        (type.members || []).forEach(function(m) {
+          if (!scope_exports.NAME_RE.test(m.name || "")) problems.push('member "' + (m.name || "") + '": letters, digits, _ or $, not starting with a digit');
+          else if (names[m.name]) problems.push('member "' + m.name + '" twice');
+          names[m.name] = true;
+        });
+        return html`
+                <nx-text ${o.bind("name")}></nx-text>
+                <nx-section heading="Parameters" persist-key="nexa-type-params">
+                    <div class="nx-help" style="margin-bottom:6px">Filled in per instance, used in the members' sources as {Name}. Built in: {InstanceName}, {ParentInstanceName}.</div>
+                    <nx-list ${o.bind("params")}></nx-list>
+                </nx-section>
+                <nx-section heading="Members" persist-key="nexa-type-members">
+                    ${problems.map(function(p) {
+          return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
+        })}
+                    <nx-list ${o.bind("members")}></nx-list>
+                </nx-section>`;
+      }
+    };
+    var handle = window.NexaKit.renderInspector(host, {
+      meta: meta2,
+      props: current,
+      persistKey: "nexa-type",
+      set: function(key, v) {
+        if (key === "name") type.name = String(v || "").trim() || type.name;
+        if (key === "params") {
+          var oldP = type.params || [];
+          type.params = (v || []).map(function(it, i2) {
+            return { id: oldP[i2] && oldP[i2].id || genId(), name: String(it.name || "").trim() || "Param" + (i2 + 1), defaultValue: it.value };
+          });
+        }
+        if (key === "members") {
+          var oldM = type.members || [];
+          type.members = (v || []).map(function(it, i2) {
+            var dt = it.dataType || "number";
+            var def = it.value;
+            if (dt === "number") def = def === "" || def === void 0 ? 0 : isFinite(Number(def)) ? Number(def) : 0;
+            else if (dt === "boolean") def = def === true || def === "true";
+            else if (dt === "object" || dt === "array") {
+              try {
+                def = def ? JSON.parse(def) : dt === "array" ? [] : {};
+              } catch (e) {
+                def = dt === "array" ? [] : {};
+              }
+            }
+            return {
+              id: oldM[i2] && oldM[i2].id || genId(),
+              name: String(it.name || "").trim() || "member" + (i2 + 1),
+              dataType: dt,
+              defaultValue: types_exports.isTypeRef(dt) ? void 0 : def,
+              unit: it.unit || "",
+              access: it.access === "readwrite" ? "readwrite" : "read",
+              source: String(it.source || "").trim()
+            };
+          });
+        }
+        Object.keys(current).forEach(function(k) {
+          delete current[k];
+        });
+        Object.assign(current, view());
+        handle.update();
+        changed();
+        if (key === "name") sel.find('option[value="' + type.id + '"]').text(type.name);
+        if (key === "params") renderInstances();
+      }
+    });
+    var instHost = window.$("<div>").css({ "margin-top": "10px" }).appendTo(pane).get(0);
+    function renderInstances() {
+      instHost.innerHTML = "";
+      var params = type.params || [];
+      var fields = { name: { type: "string", label: "Instance", default: "" } };
+      params.forEach(function(p) {
+        fields["p_" + p.name] = { type: "string", label: p.name, default: p.defaultValue === void 0 ? "" : String(p.defaultValue) };
+      });
+      var mine = function() {
+        return app.variables.filter(function(v) {
+          return v.type === "type:" + type.id;
+        });
+      };
+      var iview = function() {
+        return { instances: mine().map(function(v) {
+          var row = { name: v.name };
+          params.forEach(function(p) {
+            row["p_" + p.name] = v.params && v.params[p.name] !== void 0 ? String(v.params[p.name]) : "";
+          });
+          return row;
+        }) };
+      };
+      var icurrent = iview();
+      var ih = window.NexaKit.renderInspector(instHost, {
+        meta: {
+          id: "@instances",
+          stateList: [],
+          inputs: [],
+          outputs: [],
+          props: {
+            instances: { key: "instances", type: "list", label: "", default: [], noReset: true, item: { row: params.length < 3, fields } }
+          },
+          inspector: function(o) {
+            return html`<nx-section heading="Instances (app — every screen)" persist-key="nexa-type-instances">
+                        <div class="nx-help" style="margin-bottom:6px">Each is an app variable of type ${type.name}: bind {${"name"}.Member}. A screen / frame can declare its own instance in its Variables list.</div>
+                        <nx-list ${o.bind("instances")}></nx-list>
+                    </nx-section>`;
+          }
+        },
+        props: icurrent,
+        persistKey: "nexa-type-instances",
+        set: function(key, rows2) {
+          var old = mine();
+          var others = app.variables.filter(function(v) {
+            return v.type !== "type:" + type.id;
+          });
+          var next = (rows2 || []).map(function(r, i2) {
+            var p = {};
+            params.forEach(function(x) {
+              if (r["p_" + x.name] !== void 0 && r["p_" + x.name] !== "") p[x.name] = r["p_" + x.name];
+            });
+            var prev = old[i2] || {};
+            return { id: prev.id || genId(), name: String(r.name || "").trim() || uniqueName(type.name.replace(/\W/g, "") + "_", others), type: "type:" + type.id, params: p, overrides: prev.overrides || {} };
+          });
+          app.variables = others.concat(next);
+          Object.keys(icurrent).forEach(function(k) {
+            delete icurrent[k];
+          });
+          Object.assign(icurrent, iview());
+          ih.update();
+          changed();
+        }
+      });
+    }
+    renderInstances();
+  }
+
   // src/sidebar/sidebar-content.js
   function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -31219,6 +31618,7 @@
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
+    state.typesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
@@ -31305,6 +31705,7 @@
         state.hierarchyPane.toggle(tab.id === "hierarchy");
         state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
         state.templatesPane.toggle(tab.id === "templates");
+        state.typesPane.toggle(tab.id === "types");
         state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
           if (state.editingMode === "template") exitTemplateEditing();
@@ -31324,11 +31725,13 @@
         if (tab.id === "hierarchy") renderHierarchyPanel();
         if (tab.id === "events") renderEventsPanel();
         if (tab.id === "sparkplug") renderSparkplugPanel();
+        if (tab.id === "types") renderTypesPanel();
       }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
     state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
+    state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

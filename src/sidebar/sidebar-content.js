@@ -6,6 +6,7 @@ import { renderHierarchyPanel } from "./hierarchy-panel.js";
 import { renderScreenList, renderScreenForm, addScreenFromSidebar } from "./screens-panel.js";
 import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTemplateEditing } from "./templates-panel.js";
 import { renderSparkplugPanel } from "./sparkplug-panel.js";
+import { renderTypesPanel } from "./types-panel.js";
 
 export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -33,6 +34,7 @@ export function buildSidebarContent() {
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
+    state.typesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     // Same flex/column reasoning as componentsPane/eventsPane above (see
     // that comment) — the metric rows dragged out of this pane go through
@@ -111,6 +113,7 @@ export function buildSidebarContent() {
             state.hierarchyPane.toggle(tab.id === "hierarchy");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
             state.templatesPane.toggle(tab.id === "templates");
+            state.typesPane.toggle(tab.id === "types");
             state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
             if (tab.id === "screens") {
                 // The Screens form (name/URL path/width/height/grid/snap) is
@@ -133,11 +136,13 @@ export function buildSidebarContent() {
             if (tab.id === "hierarchy") renderHierarchyPanel();
             if (tab.id === "events") renderEventsPanel();
             if (tab.id === "sparkplug") renderSparkplugPanel();
+            if (tab.id === "types") renderTypesPanel();
         }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
     state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
+    state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

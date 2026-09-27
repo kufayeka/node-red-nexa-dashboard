@@ -13,13 +13,16 @@
 // way {path} interpolation reads — walks the whole chain, and a value set on
 // one scope is seen by everything inside it (unless shadowed).
 
+import { variableValue, isTypeRef, findType, memberPaths } from "./types.js";
+
 export var NAME_RE = /^[A-Za-z_$][\w$]*$/;
 
 /** A scope inside `parent` (null = a root) with `variables`' default values. */
 export function makeScope(parent, variables) {
     var scope = Object.create(parent || null);
     (variables || []).forEach(function (v) {
-        if (v && typeof v.name === "string" && NAME_RE.test(v.name)) scope[v.name] = clone(v.defaultValue);
+        // a variable of a type (UDT) starts as an instance of it (types.js)
+        if (v && typeof v.name === "string" && NAME_RE.test(v.name)) scope[v.name] = variableValue(v);
     });
     return scope;
 }
@@ -57,7 +60,12 @@ export function visibleVariables(surface, ancestors, isTemplate, self, app) {
         (list || []).forEach(function (v) {
             if (!v || !NAME_RE.test(v.name || "") || seen[v.name]) return;
             seen[v.name] = true;
-            out.push({ name: v.name, type: v.type || "string", value: v[valueKey], owner: owner });
+            var t = isTypeRef(v.type) ? findType(v.type) : null;
+            out.push({ name: v.name, type: t ? t.name : (v.type || "string"), value: t ? "(" + t.name + ")" : v[valueKey], owner: owner, typeId: t ? t.id : undefined });
+            // an instance: its members too — {M101.Speed}, {M101.motor.Running}
+            if (t) memberPaths(t).forEach(function (mp) {
+                out.push({ name: v.name + "." + mp.path, type: mp.member.dataType || "string", value: mp.member.source ? "(" + (mp.member.access === "readwrite" ? "read / write" : "read") + " tag)" : mp.member.defaultValue, owner: owner, member: true });
+            });
         });
     }
     var chain = (ancestors || []).slice();

@@ -18,6 +18,7 @@ const T = load('tree.js');
 const M = load('migrate.js');
 const L = load('layout.js');
 const S = load('scope.js');
+const Y = load('index.js');   // types + scope in one bundle (one types registry)
 
 let passed = 0;
 function ok(label, fn) { fn(); passed++; console.log('✔ ' + label); }
@@ -283,6 +284,32 @@ ok('scope: the app sits above every screen / template; its variables are visible
     const vis = S.visibleVariables(screen, [], false, null, app);
     assert.deepStrictEqual(vis.map((v) => v.name + '@' + v.owner.kind), ['line@screen', 'user@app']);
     assert.deepStrictEqual(S.allDeclarations(screen, T.walk, app).map((d) => d.scopeId + '.' + d.variable.name), ['@app.user', '@app.line', '.line']);
+});
+
+ok('types (UDT): an instance fills the params into its members\' sources; overrides, nesting, member paths', () => {
+    Y.setTypes([
+        { id: 'M', name: 'Motor', params: [{ name: 'Group', defaultValue: 'G1' }, { name: 'Device', defaultValue: '' }],
+          members: [{ id: 'a', name: 'Speed', dataType: 'number', source: '{sparkplug:{Group}::E1::{Device}::Speed}', access: 'read' },
+                    { id: 'b', name: 'Label', dataType: 'string', defaultValue: 'Motor', access: 'readwrite' },
+                    { id: 'c', name: 'Tag', dataType: 'string', source: '{sparkplug:G1::E1::{InstanceName}::Id}' }] },
+        { id: 'P', name: 'Pump', params: [{ name: 'Device', defaultValue: '' }], members: [{ id: 'm', name: 'motor', dataType: 'type:M' }, { id: 'loop', name: 'self', dataType: 'type:P' }] }
+    ]);
+    const m101 = Y.variableValue({ name: 'M101', type: 'type:M', params: { Device: 'M101' }, overrides: { b: 'Main' } });
+    assert.ok(Y.isBindingRef(m101.Speed));
+    assert.deepStrictEqual([String(m101.Speed), m101.Label, String(m101.Tag)], ['{sparkplug:G1::E1::M101::Speed}', 'Main', '{sparkplug:G1::E1::M101::Id}']);
+    assert.strictEqual(JSON.stringify(m101), '{"Speed":"{sparkplug:G1::E1::M101::Speed}","Label":"Main","Tag":"{sparkplug:G1::E1::M101::Id}"}', 'no hidden type key in JSON');
+    const p1 = Y.variableValue({ name: 'P1', type: 'type:P', params: { Device: 'P1' } });
+    assert.strictEqual(String(p1.motor.Speed), '{sparkplug:G1::E1::P1::Speed}', 'a nested type gets the parent params');
+    assert.strictEqual(String(p1.motor.Tag), '{sparkplug:G1::E1::motor::Id}', 'its own name is its {InstanceName}');
+    assert.ok(p1.self && p1.self.self, 'a type containing itself stops (depth limit) instead of looping');
+    assert.strictEqual(Y.memberAt(p1, ['motor', 'Label']).access, 'readwrite');
+    assert.strictEqual(Y.memberAt(p1, ['motor', 'nope']), null);
+    assert.deepStrictEqual(Y.memberPaths(Y.findType('M')).map((x) => x.path), ['Speed', 'Label', 'Tag']);
+    const scope = Y.makeScope(null, [{ name: 'M101', type: 'type:M', params: { Device: 'M101' } }]);
+    assert.strictEqual(scope.M101.Label, 'Motor', 'a scope makes the instance');
+    const vis = Y.visibleVariables({ id: 's', variables: [{ name: 'M101', type: 'type:M', params: {} }] }, [], false, null, null);
+    assert.deepStrictEqual(vis.map((v) => v.name), ['M101', 'M101.Speed', 'M101.Label', 'M101.Tag'], 'the binding picker lists the members');
+    Y.setTypes([]);
 });
 
 console.log(`\n${passed} passed\nALL OK`);

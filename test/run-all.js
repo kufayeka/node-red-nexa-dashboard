@@ -32,7 +32,7 @@ const RUNTIME_TESTS = [
     "mock-runtime-client.js", "mock-templates-runtime.js",
     "mock-lit-runtime.js", "mock-lit-mount-template.js",
     "mock-sparkplug-render-perf.js", "mock-sparkplug-template-param-regression.js",
-    "mock-sparkplug-write-logic.js", "mock-button-logic.js", "mock-io-runtime-client.js", "mock-binding-sources.js"
+    "mock-sparkplug-write-logic.js", "mock-button-logic.js", "mock-io-runtime-client.js", "mock-binding-sources.js", "mock-udt.js"
 ];
 // Standalone: no args, no DOM at all.
 const STANDALONE_TESTS = [

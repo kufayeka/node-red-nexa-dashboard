@@ -2,9 +2,10 @@
 import * as Tree from "./model/tree.js";
 import * as Layout from "./model/layout.js";
 import * as Scope from "./model/scope.js";
+import * as Types from "./model/types.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
 
-export { Tree, Layout, Scope };
+export { Tree, Layout, Scope, Types };
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 2.0;
@@ -223,7 +224,10 @@ export function templateContains(candidateId, targetId, seen) {
 export function getApp() {
     var p = state.projectConfigNode;
     if (p && !Array.isArray(p.variables)) p.variables = [];
-    return p || { variables: [] };
+    if (p && !Array.isArray(p.types)) p.types = [];
+    var app = p || { variables: [], types: [] };
+    Types.setTypes(app.types);   // the types (UDT) instances are built from
+    return app;
 }
 export function appScope() {
     return Scope.makeScope(null, getApp().variables);

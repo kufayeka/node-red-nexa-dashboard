@@ -2,11 +2,26 @@
 // { id, name, type, defaultValue } — the same shape as a template's params.
 // Anything inside the owner binds to one as {name} (nearest declaration wins,
 // see src/model/scope.js); the Logic "Set Variable" node changes it live.
-import { state, getActiveScreen, markDirty, genId, Scope, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, markDirty, genId, Scope, Types, getApp, isNodeLocked } from "../state.js";
 import { pushHistory } from "../history.js";
 import { redrawCanvas } from "../canvas/canvas-ui.js";
 
 var TYPES = ["string", "number", "boolean", "object", "array", "color"];
+
+// A variable of a type (UDT) is an instance: its "Default" is the parameters, "Device=M101, Group=G1".
+function showParams(p) { return Object.keys(p || {}).map(function (k) { return k + "=" + p[k]; }).join(", "); }
+function parseParams(text) {
+    var out = {};
+    String(text || "").split(",").forEach(function (pair) {
+        var i = pair.indexOf("=");
+        if (i > 0) out[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
+    });
+    return out;
+}
+function typeOptions() {
+    return TYPES.map(function (t) { return { value: t, label: t }; })
+        .concat((getApp().types || []).map(function (t) { return { value: "type:" + t.id, label: t.name + " (type)" }; }));
+}
 
 function show(v, type) {
     if (v === undefined || v === null) return "";
@@ -49,14 +64,14 @@ export function renderVariablesInspector(container, owner, kind) {
     var isSurface = kind === true || kind === "screen" || isApp;
     var view = function () {
         return { variables: (owner.variables || []).map(function (v) {
-            var it = { name: v.name, type: v.type || "string", value: show(v.defaultValue, v.type) };
+            var it = { name: v.name, type: v.type || "string", value: Types.isTypeRef(v.type) ? showParams(v.params) : show(v.defaultValue, v.type) };
             if (isApp) it.persist = v.persist || "none";
             return it;
         }) };
     };
     var fields = {
         name: { type: "string", label: "Name", default: "" },
-        type: { type: "enum", label: "Type", default: "string", options: TYPES.map(function (t) { return { value: t, label: t }; }) },
+        type: { type: "enum", label: "Type", default: "string", options: typeOptions() },
         value: { type: "string", label: "Default", default: "" }
     };
     if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
@@ -89,8 +104,11 @@ export function renderVariablesInspector(container, owner, kind) {
             if (!isSurface && isNodeLocked(owner.id)) return;
             var old = owner.variables || [];
             var next = (items || []).map(function (it, i) {
-                var type = TYPES.indexOf(it.type) === -1 ? "string" : it.type;
-                var v = { id: (old[i] && old[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type, defaultValue: parse(it.value, type) };
+                var isInst = Types.isTypeRef(it.type) && !!Types.findType(it.type);
+                var type = isInst ? it.type : (TYPES.indexOf(it.type) === -1 ? "string" : it.type);
+                var v = { id: (old[i] && old[i].id) || genId(), name: String(it.name || "").trim() || ("var" + (i + 1)), type: type };
+                if (isInst) { v.params = parseParams(it.value); v.overrides = (old[i] && old[i].overrides) || {}; }
+                else v.defaultValue = parse(it.value, type);
                 if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
                 return v;
             });

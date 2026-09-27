@@ -245,12 +245,17 @@ export function resolveBindableValue(raw, scope) {
     var whole = WHOLE_BINDING_RE.exec(raw.trim());
     if (whole) {
         var resolved = resolvePath(scope, whole[1]);
-        return resolved === undefined ? raw : resolved;
+        if (resolved === undefined) return raw;
+        // a type member with a source ({M101.Speed}): its binding, e.g. a tag (model/types.js)
+        if (resolved && typeof resolved.__nexaBinding === "string") return resolved.__nexaBinding;
+        return resolved;
     }
     if (raw.indexOf("{") === -1) return raw;
     return raw.replace(INTERPOLATION_RE, function (wholeMatch, path) {
         var resolved = resolvePath(scope, path);
-        return resolved === undefined ? wholeMatch : String(resolved);
+        if (resolved === undefined) return wholeMatch;
+        if (resolved && typeof resolved.__nexaBinding === "string") return resolved.__nexaBinding;
+        return resolved !== null && typeof resolved === "object" ? JSON.stringify(resolved) : String(resolved);
     });
 }
 
