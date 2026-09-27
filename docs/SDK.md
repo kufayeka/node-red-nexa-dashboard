@@ -214,17 +214,32 @@ outputs: {
 }
 ```
 
-- An input or output is a **tag prop**. Its value is a generic tag reference, `"{provider:address}"`, for example `{sparkplug:Plant::Edge1::Mixer::Speed}`, `{opcua:ns=2;s=Motor.Speed}` or `{sql:plantdb/line1}`.
+- An input or output is a **binding prop**. An input can read from any source:
+
+  | Source | Saved as | Example |
+  |---|---|---|
+  | Tag | `{provider:address}` | `{sparkplug:Plant::Edge1::Mixer::Speed}`, `{opcua:ns=2;s=Motor.Speed}` |
+  | Variable / template parameter | `{name}`, `{name.member}` | `{speed}`, `{param1.description}`, `{M101.Speed}` (a UDT member) |
+  | Message | `{msg.path}` | `{msg.payload.speed}`, sent by an "Update Component" node |
+  | Expression | text with bindings | `Line {line}: {sparkplug:G::E::D::Speed} rpm` |
+
+  - An output (a write target) takes a tag, a variable / parameter member or `{$route.query.name}`. A message or an expression cannot be written.
   - It is saved as `prop` when you give one (keep old names stable, e.g. `prop: "readTag"`), otherwise as `input<Name>` / `output<Name>`.
 - In the view:
-  - `this.in.value` is the live value, typed by `type` (`number`, `boolean`, `string`, `any`). It is `null` while unknown (offline, no data yet, "???") and an array for `multiple`.
+  - `this.in.value` is the live value, typed by `type` (`number`, `boolean`, `string`, `any`), whatever the source. It is `null` while unknown: offline, no data yet, "???", or a variable not declared around the component. It is an array for `multiple`.
   - `throttle: ms` delivers at most one change every `ms`; the last value always arrives.
-  - `this.out.write("sp", v)` returns a Promise. It resolves `{ local: true }` when no tag is bound (a local-only component) and in the editor.
+  - `this.out.write("sp", v)` returns a Promise. It resolves `{ local: true }` when nothing writable is bound (a local-only component) and in the editor.
+    - An output left empty writes to its `fallback` input. A field whose Read Tag is `{param1.description}` therefore writes the text back to it: a two-way binding.
   - `this.out.canWrite("sp")` and `this.out.target("sp")` tell you where a write would go.
   - `this.status("value")` returns `{ bound, unknown, provider, providerLabel, address, display, valid }`.
 - `providers` limits which tag providers the picker offers for that input or output.
-- A template parameter `{name}` is accepted wherever a tag is.
-- In the inspector, `bind("inputs.value")` / `bind("outputs.sp")` binds the tag picker.
+- In the inspector, `<nx-tag ${bind("inputs.value")}>` / `<nx-tag ${bind("outputs.sp")}>` shows a Source picker:
+  - an input: Variable / Tag / Message / Expression;
+  - an output: Variable / Tag.
+  - `<nx-tag tags-only>` offers tags only.
+- A **plain property** (a label, a colour, `disabled`…) needs no declaration: it is bindable by default (`bindable: false` turns it off).
+  - Its ⛓ button binds it to the same four sources.
+  - `this.p.key` is then the resolved value, so the view never parses a binding itself.
 
 Components never parse tag strings themselves. The host resolves values and routes writes to the provider: Sparkplug goes through the dashboard's own write path, and any other provider through its `write()`.
 
@@ -461,6 +476,9 @@ withHarness({
 }, async ({ js, type, key, logs }) => {
     await js('NexaTest.mount("g", "acme-gauge", { inputValue: "{sparkplug:G::E::D::m}" })');
     await js('NexaTest.setTag("g", "42")');
+    // bound to a variable / template parameter or the message instead of a tag:
+    await js('NexaTest.setVariable("param1", { speed: 12 })');       // {param1.speed}, for every mounted component
+    await js('NexaTest.setMessage("g", { payload: { v: 7 } })');      // {msg.payload.v}, for one
     await js('NexaTest.settle()');
     const text = await js('NexaTest.wc("g").renderRoot.textContent');
     // NexaTest.item("g").writes / .events, NexaTest.ack("g", true | false), NexaTest.invoke("g", "reset"),

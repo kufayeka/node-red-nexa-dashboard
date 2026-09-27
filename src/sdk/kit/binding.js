@@ -50,12 +50,22 @@ function knownTags() {
     return out;
 }
 
+// Write targets: a variable / parameter member or {$route.query.x} (never {msg…} or the rest of $route)
+var WRITABLE_VAR = /^\{(?!msg\b)(?!\$route\.(?:params|path|hash)\b)(\$route\.query\.[A-Za-z_$][\w$]*|[A-Za-z_][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\}$/;
+
 export class NxBinding extends KitElement {
-    static properties = { providers: { attribute: false }, _source: { state: true } };
+    // access: "read" (the default) offers every source; "write" only what can be
+    // written — a tag or a variable (a Write Tag of a field / button)
+    static properties = { providers: { attribute: false }, access: { type: String }, defaultSource: { type: String, attribute: "default-source" }, _source: { state: true } };
 
     constructor() { super(); this._source = null; }
 
-    get source() { return this._source || bindingSource(this.value) || "var"; }
+    get sources() { return this.access === "write" ? SOURCES.filter(function (s) { return s.value === "var" || s.value === "tag"; }) : SOURCES; }
+
+    get source() {
+        var s = this._source || bindingSource(this.value) || this.defaultSource || "var";
+        return this.sources.some(function (x) { return x.value === s; }) ? s : this.sources[0].value;
+    }
 
     _emit(v) { this._source = null; this.change(v); }
 
@@ -95,13 +105,15 @@ export class NxBinding extends KitElement {
         var src = this.source;
         var mine = bindingSource(v) === src;   // the current value belongs to this source
         if (src === "var") {
+            var write = this.access === "write";
             var opts = variables().filter(function (x) { return x.owner && x.owner.kind !== "route" || /^\$route/.test(x.name); })
+                .filter(function (x) { return !write || WRITABLE_VAR.test("{" + x.name + "}"); })
                 .map(function (x) { return { value: "{" + x.name + "}", label: "{" + x.name + "}", detail: (x.owner ? x.owner.name : "") + " = " + str(x.value) }; });
             return html`<nx-combobox mono .free="${true}" .options="${opts}" .value="${mine ? v : ""}" placeholder="{name}"
                 @nx-change="${(e) => { e.stopPropagation(); var x = str(e.detail.value).trim(); if (x && x.charAt(0) !== "{") x = "{" + x + "}"; this._emit(x); }}"></nx-combobox>`;
         }
         if (src === "tag") {
-            return html`<nx-tag tags-only .value="${mine ? v : ""}" .providers="${this.providers || null}" @nx-change="${(e) => { e.stopPropagation(); this._emit(e.detail.value); }}"></nx-tag>`;
+            return html`<nx-tag tags-only .value="${mine ? v : ""}" .providers="${this.providers || null}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => { e.stopPropagation(); this._emit(e.detail.value); }}"></nx-tag>`;
         }
         if (src === "msg") {
             var path = mine ? v.slice(1, -1).replace(/^msg\.?/, "") : "";
@@ -125,11 +137,15 @@ export class NxBinding extends KitElement {
 
     render() {
         // no this.frame(): it lives inside another widget's field (see KitElement.frame)
+        var v = str(this.value).trim();
+        // a write target that cannot be written (kept from before, or typed in)
+        var bad = this.access === "write" && v && bindingSource(v) !== "tag" && !WRITABLE_VAR.test(v);
         return html`<div class="nx-binding">
-            <nx-segmented class="nx-binding-source" .options="${SOURCES}" .value="${this.source}"
+            <nx-segmented class="nx-binding-source" .options="${this.sources}" .value="${this.source}"
                 @nx-change="${(e) => { e.stopPropagation(); this._pick(e.detail.value); }}"></nx-segmented>
             ${this._field()}
-            ${bindingSource(this.value) ? this._preview(this.value) : nothing}
+            ${bad ? html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>read-only — write to a tag, a variable or {$route.query.name}</span></div>`
+                : this.source !== "tag" && bindingSource(this.value) ? this._preview(this.value) : nothing}
         </div>`;
     }
 }

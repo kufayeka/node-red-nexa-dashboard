@@ -43,18 +43,48 @@
             T.render(name);
             return true;
         },
-        // raw props with every tag reference replaced by its fake value ("???" = unknown)
+        // variables / template parameters every mounted component sees ({name}, {a.b}): NexaTest.setVariable
+        vars: {},
+        // raw props with every binding replaced, like the dashboard does: a tag by its fake value
+        // ("???" = unknown), {name} / {a.b} by a variable, {msg.x} by the item's message, and an
+        // expression ("Line {line}: {speed}") by its text. Not resolvable: left as it is.
         resolved: function (item) {
             var p = Object.assign({}, item.raw);
+            function path(root, dotted) {
+                return dotted.split(/[.[\]]+/).filter(Boolean).reduce(function (o, k) { return o === undefined || o === null ? undefined : o[k]; }, root);
+            }
+            function lookup(inner) {
+                if (/^msg(\.|\[|$)/.test(inner)) return inner === "msg" ? item.msg : path(item.msg || {}, inner.replace(/^msg\.?/, ""));
+                return path(T.vars, inner);
+            }
+            function resolve(v, tagKey) {
+                if (typeof v !== "string") return v;
+                if (sdk().parseTag(v)) return item.tags[tagKey] !== undefined ? item.tags[tagKey] : "???";
+                var whole = /^\{([^{}:]+)\}$/.exec(v.trim());
+                if (whole) { var hit = lookup(whole[1]); return hit === undefined ? v : hit; }
+                return v.replace(/\{[^{}]+\}/g, function (m) {
+                    if (sdk().parseTag(m)) return item.tags[tagKey] !== undefined ? String(item.tags[tagKey]) : "???";
+                    var x = lookup(m.slice(1, -1));
+                    return x === undefined ? m : (x !== null && typeof x === "object" ? JSON.stringify(x) : String(x));
+                });
+            }
             Object.keys(p).forEach(function (k) {
                 var v = p[k];
-                if (Array.isArray(v)) {
-                    p[k] = v.map(function (x, i) { return sdk().parseTag(x) ? (item.tags[k + "[" + i + "]"] !== undefined ? item.tags[k + "[" + i + "]"] : "???") : x; });
-                } else if (sdk().parseTag(v)) {
-                    p[k] = item.tags[k] !== undefined ? item.tags[k] : "???";
-                }
+                p[k] = Array.isArray(v) ? v.map(function (x, i) { return resolve(x, k + "[" + i + "]"); }) : resolve(v, k);
             });
             return p;
+        },
+        /** A variable / template parameter for every mounted component: {name} and {name.member}. */
+        setVariable: function (name, value) {
+            T.vars[name] = value;
+            Object.keys(T.items).forEach(T.render);
+            return true;
+        },
+        /** The message a Logic flow sent to one component ({msg.payload.x}). */
+        setMessage: function (name, msg) {
+            T.items[name].msg = msg;
+            T.render(name);
+            return true;
         },
         render: function (name) {
             var i = T.items[name];

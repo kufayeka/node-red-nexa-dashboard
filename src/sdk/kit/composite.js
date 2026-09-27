@@ -160,6 +160,12 @@ export class NxTag extends NxCombobox {
         return html`${this._status()}${super._foot()}`;
     }
     render() {
+        // an input / output of a component: bound to any source (Variable / Tag / Message /
+        // Expression; a write target: Variable / Tag) — nx-binding, with this widget's label
+        if (!this.tagsOnly) {
+            return this.frame(html`<nx-binding default-source="tag" .access="${this.access === "write" ? "write" : "read"}" .providers="${this.providers || null}" .value="${str(this.value)}"
+                @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-binding>`);
+        }
         var allowed = this._allowed();
         var field = super.render();
         if (allowed.length < 2) return field;

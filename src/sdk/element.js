@@ -28,6 +28,13 @@ export function isUnknown(v) {
     return v === undefined || v === null || v === "???";
 }
 
+// A prop bound to something: a tag, a variable / template param ({param1.description}),
+// the message ({msg.payload.x}) or an expression ("Line {line}: {speed} rpm").
+var ANY_BINDING_RE = /\{[^{}]+\}/;
+export function isBound(raw) {
+    return typeof raw === "string" && ANY_BINDING_RE.test(raw);
+}
+
 function coerce(value, type) {
     if (isUnknown(value)) return null;
     if (type === "number") {
@@ -169,7 +176,7 @@ export class NexaElement extends LitElement {
         if (!decl) throw new Error("[nexa] " + this.meta.id + ": no input / output \"" + name + "\"");
         var raw = this.raw[decl.key];
         var t = parseTag(Array.isArray(raw) ? raw[0] : raw);
-        var bound = !!t || (this.isEditor && typeof raw === "string" && raw !== "");
+        var bound = !!t || isBound(Array.isArray(raw) ? raw[0] : raw) || (this.isEditor && typeof raw === "string" && raw !== "");
         var isInput = this.meta.inputs.indexOf(decl) !== -1;
         return {
             bound: bound,
@@ -300,8 +307,11 @@ export class NexaElement extends LitElement {
             if (io.multiple) {
                 value = (Array.isArray(v) ? v : []).map(function (x) { return coerce(x, io.type); });
             } else {
-                var bound = !!parseTag(self.raw[io.key]);
-                value = bound ? coerce(v, io.type) : null;
+                var raw = self.raw[io.key];
+                var bound = isBound(raw);
+                // not resolved (a variable not declared here, no message yet): unknown, not its text
+                var unresolved = bound && v === raw && !parseTag(raw);
+                value = bound && !unresolved ? coerce(v, io.type) : null;
                 if (preview && value === null && preview[io.name] !== undefined) value = preview[io.name];
             }
             if (!io.throttle) { self._inputs[io.name] = value; return; }

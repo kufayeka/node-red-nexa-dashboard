@@ -56,6 +56,48 @@ async function main() {
             assert.strictEqual((await gauge('g2')).value, '???', 'unbound input -> null');
         });
 
+        await ok('an input bound to a variable / template param, the message or an expression (not only a tag)', async () => {
+            await js('NexaTest.setVariable("param1", { speed: 12, name: "M1" })');
+            await js('NexaTest.mount("gv", "acme-gauge", { inputValue: "{param1.speed}" })');
+            await js('NexaTest.mount("gm", "acme-gauge", { inputValue: "{msg.payload.v}" })');
+            await js('NexaTest.mount("gn", "acme-gauge", { inputValue: "{notDeclared}" })');
+            await js('NexaTest.setMessage("gm", { payload: { v: "7" } })');
+            await js('new Promise(function (r) { setTimeout(r, 200); })'); await settle();
+            const r = await js(`(function () {
+                function st(n) { var w = NexaTest.wc(n); var s = w.status("value"); return [w.in.value, s.bound, s.unknown]; }
+                return { v: st("gv"), m: st("gm"), n: st("gn") };
+            })()`);
+            assert.deepStrictEqual(r.v, [12, true, false], '{param1.speed} -> 12, typed as a number');
+            assert.deepStrictEqual(r.m, [7, true, false], '{msg.payload.v} -> 7');
+            assert.deepStrictEqual(r.n, [null, true, true], 'not resolvable: bound but unknown, never its text');
+            await js('NexaTest.setVariable("param1", { speed: 30 })');
+            await js('new Promise(function (r) { setTimeout(r, 200); })'); await settle();
+            assert.strictEqual(await js('NexaTest.wc("gv").in.value'), 30, 'follows the variable');
+        });
+
+        await ok('the Read / Write Tag picker (nx-tag) offers the sources: an input all four, an output Variable / Tag', async () => {
+            const r = await js(`(async function () {
+                var ins = NexaTest.inspector("acme-gauge", {}), box = ins.box;
+                await NexaTest.wait(80);
+                var tags = Array.from(box.querySelectorAll("nx-tag:not([tags-only])"));
+                function sources(t) { return Array.from(t.querySelectorAll(".nx-binding-source button")).map(function (b) { return b.textContent.trim(); }); }
+                var out = { input: sources(tags[0]), output: sources(tags[2]), labels: tags.map(function (t) { return t.label; }) };
+                // Variable, then a name: the input is bound to it
+                Array.from(tags[0].querySelectorAll(".nx-binding-source button")).find(function (b) { return b.textContent.trim() === "Variable"; }).click();
+                await NexaTest.wait();
+                var cb = tags[0].querySelector("nx-combobox input");
+                cb.value = "param1.speed"; cb.dispatchEvent(new Event("input")); cb.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                await NexaTest.wait();
+                out.saved = ins.props.inputValue;
+                ins.destroy();
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.input, ['Variable', 'Tag', 'Message', 'Expression']);
+            assert.deepStrictEqual(r.output, ['Variable', 'Tag'], 'a write target: only what can be written');
+            assert.deepStrictEqual(r.labels, ['Value', 'Setpoint (OPC UA)', 'Setpoint write'], 'each keeps its own label');
+            assert.strictEqual(r.saved, '{param1.speed}');
+        });
+
         await ok('throttle: a burst of changes reaches the view at most every 150 ms, ending on the last value', async () => {
             await js('new Promise(function (r) { setTimeout(r, 200); })');
             const seen = await js(`(async function () {
@@ -133,7 +175,7 @@ async function main() {
                 var pens = box.querySelector("nx-list");
                 pens.querySelector(".nx-list-foot .nx-btn").click(); await NexaTest.wait();
                 pens.querySelector(".nx-list-foot .nx-btn").click(); await NexaTest.wait();
-                out.penRows = pens.querySelectorAll(".nx-list-row nx-tag").length;
+                out.penRows = pens.querySelectorAll(".nx-list-row nx-tag:not([tags-only])").length;
                 out.pens = ins.props.inputPens;
                 tab("Scale"); await NexaTest.wait(80);
                 var stepper = box.querySelector("acme-stepper");
