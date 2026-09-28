@@ -7,7 +7,7 @@ import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOn
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
 import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refreshComponentRender } from "./canvas/component-renderer.js";
 import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
-import { setZoom, buildZoomToolbar, renderActiveScreen } from "./canvas/canvas-ui.js";
+import { setZoom, buildZoomToolbar, buildBreakpointBar, renderActiveScreen } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
 import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect, selectLogicForComponents, scrollLogicToSelection } from "./logic/logic-selection.js";
 import { removeLogicNodes, renderLogicCanvas, addLogicNode, logicNodeWidth } from "./logic/logic-nodes.js";
@@ -222,6 +222,7 @@ export function buildCanvasArea(trayBody) {
     });
 
     buildZoomToolbar(uiPane);
+    buildBreakpointBar(uiPane);
 
     state.logicZoomLevel = 1;
     state.logicViewportEl = window.$("<div>").css({

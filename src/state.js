@@ -250,6 +250,8 @@ export function markDirty() {
         state.projectConfigNode.screens = state.screens;
         state.projectConfigNode.templates = state.templates;
     }
+    // editing a breakpoint: the change becomes its override; the project keeps the design
+    if (typeof state.onBreakpointDirty === "function") state.onBreakpointDirty();
     if (typeof RED !== "undefined" && RED.nodes && RED.nodes.dirty) {
         RED.nodes.dirty(true);
     }

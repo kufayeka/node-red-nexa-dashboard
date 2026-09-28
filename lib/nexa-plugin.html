@@ -712,10 +712,10 @@
     if (mode === "scale" && oldP > 0) return [pos * newP / oldP, Math.max(1, size * newP / oldP)];
     return [pos, size];
   }
-  function resizeWithConstraints(box, constraints, oldP, newP) {
+  function resizeWithConstraints(box2, constraints, oldP, newP) {
     var c = constraints || { h: "left", v: "top" };
-    var h = axisResize(c.h, box.x, box.w, oldP.w, newP.w);
-    var v = axisResize(c.v, box.y, box.h, oldP.h, newP.h);
+    var h = axisResize(c.h, box2.x, box2.w, oldP.w, newP.w);
+    var v = axisResize(c.v, box2.y, box2.h, oldP.h, newP.h);
     return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
   }
   function boxCss(node, parent, opts) {
@@ -1300,6 +1300,7 @@
       state.projectConfigNode.screens = state.screens;
       state.projectConfigNode.templates = state.templates;
     }
+    if (typeof state.onBreakpointDirty === "function") state.onBreakpointDirty();
     if (typeof RED !== "undefined" && RED.nodes && RED.nodes.dirty) {
       RED.nodes.dirty(true);
     }
@@ -1476,11 +1477,11 @@
     } else if (ev.t === "resize") {
       var rcomp = tree_exports.find(screen, ev.id);
       if (!rcomp) return;
-      var box = direction === "undo" ? ev.from : ev.to;
-      rcomp.x = box.x;
-      rcomp.y = box.y;
-      rcomp.w = box.w;
-      rcomp.h = box.h;
+      var box2 = direction === "undo" ? ev.from : ev.to;
+      rcomp.x = box2.x;
+      rcomp.y = box2.y;
+      rcomp.w = box2.w;
+      rcomp.h = box2.h;
       tree_exports.refitGroupsUp(screen, ev.id);
     } else if (ev.t === "rotate") {
       var tcomp = tree_exports.find(screen, ev.id);
@@ -1648,19 +1649,19 @@
       if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
       var el = elementOf(node.id);
       if (!el || !el.getClientRects().length) return;
-      var box = { x: node.x, y: node.y, w: node.w, h: node.h };
+      var box2 = { x: node.x, y: node.y, w: node.w, h: node.h };
       if (inFlow) {
-        box.x = el.offsetLeft;
-        box.y = el.offsetTop;
+        box2.x = el.offsetLeft;
+        box2.y = el.offsetTop;
       }
-      if (inFlow || hugW) box.w = el.offsetWidth;
-      if (inFlow || hugH) box.h = el.offsetHeight;
-      if (box.x !== node.x || box.y !== node.y || box.w !== node.w || box.h !== node.h) {
+      if (inFlow || hugW) box2.w = el.offsetWidth;
+      if (inFlow || hugH) box2.h = el.offsetHeight;
+      if (box2.x !== node.x || box2.y !== node.y || box2.w !== node.w || box2.h !== node.h) {
         var old = { w: node.w, h: node.h };
-        node.x = box.x;
-        node.y = box.y;
-        node.w = box.w;
-        node.h = box.h;
+        node.x = box2.x;
+        node.y = box2.y;
+        node.w = box2.w;
+        node.h = box2.h;
         changed2.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
@@ -3139,7 +3140,7 @@
       document.addEventListener("mouseup", onUp);
     });
   }
-  function renderLayoutOverlay(comp, box) {
+  function renderLayoutOverlay(comp, box2) {
     if (!layout_exports.hasAutoLayout(comp)) return;
     var screen = getActiveScreen();
     if (!screen) return;
@@ -3156,7 +3157,7 @@
         "pointer-events": "none"
       }).appendTo(state.selectionHandlesEl);
     };
-    var inner = { x: bw, y: bw, w: box.w - 2 * bw, h: box.h - 2 * bw };
+    var inner = { x: bw, y: bw, w: box2.w - 2 * bw, h: box2.h - 2 * bw };
     var p = l.padding;
     band(inner.x, inner.y, inner.w, p.t, "nexa-pad-t");
     band(inner.x, inner.y + inner.h - p.b, inner.w, p.b, "nexa-pad-b");
@@ -3167,7 +3168,7 @@
       return layout_exports.isInFlow(c, comp);
     }).map(function(c) {
       var b2 = tree_exports.absBox(screen, c.id);
-      return { x: b2.x - box.x, y: b2.y - box.y, w: b2.w, h: b2.h };
+      return { x: b2.x - box2.x, y: b2.y - box2.y, w: b2.w, h: b2.h };
     });
     for (var i2 = 1; i2 < kids2.length; i2++) {
       var a = kids2[i2 - 1], b = kids2[i2];
@@ -3178,18 +3179,18 @@
   function renderSelectionHandles(comp) {
     clearSelectionHandles();
     var caps = capabilitiesOf(comp);
-    var box = boxOf(comp);
+    var box2 = boxOf(comp);
     var locked = isNodeLocked(comp.id);
     state.selectionHandlesEl = $("<div>", { "class": "nexa-selection-handles" }).css({
       position: "absolute",
-      left: box.x + "px",
-      top: box.y + "px",
-      width: box.w + "px",
-      height: box.h + "px",
+      left: box2.x + "px",
+      top: box2.y + "px",
+      width: box2.w + "px",
+      height: box2.h + "px",
       "pointer-events": "none",
       transform: "rotate(" + (comp.rotation || 0) + "deg)"
     }).appendTo(state.artboardEl);
-    renderLayoutOverlay(comp, box);
+    renderLayoutOverlay(comp, box2);
     if (!locked) {
       if (caps.resizable) {
         [
@@ -27938,6 +27939,255 @@
     return true;
   }
 
+  // src/model/breakpoints.js
+  var DEFAULT_BREAKPOINTS = [
+    { id: "tablet", name: "Tablet", max: 1023, preview: 820 },
+    { id: "phone", name: "Phone", max: 767, preview: 390 }
+  ];
+  var BASE_BREAKPOINT = { id: "desktop", name: "Desktop" };
+  var OVERRIDABLE = [
+    "x",
+    "y",
+    "w",
+    "h",
+    "visibility",
+    "layout",
+    "layoutChild",
+    "style",
+    "constraints",
+    "props",
+    "minW",
+    "maxW",
+    "minH",
+    "maxH",
+    "scrollBehavior"
+  ];
+  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true };
+  function clone4(v) {
+    return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+  }
+  function isPlain(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+  }
+  function merge(into, patch) {
+    var out = isPlain(into) ? clone4(into) : {};
+    Object.keys(patch || {}).forEach(function(k) {
+      out[k] = isPlain(patch[k]) && isPlain(out[k]) ? merge(out[k], patch[k]) : clone4(patch[k]);
+    });
+    return out;
+  }
+  function breakpointsOf(surface) {
+    var list = surface && Array.isArray(surface.breakpoints) ? surface.breakpoints : DEFAULT_BREAKPOINTS;
+    return list.filter(function(b) {
+      return b && b.id && b.id !== BASE_BREAKPOINT.id && isFinite(Number(b.max));
+    }).slice().sort(function(a, b) {
+      return Number(b.max) - Number(a.max);
+    });
+  }
+  function chainFor(surface, id2) {
+    var out = [];
+    var list = breakpointsOf(surface);
+    for (var i2 = 0; i2 < list.length; i2++) {
+      out.push(list[i2].id);
+      if (list[i2].id === id2) return out;
+    }
+    return [];
+  }
+  function baseOf(node) {
+    var b = {};
+    OVERRIDABLE.forEach(function(k) {
+      if (node && node[k] !== void 0) b[k] = clone4(node[k]);
+    });
+    return b;
+  }
+  function applyOverrides(node, base2, chain) {
+    OVERRIDABLE.forEach(function(k) {
+      if (base2[k] === void 0) delete node[k];
+      else node[k] = clone4(base2[k]);
+    });
+    (chain || []).forEach(function(id2) {
+      var o = node.overrides && node.overrides[id2];
+      if (!o) return;
+      Object.keys(o).forEach(function(k) {
+        if (OVERRIDABLE.indexOf(k) === -1) return;
+        node[k] = MERGED[k] && isPlain(o[k]) ? merge(node[k], o[k]) : clone4(o[k]);
+      });
+    });
+    return node;
+  }
+  function overrideDiff(inherited, current) {
+    var out = {};
+    OVERRIDABLE.forEach(function(k) {
+      var a = inherited[k], b = current[k];
+      if (JSON.stringify(a) === JSON.stringify(b)) return;
+      if (MERGED[k] && isPlain(a) && isPlain(b)) {
+        var d = {};
+        Object.keys(b).forEach(function(kk) {
+          if (JSON.stringify(a[kk]) !== JSON.stringify(b[kk])) d[kk] = clone4(b[kk]);
+        });
+        if (Object.keys(d).length) out[k] = d;
+        return;
+      }
+      if (b !== void 0) out[k] = clone4(b);
+    });
+    return out;
+  }
+
+  // src/canvas/breakpoints-ui.js
+  var session = null;
+  function activeBreakpointId() {
+    return session ? session.id : "desktop";
+  }
+  function breakpointList(screen) {
+    return breakpointsOf(screen);
+  }
+  function previewWidth(screen) {
+    return session && screen && session.screenId === screen.id ? session.preview.w : screen ? screen.width : 0;
+  }
+  function each(list, parent, fn) {
+    (list || []).forEach(function(n) {
+      fn(n, parent);
+      if (n.children) each(n.children, n, fn);
+    });
+  }
+  function box(n) {
+    return { x: n.x, y: n.y, w: n.w, h: n.h };
+  }
+  function setBox(n, b) {
+    n.x = b.x;
+    n.y = b.y;
+    n.w = b.w;
+    n.h = b.h;
+  }
+  function toPreview(n, parent) {
+    if (parent || !session) return;
+    setBox(n, layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.design, session.preview));
+  }
+  function toDesign(n, parent) {
+    if (parent || !session) return box(n);
+    return layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.preview, session.design);
+  }
+  function screenOf(id2) {
+    return (state.screens || []).filter(function(s) {
+      return s.id === id2;
+    })[0] || null;
+  }
+  function setBase(n, base2) {
+    Object.defineProperty(n, "__bpBase", { value: base2, writable: true, configurable: true });
+  }
+  function enterBreakpoint(screen, id2) {
+    leaveBreakpoint();
+    if (!screen || !id2 || id2 === "desktop" || state.editingMode === "template") return;
+    var bp = breakpointsOf(screen).filter(function(b) {
+      return b.id === id2;
+    })[0];
+    if (!bp) return;
+    session = {
+      screenId: screen.id,
+      id: id2,
+      chain: chainFor(screen, id2),
+      design: { w: screen.width, h: screen.height },
+      preview: { w: Math.min(screen.width, Number(bp.preview || bp.max) || screen.width), h: screen.height }
+    };
+    each(screen.components, null, function(n, p) {
+      setBase(n, baseOf(n));
+      applyOverrides(n, n.__bpBase, session.chain);
+      toPreview(n, p);
+    });
+    publishBase();
+  }
+  function leaveBreakpoint() {
+    if (!session) return;
+    var screen = screenOf(session.screenId);
+    if (screen) {
+      syncBreakpoint();
+      each(screen.components, null, function(n) {
+        if (n.__bpBase) {
+          applyOverrides(n, n.__bpBase, []);
+          delete n.__bpBase;
+        }
+      });
+    }
+    session = null;
+    if (state.projectConfigNode) state.projectConfigNode.screens = state.screens;
+  }
+  function syncBreakpoint() {
+    if (!session) return;
+    var screen = screenOf(session.screenId);
+    if (!screen) return;
+    var inheritChain = session.chain.slice(0, -1);
+    each(screen.components, null, function(n, p) {
+      var live = baseOf(n);
+      var d = toDesign(n, p);
+      live.x = d.x;
+      live.y = d.y;
+      live.w = d.w;
+      live.h = d.h;
+      if (!n.__bpBase) {
+        setBase(n, live);
+        return;
+      }
+      var inherited = applyOverrides({ overrides: n.overrides }, n.__bpBase, inheritChain);
+      var inFlow = p && layout_exports.isInFlow(n, p);
+      if (inFlow) {
+        live.x = inherited.x;
+        live.y = inherited.y;
+      }
+      if (inFlow && layout_exports.childSizing(n, "w") !== "fixed") live.w = inherited.w;
+      if (inFlow && layout_exports.childSizing(n, "h") !== "fixed") live.h = inherited.h;
+      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "w")) live.w = inherited.w;
+      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "h")) live.h = inherited.h;
+      ["x", "y", "w", "h"].forEach(function(k) {
+        if (Math.abs((live[k] || 0) - (inherited[k] || 0)) <= 1) live[k] = inherited[k];
+      });
+      var diff = overrideDiff(inherited, live);
+      n.overrides = n.overrides || {};
+      if (Object.keys(diff).length) n.overrides[session.id] = diff;
+      else delete n.overrides[session.id];
+      if (!Object.keys(n.overrides).length) delete n.overrides;
+    });
+  }
+  function publishBase() {
+    if (!session || !state.projectConfigNode) return;
+    var live = screenOf(session.screenId);
+    var copy = JSON.parse(JSON.stringify(state.screens));
+    var bases = {};
+    if (live) each(live.components, null, function(n) {
+      bases[n.id] = n.__bpBase;
+    });
+    copy.forEach(function(s) {
+      if (s.id !== session.screenId) return;
+      each(s.components, null, function(n) {
+        var b = bases[n.id];
+        if (!b) return;
+        OVERRIDABLE.forEach(function(k) {
+          if (b[k] === void 0) delete n[k];
+          else n[k] = JSON.parse(JSON.stringify(b[k]));
+        });
+      });
+    });
+    state.projectConfigNode.screens = copy;
+  }
+  function onDirty() {
+    if (!session) return;
+    syncBreakpoint();
+    publishBase();
+  }
+  function overriddenKeys(node) {
+    return session && node && node.overrides && node.overrides[session.id] ? Object.keys(node.overrides[session.id]) : [];
+  }
+  function resetOverride(node, parent) {
+    if (!session || !node || !node.overrides) return;
+    delete node.overrides[session.id];
+    if (!Object.keys(node.overrides).length) delete node.overrides;
+    applyOverrides(node, node.__bpBase || baseOf(node), session.chain);
+    toPreview(node, parent);
+  }
+  function checkSession(screen) {
+    if (session && (!screen || screen.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
+  }
+  state.onBreakpointDirty = onDirty;
+
   // src/sidebar/properties-panel.js
   function renderLayoutChildSection(comp) {
     var screen = getActiveScreen();
@@ -27985,6 +28235,27 @@
       window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
       return;
     }
+    var bpId = activeBreakpointId();
+    if (bpId !== "desktop") {
+      var bpScreen = getActiveScreen();
+      var bpName = (breakpointList(bpScreen).filter(function(b) {
+        return b.id === bpId;
+      })[0] || { name: bpId }).name;
+      var keys = overriddenKeys(comp);
+      var banner = window.$("<div>", { "class": "nexa-bp-banner" }).css({ background: "#fff3e0", border: "1px solid #ffb74d", "border-radius": "4px", padding: "6px 8px", "margin-bottom": "10px", "font-size": "11px", color: "#6d4c00" }).appendTo(state.propertiesPane);
+      window.$("<div>").html('<i class="fa fa-mobile"></i> Editing <b>' + bpName + "</b>: changes here are kept for " + bpName + " (and narrower); Desktop keeps the design.").appendTo(banner);
+      if (keys.length) {
+        var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px", "margin-top": "5px" }).appendTo(banner);
+        window.$("<span>").css({ flex: "1 1 auto" }).text("\u25CF Overridden here: " + keys.join(", ")).appendTo(row);
+        window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).text("Reset").attr("title", "Inherit it again (from the design / the wider breakpoint)").on("click", function() {
+          var parent = tree_exports.parentOf(bpScreen, comp.id);
+          resetOverride(comp, parent && parent.type ? parent : null);
+          markDirty();
+          renderActiveScreen({ keepPanel: true });
+          renderPropertiesPanel();
+        }).appendTo(row);
+      }
+    }
     var isTemplateInstance = comp.type === "@template";
     var isLitComponent = comp.type === "@lit-component";
     var isContainer2 = tree_exports.isContainer(comp);
@@ -28031,13 +28302,13 @@
           return;
         }
         var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row);
+        var row2 = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(key).appendTo(row2);
         var input;
         if (inputType === "checkbox") {
-          input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row);
+          input = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.props[key]).appendTo(row2);
         } else {
-          input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row);
+          input = window.$("<input>", { type: inputType }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.props[key]).appendTo(row2);
         }
         input.on("change", function() {
           var v = inputType === "checkbox" ? input.is(":checked") : inputType === "number" ? parseFloat(input.val()) || 0 : input.val();
@@ -28052,10 +28323,10 @@
         window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Parameters").appendTo(state.propertiesPane);
       }
       (templateRef.params || []).forEach(function(param) {
-        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row);
+        var row2 = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row2);
         var current = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
-        buildTypedInputWidget(row, param.type, current, function(v) {
+        buildTypedInputWidget(row2, param.type, current, function(v) {
           comp.paramValues = comp.paramValues || {};
           comp.paramValues[param.name] = v;
           markDirty();
@@ -28090,8 +28361,8 @@
             comp.litBindable.push(p);
             markDirty();
           }
-          var row = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
-          var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          var row2 = window.$('<div style="display:flex; flex-direction:column; gap:6px; padding:4px 0;"></div>').appendTo(container);
+          var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row2);
           window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
           var nameInput = window.$("<input>", { type: "text", "class": "node-input-prop-name", placeholder: "propName" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
           nameInput.on("change input", function() {
@@ -28105,7 +28376,7 @@
             markDirty();
             refreshComponentRender(comp);
           });
-          var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row2);
           window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
           var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
           buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
@@ -28116,7 +28387,7 @@
             markDirty();
             refreshComponentRender(comp);
           });
-          var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+          var twoWayRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row2);
           window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-exchange"></i> 2-way').appendTo(twoWayRow);
           var twoWayInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!p.twoWay).appendTo(twoWayRow);
           window.$("<span>").css({ "font-size": "11px", color: "#888" }).text("Sync this." + p.name + " changes back to comp.props").appendTo(twoWayRow);
@@ -28151,9 +28422,9 @@
             comp.litEvents.push(evt);
             markDirty();
           }
-          var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
-          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(row);
-          var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" }).css({ flex: "1" }).val(evt.name).appendTo(row);
+          var row2 = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px", padding: "2px 0" }).appendTo(container);
+          window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(row2);
+          var nameInput = window.$("<input>", { type: "text", "class": "node-input-event-name", placeholder: "eventName" }).css({ flex: "1" }).val(evt.name).appendTo(row2);
           nameInput.on("change", function() {
             evt.name = nameInput.val().trim();
             markDirty();
@@ -28174,9 +28445,9 @@
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", margin: "14px 0 8px", "border-top": "1px solid #ddd", "padding-top": "10px" }).text("Position & Size").appendTo(state.propertiesPane);
     [["x", "X"], ["y", "Y"], ["w", "Width"], ["h", "Height"], ["rotation", "Rotation"]].forEach(function(pair2) {
       var field = pair2[0], label = pair2[1];
-      var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
-      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
+      var row2 = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row2);
+      var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", isNodeLocked(comp.id)).appendTo(row2);
       input.on("change", function() {
         comp[field] = parseFloat(input.val()) || 0;
         afterGeometryEdit(comp);
@@ -28482,12 +28753,12 @@
         });
         var boundKeys = Object.keys(msgBound);
         if (boundKeys.length) {
-          var box = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
-          window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box);
+          var box2 = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
+          window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box2);
           boundKeys.forEach(function(k) {
-            window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  \u2190  " + msgBound[k].join(", ")).appendTo(box);
+            window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  \u2190  " + msgBound[k].join(", ")).appendTo(box2);
           });
-          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box);
+          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box2);
         }
         function field(key, label, type) {
           if (msgBound[key]) return;
@@ -29490,7 +29761,7 @@
     var label = logicNodeLabel(node);
     var nodeW = logicNodeWidth(node);
     node.w = nodeW;
-    var box = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
+    var box2 = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
       position: "absolute",
       left: node.x + "px",
       top: node.y + "px",
@@ -29521,8 +29792,8 @@
       background: kind.color || "#607d8b",
       "border-top-left-radius": "4px",
       "border-bottom-left-radius": "4px"
-    }).appendTo(box);
-    box.on("mousedown", function(e) {
+    }).appendTo(box2);
+    box2.on("mousedown", function(e) {
       e.stopPropagation();
       if (e.shiftKey) {
         if (isLogicSelected(node.id)) {
@@ -29538,73 +29809,73 @@
       }
     });
     if (node.type === "function") {
-      box.attr("title", "Double-click to edit code").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to edit code").on("dblclick", function(e) {
         e.stopPropagation();
         openFunctionNodeEditor(node);
       });
     }
     if (node.type === "ui-update") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openUiUpdateNodeEditor(node);
       });
     }
     if (node.type === "inject") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openInjectNodeEditor(node);
       });
     }
     if (node.type === "open-url") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openOpenUrlNodeEditor(node);
       });
     }
     if (node.type === "layer-control") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openLayerControlNodeEditor(node);
       });
     }
     if (node.type === "template-output" || node.type === "template-event") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openTemplateOutputNodeEditor(node);
       });
     }
     if (node.type === "layout") {
-      box.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function(e) {
         e.stopPropagation();
         openLayoutNodeEditor(node);
       });
     }
     if (node.type === "populate") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openPopulateNodeEditor(node);
       });
     }
     if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openWebIoNodeEditor(node);
       });
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openSetVariableNodeEditor(node);
       });
     }
     if (node.type === "sparkplug-write") {
-      box.attr("title", "Double-click to configure").on("dblclick", function(e) {
+      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openSparkplugWriteNodeEditor(node);
       });
     }
     if (node.type === "sparkplug-write-multi") {
-      box.attr("title", "Double-click for usage").on("dblclick", function(e) {
+      box2.attr("title", "Double-click for usage").on("dblclick", function(e) {
         e.stopPropagation();
         openSparkplugWriteMultiNodeEditor(node);
       });
@@ -29620,7 +29891,7 @@
         background: "var(--red-ui-node-border, #999)",
         cursor: "crosshair",
         transform: "scale(" + 1 / state.logicZoomLevel + ")"
-      }).appendTo(box);
+      }).appendTo(box2);
       wireLogicOutputPort(outDot, node);
     }
     if (kind.hasInput) {
@@ -29633,12 +29904,12 @@
         height: "8px",
         background: "var(--red-ui-node-border, #999)",
         transform: "scale(" + 1 / state.logicZoomLevel + ")"
-      }).appendTo(box);
+      }).appendTo(box2);
     }
     var moveStart = null;
     var dragStartPage = null;
     var groupStart = null;
-    box.draggable({
+    box2.draggable({
       start: function(e) {
         if (!isLogicSelected(node.id)) selectLogicOnly(node.id);
         moveStart = { x: node.x, y: node.y };
@@ -29848,7 +30119,7 @@
     var offset = state.logicArtboardEl.offset();
     var startX = (e.pageX - offset.left) / state.logicZoomLevel;
     var startY = (e.pageY - offset.top) / state.logicZoomLevel;
-    var box = { left: startX, top: startY, width: 0, height: 0 };
+    var box2 = { left: startX, top: startY, width: 0, height: 0 };
     var shiftHeld = e.shiftKey;
     var marqueeEl = window.$("<div>").css({
       position: "absolute",
@@ -29864,21 +30135,21 @@
     function onMove2(ev) {
       var curX = (ev.pageX - offset.left) / state.logicZoomLevel;
       var curY = (ev.pageY - offset.top) / state.logicZoomLevel;
-      box.left = Math.min(startX, curX);
-      box.top = Math.min(startY, curY);
-      box.width = Math.abs(curX - startX);
-      box.height = Math.abs(curY - startY);
-      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+      box2.left = Math.min(startX, curX);
+      box2.top = Math.min(startY, curY);
+      box2.width = Math.abs(curX - startX);
+      box2.height = Math.abs(curY - startY);
+      marqueeEl.css({ left: box2.left + "px", top: box2.top + "px", width: box2.width + "px", height: box2.height + "px" });
     }
     function onUp() {
       document.removeEventListener("mousemove", onMove2);
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
-      if (box.width < 3 && box.height < 3) return;
+      if (box2.width < 3 && box2.height < 3) return;
       var screen = getActiveScreen();
       if (!screen || !screen.logic) return;
       var hits = (screen.logic.nodes || []).filter(function(n) {
-        return !(n.x > box.left + box.width || n.x + logicNodeWidth(n) < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
+        return !(n.x > box2.left + box2.width || n.x + logicNodeWidth(n) < box2.left || n.y > box2.top + box2.height || n.y + LOGIC_NODE_H < box2.top);
       }).map(function(n) {
         return n.id;
       });
@@ -30076,7 +30347,7 @@
     var offset = state.artboardEl.offset();
     var startX = (e.pageX - offset.left) / state.zoomLevel;
     var startY = (e.pageY - offset.top) / state.zoomLevel;
-    var box = { left: startX, top: startY, width: 0, height: 0 };
+    var box2 = { left: startX, top: startY, width: 0, height: 0 };
     var shiftHeld = e.shiftKey;
     var marqueeEl = $("<div>", { "class": "nexa-marquee" }).css({
       position: "absolute",
@@ -30092,17 +30363,17 @@
     function onMove2(ev) {
       var curX = (ev.pageX - offset.left) / state.zoomLevel;
       var curY = (ev.pageY - offset.top) / state.zoomLevel;
-      box.left = Math.min(startX, curX);
-      box.top = Math.min(startY, curY);
-      box.width = Math.abs(curX - startX);
-      box.height = Math.abs(curY - startY);
-      marqueeEl.css({ left: box.left + "px", top: box.top + "px", width: box.width + "px", height: box.height + "px" });
+      box2.left = Math.min(startX, curX);
+      box2.top = Math.min(startY, curY);
+      box2.width = Math.abs(curX - startX);
+      box2.height = Math.abs(curY - startY);
+      marqueeEl.css({ left: box2.left + "px", top: box2.top + "px", width: box2.width + "px", height: box2.height + "px" });
     }
     function onUp() {
       document.removeEventListener("mousemove", onMove2);
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
-      if (box.width < 3 && box.height < 3) return;
+      if (box2.width < 3 && box2.height < 3) return;
       var screen = getActiveScreen();
       if (!screen) return;
       var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
@@ -30111,7 +30382,7 @@
       var hits = candidates.filter(function(c) {
         if (!isNodeInteractable(c.id)) return false;
         var b = tree_exports.absBox(screen, c.id);
-        return !(b.x > box.left + box.width || b.x + b.w < box.left || b.y > box.top + box.height || b.y + b.h < box.top);
+        return !(b.x > box2.left + box2.width || b.x + b.w < box2.left || b.y > box2.top + box2.height || b.y + b.h < box2.top);
       }).map(function(c) {
         return c.id;
       });
@@ -30134,6 +30405,9 @@
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
+    checkSession(screen);
+    refreshBreakpointBar(screen);
+    var canvasW = previewWidth(screen);
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
     state.selectionHandlesEl = null;
@@ -30143,14 +30417,14 @@
     }
     state.artboardEl.empty();
     state.artboardEl.css({
-      width: screen.width + "px",
+      width: canvasW + "px",
       height: screen.height + "px",
       "background-color": "#fff",
       "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
       "background-size": screen.gridSize + "px " + screen.gridSize + "px"
     });
     if (state.stageEl) {
-      state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
+      state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
     var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
@@ -30227,13 +30501,53 @@
     var pad = 40;
     var availW = Math.max(vp.clientWidth - pad * 2, 10);
     var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
+    var fitZoom = Math.min(availW / previewWidth(screen), availH / screen.height);
     fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
     state.zoomLevel = fitZoom;
     applyZoomTransform();
     var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+  }
+  var bpBar = null;
+  function buildBreakpointBar(trayBody) {
+    bpBar = window.$("<div>", { "class": "nexa-breakpoint-bar" }).css({
+      position: "absolute",
+      left: "50%",
+      top: "10px",
+      transform: "translateX(-50%)",
+      "z-index": "10",
+      display: "flex",
+      "align-items": "center",
+      background: "#fff",
+      "border-radius": "4px",
+      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+      overflow: "hidden",
+      "font-size": "11px"
+    }).appendTo(trayBody);
+    refreshBreakpointBar(getActiveScreen());
+  }
+  function refreshBreakpointBar(screen) {
+    if (!bpBar) return;
+    bpBar.empty();
+    var template = state.editingMode === "template";
+    bpBar.toggle(!!screen && !template);
+    if (!screen || template) return;
+    var active = activeBreakpointId();
+    var items = [{ id: "desktop", name: "Desktop", icon: "fa-desktop", width: screen.width }].concat(breakpointList(screen).map(function(b) {
+      return { id: b.id, name: b.name, icon: b.id === "phone" ? "fa-mobile" : "fa-tablet", width: Math.min(screen.width, Number(b.preview || b.max)), max: b.max };
+    }));
+    items.forEach(function(it) {
+      var on = it.id === active;
+      window.$("<a>", { href: "#", title: it.id === "desktop" ? "The design (" + it.width + " px)" : it.name + ": below " + (Number(it.max) + 1) + " px \u2014 edits here are kept for " + it.name + " (and narrower)", "data-breakpoint": it.id }).css({ display: "flex", "align-items": "center", gap: "5px", padding: "0 10px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none" }).html('<i class="fa ' + it.icon + '"></i> ' + it.name + ' <span style="opacity:.7">' + it.width + "</span>").on("click", function(e) {
+        e.preventDefault();
+        if (it.id === activeBreakpointId()) return;
+        if (it.id === "desktop") leaveBreakpoint();
+        else enterBreakpoint(getActiveScreen(), it.id);
+        renderActiveScreen();
+        zoomToFit();
+      }).appendTo(bpBar);
+    });
   }
   function buildZoomToolbar(trayBody) {
     var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
@@ -30612,6 +30926,7 @@
       setZoom(state.zoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
     });
     buildZoomToolbar(uiPane);
+    buildBreakpointBar(uiPane);
     state.logicZoomLevel = 1;
     state.logicViewportEl = window.$("<div>").css({
       height: "100%",
@@ -31490,9 +31805,9 @@
   function renderTemplateLiveSection(template) {
     var $2 = window.$;
     var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" }, template.live || {});
-    var box = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
-    $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box);
-    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> \u2014 e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box);
+    var box2 = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
+    $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box2);
+    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> \u2014 e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box2);
     function save() {
       var out = {};
       Object.keys(live).forEach(function(k) {
@@ -31503,7 +31818,7 @@
       markDirty();
       renderActiveScreen();
     }
-    var grid = $2("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box);
+    var grid = $2("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box2);
     function sizing(axis, label) {
       var cell = $2("<div>").appendTo(grid);
       $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);

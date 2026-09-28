@@ -4,6 +4,7 @@ import { refreshSelectionVisuals } from "./selection.js";
 import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
+import { activeBreakpointId, breakpointList, previewWidth, enterBreakpoint, leaveBreakpoint, checkSession } from "./breakpoints-ui.js";
 
 // opts.keepPanel: redraw the canvas only — the selection stays, the properties
 // panel is not rebuilt (an edit made IN the panel must not lose its field).
@@ -12,6 +13,10 @@ export function renderActiveScreen(opts) {
     if (!state.artboardEl) return;
     var screen = getActiveScreen();
     if (!screen) return;
+    // a breakpoint is edited on one screen: another screen / a template is the design
+    checkSession(screen);
+    refreshBreakpointBar(screen);
+    var canvasW = previewWidth(screen);
     // Idempotent — safe to call on every render. Ensures any component
     // already bound to a Sparkplug metric (props containing "{sparkplug:
     // ...}") gets its live value updated, not just whatever was live at
@@ -26,7 +31,7 @@ export function renderActiveScreen(opts) {
     }
     state.artboardEl.empty();
     state.artboardEl.css({
-        width: screen.width + "px",
+        width: canvasW + "px",
         height: screen.height + "px",
         "background-color": "#fff",
         "background-image":
@@ -35,7 +40,7 @@ export function renderActiveScreen(opts) {
         "background-size": screen.gridSize + "px " + screen.gridSize + "px"
     });
     if (state.stageEl) {
-        state.stageEl.css({ width: screen.width + "px", height: screen.height + "px" });
+        state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
     // the root's children; containers draw their own children inside them
@@ -116,13 +121,47 @@ export function zoomToFit() {
     var pad = 40;
     var availW = Math.max(vp.clientWidth - pad * 2, 10);
     var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / screen.width, availH / screen.height);
+    var fitZoom = Math.min(availW / previewWidth(screen), availH / screen.height);
     fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
     state.zoomLevel = fitZoom;
     applyZoomTransform();
     var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+}
+
+// --- the breakpoint bar (top of the canvas): Desktop | Tablet | Phone ------------------
+var bpBar = null;
+export function buildBreakpointBar(trayBody) {
+    bpBar = window.$("<div>", { "class": "nexa-breakpoint-bar" }).css({
+        position: "absolute", left: "50%", top: "10px", transform: "translateX(-50%)", "z-index": "10",
+        display: "flex", "align-items": "center", background: "#fff", "border-radius": "4px",
+        "box-shadow": "0 1px 4px rgba(0,0,0,0.3)", overflow: "hidden", "font-size": "11px"
+    }).appendTo(trayBody);
+    refreshBreakpointBar(getActiveScreen());
+}
+function refreshBreakpointBar(screen) {
+    if (!bpBar) return;
+    bpBar.empty();
+    var template = state.editingMode === "template";
+    bpBar.toggle(!!screen && !template);
+    if (!screen || template) return;
+    var active = activeBreakpointId();
+    var items = [{ id: "desktop", name: "Desktop", icon: "fa-desktop", width: screen.width }]
+        .concat(breakpointList(screen).map(function (b) { return { id: b.id, name: b.name, icon: b.id === "phone" ? "fa-mobile" : "fa-tablet", width: Math.min(screen.width, Number(b.preview || b.max)), max: b.max }; }));
+    items.forEach(function (it) {
+        var on = it.id === active;
+        window.$("<a>", { href: "#", title: it.id === "desktop" ? "The design (" + it.width + " px)" : it.name + ": below " + (Number(it.max) + 1) + " px — edits here are kept for " + it.name + " (and narrower)", "data-breakpoint": it.id })
+            .css({ display: "flex", "align-items": "center", gap: "5px", padding: "0 10px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none" })
+            .html('<i class="fa ' + it.icon + '"></i> ' + it.name + ' <span style="opacity:.7">' + it.width + '</span>')
+            .on("click", function (e) {
+                e.preventDefault();
+                if (it.id === activeBreakpointId()) return;
+                if (it.id === "desktop") leaveBreakpoint(); else enterBreakpoint(getActiveScreen(), it.id);
+                renderActiveScreen();
+                zoomToFit();
+            }).appendTo(bpBar);
+    });
 }
 
 export function buildZoomToolbar(trayBody) {

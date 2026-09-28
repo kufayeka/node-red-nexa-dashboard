@@ -210,6 +210,35 @@ constraints = {
 
 Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, `test/runtime-carousel-browser.test.js`, `test/runtime-virtual-browser.test.js`.
 
+## 4c. Breakpoints (desktop-first)
+
+A screen is designed for the desktop. Its breakpoints are narrower windows:
+**Tablet** (below 1024 px) and **Phone** (below 768 px).
+
+**In the editor**, the bar above the canvas switches between 🖥 Desktop | Tablet | Phone.
+
+- **Tablet / Phone** shows the screen at that width (820 / 390 px, at most the design's width) with the breakpoint's changes applied.
+- **What you change there is kept for that breakpoint**, e.g. a row made a column, a node hidden in the Hierarchy, another width or text. The desktop design stays as it is. The project always stores the design plus the changes.
+- **The changes cascade down**: Desktop → Tablet → Phone. The Phone starts from what the Tablet made and changes only what it overrides.
+- **The Properties panel says which breakpoint is being edited**, lists what the node overrides there (●), and offers **Reset** to inherit again.
+- **Nodes placed freely follow their constraints** to the narrower width (Right, Center, Scale…), like the page does.
+- **What a breakpoint may change**:
+  - position and size;
+  - visibility;
+  - a frame's layout (mode, gap, padding, columns);
+  - how a child fills;
+  - the frame's style, constraints and When scrolling;
+  - a component's props.
+
+**On the page**:
+
+- The window's width picks the breakpoint before anything is drawn.
+- Crossing one while the page is open applies it **in place**: a Populate's copies, variables and a carousel's slide stay.
+- `{$breakpoint}` is `desktop`, `tablet` or `phone`.
+- Events → **On Breakpoint Change** fires with `msg.payload`, the new one.
+
+**The data**: `node.overrides = { tablet: { layout: { mode: "vertical" } }, phone: { visibility: "hide" } }`. Object fields (`layout`, `layoutChild`, `style`, `constraints`, `props`) merge key by key; the rest is replaced. See `src/model/breakpoints.js`.
+
 ## 5. Variables and the scope chain
 
 ```ts

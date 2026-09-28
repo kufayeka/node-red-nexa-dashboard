@@ -11,6 +11,7 @@ import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas
 import { renderKitInspector } from "./kit-inspector.js";
 import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector } from "./frame-inspector.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
+import { activeBreakpointId, breakpointList, overriddenKeys, resetOverride } from "../canvas/breakpoints-ui.js";
 
 // Sizing / placement in the parent's auto layout — or, where no layout places
 // it (a frame's / the screen's child, an absolute one), its constraints.
@@ -57,6 +58,27 @@ export function renderPropertiesPanel() {
     if (!comp) {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("Select a component on the canvas to edit its properties.").appendTo(state.propertiesPane);
         return;
+    }
+    // editing a breakpoint: say so, and what this node overrides here (with a reset)
+    var bpId = activeBreakpointId();
+    if (bpId !== "desktop") {
+        var bpScreen = getActiveScreen();
+        var bpName = (breakpointList(bpScreen).filter(function (b) { return b.id === bpId; })[0] || { name: bpId }).name;
+        var keys = overriddenKeys(comp);
+        var banner = window.$("<div>", { "class": "nexa-bp-banner" }).css({ background: "#fff3e0", border: "1px solid #ffb74d", "border-radius": "4px", padding: "6px 8px", "margin-bottom": "10px", "font-size": "11px", color: "#6d4c00" }).appendTo(state.propertiesPane);
+        window.$("<div>").html('<i class="fa fa-mobile"></i> Editing <b>' + bpName + '</b>: changes here are kept for ' + bpName + ' (and narrower); Desktop keeps the design.').appendTo(banner);
+        if (keys.length) {
+            var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px", "margin-top": "5px" }).appendTo(banner);
+            window.$("<span>").css({ flex: "1 1 auto" }).text("● Overridden here: " + keys.join(", ")).appendTo(row);
+            window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).text("Reset").attr("title", "Inherit it again (from the design / the wider breakpoint)")
+                .on("click", function () {
+                    var parent = Tree.parentOf(bpScreen, comp.id);
+                    resetOverride(comp, parent && parent.type ? parent : null);
+                    markDirty();
+                    renderActiveScreen({ keepPanel: true });
+                    renderPropertiesPanel();
+                }).appendTo(row);
+        }
     }
     var isTemplateInstance = comp.type === "@template";
     var isLitComponent = comp.type === "@lit-component";
