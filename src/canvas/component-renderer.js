@@ -628,8 +628,10 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
     layoutTemplateInner(inner, template, comp);
+    // its box is always visible (like a frame's), a name tag on hover
+    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
     // laid out by constraints: each node against the design size (the live page does the same)
-    var byConstraints = !Layout.templateContentFit(template, 1, 1);
+    var byConstraints = !Layout.templateContentFit(template, 1, 1, comp);
     var designSize = byConstraints ? { w: template.width, h: template.height } : null;
     (template.components || []).forEach(function (innerComp) {
         renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState, null, designSize);
@@ -642,7 +644,10 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
  * stretch) — the template's "When its box is another size" (Layout.templateLiveOf).
  */
 export function layoutTemplateInner(inner, template, comp) {
-    var fit = Layout.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height);
+    var fit = Layout.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height, comp);
+    // its box clips it (a container of one thing): nothing spills over its neighbours
+    var box = typeof inner.parent === "function" ? inner.parent() : null;
+    if (box && typeof box.css === "function") box.css("overflow", "hidden");
     if (!fit) {
         inner.css({ position: "absolute", left: "0", top: "0", width: "100%", height: "100%", transform: "", "transform-origin": "0 0" });
         return;
@@ -653,6 +658,26 @@ export function layoutTemplateInner(inner, template, comp) {
         "transform-origin": "0 0", transform: fit.transform
     });
 }
+
+// ---- hover: an outline on what a click would select ------------------------------------
+var hoverEl = null;
+export function showHover(id) {
+    var screen = getActiveScreen();
+    if (!state.artboardEl || !screen) return;
+    if (!hoverEl || !hoverEl.closest("body").length || hoverEl.parent()[0] !== state.artboardEl[0]) {
+        hoverEl = window.$("<div>", { "class": "nexa-hover-outline" }).css({ position: "absolute", "pointer-events": "none", "z-index": 9997, border: "1px solid #0d99ff", "box-sizing": "border-box", display: "none" }).appendTo(state.artboardEl);
+        window.$("<span>", { "class": "nexa-hover-name" }).css({ position: "absolute", left: "-1px", bottom: "100%", background: "#0d99ff", color: "#fff", "font-size": "10px", padding: "1px 5px", "white-space": "nowrap", "border-radius": "2px 2px 0 0" }).appendTo(hoverEl);
+        state.artboardEl.off("mouseleave.nexahover").on("mouseleave.nexahover", function () { hideHover(); });
+    }
+    var node = id && Tree.find(screen, id);
+    if (!node || isSelected(id)) { hoverEl.hide(); return; }
+    var b = Tree.absBox(screen, id);
+    if (!b) { hoverEl.hide(); return; }
+    var name = node.type === "@template" ? ((findTemplate(node.templateId) || {}).name || "Template") : (node.name || (node.type === "@frame" ? "Frame" : ""));
+    hoverEl.css({ left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px", display: "block", "border-style": node.type === "@template" ? "dashed" : "solid" });
+    hoverEl.find(".nexa-hover-name").text(name).toggle(!!name);
+}
+export function hideHover() { if (hoverEl) hoverEl.hide(); }
 
 // Draws one node (and, for a container, its children inside it) into
 // `parentEl` — the artboard for a top-level node, the container's own element
@@ -707,6 +732,7 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     // each other, so only the innermost element handles the event.
     el.on("mousedown", function (e) {
         e.stopPropagation();
+        hideHover();
         var target = pickSelectionTarget(comp.id, e);
         if (e.shiftKey) {
             if (isSelected(target)) {
@@ -723,6 +749,11 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
         e.stopPropagation();
         var deeper = pickDeeperTarget(comp.id);
         if (deeper && !isSelected(deeper)) selectOnly(deeper);
+    });
+    // hover: the box a click here would select (Figma), Ctrl / Cmd: the deepest
+    el.on("mouseover", function (e) {
+        e.stopPropagation();
+        showHover(pickSelectionTarget(comp.id, e.originalEvent || e));
     });
 
     if (isNodeLocked(comp.id)) return;

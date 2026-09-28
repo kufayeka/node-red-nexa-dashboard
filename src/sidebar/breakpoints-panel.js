@@ -2,31 +2,19 @@
 // Bands of window widths, the Tailwind way (xs sm md lg xl 2xl 3xl): each starts at
 // its "from" width, up to the next one. A screen is designed in the band of its own
 // width (★ on the canvas bar); the others adjust it (a field's 📱 / the canvas bar).
-// The list is the app's (project.breakpoints; empty = the defaults). Renaming keeps a
-// breakpoint's id, so what was set for it stays; "Preview at" is only the width the
-// editor shows it at (a device preset or any width inside the band).
+// The list is the app's (project.breakpoints; empty = the defaults), edited as one
+// property-kit list (like the Types tab): add, delete, and each row's name, where it
+// starts, the width the editor previews it at (a device) and a label. Renaming keeps
+// a breakpoint's id, so what was set for it stays.
 import { state, markDirty, getApp, getActiveScreen } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { leaveBreakpoint } from "../canvas/breakpoints-ui.js";
 import * as BP from "../model/breakpoints.js";
 
-function list() {
-    var app = getApp();
-    return app.breakpoints && app.breakpoints.length ? app.breakpoints : BP.DEFAULT_BREAKPOINTS;
-}
-// the first change makes the defaults the app's own list
-function own() {
-    var app = getApp();
-    if (!Array.isArray(app.breakpoints) || !app.breakpoints.length) app.breakpoints = JSON.parse(JSON.stringify(BP.DEFAULT_BREAKPOINTS));
-    return app.breakpoints;
-}
-function changed(rebuild) {
-    leaveBreakpoint();      // the canvas goes back to the design: the bands just changed
-    markDirty();
-    renderActiveScreen();
-    if (rebuild) renderBreakpointsPanel();
-    else refreshRanges();
-}
+function lit() { return window.NEXA_LIT; }
+// the device a preview width stands for (a preset of that width)
+function deviceAt(w) { var d = BP.DEVICE_PRESETS.filter(function (x) { return x.w === Number(w); })[0]; return d ? d.name : ""; }
+
 function slug(name, taken) {
     var base = String(name || "bp").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "bp";
     var id = base, n = 1;
@@ -34,111 +22,106 @@ function slug(name, taken) {
     return id;
 }
 
-var rangeCells = {};
-function refreshRanges() {
-    var app = getApp();
-    Object.keys(rangeCells).forEach(function (id) { rangeCells[id].text(BP.rangeOf(app, id)); });
+// "iPhone 15 · 393" … : the preview widths offered (and the current one, when it is none of them)
+function previewOptions(current) {
+    var seen = {};
+    var out = BP.DEVICE_PRESETS.map(function (d) { seen[d.w] = true; return { value: d.w, label: d.w + " · " + d.name.replace(/\s*\(.*\)$/, "") }; });
+    if (current && !seen[current]) out.unshift({ value: current, label: current + " px" });
+    return out.sort(function (a, b) { return a.value - b.value; });
 }
 
 export function renderBreakpointsPanel() {
     var pane = state.breakpointsPane;
     if (!pane) return;
     pane.empty();
-    rangeCells = {};
+    if (!window.NexaKit || !lit()) {
+        window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Breakpoints tab needs the Nexa property kit.").appendTo(pane);
+        return;
+    }
+    var html = lit().html, nothing = lit().nothing;
     var app = getApp();
-    var muted = "var(--red-ui-secondary-text-color, #888)";
-    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-bottom": "8px", "line-height": "1.4" })
-        .html("The app's breakpoints: bands of window widths (like Tailwind's <code>sm md lg xl</code>). A screen is designed in the band of its own width (<i class=\"fa fa-star\"></i> on the canvas bar); every other band can change a field — its <i class=\"fa fa-mobile\"></i> — or anything, on the canvas bar. Desktop-first: a narrower band inherits from the next wider one.")
-        .appendTo(pane);
+    var view = function () {
+        return { bps: BP.breakpointsOf(app).slice().reverse().map(function (b) {
+            return { id: b.id, name: b.name, min: b.min, preview: BP.previewWidthOf(app, b.id), device: b.device || "" };
+        }) };
+    };
+    var current = view();
     var screen = getActiveScreen();
-    if (screen) window.$("<div>").css({ "font-size": "11px", "margin-bottom": "8px" })
-        .html("<b>" + window.$("<span>").text(screen.name || "This screen").html() + "</b> (" + screen.width + " px) is designed in <b>" + BP.designBreakpoint(app, screen) + "</b>.")
-        .appendTo(pane);
-
-    var table = window.$("<table>").css({ width: "100%", "border-collapse": "collapse", "font-size": "11px" }).appendTo(pane);
-    window.$("<tr>").html('<th style="text-align:left">Name</th><th style="text-align:left">From (px)</th><th style="text-align:left">Range</th><th></th>')
-        .css({ color: muted }).appendTo(table);
-    var bps = BP.breakpointsOf(app).slice().reverse();   // widest first, like the bar
-    bps.forEach(function (b) {
-        var row = window.$("<tr>", { "data-breakpoint": b.id }).css({ "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)" }).appendTo(table);
-        var find = function () { return own().filter(function (x) { return x.id === b.id; })[0]; };
-        var name = window.$("<input>", { type: "text", "class": "nexa-bp-name" }).val(b.name).css({ width: "60px" });
-        name.on("change", function () {
-            var v = String(name.val() || "").trim();
-            if (!v) { name.val(b.name); return; }
-            find().name = v;
-            changed(false);
-        });
-        var first = b.min === 0 && bps[bps.length - 1].id === b.id;
-        var min = window.$("<input>", { type: "number", min: 0, step: 1, "class": "nexa-bp-min" }).val(b.min).css({ width: "64px" }).prop("disabled", first)
-            .attr("title", first ? "The narrowest breakpoint starts at 0" : "The window width it starts at");
-        min.on("change", function () {
-            var v = Math.round(Number(min.val()));
-            if (!isFinite(v) || v <= 0 || own().some(function (x) { return x.id !== b.id && Number(x.min) === v; })) { min.val(find().min); return; }
-            find().min = v;
-            changed(true);   // the order may change
-        });
-        window.$("<td>").css({ padding: "4px 2px" }).append(name).appendTo(row);
-        window.$("<td>").css({ padding: "4px 2px" }).append(min).appendTo(row);
-        rangeCells[b.id] = window.$("<td>").css({ padding: "4px 2px", color: muted, "white-space": "nowrap" }).text(BP.rangeOf(app, b.id)).appendTo(row);
-        var del = window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Delete this breakpoint (what was set for it is no longer used)" }).html('<i class="fa fa-trash-o"></i>')
-            .prop("disabled", bps.length <= 1)
-            .on("click", function () {
-                var mine = own();
-                mine.splice(mine.indexOf(find()), 1);
-                if (!mine.some(function (x) { return Number(x.min) === 0; })) {
-                    var lowest = mine.slice().sort(function (a, c) { return a.min - c.min; })[0];
-                    if (lowest) lowest.min = 0;
-                }
-                changed(true);
+    var meta = {
+        id: "@breakpoints", stateList: [], inputs: [], outputs: [],
+        props: {
+            bps: { key: "bps", type: "list", label: "", default: [], noReset: true, addLabel: "Breakpoint", item: { row: true, fields: {
+                name: { type: "string", label: "Name", default: "" },
+                min: { type: "number", label: "From px", default: 0, min: 0 },
+                preview: { type: "enum", label: "Preview (device)", default: 390, options: previewOptions(0) } } } }
+        },
+        inspector: function (o) {
+            var list = BP.breakpointsOf(app).slice().reverse();
+            var mins = {}, names = {}, problems = [];
+            (app.breakpoints && app.breakpoints.length ? app.breakpoints : []).forEach(function (b) {
+                if (mins[b.min]) problems.push("two breakpoints start at " + b.min + " px");
+                if (names[b.name]) problems.push("\"" + b.name + "\" twice");
+                mins[b.min] = names[b.name] = true;
             });
-        window.$("<td>").css({ padding: "4px 2px", "text-align": "right" }).append(del).appendTo(row);
+            return html`
+                <div class="nx-help" style="margin-bottom:8px">Bands of window widths, like Tailwind's sm md lg xl: each one starts at its "From" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.</div>
+                ${screen ? html`<nx-alert tone="info" text="${(screen.name || "This screen") + " (" + screen.width + " px) is designed in " + BP.designBreakpoint(app, screen) + "."}"></nx-alert>` : nothing}
+                ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
+                <nx-section heading="Breakpoints (widest first)" persist-key="nexa-breakpoints-list">
+                    <nx-list ${o.bind("bps")} .sortable="${false}"></nx-list>
+                </nx-section>
+                <nx-section heading="Ranges" persist-key="nexa-breakpoints-ranges">
+                    ${list.map(function (b) { var d = deviceAt(BP.previewWidthOf(app, b.id)); return html`<div class="nx-help"><b>${b.name}</b>: ${BP.rangeOf(app, b.id)} · shown at ${BP.previewWidthOf(app, b.id)} px${d ? " (" + d + ")" : ""}</div>`; })}
+                </nx-section>
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    ${o.ui.action("Reset to the defaults", function () {
+                        if (app.breakpoints && app.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 · 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
+                        app.breakpoints = [];
+                        changed(true);
+                    }, { icon: "fa fa-undo" })}
+                </div>
+                <div class="nx-help" style="margin-top:10px">On the live page: {$breakpoint} is the band in use ("md", …); an On Breakpoint Change event fires when it changes.</div>`;
+        }
+    };
+    // the preview options of each row: the presets and the row's own width
+    meta.props.bps.item.fields.preview.options = previewOptions(0).concat(current.bps.map(function (b) { return { value: b.preview, label: b.preview + " px" }; }))
+        .filter(function (o, i, all) { return all.findIndex(function (x) { return x.value === o.value; }) === i; })
+        .sort(function (a, b) { return a.value - b.value; });
 
-        // the second line: the device it stands for, and the width the editor shows it at
-        var row2 = window.$("<tr>", { "data-breakpoint-preview": b.id }).appendTo(table);
-        var cell = window.$("<td>", { colspan: 4 }).css({ padding: "0 2px 6px" }).appendTo(row2);
-        var device = window.$("<input>", { type: "text", "class": "nexa-bp-device", placeholder: "Device (e.g. Tablet)" }).val(b.device || "").css({ width: "45%" });
-        device.on("change", function () { find().device = String(device.val() || "").trim(); changed(false); });
-        var preview = window.$("<select>", { "class": "nexa-bp-preview", title: "The width the editor shows this breakpoint at" }).css({ width: "52%", "margin-left": "3%" });
-        var pw = BP.previewWidthOf(app, b.id);
-        window.$("<option>", { value: "" }).text("Preview at " + pw + " px").appendTo(preview);
-        var next = BP.breakpointsOf(app).filter(function (x) { return x.min > b.min; })[0];
-        BP.DEVICE_PRESETS.filter(function (d) { return d.w >= b.min && (!next || d.w < next.min); }).forEach(function (d) {
-            window.$("<option>", { value: String(d.w) }).text(d.name).appendTo(preview);
-        });
-        window.$("<option>", { value: "custom" }).text("Another width…").appendTo(preview);
-        preview.on("change", function () {
-            var v = preview.val();
-            if (!v) return;
-            if (v === "custom") {
-                var typed = window.prompt("Preview " + b.name + " at (px, " + BP.rangeOf(app, b.id) + "):", String(pw));
-                if (typed === null || !isFinite(Number(typed))) { preview.val(""); return; }
-                v = typed;
-            }
-            find().preview = Math.round(Number(v));
-            changed(true);
-        });
-        cell.append(device).append(preview);
+    var host = window.$("<div>").appendTo(pane).get(0);
+    var handle = window.NexaKit.renderInspector(host, {
+        meta: meta, props: current, persistKey: "nexa-breakpoints",
+        set: function (key, rows) {
+            if (key !== "bps") return;
+            var taken = [];
+            var next = (rows || []).map(function (r, i) {
+                var name = String(r.name || "").trim();
+                var id = r.id || slug(name || ("bp" + (i + 1)), taken.concat((rows || []).map(function (x) { return x.id; }).filter(Boolean)));
+                taken.push(id);
+                var b = { id: id, name: name || id, min: Math.max(0, Math.round(Number(r.min) || 0)) };
+                if (Number(r.preview) > 0) b.preview = Number(r.preview);
+                var d = deviceAt(b.preview);
+                if (d) b.device = d; else if (r.device) b.device = String(r.device).trim();
+                return b;
+            });
+            // a new row without a "from": after the widest one
+            next.forEach(function (b, i) {
+                if (!rows[i].id && !b.min) b.min = Math.max.apply(null, next.map(function (x) { return x.min; }).concat([0])) + 320;
+            });
+            if (!next.length) return;
+            if (!next.some(function (b) { return b.min === 0; })) next.slice().sort(function (a, b) { return a.min - b.min; })[0].min = 0;
+            app.breakpoints = next;
+            changed(false);
+            Object.keys(current).forEach(function (k) { delete current[k]; });
+            Object.assign(current, view());
+            handle.update();
+        }
     });
 
-    var bar = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "10px" }).appendTo(pane);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-bp-add" }).html('<i class="fa fa-plus"></i> Breakpoint').appendTo(bar)
-        .on("click", function () {
-            var mine = own();
-            var widest = mine.slice().sort(function (a, c) { return c.min - a.min; })[0];
-            var min = (widest ? Number(widest.min) : 0) + 640;
-            var m = widest && /^(\d*)xl$/.exec(widest.name || "");
-            var id = slug(m ? (Number(m[1] || 1) + 1) + "xl" : "bp" + (mine.length + 1), mine.map(function (x) { return x.id; }));
-            mine.push({ id: id, name: id, min: min, preview: min });
-            changed(true);
-        });
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "xs 0 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 · 3xl 1920" }).text("Reset to the defaults").appendTo(bar)
-        .on("click", function () {
-            if (list() !== BP.DEFAULT_BREAKPOINTS && !window.confirm("Go back to the default breakpoints? What was set for a breakpoint whose name is not among them is no longer used.")) return;
-            getApp().breakpoints = [];
-            changed(true);
-        });
-    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-top": "10px", "line-height": "1.4" })
-        .html("On the live page: <code>{$breakpoint}</code> is the band in use (\"md\", …); an <i>On Breakpoint Change</i> event fires when it changes.")
-        .appendTo(pane);
+    function changed(rebuild) {
+        leaveBreakpoint();      // the canvas goes back to the design: the bands just changed
+        markDirty();
+        renderActiveScreen();
+        if (rebuild) renderBreakpointsPanel();
+    }
 }

@@ -55,11 +55,11 @@ export function zoomLogicToFit() {
 }
 
 export function buildLogicZoomToolbar(logicPane) {
-    var bar = window.$("<div>").css({
-        position: "absolute", right: "16px", bottom: "16px", "z-index": "10",
-        display: "flex", "align-items": "center",
+    // in the tray's footer (next to the UI canvas's), not over the canvas
+    var bar = window.$("<div>", { "class": "nexa-logic-zoom-toolbar" }).css({
+        display: "flex", "align-items": "center", "line-height": "normal",
         background: "#fff", "border-radius": "4px",
-        "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+        border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
         overflow: "hidden"
     }).appendTo(logicPane);
 
@@ -82,4 +82,5 @@ export function buildLogicZoomToolbar(logicPane) {
     zoomBtn("fa-plus", "Zoom in", zoomLogicIn);
     zoomBtn("fa-compress", "Zoom to fit (the nodes you have, not the whole canvas)", zoomLogicToFit);
     applyLogicZoomTransform();
+    return bar;
 }

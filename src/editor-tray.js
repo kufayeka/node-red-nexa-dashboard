@@ -3,7 +3,7 @@ import {
     LOGIC_NODE_W, LOGIC_NODE_H, ensureScreensLoaded, getActiveScreen, findComponent, markDirty, Tree, snapLogic
 } from "./state.js";
 import { undo, redo, pushHistory } from "./history.js";
-import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection } from "./canvas/selection.js";
+import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOnly, startMarqueeSelect, toggleFlipForSelection, selectParentOrChild } from "./canvas/selection.js";
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
 import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refreshComponentRender } from "./canvas/component-renderer.js";
 import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
@@ -52,6 +52,10 @@ export function onKeyDown(e) {
             return;
         }
     }
+    // Shift+Enter: the selected node's parent; Enter: its first child (Figma)
+    if (e.key === "Enter" && !isTextField && !e.ctrlKey && !e.metaKey && state.activeCanvasTab !== "logic") {
+        if (selectParentOrChild(e.shiftKey)) { e.preventDefault(); return; }
+    }
     if ((e.ctrlKey || e.metaKey) && !isTextField) {
         if (e.key === "z" || e.key === "Z") {
             e.preventDefault();
@@ -92,7 +96,10 @@ export function onKeyDown(e) {
     }
 }
 
-export function buildCanvasArea(trayBody) {
+// `chrome` = the tray's { toolbar, footer }: the breakpoint bar goes next to Close, the
+// zoom controls into the footer — nothing sits over the canvas
+export function buildCanvasArea(trayBody, chrome) {
+    chrome = chrome || {};
     trayBody.css({
         height: "100%", position: "relative", padding: "0", overflow: "hidden",
         display: "flex", "flex-direction": "column"
@@ -221,8 +228,9 @@ export function buildCanvasArea(trayBody) {
         setZoom(state.zoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
     });
 
-    buildZoomToolbar(uiPane);
-    buildBreakpointBar(uiPane);
+    var dock = footerDock(chrome.footer, uiPane);
+    var uiZoom = buildZoomToolbar(dock);
+    buildBreakpointBar(toolbarDock(chrome.toolbar, uiPane));
 
     state.logicZoomLevel = 1;
     state.logicViewportEl = window.$("<div>").css({
@@ -293,7 +301,7 @@ export function buildCanvasArea(trayBody) {
         setLogicZoom(state.logicZoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
     });
     applyLogicZoomTransform();
-    buildLogicZoomToolbar(logicPane);
+    var logicZoom = buildLogicZoomToolbar(dock).hide();
 
     var canvasTabs = window.RED.tabs.create({
         element: canvasTabsUl,
@@ -302,6 +310,10 @@ export function buildCanvasArea(trayBody) {
             state.activeCanvasTab = tab.id;
             uiPane.toggle(tab.id === "ui");
             logicPane.toggle(tab.id === "logic");
+            // the footer / toolbar controls of the canvas in view
+            uiZoom.css("display", tab.id === "ui" ? "flex" : "none");
+            logicZoom.css("display", tab.id === "logic" ? "flex" : "none");
+            window.$(".nexa-breakpoint-bar").css("visibility", tab.id === "ui" ? "" : "hidden");
             if (tab.id === "logic") {
                 // what is selected on the UI canvas: its nodes selected here, and in view
                 selectLogicForComponents(state.selectedIds);
@@ -335,7 +347,7 @@ export function registerPagesEditorAction() {
             ],
             open: function (tray) {
                 state.trayContent = tray.find(".red-ui-tray-body");
-                buildCanvasArea(state.trayContent);
+                buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
                 ensureScreensLoaded(function () { renderActiveScreen(); });
                 if (state.componentsPane) buildPalette(state.componentsPane);
                 if (state.eventsPane) renderEventsPanel();
@@ -371,6 +383,25 @@ export function registerPagesEditorAction() {
             }
         });
     });
+}
+
+// The tray's toolbar (Close on the right): the breakpoint bar on its left, scrolling
+// when it does not fit. Without a toolbar (a test), over the canvas.
+function toolbarDock(toolbar, fallback) {
+    var tb = toolbar && toolbar[0];
+    if (!tb || typeof tb.insertBefore !== "function") return window.$("<div>").css({ position: "absolute", left: "8px", right: "8px", top: "8px", "z-index": "10", display: "flex" }).appendTo(fallback);
+    Array.prototype.slice.call(tb.querySelectorAll(".nexa-toolbar-dock")).forEach(function (d) { d.remove(); });
+    tb.style.display = "flex"; tb.style.alignItems = "center"; tb.style.gap = "8px";
+    var dock = window.$("<div>", { "class": "nexa-toolbar-dock" }).css({ flex: "1 1 auto", "min-width": "0", display: "flex", "justify-content": "flex-start" });
+    tb.insertBefore(dock[0], tb.firstChild);
+    return dock;
+}
+// The tray's footer: the zoom controls on its right.
+function footerDock(footer, fallback) {
+    var fb = footer && footer[0];
+    if (!fb || typeof fb.querySelectorAll !== "function") return window.$("<div>").css({ position: "absolute", right: "16px", bottom: "16px", "z-index": "10", display: "flex", gap: "6px" }).appendTo(fallback);
+    Array.prototype.slice.call(fb.querySelectorAll(".nexa-footer-dock")).forEach(function (d) { d.remove(); });
+    return window.$("<div>", { "class": "nexa-footer-dock" }).css({ "margin-left": "auto", "padding-right": "8px", display: "flex", "align-items": "center", gap: "6px" }).appendTo(footer);
 }
 
 // jQuery UI sizes a droppable from offsetWidth / offsetHeight, which ignore the

@@ -135,12 +135,14 @@ export function zoomToFit() {
 // screen at its preview width; what is changed there is kept for that band.
 var bpBar = null;
 export function buildBreakpointBar(trayBody) {
+    // in the tray's toolbar (next to Close), not over the canvas; it scrolls when there are many
     bpBar = window.$("<div>", { "class": "nexa-breakpoint-bar" }).css({
-        position: "absolute", left: "50%", top: "10px", transform: "translateX(-50%)", "z-index": "10",
         display: "flex", "align-items": "center", background: "#fff", "border-radius": "4px",
-        "box-shadow": "0 1px 4px rgba(0,0,0,0.3)", overflow: "hidden", "font-size": "11px"
+        border: "1px solid var(--red-ui-secondary-border-color, #ccc)", "overflow-x": "auto", "overflow-y": "hidden",
+        "font-size": "11px", "min-width": "0", "max-width": "100%", "scrollbar-width": "thin"
     }).appendTo(trayBody);
     refreshBreakpointBar(getActiveScreen());
+    return bpBar;
 }
 function refreshBreakpointBar(screen) {
     if (!bpBar) return;
@@ -170,11 +172,11 @@ function refreshBreakpointBar(screen) {
 }
 
 export function buildZoomToolbar(trayBody) {
+    // in the tray's footer, not over the canvas
     var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
-        position: "absolute", right: "16px", bottom: "16px", "z-index": "10",
-        display: "flex", "align-items": "center",
+        display: "flex", "align-items": "center", "line-height": "normal",
         background: "#fff", "border-radius": "4px",
-        "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+        border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
         overflow: "hidden"
     }).appendTo(trayBody);
 
@@ -197,4 +199,5 @@ export function buildZoomToolbar(trayBody) {
     zoomBtn("fa-plus", "Zoom in", zoomIn);
     zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
     updateZoomLabel();
+    return bar;
 }

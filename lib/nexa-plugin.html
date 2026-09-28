@@ -150,9 +150,9 @@
   }
   function walk(surface, fn, opts) {
     var stop = false;
-    function visit(list2, parent, depth) {
-      for (var i2 = 0; i2 < list2.length && !stop; i2++) {
-        var node = list2[i2];
+    function visit(list, parent, depth) {
+      for (var i2 = 0; i2 < list.length && !stop; i2++) {
+        var node = list[i2];
         var r = fn(node, parent, i2, depth);
         if (r === "stop") {
           stop = true;
@@ -173,11 +173,11 @@
   }
   function locate(surface, id2) {
     var found = null;
-    function search(list2, parent, orphan) {
-      for (var i2 = 0; i2 < list2.length; i2++) {
-        var n = list2[i2];
+    function search(list, parent, orphan) {
+      for (var i2 = 0; i2 < list.length; i2++) {
+        var n = list[i2];
         if (n.id === id2) {
-          found = { node: n, parent, list: list2, index: i2, orphan };
+          found = { node: n, parent, list, index: i2, orphan };
           return true;
         }
         if (n.children && search(n.children, n, orphan)) return true;
@@ -213,9 +213,9 @@
   function insert(surface, parentId, index, node) {
     var parent = parentId ? find(surface, parentId) : null;
     if (parentId && !isContainer(parent)) throw new Error("[nexa] insert: " + parentId + " is not a container");
-    var list2 = listOf(surface, parent);
-    var at = index === void 0 || index === null || index > list2.length ? list2.length : Math.max(0, index);
-    list2.splice(at, 0, node);
+    var list = listOf(surface, parent);
+    var at = index === void 0 || index === null || index > list.length ? list.length : Math.max(0, index);
+    list.splice(at, 0, node);
     return node;
   }
   function detach(surface, id2) {
@@ -293,10 +293,10 @@
     return p ? { w: p.w || 0, h: p.h || 0 } : { w: surface.width || 0, h: surface.height || 0 };
   }
   function childBounds(node) {
-    var list2 = kids(node);
-    if (!list2.length) return null;
+    var list = kids(node);
+    if (!list.length) return null;
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    list2.forEach(function(c) {
+    list.forEach(function(c) {
       minX = Math.min(minX, c.x || 0);
       minY = Math.min(minY, c.y || 0);
       maxX = Math.max(maxX, (c.x || 0) + (c.w || 0));
@@ -356,9 +356,9 @@
       return a.index - b2.index;
     });
     var at = locs[locs.length - 1].index - (locs.length - 1);
-    var list2 = listOf(surface, parent);
+    var list = listOf(surface, parent);
     locs.slice().reverse().forEach(function(l) {
-      list2.splice(l.index, 1);
+      list.splice(l.index, 1);
     });
     group.type = group.type === "@frame" ? "@frame" : "@group";
     group.children = locs.map(function(l) {
@@ -375,7 +375,7 @@
     group.y = b.y;
     group.w = b.w;
     group.h = b.h;
-    list2.splice(at, 0, group);
+    list.splice(at, 0, group);
     return group;
   }
   function unwrap(surface, id2) {
@@ -446,6 +446,7 @@
     resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
     templateContentFit: () => templateContentFit,
+    templateContentOf: () => templateContentOf,
     templateLiveOf: () => templateLiveOf,
     tracksCss: () => tracksCss,
     zoomOf: () => zoomOf
@@ -491,8 +492,12 @@
     if (TEMPLATE_CONTENT_MODES.indexOf(live.content) === -1) live.content = "constraints";
     return live;
   }
-  function templateContentFit(template, bw, bh) {
-    var mode = templateLiveOf(template).content;
+  function templateContentOf(template, instance) {
+    var own = instance && instance.content;
+    return TEMPLATE_CONTENT_MODES.indexOf(own) !== -1 ? own : templateLiveOf(template).content;
+  }
+  function templateContentFit(template, bw, bh, instance) {
+    var mode = templateContentOf(template, instance);
     if (mode === "constraints") return null;
     var tw = Number(template && template.width) || 1, th = Number(template && template.height) || 1;
     var sx = bw / tw, sy = bh / th;
@@ -589,8 +594,8 @@
     var size = num(t2.size, 1);
     return t2.unit === "px" ? size + "px" : size + "fr";
   }
-  function tracksCss(list2) {
-    return (list2 || []).map(track).join(" ");
+  function tracksCss(list) {
+    return (list || []).map(track).join(" ");
   }
   function frameCss(frame, opts) {
     var l = layoutOf(frame);
@@ -880,8 +885,8 @@
     variableValue: () => variableValue
   });
   var TYPES = [];
-  function setTypes(list2) {
-    TYPES = Array.isArray(list2) ? list2 : [];
+  function setTypes(list) {
+    TYPES = Array.isArray(list) ? list : [];
   }
   function getTypes() {
     return TYPES;
@@ -1004,8 +1009,8 @@
   }
   function visibleVariables(surface, ancestors2, isTemplate, self, app2) {
     var seen = {}, out = [];
-    function add(list2, owner, valueKey) {
-      (list2 || []).forEach(function(v) {
+    function add(list, owner, valueKey) {
+      (list || []).forEach(function(v) {
         if (!v || !NAME_RE.test(v.name || "") || seen[v.name]) return;
         seen[v.name] = true;
         var t2 = isTypeRef(v.type) ? findType(v.type) : null;
@@ -1107,7 +1112,7 @@
   function breakpointsOf(app2) {
     var src = app2 && Array.isArray(app2.breakpoints) && app2.breakpoints.length ? app2.breakpoints : DEFAULT_BREAKPOINTS;
     var seen = {};
-    var list2 = src.filter(function(b) {
+    var list = src.filter(function(b) {
       if (!b || !b.id || seen[b.id] || !isFinite(Number(b.min))) return false;
       seen[b.id] = true;
       return true;
@@ -1116,13 +1121,13 @@
     }).sort(function(a, b) {
       return a.min - b.min;
     });
-    if (!list2.length) return breakpointsOf(null);
-    list2[0].min = 0;
-    return list2;
+    if (!list.length) return breakpointsOf(null);
+    list[0].min = 0;
+    return list;
   }
   function bandOf(app2, width) {
-    var list2 = breakpointsOf(app2), id2 = list2[0].id;
-    list2.forEach(function(b) {
+    var list = breakpointsOf(app2), id2 = list[0].id;
+    list.forEach(function(b) {
       if (Number(width) >= b.min) id2 = b.id;
     });
     return id2;
@@ -1131,31 +1136,31 @@
     return bandOf(app2, surface && surface.width ? surface.width : 1920);
   }
   function chainFor(app2, surface, id2) {
-    var list2 = breakpointsOf(app2).map(function(b) {
+    var list = breakpointsOf(app2).map(function(b) {
       return b.id;
     });
-    var d = list2.indexOf(designBreakpoint(app2, surface)), t2 = list2.indexOf(id2);
+    var d = list.indexOf(designBreakpoint(app2, surface)), t2 = list.indexOf(id2);
     if (t2 === -1 || d === -1 || t2 === d) return [];
     var out = [];
-    if (t2 < d) for (var i2 = d - 1; i2 >= t2; i2--) out.push(list2[i2]);
-    else for (var j = d + 1; j <= t2; j++) out.push(list2[j]);
+    if (t2 < d) for (var i2 = d - 1; i2 >= t2; i2--) out.push(list[i2]);
+    else for (var j = d + 1; j <= t2; j++) out.push(list[j]);
     return out;
   }
   function rangeOf(app2, id2) {
-    var list2 = breakpointsOf(app2);
-    for (var i2 = 0; i2 < list2.length; i2++) {
-      if (list2[i2].id !== id2) continue;
-      var next = list2[i2 + 1];
-      return next ? list2[i2].min + " \u2013 " + (next.min - 1) + " px" : list2[i2].min + " px and up";
+    var list = breakpointsOf(app2);
+    for (var i2 = 0; i2 < list.length; i2++) {
+      if (list[i2].id !== id2) continue;
+      var next = list[i2 + 1];
+      return next ? list[i2].min + " \u2013 " + (next.min - 1) + " px" : list[i2].min + " px and up";
     }
     return "";
   }
   function previewWidthOf(app2, id2) {
-    var list2 = breakpointsOf(app2);
-    for (var i2 = 0; i2 < list2.length; i2++) {
-      if (list2[i2].id !== id2) continue;
-      var next = list2[i2 + 1], w = Number(list2[i2].preview) || list2[i2].min || 360;
-      return Math.max(list2[i2].min, next ? Math.min(w, next.min - 1) : w);
+    var list = breakpointsOf(app2);
+    for (var i2 = 0; i2 < list.length; i2++) {
+      if (list[i2].id !== id2) continue;
+      var next = list[i2 + 1], w = Number(list[i2].preview) || list[i2].min || 360;
+      return Math.max(list[i2].min, next ? Math.min(w, next.min - 1) : w);
     }
     return 0;
   }
@@ -1636,10 +1641,10 @@
     tree_exports.allNodes(surface, { orphans: true }).forEach(function(n) {
       existing[n.id] = n;
     });
-    function revive(list2, into) {
+    function revive(list, into) {
       var out = into || [];
       out.length = 0;
-      list2.forEach(function(s) {
+      list.forEach(function(s) {
         var node = existing[s.id] || {};
         var oldChildren = node.children;
         Object.keys(node).forEach(function(k) {
@@ -1817,19 +1822,19 @@
   // src/canvas/constraints.js
   function snapshotBoxes(nodeOrList) {
     var out = {};
-    (function walk2(list2) {
-      list2.forEach(function(c) {
+    (function walk2(list) {
+      list.forEach(function(c) {
         out[c.id] = { x: c.x, y: c.y, w: c.w, h: c.h };
         if (c.children) walk2(c.children);
       });
     })(Array.isArray(nodeOrList) ? nodeOrList : tree_exports.kids(nodeOrList));
     return out;
   }
-  function applyConstraints(parent, list2, oldInner, newInner, orig) {
-    var changed3 = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed3;
-    orig = orig || snapshotBoxes(list2);
-    list2.forEach(function(c) {
+  function applyConstraints(parent, list, oldInner, newInner, orig) {
+    var changed2 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed2;
+    orig = orig || snapshotBoxes(list);
+    list.forEach(function(c) {
       if (!layout_exports.hasConstraints(c, parent)) return;
       var o = orig[c.id];
       if (!o) return;
@@ -1844,12 +1849,12 @@
       c.y = nb.y;
       c.w = nb.w;
       c.h = nb.h;
-      changed3.push(c.id);
+      changed2.push(c.id);
       if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed3 = changed3.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+        changed2 = changed2.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
       }
     });
-    return changed3;
+    return changed2;
   }
   function constrainFrameChildren(frame, oldBox, orig) {
     if (!frame || frame.type !== "@frame") return [];
@@ -1864,9 +1869,9 @@
   }
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
-    var changed3 = [];
+    var changed2 = [];
     var redraw = false;
-    if (!screen) return changed3;
+    if (!screen) return changed2;
     tree_exports.walk(screen, function(node, parent) {
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
@@ -1887,22 +1892,22 @@
         node.y = box2.y;
         node.w = box2.w;
         node.h = box2.h;
-        changed3.push(node.id);
+        changed2.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
           redraw = true;
-          changed3 = changed3.concat(moved);
+          changed2 = changed2.concat(moved);
         }
       }
     });
-    changed3.forEach(function(id2) {
+    changed2.forEach(function(id2) {
       if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
-    changed3.redraw = redraw;
-    return changed3;
+    changed2.redraw = redraw;
+    return changed2;
   }
 
   // src/canvas/drop-target.js
@@ -1929,13 +1934,13 @@
   function flowInsert(screen, frame, x, y, excludeIds) {
     var l = layout_exports.layoutOf(frame);
     var fb = tree_exports.absBox(screen, frame.id);
-    var list2 = flowKids(frame, excludeIds);
-    var boxes = list2.map(function(c) {
+    var list = flowKids(frame, excludeIds);
+    var boxes = list.map(function(c) {
       return tree_exports.absBox(screen, c.id);
     });
     var horizontal = layout_exports.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || horizontal && l.wrap;
-    var at = list2.length;
+    var at = list.length;
     for (var i2 = 0; i2 < boxes.length; i2++) {
       var b = boxes[i2];
       var before;
@@ -1954,7 +1959,7 @@
     var all = tree_exports.kids(frame).filter(function(c) {
       return (excludeIds || []).indexOf(c.id) === -1;
     });
-    var index = at < list2.length ? all.indexOf(list2[at]) : all.length;
+    var index = at < list.length ? all.indexOf(list[at]) : all.length;
     var pad = l.padding;
     var line;
     var prev = boxes[at - 1], next = boxes[at];
@@ -2125,7 +2130,7 @@
   }
   function applyDelta(delta) {
     if (!delta) return;
-    var changed3 = [];
+    var changed2 = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
     var metricsTarget;
     if (delta.type === "death") {
@@ -2140,7 +2145,7 @@
         if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
         if (liveCache[key].online) {
           liveCache[key] = Object.assign({}, liveCache[key], { online: false });
-          changed3.push(key);
+          changed2.push(key);
         }
       });
     } else {
@@ -2184,10 +2189,10 @@
           isHistorical: !!m.isHistorical,
           isTransient: !!m.isTransient
         };
-        changed3.push(key);
+        changed2.push(key);
       });
     }
-    if (changed3.length) notify(changed3);
+    if (changed2.length) notify(changed2);
   }
   function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
@@ -2428,19 +2433,19 @@
   function buildSparkplugBindingIndex(screen) {
     var index = {};
     tree_exports.allNodes(screen).forEach(function(comp) {
-      var list2 = [];
+      var list = [];
       if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
-        list2.push(comp.sparkplugBinding);
+        list.push(comp.sparkplugBinding);
       }
       var props = comp.props || {};
       Object.keys(props).forEach(function(k) {
         var v = props[k];
-        if (typeof v === "string") list2.push(v);
+        if (typeof v === "string") list.push(v);
         else if (Array.isArray(v)) v.forEach(function(x) {
-          if (typeof x === "string") list2.push(x);
+          if (typeof x === "string") list.push(x);
         });
       });
-      list2.forEach(function(v) {
+      list.forEach(function(v) {
         refKeysInString(v).forEach(function(key) {
           if (!index[key]) index[key] = [];
           if (index[key].indexOf(comp) === -1) index[key].push(comp);
@@ -2831,14 +2836,17 @@
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
     layoutTemplateInner(inner, template, comp);
-    var byConstraints = !layout_exports.templateContentFit(template, 1, 1);
+    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
+    var byConstraints = !layout_exports.templateContentFit(template, 1, 1, comp);
     var designSize = byConstraints ? { w: template.width, h: template.height } : null;
     (template.components || []).forEach(function(innerComp) {
       renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState, null, designSize);
     });
   }
   function layoutTemplateInner(inner, template, comp) {
-    var fit = layout_exports.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height);
+    var fit = layout_exports.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height, comp);
+    var box2 = typeof inner.parent === "function" ? inner.parent() : null;
+    if (box2 && typeof box2.css === "function") box2.css("overflow", "hidden");
     if (!fit) {
       inner.css({ position: "absolute", left: "0", top: "0", width: "100%", height: "100%", transform: "", "transform-origin": "0 0" });
       return;
@@ -2852,6 +2860,34 @@
       "transform-origin": "0 0",
       transform: fit.transform
     });
+  }
+  var hoverEl = null;
+  function showHover(id2) {
+    var screen = getActiveScreen();
+    if (!state.artboardEl || !screen) return;
+    if (!hoverEl || !hoverEl.closest("body").length || hoverEl.parent()[0] !== state.artboardEl[0]) {
+      hoverEl = window.$("<div>", { "class": "nexa-hover-outline" }).css({ position: "absolute", "pointer-events": "none", "z-index": 9997, border: "1px solid #0d99ff", "box-sizing": "border-box", display: "none" }).appendTo(state.artboardEl);
+      window.$("<span>", { "class": "nexa-hover-name" }).css({ position: "absolute", left: "-1px", bottom: "100%", background: "#0d99ff", color: "#fff", "font-size": "10px", padding: "1px 5px", "white-space": "nowrap", "border-radius": "2px 2px 0 0" }).appendTo(hoverEl);
+      state.artboardEl.off("mouseleave.nexahover").on("mouseleave.nexahover", function() {
+        hideHover();
+      });
+    }
+    var node = id2 && tree_exports.find(screen, id2);
+    if (!node || isSelected(id2)) {
+      hoverEl.hide();
+      return;
+    }
+    var b = tree_exports.absBox(screen, id2);
+    if (!b) {
+      hoverEl.hide();
+      return;
+    }
+    var name2 = node.type === "@template" ? (findTemplate(node.templateId) || {}).name || "Template" : node.name || (node.type === "@frame" ? "Frame" : "");
+    hoverEl.css({ left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px", display: "block", "border-style": node.type === "@template" ? "dashed" : "solid" });
+    hoverEl.find(".nexa-hover-name").text(name2).toggle(!!name2);
+  }
+  function hideHover() {
+    if (hoverEl) hoverEl.hide();
   }
   function renderComponent(comp, parentEl, parentNode, scope) {
     var screen = getActiveScreen();
@@ -2896,6 +2932,7 @@
     if (!interactable) return;
     el.on("mousedown", function(e) {
       e.stopPropagation();
+      hideHover();
       var target = pickSelectionTarget(comp.id, e);
       if (e.shiftKey) {
         if (isSelected(target)) {
@@ -2914,6 +2951,10 @@
       e.stopPropagation();
       var deeper = pickDeeperTarget(comp.id);
       if (deeper && !isSelected(deeper)) selectOnly(deeper);
+    });
+    el.on("mouseover", function(e) {
+      e.stopPropagation();
+      showHover(pickSelectionTarget(comp.id, e.originalEvent || e));
     });
     if (isNodeLocked(comp.id)) return;
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
@@ -3191,7 +3232,7 @@
     var screen = getActiveScreen();
     var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     var caps;
-    if (comp.type === "@frame") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
+    if (comp.type === "@frame" || comp.type === "@template") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
     else {
       var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
       caps = typeDef && typeDef.capabilities || {};
@@ -3215,7 +3256,7 @@
     el.css(css2);
     if (comp.type === "@template") {
       var template = findTemplate(comp.templateId);
-      if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner").first(), template, comp);
+      if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner"), template, comp);
     }
     var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     if (screen && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen, comp.id).some(layout_exports.hasAutoLayout))) {
@@ -3439,7 +3480,7 @@
           { n: "sw", x: 0, y: 1, cursor: "nesw-resize" },
           { n: "w", x: 0, y: 0.5, cursor: "ew-resize" }
         ].forEach(function(p) {
-          var handle = $("<div>", { "class": "nexa-resize-handle" }).css({
+          var handle = $("<div>", { "class": "nexa-resize-handle", "data-handle": p.n }).css({
             position: "absolute",
             left: p.x * 100 + "%",
             top: p.y * 100 + "%",
@@ -5325,11 +5366,11 @@
     return true;
   }
   function ensureAll(state2, addrs) {
-    let changed3 = false;
+    let changed2 = false;
     for (let addr of addrs)
       if (ensureAddr(state2, addr) & 1)
-        changed3 = true;
-    return changed3;
+        changed2 = true;
+    return changed2;
   }
   function dynamicFacetSlot(addresses, facet, providers) {
     let providerAddrs = providers.map((p) => addresses[p.id]);
@@ -5650,8 +5691,8 @@
     if (status & 2)
       return status;
     state2.status[idx] = 4;
-    let changed3 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
-    return state2.status[idx] = 2 | changed3;
+    let changed2 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
+    return state2.status[idx] = 2 | changed2;
   }
   function getAddr(state2, addr) {
     return addr & 1 ? state2.config.staticValues[addr >> 1] : state2.values[addr >> 1];
@@ -7497,11 +7538,11 @@
     }
   }
   function updateAttrs(dom, prev, attrs) {
-    let changed3 = false;
+    let changed2 = false;
     if (prev) {
       for (let name2 in prev)
         if (!(attrs && name2 in attrs)) {
-          changed3 = true;
+          changed2 = true;
           if (name2 == "style")
             dom.style.cssText = "";
           else
@@ -7511,14 +7552,14 @@
     if (attrs) {
       for (let name2 in attrs)
         if (!(prev && prev[name2] == attrs[name2])) {
-          changed3 = true;
+          changed2 = true;
           if (name2 == "style")
             dom.style.cssText = attrs[name2];
           else
             dom.setAttribute(name2, attrs[name2]);
         }
     }
-    return changed3;
+    return changed2;
   }
   function getAttrs(dom) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -12343,13 +12384,13 @@
     }
     refresh(whiteSpace, lineHeight, charWidth, textHeight, lineLength, knownHeights) {
       let lineWrapping = wrappingWhiteSpace.indexOf(whiteSpace) > -1;
-      let changed3 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
+      let changed2 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
       this.lineWrapping = lineWrapping;
       this.lineHeight = lineHeight;
       this.charWidth = charWidth;
       this.textHeight = textHeight;
       this.lineLength = lineLength;
-      if (changed3) {
+      if (changed2) {
         this.heightSamples = {};
         for (let i2 = 0; i2 < knownHeights.length; i2++) {
           let h = knownHeights[i2];
@@ -12359,7 +12400,7 @@
             this.heightSamples[Math.floor(h * 10)] = true;
         }
       }
-      return changed3;
+      return changed2;
     }
   };
   var MeasuredHeights = class {
@@ -13483,21 +13524,21 @@
         point() {
         }
       }, 20);
-      let changed3 = 0;
+      let changed2 = 0;
       if (ranges.length != this.visibleRanges.length) {
-        changed3 = 8 | 4;
+        changed2 = 8 | 4;
       } else {
-        for (let i2 = 0; i2 < ranges.length && !(changed3 & 8); i2++) {
+        for (let i2 = 0; i2 < ranges.length && !(changed2 & 8); i2++) {
           let old = this.visibleRanges[i2], nw = ranges[i2];
           if (old.from != nw.from || old.to != nw.to) {
-            changed3 |= 4;
+            changed2 |= 4;
             if (!(changes && changes.mapPos(old.from, -1) == nw.from && changes.mapPos(old.to, 1) == nw.to))
-              changed3 |= 8;
+              changed2 |= 8;
           }
         }
       }
       this.visibleRanges = ranges;
-      return changed3;
+      return changed2;
     }
     lineBlockAt(pos) {
       return pos >= this.viewport.from && pos <= this.viewport.to && this.viewportLines.find((b) => b.from <= pos && b.to >= pos) || scaleBlock(this.heightMap.lineAt(pos, QueryType.ByPos, this.heightOracle, 0, 0), this.scaler);
@@ -14126,15 +14167,15 @@
     }
     listenForScroll() {
       this.parentCheck = -1;
-      let i2 = 0, changed3 = null;
+      let i2 = 0, changed2 = null;
       for (let dom = this.dom; dom; ) {
         if (dom.nodeType == 1) {
-          if (!changed3 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
+          if (!changed2 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
             i2++;
-          else if (!changed3)
-            changed3 = this.scrollTargets.slice(0, i2);
-          if (changed3)
-            changed3.push(dom);
+          else if (!changed2)
+            changed2 = this.scrollTargets.slice(0, i2);
+          if (changed2)
+            changed2.push(dom);
           dom = dom.assignedSlot || dom.parentNode;
         } else if (dom.nodeType == 11) {
           dom = dom.host;
@@ -14142,12 +14183,12 @@
           break;
         }
       }
-      if (i2 < this.scrollTargets.length && !changed3)
-        changed3 = this.scrollTargets.slice(0, i2);
-      if (changed3) {
+      if (i2 < this.scrollTargets.length && !changed2)
+        changed2 = this.scrollTargets.slice(0, i2);
+      if (changed2) {
         for (let dom of this.scrollTargets)
           dom.removeEventListener("scroll", this.onScroll);
-        for (let dom of this.scrollTargets = changed3)
+        for (let dom of this.scrollTargets = changed2)
           dom.addEventListener("scroll", this.onScroll);
       }
     }
@@ -14931,15 +14972,15 @@
             scrollScale = this.viewState.scaleY;
           }
           this.updateState = 1;
-          let changed3 = this.viewState.measure();
-          if (!changed3 && !this.measureRequests.length && this.viewState.scrollTarget == null)
+          let changed2 = this.viewState.measure();
+          if (!changed2 && !this.measureRequests.length && this.viewState.scrollTarget == null)
             break;
           if (i2 > 5) {
             console.warn(this.measureRequests.length ? "Measure loop restarted more than 5 times" : "Viewport failed to stabilize");
             break;
           }
           let measuring = [];
-          if (!(changed3 & 4))
+          if (!(changed2 & 4))
             [this.measureRequests, measuring] = [measuring, this.measureRequests];
           let measured = measuring.map((m) => {
             try {
@@ -14950,11 +14991,11 @@
             }
           });
           let update = ViewUpdate.create(this, this.state, []), redrawn = false;
-          update.flags |= changed3;
+          update.flags |= changed2;
           if (!updated)
             updated = update;
           else
-            updated.flags |= changed3;
+            updated.flags |= changed2;
           this.updateState = 2;
           if (!update.empty) {
             this.updatePlugins(update);
@@ -15035,14 +15076,14 @@
       if (this.state.readOnly)
         contentAttrs["aria-readonly"] = "true";
       attrsFromFacet(this, contentAttributes, contentAttrs);
-      let changed3 = this.observer.ignore(() => {
+      let changed2 = this.observer.ignore(() => {
         let changedContent = updateAttrs(this.contentDOM, this.contentAttrs, contentAttrs);
         let changedEditor = updateAttrs(this.dom, this.editorAttrs, editorAttrs);
         return changedContent || changedEditor;
       });
       this.editorAttrs = editorAttrs;
       this.contentAttrs = contentAttrs;
-      return changed3;
+      return changed2;
     }
     showAnnouncements(trs) {
       let first = true;
@@ -21480,8 +21521,8 @@
     let source = toSet(first) + toSet(rest) + "*$";
     return [new RegExp("^" + source), new RegExp(source)];
   }
-  function completeFromList(list2) {
-    let options = list2.map((o) => typeof o == "string" ? { label: o } : o);
+  function completeFromList(list) {
+    let options = list.map((o) => typeof o == "string" ? { label: o } : o);
     let [validFor, match] = options.every((o) => /^\w+$/.test(o.label)) ? [/\w*$/, /\w+$/] : prefixMatch(options);
     return (context) => {
       let token = context.matchBefore(match);
@@ -21717,35 +21758,35 @@
   function joinClass(a, b) {
     return a ? b ? a + " " + b : a : b;
   }
-  function defaultPositionInfo(view, list2, option, info, space3, tooltip) {
+  function defaultPositionInfo(view, list, option, info, space3, tooltip) {
     let rtl = view.textDirection == Direction.RTL, left = rtl, narrow = false;
     let side = "top", offset, maxWidth;
-    let spaceLeft = list2.left - space3.left, spaceRight = space3.right - list2.right;
+    let spaceLeft = list.left - space3.left, spaceRight = space3.right - list.right;
     let infoWidth = info.right - info.left, infoHeight = info.bottom - info.top;
     if (left && spaceLeft < Math.min(infoWidth, spaceRight))
       left = false;
     else if (!left && spaceRight < Math.min(infoWidth, spaceLeft))
       left = true;
     if (infoWidth <= (left ? spaceLeft : spaceRight)) {
-      offset = Math.max(space3.top, Math.min(option.top, space3.bottom - infoHeight)) - list2.top;
+      offset = Math.max(space3.top, Math.min(option.top, space3.bottom - infoHeight)) - list.top;
       maxWidth = Math.min(400, left ? spaceLeft : spaceRight);
     } else {
       narrow = true;
       maxWidth = Math.min(
         400,
-        (rtl ? list2.right : space3.right - list2.left) - 30
+        (rtl ? list.right : space3.right - list.left) - 30
         /* Info.Margin */
       );
-      let spaceBelow = space3.bottom - list2.bottom;
-      if (spaceBelow >= infoHeight || spaceBelow > list2.top) {
-        offset = option.bottom - list2.top;
+      let spaceBelow = space3.bottom - list.bottom;
+      if (spaceBelow >= infoHeight || spaceBelow > list.top) {
+        offset = option.bottom - list.top;
       } else {
         side = "bottom";
-        offset = list2.bottom - option.top;
+        offset = list.bottom - option.top;
       }
     }
-    let scaleY = (list2.bottom - list2.top) / tooltip.offsetHeight;
-    let scaleX = (list2.right - list2.left) / tooltip.offsetWidth;
+    let scaleY = (list.bottom - list.top) / tooltip.offsetHeight;
+    let scaleX = (list.right - list.left) / tooltip.offsetWidth;
     return {
       style: `${side}: ${offset / scaleY}px; max-width: ${maxWidth / scaleX}px`,
       class: "cm-completionInfo-" + (narrow ? rtl ? "left-narrow" : "right-narrow" : left ? "left" : "right")
@@ -26634,15 +26675,15 @@
   }
   function litBindablePropsCompletionSource(litBindable) {
     return function(context) {
-      var list2 = litBindable || [];
-      if (!list2.length) return null;
+      var list = litBindable || [];
+      if (!list.length) return null;
       var braceWord = context.matchBefore(/\{[\w]*/);
       var thisWord = context.matchBefore(/this\.[\w]*/);
       if (!braceWord && !thisWord) return null;
       if (thisWord) {
         return {
           from: thisWord.from + "this.".length,
-          options: list2.map(function(p) {
+          options: list.map(function(p) {
             return { label: p.name, type: "property", detail: p.type || "string" };
           }),
           validFor: /^[\w]*$/
@@ -26650,7 +26691,7 @@
       }
       return {
         from: braceWord.from,
-        options: list2.map(function(p) {
+        options: list.map(function(p) {
           return { label: "{" + p.name + "}", displayLabel: p.name, type: "variable", detail: p.type || "string" };
         }),
         validFor: /^\{[\w]*$/
@@ -27421,9 +27462,9 @@
     if (loading && !force) return loading;
     loading = ajax({ url: "nexa-dashboard/_assets" }).then(function(d) {
       if (d.maxBytes) assetLimits = { maxBytes: d.maxBytes, warnBytes: d.warnBytes, warnPx: d.warnPx };
-      var list2 = d.assets || [];
-      if (sdk() && sdk().setAssets) sdk().setAssets(list2);
-      return list2;
+      var list = d.assets || [];
+      if (sdk() && sdk().setAssets) sdk().setAssets(list);
+      return list;
     }, function() {
       return [];
     });
@@ -27505,8 +27546,8 @@
   function chainFor2(screen, id2) {
     return chainFor(app(), screen, id2);
   }
-  function each(list2, parent, fn) {
-    (list2 || []).forEach(function(n) {
+  function each(list, parent, fn) {
+    (list || []).forEach(function(n) {
       fn(n, parent);
       if (n.children) each(n.children, n, fn);
     });
@@ -27777,15 +27818,15 @@
         var screen = getActiveScreen();
         var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
         if (!screen || !id2) return [];
-        var list2 = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
+        var list = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
         var route = { id: "$route", name: "the URL", kind: "route" };
         ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
-          list2.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
+          list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
         });
-        list2.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
-        list2.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
-        list2.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
-        return list2;
+        list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
+        list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+        list.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
+        return list;
       }
     });
     if (window.NexaSDK && window.NexaSDK.getTagProvider("sparkplug")) {
@@ -28312,6 +28353,70 @@
     );
     return true;
   }
+  var INSTANCE_META = {
+    id: "@template-box",
+    stateList: [],
+    inputs: [],
+    outputs: [],
+    props: {
+      x: prop("x", "number", "X"),
+      y: prop("y", "number", "Y"),
+      w: prop("w", "number", "W", { min: 1 }),
+      h: prop("h", "number", "H", { min: 1 }),
+      content: prop("content", "enum", "Content in this box", { options: [
+        { value: "", label: "As the template says" },
+        { value: "constraints", label: "Follow constraints (like a frame)" },
+        { value: "scale", label: "Scale to fit (keep proportions)" },
+        { value: "stretch", label: "Stretch (distorts)" }
+      ] })
+    }
+  };
+  function renderInstanceInspector(container, comp, template) {
+    if (!window.NexaKit || !lit() || !template) return false;
+    var html = lit().html;
+    var screen = getActiveScreen();
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    var inFlow = layout_exports.isInFlow(comp, parent && parent.type ? parent : null);
+    var meta2 = Object.assign({}, INSTANCE_META, {
+      inspector: function(o) {
+        var bind = o.bind, lc = comp.layoutChild || {};
+        return html`<nx-section heading="Box — ${template.name || "template"} (${template.width} × ${template.height} designed)" persist-key="nexa-template-box">
+                ${inFlow ? "" : html`<nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>`}
+                <nx-row><nx-number ${bind("w")} ?disabled="${inFlow && lc.w === "fill"}"></nx-number><nx-number ${bind("h")} ?disabled="${inFlow && lc.h === "fill"}"></nx-number></nx-row>
+                <nx-select ${bind("content")}></nx-select>
+                <div class="nx-help">Drag its handles to resize it${inFlow ? " (an axis set to Fill becomes Fixed)" : ""}. The content follows its constraints, or scales — set per template (Templates → On the live page) or here.</div>
+            </nx-section>`;
+      }
+    });
+    var view = function(n) {
+      return { x: n.x, y: n.y, w: n.w, h: n.h, content: n.content || "" };
+    };
+    var write = function(n, key, v) {
+      if (key === "content") {
+        if (v) n.content = v;
+        else delete n.content;
+        return;
+      }
+      n[key] = key === "w" || key === "h" ? Math.max(1, Number(v) || 0) : Number(v) || 0;
+    };
+    mountLive(
+      container,
+      meta2,
+      "nexa-template-box",
+      function() {
+        return view(comp);
+      },
+      function(key, v) {
+        commit(comp, function() {
+          write(comp, key, v);
+        }, key === "content");
+      },
+      { node: comp, parent, view, write, canVary: function(k) {
+        return k !== "content";
+      } }
+    );
+    return true;
+  }
   var CONSTRAINT_META = {
     id: "@constraints",
     stateList: [],
@@ -28427,9 +28532,9 @@
     }
     return t2;
   }
-  function variableProblems(list2) {
+  function variableProblems(list) {
     var seen = {}, out = [];
-    (list2 || []).forEach(function(v) {
+    (list || []).forEach(function(v) {
       if (!scope_exports.NAME_RE.test(v.name || "")) out.push('"' + (v.name || "") + '" is not a valid name (letters, digits, _ or $, not starting with a digit)');
       else if (seen[v.name]) out.push('"' + v.name + '" is declared twice');
       seen[v.name] = true;
@@ -28604,6 +28709,7 @@
       setLockedForSelection(lockInput.is(":checked"), [comp.id]);
     });
     renderNameField(comp);
+    if (isTemplateInstance && templateRef) renderInstanceInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, templateRef);
     renderLayoutChildSection(comp);
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
     } else if (typeDef && typeof typeDef.renderProperties === "function") {
@@ -30556,7 +30662,29 @@
         if ((parent ? parent.id : null) === contextId) return chain[j];
       }
     }
-    return chain[0];
+    var k = 0;
+    while (k < chain.length - 1) {
+      var f = findComponent(chain[k]);
+      if (!f || f.type !== "@frame") break;
+      k++;
+    }
+    return chain[k];
+  }
+  function selectParentOrChild(up) {
+    var screen = getActiveScreen();
+    if (!screen || state.selectedIds.length !== 1) return false;
+    var id2 = state.selectedIds[0];
+    if (up) {
+      var parent = tree_exports.parentOf(screen, id2);
+      if (!parent || !parent.type) return false;
+      selectOnly(parent.id);
+      return true;
+    }
+    var node = tree_exports.find(screen, id2);
+    var kids2 = node ? tree_exports.kids(node) : [];
+    if (!kids2.length) return false;
+    selectOnly(kids2[0].id);
+    return true;
   }
   function pickDeeperTarget(nodeId) {
     var screen = getActiveScreen();
@@ -30570,16 +30698,16 @@
   }
   function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
-    var changed3 = false;
+    var changed2 = false;
     ids.forEach(function(id2) {
       var c = findComponent(id2);
       if (c && !!c.locked !== locked) {
         pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
         c.locked = locked;
-        changed3 = true;
+        changed2 = true;
       }
     });
-    if (!changed3) return;
+    if (!changed2) return;
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
@@ -30758,8 +30886,8 @@
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed3 = readbackLayout(screen);
-    if (changed3.redraw && !renderActiveScreen._again) {
+    var changed2 = readbackLayout(screen);
+    if (changed2.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen(opts);
@@ -30839,20 +30967,20 @@
   var bpBar = null;
   function buildBreakpointBar(trayBody) {
     bpBar = window.$("<div>", { "class": "nexa-breakpoint-bar" }).css({
-      position: "absolute",
-      left: "50%",
-      top: "10px",
-      transform: "translateX(-50%)",
-      "z-index": "10",
       display: "flex",
       "align-items": "center",
       background: "#fff",
       "border-radius": "4px",
-      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
-      overflow: "hidden",
-      "font-size": "11px"
+      border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
+      "overflow-x": "auto",
+      "overflow-y": "hidden",
+      "font-size": "11px",
+      "min-width": "0",
+      "max-width": "100%",
+      "scrollbar-width": "thin"
     }).appendTo(trayBody);
     refreshBreakpointBar(getActiveScreen());
+    return bpBar;
   }
   function refreshBreakpointBar(screen) {
     if (!bpBar) return;
@@ -30861,12 +30989,12 @@
     bpBar.toggle(!!screen && !template);
     if (!screen || template) return;
     var active = activeBreakpointId(), design = designId(screen);
-    var list2 = breakpointList();
-    list2.forEach(function(b, i2) {
+    var list = breakpointList();
+    list.forEach(function(b, i2) {
       var on = b.id === active, isDesign2 = b.id === design;
       var width = bandPreviewWidth(screen, b.id);
       var icon = width < 640 ? "fa-mobile" : width < 1200 ? "fa-tablet" : "fa-desktop";
-      var tip = b.name + " (" + rangeOf2(b.id) + ")" + (b.device ? " \xB7 " + b.device : "") + " \u2014 " + (isDesign2 ? "the design (the screen's width, " + width + " px)" : "shown at " + width + " px; edits here are kept for " + b.name + (i2 > list2.map(function(x) {
+      var tip = b.name + " (" + rangeOf2(b.id) + ")" + (b.device ? " \xB7 " + b.device : "") + " \u2014 " + (isDesign2 ? "the design (the screen's width, " + width + " px)" : "shown at " + width + " px; edits here are kept for " + b.name + (i2 > list.map(function(x) {
         return x.id;
       }).indexOf(design) ? " and narrower" : " and wider"));
       window.$("<a>", { href: "#", title: tip, "data-breakpoint": b.id }).css({ display: "flex", "align-items": "center", gap: "4px", padding: "0 8px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none", "white-space": "nowrap" }).html('<i class="fa ' + icon + '"></i> ' + (isDesign2 ? '<i class="fa fa-star" style="font-size:9px"></i>' : "") + window.$("<span>").text(b.name).html() + ' <span style="opacity:.7">' + width + "</span>").on("click", function(e) {
@@ -30881,15 +31009,12 @@
   }
   function buildZoomToolbar(trayBody) {
     var bar = window.$("<div>", { "class": "nexa-zoom-toolbar" }).css({
-      position: "absolute",
-      right: "16px",
-      bottom: "16px",
-      "z-index": "10",
       display: "flex",
       "align-items": "center",
+      "line-height": "normal",
       background: "#fff",
       "border-radius": "4px",
-      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+      border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
       overflow: "hidden"
     }).appendTo(trayBody);
     function zoomBtn(icon, title, onClick) {
@@ -30917,6 +31042,7 @@
     zoomBtn("fa-plus", "Zoom in", zoomIn);
     zoomBtn("fa-compress", "Zoom to fit", zoomToFit);
     updateZoomLabel();
+    return bar;
   }
 
   // src/canvas/clipboard.js
@@ -31041,16 +31167,13 @@
     vp.scrollTop = Math.max(0, centerY * state.logicZoomLevel - vp.clientHeight / 2);
   }
   function buildLogicZoomToolbar(logicPane) {
-    var bar = window.$("<div>").css({
-      position: "absolute",
-      right: "16px",
-      bottom: "16px",
-      "z-index": "10",
+    var bar = window.$("<div>", { "class": "nexa-logic-zoom-toolbar" }).css({
       display: "flex",
       "align-items": "center",
+      "line-height": "normal",
       background: "#fff",
       "border-radius": "4px",
-      "box-shadow": "0 1px 4px rgba(0,0,0,0.3)",
+      border: "1px solid var(--red-ui-secondary-border-color, #ccc)",
       overflow: "hidden"
     }).appendTo(logicPane);
     function zoomBtn(icon, title, onClick) {
@@ -31078,6 +31201,7 @@
     zoomBtn("fa-plus", "Zoom in", zoomLogicIn);
     zoomBtn("fa-compress", "Zoom to fit (the nodes you have, not the whole canvas)", zoomLogicToFit);
     applyLogicZoomTransform();
+    return bar;
   }
 
   // src/editor-tray.js
@@ -31101,6 +31225,12 @@
       if (state.selectedIds.length) {
         e.preventDefault();
         removeComponents(state.selectedIds.slice());
+        return;
+      }
+    }
+    if (e.key === "Enter" && !isTextField && !e.ctrlKey && !e.metaKey && state.activeCanvasTab !== "logic") {
+      if (selectParentOrChild(e.shiftKey)) {
+        e.preventDefault();
         return;
       }
     }
@@ -31146,7 +31276,8 @@
       }
     }
   }
-  function buildCanvasArea(trayBody) {
+  function buildCanvasArea(trayBody, chrome2) {
+    chrome2 = chrome2 || {};
     trayBody.css({
       height: "100%",
       position: "relative",
@@ -31255,8 +31386,9 @@
       var focalPoint = { x: oe.clientX - vpOffset.left, y: oe.clientY - vpOffset.top };
       setZoom(state.zoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
     });
-    buildZoomToolbar(uiPane);
-    buildBreakpointBar(uiPane);
+    var dock = footerDock(chrome2.footer, uiPane);
+    var uiZoom = buildZoomToolbar(dock);
+    buildBreakpointBar(toolbarDock(chrome2.toolbar, uiPane));
     state.logicZoomLevel = 1;
     state.logicViewportEl = window.$("<div>").css({
       height: "100%",
@@ -31317,7 +31449,7 @@
       setLogicZoom(state.logicZoomLevel + (oe.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), focalPoint);
     });
     applyLogicZoomTransform();
-    buildLogicZoomToolbar(logicPane);
+    var logicZoom = buildLogicZoomToolbar(dock).hide();
     var canvasTabs = window.RED.tabs.create({
       element: canvasTabsUl,
       onchange: function(tab) {
@@ -31325,6 +31457,9 @@
         state.activeCanvasTab = tab.id;
         uiPane.toggle(tab.id === "ui");
         logicPane.toggle(tab.id === "logic");
+        uiZoom.css("display", tab.id === "ui" ? "flex" : "none");
+        logicZoom.css("display", tab.id === "logic" ? "flex" : "none");
+        window.$(".nexa-breakpoint-bar").css("visibility", tab.id === "ui" ? "" : "hidden");
         if (tab.id === "logic") {
           selectLogicForComponents(state.selectedIds);
           renderLogicCanvas();
@@ -31357,7 +31492,7 @@
         ],
         open: function(tray) {
           state.trayContent = tray.find(".red-ui-tray-body");
-          buildCanvasArea(state.trayContent);
+          buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
           ensureScreensLoaded(function() {
             renderActiveScreen();
           });
@@ -31390,6 +31525,27 @@
         }
       });
     });
+  }
+  function toolbarDock(toolbar, fallback) {
+    var tb = toolbar && toolbar[0];
+    if (!tb || typeof tb.insertBefore !== "function") return window.$("<div>").css({ position: "absolute", left: "8px", right: "8px", top: "8px", "z-index": "10", display: "flex" }).appendTo(fallback);
+    Array.prototype.slice.call(tb.querySelectorAll(".nexa-toolbar-dock")).forEach(function(d) {
+      d.remove();
+    });
+    tb.style.display = "flex";
+    tb.style.alignItems = "center";
+    tb.style.gap = "8px";
+    var dock = window.$("<div>", { "class": "nexa-toolbar-dock" }).css({ flex: "1 1 auto", "min-width": "0", display: "flex", "justify-content": "flex-start" });
+    tb.insertBefore(dock[0], tb.firstChild);
+    return dock;
+  }
+  function footerDock(footer, fallback) {
+    var fb = footer && footer[0];
+    if (!fb || typeof fb.querySelectorAll !== "function") return window.$("<div>").css({ position: "absolute", right: "16px", bottom: "16px", "z-index": "10", display: "flex", gap: "6px" }).appendTo(fallback);
+    Array.prototype.slice.call(fb.querySelectorAll(".nexa-footer-dock")).forEach(function(d) {
+      d.remove();
+    });
+    return window.$("<div>", { "class": "nexa-footer-dock" }).css({ "margin-left": "auto", "padding-right": "8px", display: "flex", "align-items": "center", gap: "6px" }).appendTo(footer);
   }
   function scaledDropArea($el) {
     if (!(window.$.ui && window.$.ui.ddmanager)) return;
@@ -31427,8 +31583,8 @@
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return def && def.icon || "fa fa-cube";
   }
-  function rows(screen, list2, orphan) {
-    return list2.slice().reverse().map(function(node) {
+  function rows(screen, list, orphan) {
+    return list.slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
       var eff = orphan ? vis : tree_exports.effectiveVisibility(screen, node.id);
       return {
@@ -31925,8 +32081,8 @@
   var editBarEl = null;
   function templateUsageCount(id2) {
     var count = 0;
-    function scan(list2) {
-      (list2 || []).forEach(function(surface) {
+    function scan(list) {
+      (list || []).forEach(function(surface) {
         tree_exports.allNodes(surface, { orphans: true }).forEach(function(c) {
           if (c.type === "@template" && c.templateId === id2) count++;
         });
@@ -32926,9 +33082,9 @@
       return { value: "type:" + t2.id, label: t2.name + " (type)" };
     }));
   }
-  function uniqueName(base2, list2) {
+  function uniqueName(base2, list) {
     var n = 1, name2 = base2;
-    while (list2.some(function(x) {
+    while (list.some(function(x) {
       return x.name === name2;
     })) name2 = base2 + ++n;
     return name2;
@@ -33285,16 +33441,16 @@
     function drawGrid() {
       grid.empty();
       var q = query.trim().toLowerCase();
-      var list2 = (sdk2() ? sdk2().listAssets() : []).filter(function(a) {
+      var list = (sdk2() ? sdk2().listAssets() : []).filter(function(a) {
         return !q || a.name.toLowerCase().indexOf(q) !== -1;
       }).sort(function(a, b) {
         return a.name.localeCompare(b.name);
       });
-      if (!list2.length) {
+      if (!list.length) {
         $2("<div>").css({ "grid-column": "1 / -1", color: "#999", "font-size": "12px", padding: "12px 0" }).text(q ? "No image matches." : "No images yet.").appendTo(grid);
         return;
       }
-      list2.forEach(function(a) {
+      list.forEach(function(a) {
         var big = a.size > assetLimits.warnBytes || a.w && Math.max(a.w, a.h) > assetLimits.warnPx;
         var tile = $2("<div>", { "class": "nexa-asset-tile", "data-type-id": "@asset:" + a.name, title: a.name + (a.w ? " \xB7 " + a.w + " \xD7 " + a.h : "") + " \xB7 " + kb(a.size) }).css({
           border: "1px solid var(--red-ui-secondary-border-color, #ddd)",
@@ -33372,21 +33528,14 @@
   }
 
   // src/sidebar/breakpoints-panel.js
-  function list() {
-    var app2 = getApp();
-    return app2.breakpoints && app2.breakpoints.length ? app2.breakpoints : DEFAULT_BREAKPOINTS;
+  function lit3() {
+    return window.NEXA_LIT;
   }
-  function own() {
-    var app2 = getApp();
-    if (!Array.isArray(app2.breakpoints) || !app2.breakpoints.length) app2.breakpoints = JSON.parse(JSON.stringify(DEFAULT_BREAKPOINTS));
-    return app2.breakpoints;
-  }
-  function changed2(rebuild) {
-    leaveBreakpoint();
-    markDirty();
-    renderActiveScreen();
-    if (rebuild) renderBreakpointsPanel();
-    else refreshRanges();
+  function deviceAt(w) {
+    var d = DEVICE_PRESETS.filter(function(x) {
+      return x.w === Number(w);
+    })[0];
+    return d ? d.name : "";
   }
   function slug(name2, taken) {
     var base2 = String(name2 || "bp").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "bp";
@@ -33394,128 +33543,135 @@
     while (taken.indexOf(id2) !== -1) id2 = base2 + "-" + ++n;
     return id2;
   }
-  var rangeCells = {};
-  function refreshRanges() {
-    var app2 = getApp();
-    Object.keys(rangeCells).forEach(function(id2) {
-      rangeCells[id2].text(rangeOf(app2, id2));
+  function previewOptions(current) {
+    var seen = {};
+    var out = DEVICE_PRESETS.map(function(d) {
+      seen[d.w] = true;
+      return { value: d.w, label: d.w + " \xB7 " + d.name.replace(/\s*\(.*\)$/, "") };
+    });
+    if (current && !seen[current]) out.unshift({ value: current, label: current + " px" });
+    return out.sort(function(a, b) {
+      return a.value - b.value;
     });
   }
   function renderBreakpointsPanel() {
     var pane = state.breakpointsPane;
     if (!pane) return;
     pane.empty();
-    rangeCells = {};
+    if (!window.NexaKit || !lit3()) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Breakpoints tab needs the Nexa property kit.").appendTo(pane);
+      return;
+    }
+    var html = lit3().html, nothing = lit3().nothing;
     var app2 = getApp();
-    var muted = "var(--red-ui-secondary-text-color, #888)";
-    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-bottom": "8px", "line-height": "1.4" }).html(`The app's breakpoints: bands of window widths (like Tailwind's <code>sm md lg xl</code>). A screen is designed in the band of its own width (<i class="fa fa-star"></i> on the canvas bar); every other band can change a field \u2014 its <i class="fa fa-mobile"></i> \u2014 or anything, on the canvas bar. Desktop-first: a narrower band inherits from the next wider one.`).appendTo(pane);
+    var view = function() {
+      return { bps: breakpointsOf(app2).slice().reverse().map(function(b) {
+        return { id: b.id, name: b.name, min: b.min, preview: previewWidthOf(app2, b.id), device: b.device || "" };
+      }) };
+    };
+    var current = view();
     var screen = getActiveScreen();
-    if (screen) window.$("<div>").css({ "font-size": "11px", "margin-bottom": "8px" }).html("<b>" + window.$("<span>").text(screen.name || "This screen").html() + "</b> (" + screen.width + " px) is designed in <b>" + designBreakpoint(app2, screen) + "</b>.").appendTo(pane);
-    var table = window.$("<table>").css({ width: "100%", "border-collapse": "collapse", "font-size": "11px" }).appendTo(pane);
-    window.$("<tr>").html('<th style="text-align:left">Name</th><th style="text-align:left">From (px)</th><th style="text-align:left">Range</th><th></th>').css({ color: muted }).appendTo(table);
-    var bps = breakpointsOf(app2).slice().reverse();
-    bps.forEach(function(b) {
-      var row = window.$("<tr>", { "data-breakpoint": b.id }).css({ "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)" }).appendTo(table);
-      var find3 = function() {
-        return own().filter(function(x) {
-          return x.id === b.id;
-        })[0];
-      };
-      var name2 = window.$("<input>", { type: "text", "class": "nexa-bp-name" }).val(b.name).css({ width: "60px" });
-      name2.on("change", function() {
-        var v = String(name2.val() || "").trim();
-        if (!v) {
-          name2.val(b.name);
-          return;
-        }
-        find3().name = v;
+    var meta2 = {
+      id: "@breakpoints",
+      stateList: [],
+      inputs: [],
+      outputs: [],
+      props: {
+        bps: { key: "bps", type: "list", label: "", default: [], noReset: true, addLabel: "Breakpoint", item: { row: true, fields: {
+          name: { type: "string", label: "Name", default: "" },
+          min: { type: "number", label: "From px", default: 0, min: 0 },
+          preview: { type: "enum", label: "Preview (device)", default: 390, options: previewOptions(0) }
+        } } }
+      },
+      inspector: function(o) {
+        var list = breakpointsOf(app2).slice().reverse();
+        var mins = {}, names = {}, problems = [];
+        (app2.breakpoints && app2.breakpoints.length ? app2.breakpoints : []).forEach(function(b) {
+          if (mins[b.min]) problems.push("two breakpoints start at " + b.min + " px");
+          if (names[b.name]) problems.push('"' + b.name + '" twice');
+          mins[b.min] = names[b.name] = true;
+        });
+        return html`
+                <div class="nx-help" style="margin-bottom:8px">Bands of window widths, like Tailwind's sm md lg xl: each one starts at its "From" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.</div>
+                ${screen ? html`<nx-alert tone="info" text="${(screen.name || "This screen") + " (" + screen.width + " px) is designed in " + designBreakpoint(app2, screen) + "."}"></nx-alert>` : nothing}
+                ${problems.map(function(p) {
+          return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
+        })}
+                <nx-section heading="Breakpoints (widest first)" persist-key="nexa-breakpoints-list">
+                    <nx-list ${o.bind("bps")} .sortable="${false}"></nx-list>
+                </nx-section>
+                <nx-section heading="Ranges" persist-key="nexa-breakpoints-ranges">
+                    ${list.map(function(b) {
+          var d = deviceAt(previewWidthOf(app2, b.id));
+          return html`<div class="nx-help"><b>${b.name}</b>: ${rangeOf(app2, b.id)} · shown at ${previewWidthOf(app2, b.id)} px${d ? " (" + d + ")" : ""}</div>`;
+        })}
+                </nx-section>
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    ${o.ui.action("Reset to the defaults", function() {
+          if (app2.breakpoints && app2.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 \xB7 sm 640 \xB7 md 768 \xB7 lg 1024 \xB7 xl 1280 \xB7 2xl 1536 \xB7 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
+          app2.breakpoints = [];
+          changed2(true);
+        }, { icon: "fa fa-undo" })}
+                </div>
+                <div class="nx-help" style="margin-top:10px">On the live page: {$breakpoint} is the band in use ("md", …); an On Breakpoint Change event fires when it changes.</div>`;
+      }
+    };
+    meta2.props.bps.item.fields.preview.options = previewOptions(0).concat(current.bps.map(function(b) {
+      return { value: b.preview, label: b.preview + " px" };
+    })).filter(function(o, i2, all) {
+      return all.findIndex(function(x) {
+        return x.value === o.value;
+      }) === i2;
+    }).sort(function(a, b) {
+      return a.value - b.value;
+    });
+    var host = window.$("<div>").appendTo(pane).get(0);
+    var handle = window.NexaKit.renderInspector(host, {
+      meta: meta2,
+      props: current,
+      persistKey: "nexa-breakpoints",
+      set: function(key, rows2) {
+        if (key !== "bps") return;
+        var taken = [];
+        var next = (rows2 || []).map(function(r, i2) {
+          var name2 = String(r.name || "").trim();
+          var id2 = r.id || slug(name2 || "bp" + (i2 + 1), taken.concat((rows2 || []).map(function(x) {
+            return x.id;
+          }).filter(Boolean)));
+          taken.push(id2);
+          var b = { id: id2, name: name2 || id2, min: Math.max(0, Math.round(Number(r.min) || 0)) };
+          if (Number(r.preview) > 0) b.preview = Number(r.preview);
+          var d = deviceAt(b.preview);
+          if (d) b.device = d;
+          else if (r.device) b.device = String(r.device).trim();
+          return b;
+        });
+        next.forEach(function(b, i2) {
+          if (!rows2[i2].id && !b.min) b.min = Math.max.apply(null, next.map(function(x) {
+            return x.min;
+          }).concat([0])) + 320;
+        });
+        if (!next.length) return;
+        if (!next.some(function(b) {
+          return b.min === 0;
+        })) next.slice().sort(function(a, b) {
+          return a.min - b.min;
+        })[0].min = 0;
+        app2.breakpoints = next;
         changed2(false);
-      });
-      var first = b.min === 0 && bps[bps.length - 1].id === b.id;
-      var min = window.$("<input>", { type: "number", min: 0, step: 1, "class": "nexa-bp-min" }).val(b.min).css({ width: "64px" }).prop("disabled", first).attr("title", first ? "The narrowest breakpoint starts at 0" : "The window width it starts at");
-      min.on("change", function() {
-        var v = Math.round(Number(min.val()));
-        if (!isFinite(v) || v <= 0 || own().some(function(x) {
-          return x.id !== b.id && Number(x.min) === v;
-        })) {
-          min.val(find3().min);
-          return;
-        }
-        find3().min = v;
-        changed2(true);
-      });
-      window.$("<td>").css({ padding: "4px 2px" }).append(name2).appendTo(row);
-      window.$("<td>").css({ padding: "4px 2px" }).append(min).appendTo(row);
-      rangeCells[b.id] = window.$("<td>").css({ padding: "4px 2px", color: muted, "white-space": "nowrap" }).text(rangeOf(app2, b.id)).appendTo(row);
-      var del = window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Delete this breakpoint (what was set for it is no longer used)" }).html('<i class="fa fa-trash-o"></i>').prop("disabled", bps.length <= 1).on("click", function() {
-        var mine = own();
-        mine.splice(mine.indexOf(find3()), 1);
-        if (!mine.some(function(x) {
-          return Number(x.min) === 0;
-        })) {
-          var lowest = mine.slice().sort(function(a, c) {
-            return a.min - c.min;
-          })[0];
-          if (lowest) lowest.min = 0;
-        }
-        changed2(true);
-      });
-      window.$("<td>").css({ padding: "4px 2px", "text-align": "right" }).append(del).appendTo(row);
-      var row2 = window.$("<tr>", { "data-breakpoint-preview": b.id }).appendTo(table);
-      var cell = window.$("<td>", { colspan: 4 }).css({ padding: "0 2px 6px" }).appendTo(row2);
-      var device = window.$("<input>", { type: "text", "class": "nexa-bp-device", placeholder: "Device (e.g. Tablet)" }).val(b.device || "").css({ width: "45%" });
-      device.on("change", function() {
-        find3().device = String(device.val() || "").trim();
-        changed2(false);
-      });
-      var preview = window.$("<select>", { "class": "nexa-bp-preview", title: "The width the editor shows this breakpoint at" }).css({ width: "52%", "margin-left": "3%" });
-      var pw = previewWidthOf(app2, b.id);
-      window.$("<option>", { value: "" }).text("Preview at " + pw + " px").appendTo(preview);
-      var next = breakpointsOf(app2).filter(function(x) {
-        return x.min > b.min;
-      })[0];
-      DEVICE_PRESETS.filter(function(d) {
-        return d.w >= b.min && (!next || d.w < next.min);
-      }).forEach(function(d) {
-        window.$("<option>", { value: String(d.w) }).text(d.name).appendTo(preview);
-      });
-      window.$("<option>", { value: "custom" }).text("Another width\u2026").appendTo(preview);
-      preview.on("change", function() {
-        var v = preview.val();
-        if (!v) return;
-        if (v === "custom") {
-          var typed = window.prompt("Preview " + b.name + " at (px, " + rangeOf(app2, b.id) + "):", String(pw));
-          if (typed === null || !isFinite(Number(typed))) {
-            preview.val("");
-            return;
-          }
-          v = typed;
-        }
-        find3().preview = Math.round(Number(v));
-        changed2(true);
-      });
-      cell.append(device).append(preview);
+        Object.keys(current).forEach(function(k) {
+          delete current[k];
+        });
+        Object.assign(current, view());
+        handle.update();
+      }
     });
-    var bar = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "10px" }).appendTo(pane);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-bp-add" }).html('<i class="fa fa-plus"></i> Breakpoint').appendTo(bar).on("click", function() {
-      var mine = own();
-      var widest = mine.slice().sort(function(a, c) {
-        return c.min - a.min;
-      })[0];
-      var min = (widest ? Number(widest.min) : 0) + 640;
-      var m = widest && /^(\d*)xl$/.exec(widest.name || "");
-      var id2 = slug(m ? Number(m[1] || 1) + 1 + "xl" : "bp" + (mine.length + 1), mine.map(function(x) {
-        return x.id;
-      }));
-      mine.push({ id: id2, name: id2, min, preview: min });
-      changed2(true);
-    });
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "xs 0 \xB7 sm 640 \xB7 md 768 \xB7 lg 1024 \xB7 xl 1280 \xB7 2xl 1536 \xB7 3xl 1920" }).text("Reset to the defaults").appendTo(bar).on("click", function() {
-      if (list() !== DEFAULT_BREAKPOINTS && !window.confirm("Go back to the default breakpoints? What was set for a breakpoint whose name is not among them is no longer used.")) return;
-      getApp().breakpoints = [];
-      changed2(true);
-    });
-    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-top": "10px", "line-height": "1.4" }).html('On the live page: <code>{$breakpoint}</code> is the band in use ("md", \u2026); an <i>On Breakpoint Change</i> event fires when it changes.').appendTo(pane);
+    function changed2(rebuild) {
+      leaveBreakpoint();
+      markDirty();
+      renderActiveScreen();
+      if (rebuild) renderBreakpointsPanel();
+    }
   }
 
   // src/sidebar/sidebar-content.js

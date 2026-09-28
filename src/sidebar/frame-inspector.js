@@ -346,6 +346,50 @@ export function renderLayoutChildInspector(container, node, parent) {
     return true;
 }
 
+// A template instance is a box like a frame: its position and size, and what the
+// template's content does in it (the template's setting, or its own).
+var INSTANCE_META = {
+    id: "@template-box",
+    stateList: [], inputs: [], outputs: [],
+    props: {
+        x: prop("x", "number", "X"), y: prop("y", "number", "Y"),
+        w: prop("w", "number", "W", { min: 1 }), h: prop("h", "number", "H", { min: 1 }),
+        content: prop("content", "enum", "Content in this box", { options: [
+            { value: "", label: "As the template says" },
+            { value: "constraints", label: "Follow constraints (like a frame)" },
+            { value: "scale", label: "Scale to fit (keep proportions)" },
+            { value: "stretch", label: "Stretch (distorts)" }] })
+    }
+};
+
+export function renderInstanceInspector(container, comp, template) {
+    if (!window.NexaKit || !lit() || !template) return false;
+    var html = lit().html;
+    var screen = getActiveScreen();
+    var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+    var inFlow = Layout.isInFlow(comp, parent && parent.type ? parent : null);
+    var meta = Object.assign({}, INSTANCE_META, {
+        inspector: function (o) {
+            var bind = o.bind, lc = comp.layoutChild || {};
+            return html`<nx-section heading="Box — ${template.name || "template"} (${template.width} × ${template.height} designed)" persist-key="nexa-template-box">
+                ${inFlow ? "" : html`<nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>`}
+                <nx-row><nx-number ${bind("w")} ?disabled="${inFlow && lc.w === "fill"}"></nx-number><nx-number ${bind("h")} ?disabled="${inFlow && lc.h === "fill"}"></nx-number></nx-row>
+                <nx-select ${bind("content")}></nx-select>
+                <div class="nx-help">Drag its handles to resize it${inFlow ? " (an axis set to Fill becomes Fixed)" : ""}. The content follows its constraints, or scales — set per template (Templates → On the live page) or here.</div>
+            </nx-section>`;
+        }
+    });
+    var view = function (n) { return { x: n.x, y: n.y, w: n.w, h: n.h, content: n.content || "" }; };
+    var write = function (n, key, v) {
+        if (key === "content") { if (v) n.content = v; else delete n.content; return; }
+        n[key] = key === "w" || key === "h" ? Math.max(1, Number(v) || 0) : Number(v) || 0;
+    };
+    mountLive(container, meta, "nexa-template-box", function () { return view(comp); },
+        function (key, v) { commit(comp, function () { write(comp, key, v); }, key === "content"); },
+        { node: comp, parent: parent, view: view, write: write, canVary: function (k) { return k !== "content"; } });
+    return true;
+}
+
 var CONSTRAINT_META = {
     id: "@constraints",
     stateList: [], inputs: [], outputs: [],

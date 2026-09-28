@@ -21,7 +21,8 @@ function capabilitiesOf(comp) {
     var screen = getActiveScreen();
     var parent = screen ? Tree.parentOf(screen, comp.id) : null;
     var caps;
-    if (comp.type === "@frame") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
+    // a template instance is a box like a frame: resized, its content follows (constraints / scale)
+    if (comp.type === "@frame" || comp.type === "@template") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
     else {
         var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
         caps = (typeDef && typeDef.capabilities) || {};
@@ -54,7 +55,7 @@ export function updateComponentBox(comp) {
     // instance's contents the wrong size relative to its own selection box.
     if (comp.type === "@template") {
         var template = findTemplate(comp.templateId);
-        if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner").first(), template, comp);
+        if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner"), template, comp);
     }
     // Inside an auto layout (or a frame that lays out / hugs), this change moved
     // or resized its siblings / parent too: read the new boxes back so the
@@ -265,7 +266,7 @@ export function renderSelectionHandles(comp) {
                 { n: "sw", x: 0, y: 1, cursor: "nesw-resize" },
                 { n: "w", x: 0, y: 0.5, cursor: "ew-resize" }
             ].forEach(function (p) {
-                var handle = $("<div>", { "class": "nexa-resize-handle" }).css({
+                var handle = $("<div>", { "class": "nexa-resize-handle", "data-handle": p.n }).css({
                     position: "absolute",
                     left: (p.x * 100) + "%", top: (p.y * 100) + "%",
                     width: HANDLE_SIZE + "px", height: HANDLE_SIZE + "px",

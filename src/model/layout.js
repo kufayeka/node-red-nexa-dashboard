@@ -79,13 +79,19 @@ export function templateLiveOf(template) {
     return live;
 }
 
+/** What a template's content does in its box: the instance's own choice, else the template's. */
+export function templateContentOf(template, instance) {
+    var own = instance && instance.content;
+    return TEMPLATE_CONTENT_MODES.indexOf(own) !== -1 ? own : templateLiveOf(template).content;
+}
+
 /**
  * Where a template's design goes in a box of `bw` × `bh` (scale / stretch): the
  * transform and offset of a layer of its design size. null for "constraints" (the
  * design is laid out at the box's size instead).
  */
-export function templateContentFit(template, bw, bh) {
-    var mode = templateLiveOf(template).content;
+export function templateContentFit(template, bw, bh, instance) {
+    var mode = templateContentOf(template, instance);
     if (mode === "constraints") return null;
     var tw = Number(template && template.width) || 1, th = Number(template && template.height) || 1;
     var sx = bw / tw, sy = bh / th;

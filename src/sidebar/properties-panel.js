@@ -9,7 +9,7 @@ import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-co
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
-import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector } from "./frame-inspector.js";
+import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector, renderInstanceInspector } from "./frame-inspector.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
 import { activeBreakpointId, breakpointList, overriddenKeys, resetOverride, isDesign, rangeOf } from "../canvas/breakpoints-ui.js";
 
@@ -106,6 +106,8 @@ export function renderPropertiesPanel() {
     });
 
     renderNameField(comp);
+    // a template instance is a box like a frame: position, size, what its content does in it
+    if (isTemplateInstance && templateRef) renderInstanceInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, templateRef);
     renderLayoutChildSection(comp);
 
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {

@@ -182,7 +182,19 @@ constraints = {
 - **Min / max** width and height are optional.
 - **The host only places it**: alignment, padding and gap. A carousel's slide is a cell: Slides → padding ↔ ↕ and the alignment of a fixed-size template in it.
 - A Populate's older "each copy fills the width" still makes the width fill.
-- **An instance placed on a screen is a box** like any node: resize it, or let its auto layout parent fill it.
+- **An instance placed on a screen is a box**, like a frame with one thing in it:
+  - a dashed outline shows it on the canvas;
+  - drag its handles to resize it (an axis set to Fill becomes Fixed);
+  - Properties → **Box**: X, Y, W, H and "Content in this box" (the template's setting, or its own);
+  - it clips its content.
+
+**Selecting on the canvas** (like Webflow / Framer):
+
+- **A click selects what is under the pointer**: a component or a template instance, through the frames around it.
+- **A frame's own empty area** (padding, gap) selects the frame.
+- **A group stays one thing.** Double-click goes into it.
+- **Shift+Enter** selects the parent, **Enter** the first child, **Ctrl/Cmd+click** the deepest node.
+- **Hovering outlines what a click would select**, with its name.
 
 **When its box is another size** (filling, or a resized instance), the template's content does one of three things. The editor's canvas and the live page do the same:
 

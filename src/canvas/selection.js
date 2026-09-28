@@ -4,7 +4,7 @@
 //                  top-level by default, a sibling of what is selected otherwise
 //   Ctrl / Cmd+click  selects the deepest node under the pointer
 //   double click   dives one level into the selected container
-import { state, genId, markDirty, getActiveScreen, findComponent, Tree, isNodeInteractable, isNodeLocked } from "../state.js";
+import { state, genId, markDirty, getActiveScreen, findComponent, Tree, Layout, isNodeInteractable, isNodeLocked } from "../state.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { clearSelectionHandles, renderSelectionHandles, updateComponentBox } from "./selection-handles.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
@@ -79,7 +79,35 @@ export function pickSelectionTarget(nodeId, e) {
             if ((parent ? parent.id : null) === contextId) return chain[j];
         }
     }
-    return chain[0];
+    // what is under the pointer, through the frames around it (a web page's layout:
+    // Rows / Columns / cards), like Webflow / Framer: a component or a template instance
+    // is what you click; a frame's own empty area (padding, gap) selects the frame.
+    // A group stays one thing (its members: a double click). Shift+Enter: the parent.
+    var k = 0;
+    while (k < chain.length - 1) {
+        var f = findComponent(chain[k]);
+        if (!f || f.type !== "@frame") break;
+        k++;
+    }
+    return chain[k];
+}
+
+/** Shift+Enter: the parent of the (single) selected node; Enter: its first child. */
+export function selectParentOrChild(up) {
+    var screen = getActiveScreen();
+    if (!screen || state.selectedIds.length !== 1) return false;
+    var id = state.selectedIds[0];
+    if (up) {
+        var parent = Tree.parentOf(screen, id);
+        if (!parent || !parent.type) return false;
+        selectOnly(parent.id);
+        return true;
+    }
+    var node = Tree.find(screen, id);
+    var kids = node ? Tree.kids(node) : [];
+    if (!kids.length) return false;
+    selectOnly(kids[0].id);
+    return true;
 }
 
 // Double click: one level deeper than the selected node, towards `nodeId`.
