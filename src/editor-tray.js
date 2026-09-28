@@ -334,6 +334,8 @@ export function buildCanvasArea(trayBody, chrome) {
 
 export function registerPagesEditorAction() {
     window.RED.actions.add("nexa:open-pages-editor", function () {
+        // already open: one canvas only
+        if (state.trayContent) return;
         window.RED.tray.show({
             id: "nexa-pages-editor",
             title: "Pages",
@@ -347,6 +349,7 @@ export function registerPagesEditorAction() {
             ],
             open: function (tray) {
                 state.trayContent = tray.find(".red-ui-tray-body");
+                if (state.pagesButton) state.pagesButton.text("Close Pages Canvas");
                 buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
                 ensureScreensLoaded(function () { renderActiveScreen(); });
                 if (state.componentsPane) buildPalette(state.componentsPane);
@@ -358,6 +361,7 @@ export function registerPagesEditorAction() {
             close: function () {
                 window.$(document).off("keydown.nexa");
                 state.trayContent = null;
+                if (state.pagesButton) state.pagesButton.text("Open Pages Canvas");
                 state.artboardEl = null;
                 state.stageEl = null;
                 state.sizerEl = null;

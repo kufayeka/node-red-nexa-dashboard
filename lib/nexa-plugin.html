@@ -32230,6 +32230,7 @@
   }
   function registerPagesEditorAction() {
     window.RED.actions.add("nexa:open-pages-editor", function() {
+      if (state.trayContent) return;
       window.RED.tray.show({
         id: "nexa-pages-editor",
         title: "Pages",
@@ -32245,6 +32246,7 @@
         ],
         open: function(tray) {
           state.trayContent = tray.find(".red-ui-tray-body");
+          if (state.pagesButton) state.pagesButton.text("Close Pages Canvas");
           buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
           ensureScreensLoaded(function() {
             renderActiveScreen();
@@ -32258,6 +32260,7 @@
         close: function() {
           window.$(document).off("keydown.nexa");
           state.trayContent = null;
+          if (state.pagesButton) state.pagesButton.text("Open Pages Canvas");
           state.artboardEl = null;
           state.stageEl = null;
           state.sizerEl = null;
@@ -34655,8 +34658,9 @@
   // src/sidebar/sidebar-content.js
   function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
-    window.$("<button>", { type: "button" }).text("Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" }).on("click", function() {
-      window.RED.actions.invoke("nexa:open-pages-editor");
+    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Pages Canvas" : "Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" }).on("click", function() {
+      if (state.trayContent) window.RED.tray.close();
+      else window.RED.actions.invoke("nexa:open-pages-editor");
     }).appendTo(container);
     var tabsWrap = window.$("<div>").css({ flex: "0 0 auto" }).appendTo(container);
     var ul = window.$("<ul>").appendTo(tabsWrap);
@@ -34748,6 +34752,8 @@
     state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).appendTo(templateRightCol);
     state.sidebarTabs = window.RED.tabs.create({
       element: ul,
+      // many tabs: they keep a readable width and scroll sideways (instead of squeezing)
+      scrollable: true,
       onchange: function(tab) {
         if (!tab) return;
         state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
@@ -34814,6 +34820,14 @@
   }
 
   // src/index.js
+  function widenSidebar(share) {
+    var $2 = window.$, sb = $2 && $2("#red-ui-sidebar");
+    if (!sb || !sb.length) return;
+    var want = Math.min(800, Math.round(window.innerWidth * share));
+    if (sb.width() >= want) return;
+    sb.width(want);
+    if (window.RED.events) window.RED.events.emit("sidebar:resize");
+  }
   registerHistoryRenderers(renderActiveScreen, renderLogicCanvas);
   registerPagesEditorAction();
   if (typeof window.RED !== "undefined" && window.RED.plugins) {
@@ -34827,7 +34841,11 @@
           name: "Nexa Dashboard",
           iconClass: "fa fa-object-group",
           content: buildSidebarContent(),
-          enableOnEdit: true
+          enableOnEdit: true,
+          // this tab needs room: the sidebar opens at least 40 % of the window (Node-RED's max is 800 px)
+          onchange: function() {
+            widenSidebar(0.4);
+          }
         });
       }
     });

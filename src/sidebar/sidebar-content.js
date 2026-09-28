@@ -14,8 +14,12 @@ import { renderThemePanel } from "./theme-panel.js";
 export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
 
-    window.$("<button>", { type: "button" }).text("Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" })
-        .on("click", function () { window.RED.actions.invoke("nexa:open-pages-editor"); })
+    // one canvas: the button opens it, or closes it when it is open
+    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Pages Canvas" : "Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" })
+        .on("click", function () {
+            if (state.trayContent) window.RED.tray.close();
+            else window.RED.actions.invoke("nexa:open-pages-editor");
+        })
         .appendTo(container);
 
     var tabsWrap = window.$("<div>").css({ flex: "0 0 auto" }).appendTo(container);
@@ -104,6 +108,8 @@ export function buildSidebarContent() {
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
+        // many tabs: they keep a readable width and scroll sideways (instead of squeezing)
+        scrollable: true,
         onchange: function (tab) {
             if (!tab) return;
             // componentsPane/eventsPane are display:flex (see their creation

@@ -6,6 +6,17 @@ import { registerPagesEditorAction } from "./editor-tray.js";
 import { buildSidebarContent } from "./sidebar/sidebar-content.js";
 import { loadAssets } from "./assets-client.js";
 
+// The Node-RED sidebar, at least `share` of the window (up to its 800 px): no dragging it
+// wider each time the Nexa tab is opened. Narrower is left as the user made it wider.
+function widenSidebar(share) {
+    var $ = window.$, sb = $ && $("#red-ui-sidebar");
+    if (!sb || !sb.length) return;
+    var want = Math.min(800, Math.round(window.innerWidth * share));
+    if (sb.width() >= want) return;
+    sb.width(want);
+    if (window.RED.events) window.RED.events.emit("sidebar:resize");
+}
+
 // Wires undo/redo (history.js) back to the actual canvas renderers.
 // history.js takes these as injected callbacks rather than importing
 // canvas-ui.js/logic-nodes.js directly to avoid a circular import; without
@@ -36,7 +47,9 @@ if (typeof window.RED !== "undefined" && window.RED.plugins) {
                 name: "Nexa Dashboard",
                 iconClass: "fa fa-object-group",
                 content: buildSidebarContent(),
-                enableOnEdit: true
+                enableOnEdit: true,
+                // this tab needs room: the sidebar opens at least 40 % of the window (Node-RED's max is 800 px)
+                onchange: function () { widenSidebar(0.4); }
             });
         }
     });
