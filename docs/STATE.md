@@ -140,11 +140,22 @@ up; drag it into the Logic canvas.
 
 | Mode | Does |
 | --- | --- |
-| **replace** | By key: copies are kept, updated, added or removed, then ordered as given. Without a key, everything is replaced. |
-| **append** / **prepend** | Adds copies at the end / start. |
+| **replace** | The list becomes the items, by key: a copy whose key is still there is kept (and updated), a new one is added, a gone one is removed, then all are ordered as given. Use it for "show these", e.g. a product's images. |
+| **append** / **prepend** | Always adds copies at the end / start, even for an item already there. |
 | **update by key** | Updates a copy in place (not re-created), or adds it when new. |
 | **remove by key** | Removes copies. |
 | **clear** | Removes all copies. |
+
+**The key** of an item:
+
+- An object: its key field (Key = `id`: `{id: 7, …}` is 7). Objects without it are all new on each replace.
+- A string or a number, e.g. an image URL from `product.images`: **the value itself**. The same URL keeps its copy, and the same value twice gives two copies.
+
+**Populate → Populate → Layout**: a Populate without a frame of its own passes what it does on (`msg.populate`); the next Populate adds its own. The Layout node runs both, in order. Clear → Append, for example, empties the frame and then fills it. Replace alone does the same in one node.
+
+```
+[Param Input] → [Function: msg.payload = vars.get("param1").images] → [Populate: Slide → param1, replace] → [Layout: Carousel]
+```
 
 **The template declares a param** (Templates tab → Parameters, e.g.
 `product`). Populate chooses the param each item goes into; inside, bind

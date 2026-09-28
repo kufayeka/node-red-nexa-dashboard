@@ -35,6 +35,10 @@ window.__NEXA_TEMPLATES__ = [{ id: "CARD", name: "ProductCard", width: 300, heig
 // a template that fills the width it is given (at most 300 px): its label keeps to both edges
 window.__NEXA_TEMPLATES__.push({ id: "WIDE", name: "Wide", width: 120, height: 30, live: { w: "fill", maxW: 300 }, params: [{ id: "wp", name: "product", label: "product", type: "object", defaultValue: {} }],
   components: [{ id: "t", type: "label", x: 0, y: 0, w: 120, h: 20, constraints: { h: "leftRight", v: "top" }, props: { text: "{product.name}" } }], logic: { nodes: [], wires: [] } });
+// an image slide: the item is a string (a URL), not an object
+window.__NEXA_TEMPLATES__.push({ id: "IMG", name: "Slide", width: 200, height: 40, params: [{ id: "up", name: "url", label: "url", type: "string", defaultValue: "" }],
+  components: [{ id: "t", type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: "{url}" } }], logic: { nodes: [], wires: [] } });
+function img(id, mode) { return { id: id, type: "populate", template: "IMG", itemParam: "url", key: "id", mode: mode, valueSource: "payload" }; }
 function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", itemParam: "product", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
 window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
   components: [
@@ -44,6 +48,7 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
     { id: "wideCol", type: "@frame", name: "Wide", x: 360, y: 540, w: 400, h: 100, layout: { mode: "vertical", gap: 4 }, children: [] },
     { id: "rowB", type: "@frame", name: "Row", x: 10, y: 480, w: 700, h: 50, layout: { mode: "horizontal", gap: 4 }, children: [] },
     { id: "ctl", type: "btn", x: 400, y: 0, w: 10, h: 10, props: {} },
+    { id: "gal", type: "@frame", name: "Gallery", x: 400, y: 200, w: 200, h: 60, layout: { mode: "carousel", carousel: { perView: 1, arrows: false, dots: false } }, style: { clip: true }, children: [] },
     { id: "last", type: "label", x: 400, y: 40, w: 200, h: 20, props: { text: "{lastBought}" } },
     { id: "vOut", type: "label", x: 750, y: 0, w: 200, h: 20, props: { text: "{lastOut}" } },
     { id: "vInst", type: "label", x: 750, y: 20, w: 200, h: 20, props: { text: "{lastInst}" } },
@@ -59,11 +64,17 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
     // no container of its own: fan out into two Layout nodes (two rows, same data)
     { id: "e7", type: "ui-event", compId: "ctl", event: "wide" }, node("p7", "replace", { container: "wideCol", template: "WIDE" }),
     { id: "e6", type: "ui-event", compId: "ctl", event: "both" }, node("p6", "append", { container: "" }),
+    // strings into a carousel: replace / append, and Clear -> Append in a row into one Layout node
+    { id: "g1", type: "ui-event", compId: "ctl", event: "imgReplace" }, img("gp1", "replace"),
+    { id: "g2", type: "ui-event", compId: "ctl", event: "imgAppend" }, img("gp2", "append"),
+    { id: "g3", type: "ui-event", compId: "ctl", event: "imgReset" }, img("gp3", "clear"), img("gp4", "append"),
+    { id: "lG", type: "layout", container: "gal" },
     { id: "lA", type: "layout", container: "rowA" }, { id: "lB", type: "layout", container: "rowB" },
     { id: "fOut", type: "function", code: "setVariable('lastOut', msg.output + ':' + msg.item.name + '@' + msg.index, '@app'); return msg;" },
     { id: "tI", type: "template-event", instanceId: "inst", output: "remove" }, { id: "fI", type: "function", code: "setVariable('lastInst', msg.output, '@app'); return msg;" },
     { id: "tX", type: "template-event", instanceId: "inst", output: "other" }, { id: "fX", type: "function", code: "setVariable('lastOther', 'fired', '@app'); return msg;" }
-  ], wires: [W("lA", "fOut"), W("tI", "fI"), W("tX", "fX"), W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p6", "lA"), W("p6", "lB")] } };
+  ], wires: [W("lA", "fOut"), W("tI", "fI"), W("tX", "fX"), W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p6", "lA"), W("p6", "lB"),
+    W("g1", "gp1"), W("gp1", "lG"), W("g2", "gp2"), W("gp2", "lG"), W("g3", "gp3"), W("gp3", "gp4"), W("gp4", "lG")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

@@ -8,7 +8,7 @@ import { renderLogicCanvas } from "../logic/logic-nodes.js";
 // event from inside it carries msg.item / msg.index.
 var MODES = [
     ["replace", "Replace the list (kept / updated / added / removed by key)"],
-    ["append", "Append"], ["prepend", "Prepend"],
+    ["append", "Append (always adds)"], ["prepend", "Prepend (always adds)"],
     ["upsert", "Update by key (add when new)"],
     ["remove", "Remove by key"], ["clear", "Clear"]
 ];
@@ -102,7 +102,7 @@ export function openPopulateNodeEditor(node) {
             fillParams();
             label("Mode");
             select("mode", MODES);
-            label("Key (the item field that identifies it, e.g. id; empty = by position)");
+            label("Key (the item field that identifies it, e.g. id; a string / number item — an image URL — is its own key)");
             window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.key).appendTo(body).on("change", function () { d.key = this.value.trim(); });
             label("Items");
             var srcSel = select("valueSource", [["payload", "msg.payload"], ["msg", "A msg property…"], ["static", "A fixed list (JSON)"]], function () { sync(); });

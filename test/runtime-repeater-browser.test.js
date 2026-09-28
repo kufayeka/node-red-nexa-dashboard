@@ -3,7 +3,7 @@
 // The repeater on a deployed page, in headless Chrome: the "Populate" Logic
 // node fills a column frame with a template, one card per item — each item
 // passed into the param the template declares ("product"), plus index — keyed by id — replace, upsert (the same card updated in
-// place), remove, prepend, reorder, clear — and each card's own Logic runs per
+// place), remove, prepend, reorder, clear; strings (image URLs) as their own key, append that always adds, Populate -> Populate (Clear -> Append) — and each card's own Logic runs per
 // card: a Buy button inside it gets msg.item, and its HTTP Request posts {item}.
 // Needs `npm run build`.   node test/runtime-repeater-browser.test.js   (skipped without Chrome)
 
@@ -84,6 +84,29 @@ async function main() {
                 await click('inst::buy');
                 assert.strictEqual(await text('vInst'), 'remove', 'a placed instance: its On Template Output node for that output');
                 assert.strictEqual(await text('vOther'), '', 'the node listening to another output did not fire');
+            });
+            // the slides of the carousel, in order: their text
+            const slides = () => js(`Array.from(document.querySelectorAll('[data-id^="gal#"]')).filter(function (e) { return /#[^:]*$/.test(e.getAttribute("data-id")); }).map(function (e) { return e.textContent; })`);
+            await ok('strings (image URLs) replace: each is its own key — the same one kept, a new one added, a gone one removed; twice = two slides', async () => {
+                await send('imgReplace', ['a.png', 'b.png']);
+                assert.deepStrictEqual(await slides(), ['a.png', 'b.png']);
+                await js(`(function () { window.__slideB = document.querySelector('[data-id="gal#b_png"]'); return 1; })()`);
+                await send('imgReplace', ['b.png', 'c.png']);
+                assert.deepStrictEqual(await slides(), ['b.png', 'c.png']);
+                assert.strictEqual(await js(`window.__slideB === document.querySelector('[data-id="gal#b_png"]')`), true, 'b kept, not re-created');
+                await send('imgReplace', ['c.png', 'c.png']);
+                assert.deepStrictEqual(await slides(), ['c.png', 'c.png']);
+                await send('imgReplace', []);
+                assert.deepStrictEqual(await slides(), []);
+            });
+            await ok('append always adds (the same value again too); Clear -> Append in a row: both, in order', async () => {
+                await send('imgAppend', ['d.png']);
+                await send('imgAppend', ['d.png', 'e.png']);
+                assert.deepStrictEqual(await slides(), ['d.png', 'd.png', 'e.png']);
+                await send('imgReset', ['x.png', 'y.png']);
+                assert.deepStrictEqual(await slides(), ['x.png', 'y.png'], 'cleared first, then appended');
+                await send('imgReset', ['z.png']);
+                assert.deepStrictEqual(await slides(), ['z.png']);
             });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;

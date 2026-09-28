@@ -29540,8 +29540,8 @@
   // src/dialogs/populate-dialog.js
   var MODES = [
     ["replace", "Replace the list (kept / updated / added / removed by key)"],
-    ["append", "Append"],
-    ["prepend", "Prepend"],
+    ["append", "Append (always adds)"],
+    ["prepend", "Prepend (always adds)"],
     ["upsert", "Update by key (add when new)"],
     ["remove", "Remove by key"],
     ["clear", "Clear"]
@@ -29681,7 +29681,7 @@
         fillParams2();
         label("Mode");
         select("mode", MODES);
-        label("Key (the item field that identifies it, e.g. id; empty = by position)");
+        label("Key (the item field that identifies it, e.g. id; a string / number item \u2014 an image URL \u2014 is its own key)");
         window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.key).appendTo(body).on("change", function() {
           d.key = this.value.trim();
         });
