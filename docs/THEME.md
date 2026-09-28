@@ -4,11 +4,18 @@ The app's theme is a set of **design tokens**: named values that screens, frames
 
 Edit it in the sidebar's **Theme** tab. The model is `src/model/theme.js`.
 
+The default theme is Nexa's look, based on **IBM Carbon**:
+- the Carbon palettes (primary: Blue 60 `#0f62fe`, the Carbon grays);
+- Carbon's White theme (light) and Gray 100 theme (dark);
+- IBM Plex Sans / Mono fonts, which the Nexa UI plugin provides;
+- Carbon's type scale and motion;
+- a small 4px corner radius.
+
 ## 1. Tokens
 
 | Category | Path | Example |
 | --- | --- | --- |
-| Palettes | `colors.<palette>.<50 … 950>` | `colors.blue.500` = `#3b82f6` |
+| Palettes | `colors.<palette>.<50 … 950>` | `colors.blue.600` = `#0f62fe` (Carbon Blue 60) |
 | Base colours | `colors.white`, `colors.black`, `colors.transparent`, `colors.current` | |
 | Fonts | `fonts.heading` / `body` / `mono` | |
 | Font sizes (px) | `fontSizes.2xs` … `7xl` | `fontSizes.lg` = 18 |
@@ -86,7 +93,7 @@ Everything comes from the SDK:
 ```js
 import { defineComponent, NexaElement, html, css, theme } from "../../nexa-sdk/nexa-component-sdk.js";
 
-theme.token("colors.primary.solid");   // "#2563eb" (in the current mode)
+theme.token("colors.primary.solid");   // "#0f62fe" (in the current mode)
 theme.cssVar("colors.bg.subtle");      // "var(--nexa-colors-bg-subtle)"
 theme.mode();                          // "light" | "dark"
 theme.list("fontSizes");               // [{ path, category, light, dark, semantic }]

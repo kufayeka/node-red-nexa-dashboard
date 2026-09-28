@@ -559,8 +559,8 @@ async function main() {
             })()`);
             assert.deepStrictEqual(r.buttons, [true, true, false]);
             assert.strictEqual(r.listed, true);
-            assert.strictEqual(r.chip.replace(/\s/g, ''), 'colors.primary.solid#2563eb');
-            assert.deepStrictEqual(r.calls, [['color', '{token:colors.primary.solid}'], ['color', '#2563eb']]);
+            assert.strictEqual(r.chip.replace(/\s/g, ''), 'colors.primary.solid#0f62fe');
+            assert.deepStrictEqual(r.calls, [['color', '{token:colors.primary.solid}'], ['color', '#0f62fe']]);
         });
 
         await ok('no JavaScript errors or warnings in the page', async () => {
