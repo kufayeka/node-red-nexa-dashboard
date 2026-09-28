@@ -8,7 +8,7 @@
 // The kit edits a flat view of the node; each change is written back into the
 // node (src/model/layout.js) as one undo step, then the screen re-renders (the
 // browser re-flows the layout, see canvas/layout-readback.js).
-import { getActiveScreen, markDirty, Tree, Layout, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, markDirty, Tree, Layout, isNodeLocked } from "../state.js";
 import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen, redrawCanvas } from "../canvas/canvas-ui.js";
 import { selectOnly } from "../canvas/selection.js";
@@ -17,7 +17,7 @@ import { responsiveHost } from "../canvas/breakpoints-ui.js";
 
 // What a breakpoint may change (src/model/breakpoints.js OVERRIDABLE): not the zoom, not
 // the variable a carousel's slide goes to
-function framePartVaries(key) { return !/^z[A-Z]/.test(key) && key !== "cIndex"; }
+function framePartVaries(key) { return !/^z[A-Z]/.test(key) && key !== "cIndex" && key !== "oPreview"; }
 
 var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
 var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
@@ -78,6 +78,26 @@ var FRAME_META = {
         iPadX: prop("iPadX", "number", "Padding ↔", { min: 0, unit: "px" }),
         iPadY: prop("iPadY", "number", "Padding ↕", { min: 0, unit: "px" }),
         iAlign: prop("iAlign", "align", "Align in the slide"),
+        // shown as a dialog / drawer over its scope (frame.overlay, src/model/layout.js overlayOf)
+        oKind: prop("oKind", "enum", "Show as", { options: [
+            { value: "none", label: "In place", icon: "fa fa-square-o" },
+            { value: "dialog", label: "Dialog", icon: "fa fa-window-maximize" },
+            { value: "drawer", label: "Drawer", icon: "fa fa-columns" }] }),
+        oPreview: prop("oPreview", "boolean", "Preview on the canvas (the editor only)"),
+        oSide: prop("oSide", "enum", "Side", { options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }] }),
+        oAlign: prop("oAlign", "align", "Where it opens"),
+        oMargin: prop("oMargin", "number", "Margin from the edges", { min: 0, unit: "px" }),
+        oBackdrop: prop("oBackdrop", "enum", "Backdrop", { options: [{ value: "dim", label: "Dim" }, { value: "blur", label: "Blur" }, { value: "none", label: "None" }] }),
+        oOpacity: prop("oOpacity", "number", "Backdrop darkness", { min: 0, max: 100, step: 5, unit: "%" }),
+        oModal: prop("oModal", "boolean", "Modal: what is behind it cannot be used"),
+        oCloseBackdrop: prop("oCloseBackdrop", "boolean", "Close on a click on the backdrop"),
+        oCloseEsc: prop("oCloseEsc", "boolean", "Close on Esc"),
+        oAutoClose: prop("oAutoClose", "number", "Close by itself after", { min: 0, step: 500, unit: "ms", help: "0 = stays open" }),
+        oDraggable: prop("oDraggable", "boolean", "Draggable"),
+        oDragWithin: prop("oDragWithin", "enum", "Drag", { options: [{ value: "scope", label: "Inside its scope" }, { value: "page", label: "Anywhere" }] }),
+        oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide" }, { value: "none", label: "None" }] }),
+        oDuration: prop("oDuration", "number", "Duration", { min: 0, step: 50, unit: "ms" }),
+        oStartOpen: prop("oStartOpen", "boolean", "Open when the page opens"),
         scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
             { value: "none", label: "No scrolling" }, { value: "vertical", label: "Vertical" },
             { value: "horizontal", label: "Horizontal" }, { value: "both", label: "Both directions" }] })
@@ -103,6 +123,7 @@ var CHILD_META = {
 
 function frameView(frame) {
     var l = Layout.layoutOf(frame), s = Layout.styleOf(frame);
+    var ov = Layout.overlayOf(frame), ovs = ov || Layout.OVERLAY_DEFAULT;
     return {
         x: frame.x, y: frame.y, w: frame.w, h: frame.h,
         mode: l.mode, sizeW: l.sizeW, sizeH: l.sizeH,
@@ -118,13 +139,19 @@ function frameView(frame) {
         zEnabled: !!(frame.zoom && frame.zoom.enabled), zMin: Math.round(zoomSettings(frame).min * 100), zMax: Math.round(zoomSettings(frame).max * 100),
         zStart: zoomSettings(frame).start, zWheel: zoomSettings(frame).wheel === "always", zControls: !!zoomSettings(frame).controls,
         zDbl: zoomSettings(frame).dblclick !== false,
-        iPadX: l.items.padX, iPadY: l.items.padY, iAlign: { x: l.items.alignX, y: l.items.alignY }
+        iPadX: l.items.padX, iPadY: l.items.padY, iAlign: { x: l.items.alignX, y: l.items.alignY },
+        oKind: ov ? ov.kind : "none", oPreview: !!state.overlayPreview[frame.id],
+        oSide: ovs.side, oAlign: { x: ovs.alignX, y: ovs.alignY }, oMargin: ovs.margin, oBackdrop: ovs.backdrop,
+        oOpacity: Math.round(ovs.backdropOpacity * 100), oModal: !!ovs.modal, oCloseBackdrop: !!ovs.closeOnBackdrop, oCloseEsc: !!ovs.closeOnEsc,
+        oAutoClose: ovs.autoClose, oDraggable: !!ovs.draggable, oDragWithin: ovs.dragWithin, oAnimation: (frame.overlay && frame.overlay.animation) || "auto",
+        oDuration: ovs.duration, oStartOpen: !!ovs.startOpen
     };
 }
 
 function zoomSettings(frame) { return Object.assign({}, Layout.ZOOM_DEFAULT, frame.zoom || {}); }
 
 function writeFrame(frame, key, v) {
+    if (/^o[A-Z]/.test(key)) { writeOverlay(frame, key, v); return; }
     if (/^z[A-Z]/.test(key)) {
         var z = zoomSettings(frame);
         if (key === "zEnabled") z.enabled = !!v;
@@ -177,6 +204,41 @@ function writeFrame(frame, key, v) {
     }
     frame.layout = layout;
     frame.style = style;
+}
+
+// frame.overlay from the inspector's o* keys
+function writeOverlay(frame, key, v) {
+    if (key === "oPreview") return;   // editor state, not the frame (renderFrameInspector)
+    if (key === "oKind") {
+        if (v === "none") { delete frame.overlay; return; }
+        frame.overlay = Object.assign({}, frame.overlay || {}, { kind: v });
+        return;
+    }
+    if (!frame.overlay) return;
+    var o = Object.assign({}, frame.overlay);
+    switch (key) {
+        case "oSide": {
+            // the drawer's thickness moves to the other axis when it changes sides that way
+            var was = Layout.overlayOf(frame).side, hz = function (s) { return s === "left" || s === "right"; };
+            if (hz(was) !== hz(v)) { var t = hz(was) ? frame.w : frame.h; if (hz(v)) frame.w = t; else frame.h = t; }
+            o.side = v;
+            break;
+        }
+        case "oAlign": o.alignX = v.x; o.alignY = v.y; break;
+        case "oMargin": o.margin = Math.max(0, Number(v) || 0); break;
+        case "oBackdrop": o.backdrop = v; break;
+        case "oOpacity": o.backdropOpacity = Math.min(100, Math.max(0, Number(v) || 0)) / 100; break;
+        case "oModal": o.modal = !!v; break;
+        case "oCloseBackdrop": o.closeOnBackdrop = !!v; break;
+        case "oCloseEsc": o.closeOnEsc = !!v; break;
+        case "oAutoClose": o.autoClose = Math.max(0, Number(v) || 0); break;
+        case "oDraggable": o.draggable = !!v; break;
+        case "oDragWithin": o.dragWithin = v; break;
+        case "oAnimation": o.animation = v; break;
+        case "oDuration": o.duration = Math.max(0, Number(v) || 0); break;
+        case "oStartOpen": o.startOpen = !!v; break;
+    }
+    frame.overlay = o;
 }
 
 function childView(node) {
@@ -256,6 +318,21 @@ export function renderFrameInspector(container, frame) {
                     <nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>
                     <nx-row><nx-number ${bind("w")} ?disabled="${auto && p.sizeW === "hug"}"></nx-number><nx-number ${bind("h")} ?disabled="${auto && p.sizeH === "hug"}"></nx-number></nx-row>
                 </nx-section>
+                <nx-section heading="Overlay" persist-key="nexa-frame:overlay">
+                    <nx-segmented ${bind("oKind")}></nx-segmented>
+                    ${p.oKind === "none" ? html`<div class="nx-help">A Dialog or a Drawer opens over its scope — the page, or the frame it is in — when a Logic "Open" node runs, and closes by its backdrop, Esc, a timer or a "Close" node.</div>` : html`
+                        <nx-checkbox ${bind("oPreview")}></nx-checkbox>
+                        ${p.oKind === "drawer" ? html`<nx-segmented ${bind("oSide")}></nx-segmented>` : html`<nx-row><nx-align ${bind("oAlign")}></nx-align><nx-number ${bind("oMargin")}></nx-number></nx-row>`}
+                        <nx-row><nx-select ${bind("oBackdrop")}></nx-select>${p.oBackdrop !== "none" ? html`<nx-number ${bind("oOpacity")}></nx-number>` : nothing}</nx-row>
+                        <nx-checkbox ${bind("oModal")}></nx-checkbox>
+                        <nx-checkbox ${bind("oCloseBackdrop")}></nx-checkbox>
+                        <nx-checkbox ${bind("oCloseEsc")}></nx-checkbox>
+                        <nx-number ${bind("oAutoClose")}></nx-number>
+                        <nx-row><nx-checkbox ${bind("oDraggable")}></nx-checkbox>${p.oDraggable ? html`<nx-select ${bind("oDragWithin")}></nx-select>` : nothing}</nx-row>
+                        <nx-row><nx-select ${bind("oAnimation")}></nx-select><nx-number ${bind("oDuration")}></nx-number></nx-row>
+                        <nx-checkbox ${bind("oStartOpen")}></nx-checkbox>
+                        <div class="nx-help">Logic (Events tab → Overlays): <b>Open</b> it — its output fires when it closes, msg.payload = the result, msg.closedBy = backdrop / esc / timer / node; <b>Close</b> it with msg.payload as the result; <b>on Open / on Close</b> events. Its size: W × H (a drawer: its width, or height for Top / Bottom).</div>`}
+                </nx-section>
                 <nx-section heading="Auto layout" persist-key="nexa-frame:layout">
                     <nx-segmented ${bind("mode")} icons-only></nx-segmented>
                     ${auto ? html`
@@ -307,7 +384,12 @@ export function renderFrameInspector(container, frame) {
         }
     });
     mountLive(container, meta, "nexa-frame", function () { return frameView(frame); },
-        function (key, v) { commit(frame, function () { writeFrame(frame, key, v); }); },
+        function (key, v) {
+            // the canvas preview is the editor's, not the frame's; a new overlay starts shown
+            if (key === "oPreview" || (key === "oKind" && v !== "none")) state.overlayPreview[frame.id] = key === "oPreview" ? !!v : true;
+            if (key === "oPreview") { renderActiveScreen(); selectOnly(frame.id); return; }
+            commit(frame, function () { writeFrame(frame, key, v); }, key === "oKind" || key === "oSide");
+        },
         { node: frame, parent: Tree.parentOf(getActiveScreen(), frame.id), view: frameView, write: writeFrame, canVary: framePartVaries });
     return true;
 }

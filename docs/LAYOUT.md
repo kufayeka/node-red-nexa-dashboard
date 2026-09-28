@@ -67,12 +67,14 @@ migration lives in `src/model/migrate.js` and is idempotent:
 - Old groups become "Group N".
 - Nothing moves on screen.
 
-## 2. Selecting and arranging (Figma rules)
+## 2. Selecting and arranging
 
 | Action | Result |
 | --- | --- |
-| Click | Selects the outermost unselected node under the pointer (a whole group first). |
+| Hover | Outlines what a click would select, with its name. |
+| Click | Selects the component or template instance under the pointer, through the frames around it (like Webflow / Framer). A frame's own empty area (padding, gap) selects the frame. A group is selected whole. With something selected, a click keeps to its depth (a sibling of it). |
 | Double-click | Dives one level into the selected container. |
+| `Shift+Enter` / `Enter` | Selects the parent / the first child. |
 | Ctrl / Cmd + click | Selects the deepest node directly. |
 | Shift + click | Adds to / removes from the selection. |
 | `Ctrl+G` | Group the selected siblings. |
@@ -188,13 +190,6 @@ constraints = {
   - Properties → **Box**: X, Y, W, H and "Content in this box" (the template's setting, or its own);
   - it clips its content.
 
-**Selecting on the canvas** (like Webflow / Framer):
-
-- **A click selects what is under the pointer**: a component or a template instance, through the frames around it.
-- **A frame's own empty area** (padding, gap) selects the frame.
-- **A group stays one thing.** Double-click goes into it.
-- **Shift+Enter** selects the parent, **Enter** the first child, **Ctrl/Cmd+click** the deepest node.
-- **Hovering outlines what a click would select**, with its name.
 
 **When its box is another size** (filling, or a resized instance), the template's content does one of three things. The editor's canvas and the live page do the same:
 
@@ -239,6 +234,54 @@ It goes into frames without an auto layout too. Undo with Ctrl+Z.
 - A frame's scrollbar can be hidden: Fill & stroke → Hide the scrollbar. It still scrolls.
 
 Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, `test/runtime-carousel-browser.test.js`, `test/runtime-virtual-browser.test.js`.
+
+## 4d. Dialogs and drawers (overlays)
+
+**A frame becomes a dialog or a drawer** in Properties → **Overlay → Show as**. It keeps everything else a frame has: auto layout, style and variables. It can hold a template instance.
+
+**Its scope is its parent.** A root node's scope is the page (the window). A node inside a frame has that frame as its scope, so every container can have its own dialogs and drawers. The scope is where:
+
+- the backdrop covers;
+- a dialog is placed;
+- a drawer runs along;
+- dragging is kept.
+
+**Placement**:
+
+- **Dialog**: by its alignment (9 points) and a margin from the edges, at its W × H.
+- **Drawer**: along one side (left, right, top or bottom). Its width (height for top / bottom) is W (H), and it spans the scope on the other axis.
+
+**Settings**:
+
+- the **backdrop**: Dim, Blur or None, and how dark it is;
+- **Modal**: what is behind it cannot be used. Not modal with no backdrop, the page behind stays usable;
+- **how it closes**: a click on the backdrop, Esc, and a timer ("close by itself after").
+- **draggable**, inside its scope or anywhere, by any part that is not a control;
+- the **animation**: Auto (a dialog scales, a drawer slides), Scale, Fade, Slide or None, and its duration;
+- **open when the page opens**.
+
+Everything except the preview can differ per breakpoint (📱). For example, a dialog 600 wide on the desktop is full width at xs, or a drawer comes from the right on the desktop and from the bottom on a phone.
+
+**Logic** (Events tab → Overlays):
+
+| Node / event | Does |
+| --- | --- |
+| **Open …** | Opens it, on top of any open one: dialogs stack. Opened again while it is open, it comes to the top and this Open node gets the result. **Its output fires when it closes**, with `msg.payload` = the result and `msg.closedBy` = `node` / `backdrop` / `esc` / `timer`. |
+| **Close …** | Closes it with `msg.payload` as the result (or none: `null`). "Close the top overlay" closes the one on top. |
+| **… on Open** / **… on Close** | Its events. `msg.payload` is what it was opened with, or its result. |
+
+For example, a form dialog: `Button Edit → Open Edit dialog → [saved?] → HTTP POST`. Inside the dialog, `Save → Function (msg.payload = the fields) → Close Edit dialog`.
+
+**The stack**: Esc closes the top one first. A modal one on top keeps Esc from the ones below.
+
+**In the editor** a dialog / drawer is hidden on the canvas until you preview it:
+
+- **Overlay → Preview on the canvas** (the editor only);
+- or **pick it (or something in it) in the Hierarchy**.
+
+It shows where the page opens it, over its backdrop.
+
+**The data**: `frame.overlay = { kind: "dialog" | "drawer", alignX, alignY, margin, side, backdrop, backdropOpacity, modal, closeOnBackdrop, closeOnEsc, autoClose, draggable, dragWithin, animation, duration, startOpen }`. See `src/model/layout.js` `overlayOf`. Tests: `test/runtime-overlay-browser.test.js`.
 
 ## 4c. Breakpoints (desktop-first)
 

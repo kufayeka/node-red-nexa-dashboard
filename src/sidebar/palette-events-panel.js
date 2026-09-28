@@ -64,6 +64,8 @@ function getLogicNodeMeta(type) {
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
+    if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
+    if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -430,6 +432,19 @@ export function renderEventsPanel() {
         }
         return false;
     }
+
+    // dialogs / drawers: Open (its output: when it closes, with the result) / Close / their events
+    var overlays = screen ? Tree.allNodes(screen).filter(function (n) { return !!Layout.overlayOf(n); }) : [];
+    sectionHeader(state.eventsPane, "Overlays (dialogs, drawers)");
+    overlays.forEach(function (o) {
+        var label = (o.name || (Layout.overlayOf(o).kind === "drawer" ? "Drawer" : "Dialog")) + " #" + o.id.slice(-4);
+        chip(state.eventsPane, "Open " + label, function () { return { type: "overlay-open", overlay: o.id }; }, o.id, "overlay-open");
+        chip(state.eventsPane, "Close " + label, function () { return { type: "overlay-close", overlay: o.id, valueSource: "payload" }; }, o.id, "overlay-close");
+        chip(state.eventsPane, label + " → on Open", function () { return { type: "ui-event", compId: o.id, event: "open" }; }, o.id, "ui-event");
+        chip(state.eventsPane, label + " → on Close", function () { return { type: "ui-event", compId: o.id, event: "close" }; }, o.id, "ui-event");
+    });
+    chip(state.eventsPane, "Close the top overlay", function () { return { type: "overlay-close", overlay: "", valueSource: "payload" }; }, "", "overlay-close");
+    if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties → Overlay → Show as.").appendTo(state.eventsPane);
 
     // every frame: a Layout node to wire a Populate into (selecting the frame on the canvas highlights it)
     var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];

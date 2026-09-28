@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>overlays</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Dialogs / drawers on a deployed page (test/runtime-overlay-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:600px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+function label(id, x, y, w, h, text) { return { id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: text || id } }; }
+function btn(id, x, y) { return { id: id, type: "btn", x: x, y: y, w: 60, h: 24, props: { text: id } }; }
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+var quick = { animation: "none", duration: 0 };
+window.__NEXA_APP__ = { variables: [{ id: "r", name: "result", type: "string", defaultValue: "" }, { id: "ow", name: "openedWith", type: "string", defaultValue: "" }] };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, orphans: [],
+  components: [
+    btn("ctl", 0, 0),
+    label("res", 100, 0, 300, 20, "{result}"),
+    label("ow", 420, 0, 300, 20, "{openedWith}"),
+    // a frame the drawer opens in (its scope)
+    { id: "panel", type: "@frame", name: "Panel", x: 500, y: 100, w: 400, h: 300, style: { fill: "#eee" }, children: [
+      label("pl", 10, 10, 100, 20, "panel"),
+      { id: "drw", type: "@frame", name: "Drawer", x: 0, y: 0, w: 150, h: 100, style: { fill: "#fff" }, overlay: Object.assign({ kind: "drawer", side: "right" }, quick), children: [label("dt", 10, 10, 100, 20, "drawer")] }
+    ] },
+    // a dialog on the page: a button inside closes it with a result
+    { id: "dlg", type: "@frame", name: "Dialog", x: 0, y: 0, w: 300, h: 200, style: { fill: "#fff" }, overlay: Object.assign({ kind: "dialog" }, quick), children: [
+      label("dl", 10, 10, 200, 20, "dialog"), btn("ok", 10, 100)
+    ] },
+    // a second one on top of it
+    { id: "dlg2", type: "@frame", name: "Second", x: 0, y: 0, w: 200, h: 100, style: { fill: "#fff" }, overlay: Object.assign({ kind: "dialog", alignX: "end", alignY: "start", margin: 20 }, quick), children: [] },
+    // closes by itself
+    { id: "tmr", type: "@frame", name: "Timed", x: 0, y: 0, w: 120, h: 60, overlay: Object.assign({ kind: "dialog", autoClose: 250, backdrop: "none", modal: false }, quick), children: [] },
+    // draggable, inside its scope (the page)
+    { id: "drg", type: "@frame", name: "Drag", x: 0, y: 0, w: 200, h: 100, style: { fill: "#fff" }, overlay: Object.assign({ kind: "dialog", draggable: true }, quick), children: [label("dg", 10, 10, 100, 20, "drag me")] },
+    // animated (scale), to see it settle
+    { id: "anim", type: "@frame", name: "Anim", x: 0, y: 0, w: 100, h: 50, overlay: { kind: "dialog", duration: 120 }, children: [] }
+  ],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ctl", event: "open" }, { id: "o1", type: "overlay-open", overlay: "dlg" },
+    { id: "f1", type: "function", code: "setVariable('result', JSON.stringify(msg.payload) + ':' + msg.closedBy, '@app'); return msg;" },
+    { id: "e2", type: "ui-event", compId: "ok", event: "click" }, { id: "f2", type: "function", code: "msg.payload = 'saved'; return msg;" },
+    { id: "c1", type: "overlay-close", overlay: "dlg", valueSource: "payload" },
+    { id: "e3", type: "ui-event", compId: "ctl", event: "open2" }, { id: "o2", type: "overlay-open", overlay: "dlg2" },
+    { id: "f3", type: "function", code: "setVariable('result', 'second:' + msg.closedBy, '@app'); return msg;" },
+    { id: "e4", type: "ui-event", compId: "ctl", event: "drawer" }, { id: "o4", type: "overlay-open", overlay: "drw" },
+    { id: "e5", type: "ui-event", compId: "ctl", event: "timed" }, { id: "o5", type: "overlay-open", overlay: "tmr" },
+    { id: "f5", type: "function", code: "setVariable('result', 'timed:' + msg.closedBy, '@app'); return msg;" },
+    { id: "e6", type: "ui-event", compId: "ctl", event: "drag" }, { id: "o6", type: "overlay-open", overlay: "drg" },
+    { id: "e7", type: "ui-event", compId: "ctl", event: "top" }, { id: "c7", type: "overlay-close", overlay: "", valueSource: "none" },
+    { id: "e8", type: "ui-event", compId: "ctl", event: "anim" }, { id: "o8", type: "overlay-open", overlay: "anim" },
+    // its On Open event: what it was opened with
+    { id: "ev", type: "ui-event", compId: "dlg", event: "open" }, { id: "fv", type: "function", code: "setVariable('openedWith', String(msg.payload), '@app'); return msg;" }
+  ], wires: [W("e1", "o1"), W("o1", "f1"), W("e2", "f2"), W("f2", "c1"), W("e3", "o2"), W("o2", "f3"), W("e4", "o4"), W("e5", "o5"), W("o5", "f5"),
+    W("e6", "o6"), W("e7", "c7"), W("e8", "o8"), W("ev", "fv")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

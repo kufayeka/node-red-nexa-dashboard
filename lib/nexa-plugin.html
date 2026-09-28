@@ -420,6 +420,8 @@
     H_CONSTRAINTS: () => H_CONSTRAINTS,
     ITEMS_DEFAULT: () => ITEMS_DEFAULT,
     LAYOUT_MODES: () => LAYOUT_MODES,
+    OVERLAY_DEFAULT: () => OVERLAY_DEFAULT,
+    OVERLAY_KINDS: () => OVERLAY_KINDS,
     TEMPLATE_CONTENT_MODES: () => TEMPLATE_CONTENT_MODES,
     TEMPLATE_LIVE_DEFAULT: () => TEMPLATE_LIVE_DEFAULT,
     V_CONSTRAINTS: () => V_CONSTRAINTS,
@@ -443,6 +445,8 @@
     isInFlow: () => isInFlow,
     layoutOf: () => layoutOf,
     makeFrame: () => makeFrame,
+    overlayBox: () => overlayBox,
+    overlayOf: () => overlayOf,
     resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
     templateContentFit: () => templateContentFit,
@@ -541,6 +545,50 @@
     out.carousel.perView = pv > 0 ? pv : 1;
     return out;
   }
+  var OVERLAY_KINDS = ["dialog", "drawer"];
+  var OVERLAY_DEFAULT = {
+    kind: "dialog",
+    alignX: "center",
+    alignY: "center",
+    margin: 16,
+    side: "right",
+    backdrop: "dim",
+    backdropOpacity: 0.4,
+    modal: true,
+    closeOnBackdrop: true,
+    closeOnEsc: true,
+    autoClose: 0,
+    draggable: false,
+    dragWithin: "scope",
+    animation: "auto",
+    duration: 200,
+    startOpen: false
+  };
+  function overlayOf(node) {
+    if (!node || node.type !== "@frame" || !node.overlay || OVERLAY_KINDS.indexOf(node.overlay.kind) === -1) return null;
+    var o = Object.assign({}, OVERLAY_DEFAULT, node.overlay);
+    o.margin = Math.max(0, num(o.margin, 16));
+    o.duration = Math.max(0, num(o.duration, 200));
+    o.autoClose = Math.max(0, num(o.autoClose, 0));
+    o.backdropOpacity = Math.min(1, Math.max(0, num(o.backdropOpacity, 0.4)));
+    if (["left", "right", "top", "bottom"].indexOf(o.side) === -1) o.side = "right";
+    if (o.animation === "auto") o.animation = o.kind === "drawer" ? "slide" : "scale";
+    return o;
+  }
+  function overlayBox(node, pw, ph) {
+    var o = overlayOf(node);
+    var w = num(node.w), h = num(node.h);
+    if (!o) return { x: num(node.x), y: num(node.y), w, h };
+    if (o.kind === "drawer") {
+      if (o.side === "left") return { x: 0, y: 0, w: Math.min(w, pw), h: ph };
+      if (o.side === "right") return { x: Math.max(0, pw - w), y: 0, w: Math.min(w, pw), h: ph };
+      if (o.side === "top") return { x: 0, y: 0, w: pw, h: Math.min(h, ph) };
+      return { x: 0, y: Math.max(0, ph - h), w: pw, h: Math.min(h, ph) };
+    }
+    var m = o.margin;
+    var cw = Math.min(w, Math.max(0, pw - 2 * m)), ch = Math.min(h, Math.max(0, ph - 2 * m));
+    return { x: m + (pw - 2 * m - cw) * alignFraction(o.alignX), y: m + (ph - 2 * m - ch) * alignFraction(o.alignY), w: cw, h: ch };
+  }
   var ZOOM_DEFAULT = { enabled: false, min: 0.25, max: 4, wheel: "ctrl", controls: true, start: "fit", dblclick: true };
   function zoomOf(frame) {
     if (!frame || frame.type !== "@frame" || !frame.zoom || !frame.zoom.enabled) return null;
@@ -573,7 +621,7 @@
     return !!node && node.type === "@frame" && layoutOf(node).mode !== "none";
   }
   function isInFlow(child, parent) {
-    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute);
+    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
   }
   function childSizing(child, axis) {
     var lc = child && child.layoutChild || {};
@@ -705,7 +753,7 @@
     return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
   }
   function hasConstraints(node, parent) {
-    return (!parent || parent.type === "@frame") && !isInFlow(node, parent);
+    return (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
   }
   function innerSize(frame) {
     var s = styleOf(frame);
@@ -1093,9 +1141,10 @@
     "maxW",
     "minH",
     "maxH",
-    "scrollBehavior"
+    "scrollBehavior",
+    "overlay"
   ];
-  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true };
+  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true };
   function clone3(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
@@ -1382,6 +1431,9 @@
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
     "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
+    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
+    "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
+    "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
@@ -1405,6 +1457,8 @@
     templates: [],
     assetsPane: null,
     breakpointsPane: null,
+    // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
+    overlayPreview: {},
     templateCounter: 0,
     editingMode: "screen",
     // "screen" | "template"
@@ -2861,6 +2915,28 @@
       transform: fit.transform
     });
   }
+  function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen) {
+    var ps = parentNode ? layout_exports.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen.width, h: screen.height };
+    var b = layout_exports.overlayBox(comp, ps.w, ps.h);
+    comp.x = Math.round(b.x);
+    comp.y = Math.round(b.y);
+    if (overlay.kind === "drawer") {
+      if (overlay.side === "left" || overlay.side === "right") comp.h = Math.round(ps.h);
+      else comp.w = Math.round(ps.w);
+    }
+    var bg = overlay.backdrop === "none" ? "transparent" : "rgba(0,0,0," + (overlay.backdrop === "blur" ? Math.min(overlay.backdropOpacity, 0.25) : overlay.backdropOpacity) + ")";
+    window.$("<div>", { "class": "nexa-overlay-backdrop-preview", "data-overlay-of": comp.id }).css({
+      position: "absolute",
+      left: "0",
+      top: "0",
+      right: "0",
+      bottom: "0",
+      background: bg,
+      "z-index": "40",
+      "pointer-events": "none",
+      "backdrop-filter": overlay.backdrop === "blur" ? "blur(3px)" : ""
+    }).appendTo(parentEl);
+  }
   var hoverEl = null;
   function showHover(id2) {
     var screen = getActiveScreen();
@@ -2897,9 +2973,15 @@
     if (scope === void 0) scope = editorScopeFor(comp);
     var inFlow = layout_exports.isInFlow(comp, parentNode);
     if (!shouldRenderNode(comp.id)) return;
+    var overlay = layout_exports.overlayOf(comp);
+    if (overlay) {
+      if (!state.overlayPreview[comp.id]) return;
+      placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
+    }
     var interactable = isNodeInteractable(comp.id);
     var container = tree_exports.isContainer(comp);
     var css2 = nodeCss(comp, parentNode);
+    if (overlay) css2["z-index"] = "41";
     css2.cursor = isNodeLocked(comp.id) || !interactable || inFlow ? "default" : "move";
     css2["user-select"] = "none";
     css2["pointer-events"] = interactable ? "" : "none";
@@ -3237,7 +3319,7 @@
       var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
       caps = typeDef && typeDef.capabilities || {};
     }
-    if (!layout_exports.canRotate(comp, parent)) caps = Object.assign({}, caps, { rotatable: false });
+    if (!layout_exports.canRotate(comp, parent) || layout_exports.overlayOf(comp)) caps = Object.assign({}, caps, { rotatable: false });
     return caps;
   }
   var HANDLE_SIZE = 8;
@@ -26951,6 +27033,8 @@
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
+    if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
+    if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
     if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
@@ -27339,6 +27423,29 @@
       }
       return false;
     }
+    var overlays = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return !!layout_exports.overlayOf(n);
+    }) : [];
+    sectionHeader(state.eventsPane, "Overlays (dialogs, drawers)");
+    overlays.forEach(function(o) {
+      var label = (o.name || (layout_exports.overlayOf(o).kind === "drawer" ? "Drawer" : "Dialog")) + " #" + o.id.slice(-4);
+      chip(state.eventsPane, "Open " + label, function() {
+        return { type: "overlay-open", overlay: o.id };
+      }, o.id, "overlay-open");
+      chip(state.eventsPane, "Close " + label, function() {
+        return { type: "overlay-close", overlay: o.id, valueSource: "payload" };
+      }, o.id, "overlay-close");
+      chip(state.eventsPane, label + " \u2192 on Open", function() {
+        return { type: "ui-event", compId: o.id, event: "open" };
+      }, o.id, "ui-event");
+      chip(state.eventsPane, label + " \u2192 on Close", function() {
+        return { type: "ui-event", compId: o.id, event: "close" };
+      }, o.id, "ui-event");
+    });
+    chip(state.eventsPane, "Close the top overlay", function() {
+      return { type: "overlay-close", overlay: "", valueSource: "payload" };
+    }, "", "overlay-close");
+    if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties \u2192 Overlay \u2192 Show as.").appendTo(state.eventsPane);
     var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return n.type === "@frame";
     }) : [];
@@ -27906,7 +28013,7 @@
 
   // src/sidebar/frame-inspector.js
   function framePartVaries(key) {
-    return !/^z[A-Z]/.test(key) && key !== "cIndex";
+    return !/^z[A-Z]/.test(key) && key !== "cIndex" && key !== "oPreview";
   }
   var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
   var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
@@ -27970,6 +28077,27 @@
       iPadX: prop("iPadX", "number", "Padding \u2194", { min: 0, unit: "px" }),
       iPadY: prop("iPadY", "number", "Padding \u2195", { min: 0, unit: "px" }),
       iAlign: prop("iAlign", "align", "Align in the slide"),
+      // shown as a dialog / drawer over its scope (frame.overlay, src/model/layout.js overlayOf)
+      oKind: prop("oKind", "enum", "Show as", { options: [
+        { value: "none", label: "In place", icon: "fa fa-square-o" },
+        { value: "dialog", label: "Dialog", icon: "fa fa-window-maximize" },
+        { value: "drawer", label: "Drawer", icon: "fa fa-columns" }
+      ] }),
+      oPreview: prop("oPreview", "boolean", "Preview on the canvas (the editor only)"),
+      oSide: prop("oSide", "enum", "Side", { options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "top", label: "Top" }, { value: "bottom", label: "Bottom" }] }),
+      oAlign: prop("oAlign", "align", "Where it opens"),
+      oMargin: prop("oMargin", "number", "Margin from the edges", { min: 0, unit: "px" }),
+      oBackdrop: prop("oBackdrop", "enum", "Backdrop", { options: [{ value: "dim", label: "Dim" }, { value: "blur", label: "Blur" }, { value: "none", label: "None" }] }),
+      oOpacity: prop("oOpacity", "number", "Backdrop darkness", { min: 0, max: 100, step: 5, unit: "%" }),
+      oModal: prop("oModal", "boolean", "Modal: what is behind it cannot be used"),
+      oCloseBackdrop: prop("oCloseBackdrop", "boolean", "Close on a click on the backdrop"),
+      oCloseEsc: prop("oCloseEsc", "boolean", "Close on Esc"),
+      oAutoClose: prop("oAutoClose", "number", "Close by itself after", { min: 0, step: 500, unit: "ms", help: "0 = stays open" }),
+      oDraggable: prop("oDraggable", "boolean", "Draggable"),
+      oDragWithin: prop("oDragWithin", "enum", "Drag", { options: [{ value: "scope", label: "Inside its scope" }, { value: "page", label: "Anywhere" }] }),
+      oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide" }, { value: "none", label: "None" }] }),
+      oDuration: prop("oDuration", "number", "Duration", { min: 0, step: 50, unit: "ms" }),
+      oStartOpen: prop("oStartOpen", "boolean", "Open when the page opens"),
       scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
         { value: "none", label: "No scrolling" },
         { value: "vertical", label: "Vertical" },
@@ -28000,6 +28128,7 @@
   };
   function frameView(frame) {
     var l = layout_exports.layoutOf(frame), s = layout_exports.styleOf(frame);
+    var ov = layout_exports.overlayOf(frame), ovs = ov || layout_exports.OVERLAY_DEFAULT;
     return {
       x: frame.x,
       y: frame.y,
@@ -28042,13 +28171,33 @@
       zDbl: zoomSettings(frame).dblclick !== false,
       iPadX: l.items.padX,
       iPadY: l.items.padY,
-      iAlign: { x: l.items.alignX, y: l.items.alignY }
+      iAlign: { x: l.items.alignX, y: l.items.alignY },
+      oKind: ov ? ov.kind : "none",
+      oPreview: !!state.overlayPreview[frame.id],
+      oSide: ovs.side,
+      oAlign: { x: ovs.alignX, y: ovs.alignY },
+      oMargin: ovs.margin,
+      oBackdrop: ovs.backdrop,
+      oOpacity: Math.round(ovs.backdropOpacity * 100),
+      oModal: !!ovs.modal,
+      oCloseBackdrop: !!ovs.closeOnBackdrop,
+      oCloseEsc: !!ovs.closeOnEsc,
+      oAutoClose: ovs.autoClose,
+      oDraggable: !!ovs.draggable,
+      oDragWithin: ovs.dragWithin,
+      oAnimation: frame.overlay && frame.overlay.animation || "auto",
+      oDuration: ovs.duration,
+      oStartOpen: !!ovs.startOpen
     };
   }
   function zoomSettings(frame) {
     return Object.assign({}, layout_exports.ZOOM_DEFAULT, frame.zoom || {});
   }
   function writeFrame(frame, key, v) {
+    if (/^o[A-Z]/.test(key)) {
+      writeOverlay(frame, key, v);
+      return;
+    }
     if (/^z[A-Z]/.test(key)) {
       var z = zoomSettings(frame);
       if (key === "zEnabled") z.enabled = !!v;
@@ -28144,6 +28293,74 @@
     }
     frame.layout = layout;
     frame.style = style;
+  }
+  function writeOverlay(frame, key, v) {
+    if (key === "oPreview") return;
+    if (key === "oKind") {
+      if (v === "none") {
+        delete frame.overlay;
+        return;
+      }
+      frame.overlay = Object.assign({}, frame.overlay || {}, { kind: v });
+      return;
+    }
+    if (!frame.overlay) return;
+    var o = Object.assign({}, frame.overlay);
+    switch (key) {
+      case "oSide": {
+        var was = layout_exports.overlayOf(frame).side, hz = function(s) {
+          return s === "left" || s === "right";
+        };
+        if (hz(was) !== hz(v)) {
+          var t2 = hz(was) ? frame.w : frame.h;
+          if (hz(v)) frame.w = t2;
+          else frame.h = t2;
+        }
+        o.side = v;
+        break;
+      }
+      case "oAlign":
+        o.alignX = v.x;
+        o.alignY = v.y;
+        break;
+      case "oMargin":
+        o.margin = Math.max(0, Number(v) || 0);
+        break;
+      case "oBackdrop":
+        o.backdrop = v;
+        break;
+      case "oOpacity":
+        o.backdropOpacity = Math.min(100, Math.max(0, Number(v) || 0)) / 100;
+        break;
+      case "oModal":
+        o.modal = !!v;
+        break;
+      case "oCloseBackdrop":
+        o.closeOnBackdrop = !!v;
+        break;
+      case "oCloseEsc":
+        o.closeOnEsc = !!v;
+        break;
+      case "oAutoClose":
+        o.autoClose = Math.max(0, Number(v) || 0);
+        break;
+      case "oDraggable":
+        o.draggable = !!v;
+        break;
+      case "oDragWithin":
+        o.dragWithin = v;
+        break;
+      case "oAnimation":
+        o.animation = v;
+        break;
+      case "oDuration":
+        o.duration = Math.max(0, Number(v) || 0);
+        break;
+      case "oStartOpen":
+        o.startOpen = !!v;
+        break;
+    }
+    frame.overlay = o;
   }
   function childView(node) {
     var lc = node.layoutChild || {};
@@ -28242,6 +28459,21 @@
                     <nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>
                     <nx-row><nx-number ${bind("w")} ?disabled="${auto && p.sizeW === "hug"}"></nx-number><nx-number ${bind("h")} ?disabled="${auto && p.sizeH === "hug"}"></nx-number></nx-row>
                 </nx-section>
+                <nx-section heading="Overlay" persist-key="nexa-frame:overlay">
+                    <nx-segmented ${bind("oKind")}></nx-segmented>
+                    ${p.oKind === "none" ? html`<div class="nx-help">A Dialog or a Drawer opens over its scope — the page, or the frame it is in — when a Logic "Open" node runs, and closes by its backdrop, Esc, a timer or a "Close" node.</div>` : html`
+                        <nx-checkbox ${bind("oPreview")}></nx-checkbox>
+                        ${p.oKind === "drawer" ? html`<nx-segmented ${bind("oSide")}></nx-segmented>` : html`<nx-row><nx-align ${bind("oAlign")}></nx-align><nx-number ${bind("oMargin")}></nx-number></nx-row>`}
+                        <nx-row><nx-select ${bind("oBackdrop")}></nx-select>${p.oBackdrop !== "none" ? html`<nx-number ${bind("oOpacity")}></nx-number>` : nothing}</nx-row>
+                        <nx-checkbox ${bind("oModal")}></nx-checkbox>
+                        <nx-checkbox ${bind("oCloseBackdrop")}></nx-checkbox>
+                        <nx-checkbox ${bind("oCloseEsc")}></nx-checkbox>
+                        <nx-number ${bind("oAutoClose")}></nx-number>
+                        <nx-row><nx-checkbox ${bind("oDraggable")}></nx-checkbox>${p.oDraggable ? html`<nx-select ${bind("oDragWithin")}></nx-select>` : nothing}</nx-row>
+                        <nx-row><nx-select ${bind("oAnimation")}></nx-select><nx-number ${bind("oDuration")}></nx-number></nx-row>
+                        <nx-checkbox ${bind("oStartOpen")}></nx-checkbox>
+                        <div class="nx-help">Logic (Events tab → Overlays): <b>Open</b> it — its output fires when it closes, msg.payload = the result, msg.closedBy = backdrop / esc / timer / node; <b>Close</b> it with msg.payload as the result; <b>on Open / on Close</b> events. Its size: W × H (a drawer: its width, or height for Top / Bottom).</div>`}
+                </nx-section>
                 <nx-section heading="Auto layout" persist-key="nexa-frame:layout">
                     <nx-segmented ${bind("mode")} icons-only></nx-segmented>
                     ${auto ? html`
@@ -28300,9 +28532,15 @@
         return frameView(frame);
       },
       function(key, v) {
+        if (key === "oPreview" || key === "oKind" && v !== "none") state.overlayPreview[frame.id] = key === "oPreview" ? !!v : true;
+        if (key === "oPreview") {
+          renderActiveScreen();
+          selectOnly(frame.id);
+          return;
+        }
         commit(frame, function() {
           writeFrame(frame, key, v);
-        });
+        }, key === "oKind" || key === "oSide");
       },
       { node: frame, parent: tree_exports.parentOf(getActiveScreen(), frame.id), view: frameView, write: writeFrame, canVary: framePartVaries }
     );
@@ -30028,6 +30266,65 @@
     });
   }
 
+  // src/dialogs/overlay-dialog.js
+  function overlaysOf(screen) {
+    return screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return !!layout_exports.overlayOf(n);
+    }) : [];
+  }
+  function overlayLabel(n) {
+    var o = layout_exports.overlayOf(n);
+    return (n.name || (o && o.kind === "drawer" ? "Drawer" : "Dialog")) + " #" + n.id.slice(-4);
+  }
+  function openOverlayNodeEditor(node) {
+    var screen = getActiveScreen();
+    var list = overlaysOf(screen);
+    var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
+    var close = node.type === "overlay-close";
+    window.RED.tray.show({
+      id: "nexa-logic-overlay-editor",
+      title: close ? "Configure Close Node" : "Configure Open Node",
+      width: 440,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        { text: "Save", "class": "primary", click: function() {
+          node.overlay = d.overlay;
+          if (close) node.valueSource = d.valueSource;
+          markDirty();
+          renderLogicCanvas();
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text(close ? 'Closes a dialog / drawer. The Open node that opened it continues with msg.payload = the result (below), msg.closedBy = "node".' : "Opens a dialog / drawer on top of any open one. This node's output fires when it closes: msg.payload = the result (a Close node's), msg.closedBy = backdrop / esc / timer / node. The message it was opened with is in its On Open event.").appendTo(body);
+        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        if (close) window.$("<option>", { value: "" }).text("The one on top (the last opened)").appendTo(sel);
+        if (!list.length && !close) window.$("<option>", { value: "" }).text("(no dialog / drawer here: Frame \u2192 Overlay \u2192 Show as)").appendTo(sel);
+        list.forEach(function(n) {
+          window.$("<option>", { value: n.id }).text(overlayLabel(n)).appendTo(sel);
+        });
+        sel.val(d.overlay);
+        d.overlay = sel.val() || "";
+        sel.on("change", function() {
+          d.overlay = sel.val();
+        });
+        if (close) {
+          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "12px 0 4px" }).text("Result").appendTo(body);
+          var rs = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          [["payload", "msg.payload (e.g. the form's data)"], ["none", "None (null: cancelled)"]].forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(rs);
+          });
+          rs.val(d.valueSource).on("change", function() {
+            d.valueSource = rs.val();
+          });
+        }
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -30067,6 +30364,12 @@
       var lScreen = getActiveScreen();
       var lf = node.container && lScreen ? tree_exports.find(lScreen, node.container) : null;
       return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+    }
+    if (node.type === "overlay-open" || node.type === "overlay-close") {
+      var oScreen = getActiveScreen();
+      var of = node.overlay && oScreen ? tree_exports.find(oScreen, node.overlay) : null;
+      var verb = node.type === "overlay-open" ? "Open " : "Close ";
+      return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
     }
     if (node.type === "populate" && !node.container) {
       var tplP = node.template ? findTemplate(node.template) : null;
@@ -30283,6 +30586,12 @@
         openLayoutNodeEditor(node);
       });
     }
+    if (node.type === "overlay-open" || node.type === "overlay-close") {
+      box2.attr("title", node.type === "overlay-open" ? "Double-click to choose the dialog / drawer. Its output fires when it closes (msg.payload = the result)." : "Double-click to choose what it closes and its result").on("dblclick", function(e) {
+        e.stopPropagation();
+        openOverlayNodeEditor(node);
+      });
+    }
     if (node.type === "populate") {
       box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
@@ -30439,7 +30748,7 @@
       set[id2] = true;
     });
     state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
-      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container];
+      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay];
     }).map(function(n) {
       return n.id;
     });
@@ -31577,6 +31886,8 @@
   }
   function iconOf(node) {
     if (node.type === "@group") return "fa fa-object-group";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
     if (node.type === "@frame") return "fa fa-square-o";
     if (node.type === "@template") return "fa fa-clone";
     if (node.type === "@lit-component") return "fa fa-code";
@@ -31689,6 +32000,15 @@
     var screen = getActiveScreen();
     var loc = screen && tree_exports.locate(screen, e.detail.id);
     if (!loc || loc.orphan) return;
+    var hidden = tree_exports.ancestors(screen, e.detail.id).concat([loc.node]).filter(function(n) {
+      return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
+    });
+    if (hidden.length) {
+      hidden.forEach(function(n) {
+        state.overlayPreview[n.id] = true;
+      });
+      renderActiveScreen();
+    }
     if (e.detail.additive) {
       if (isSelected(e.detail.id)) selectMultiple(state.selectedIds.filter(function(id2) {
         return id2 !== e.detail.id;

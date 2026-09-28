@@ -14,7 +14,7 @@ export function selectLogicForComponents(ids) {
     var set = {};
     (ids || []).forEach(function (id) { set[id] = true; });
     state.logicSelectedIds = ((screen && screen.logic && screen.logic.nodes) || []).filter(function (n) {
-        return (n.compId && set[n.compId]) || (n.instanceId && set[n.instanceId]) || (n.type === "layout" && n.container && set[n.container]);
+        return (n.compId && set[n.compId]) || (n.instanceId && set[n.instanceId]) || (n.type === "layout" && n.container && set[n.container]) || (n.overlay && set[n.overlay]);
     }).map(function (n) { return n.id; });
     refreshLogicSelectionVisuals();
 }

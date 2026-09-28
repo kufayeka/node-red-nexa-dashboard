@@ -659,6 +659,22 @@ export function layoutTemplateInner(inner, template, comp) {
     });
 }
 
+// An overlay's box in its scope (Layout.overlayBox): x / y where it opens, a drawer's
+// other axis the scope's; and the backdrop under it (editor: no pointer).
+function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen) {
+    var ps = parentNode ? Layout.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen.width, h: screen.height };
+    var b = Layout.overlayBox(comp, ps.w, ps.h);
+    comp.x = Math.round(b.x); comp.y = Math.round(b.y);
+    if (overlay.kind === "drawer") {
+        if (overlay.side === "left" || overlay.side === "right") comp.h = Math.round(ps.h); else comp.w = Math.round(ps.w);
+    }
+    var bg = overlay.backdrop === "none" ? "transparent" : "rgba(0,0,0," + (overlay.backdrop === "blur" ? Math.min(overlay.backdropOpacity, 0.25) : overlay.backdropOpacity) + ")";
+    window.$("<div>", { "class": "nexa-overlay-backdrop-preview", "data-overlay-of": comp.id }).css({
+        position: "absolute", left: "0", top: "0", right: "0", bottom: "0", background: bg, "z-index": "40", "pointer-events": "none",
+        "backdrop-filter": overlay.backdrop === "blur" ? "blur(3px)" : ""
+    }).appendTo(parentEl);
+}
+
 // ---- hover: an outline on what a click would select ------------------------------------
 var hoverEl = null;
 export function showHover(id) {
@@ -694,9 +710,17 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     // "remove": no DOM node at all (the next full render draws it again when it
     // comes back); "hide": rendered but invisible and not interactable.
     if (!shouldRenderNode(comp.id)) return;
+    // a dialog / drawer: hidden on the canvas until previewed (its Properties, or picked in
+    // the Hierarchy); shown where the page shows it, over a backdrop on its scope
+    var overlay = Layout.overlayOf(comp);
+    if (overlay) {
+        if (!state.overlayPreview[comp.id]) return;
+        placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
+    }
     var interactable = isNodeInteractable(comp.id);
     var container = Tree.isContainer(comp);
     var css = nodeCss(comp, parentNode);
+    if (overlay) css["z-index"] = "41";
     css.cursor = (isNodeLocked(comp.id) || !interactable || inFlow) ? "default" : "move";
     css["user-select"] = "none";
     css["pointer-events"] = interactable ? "" : "none";

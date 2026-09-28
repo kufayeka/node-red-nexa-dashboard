@@ -36,6 +36,8 @@ function labelOf(node) {
 
 function iconOf(node) {
     if (node.type === "@group") return "fa fa-object-group";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
     if (node.type === "@frame") return "fa fa-square-o";
     if (node.type === "@template") return "fa fa-clone";
     if (node.type === "@lit-component") return "fa fa-code";
@@ -151,6 +153,12 @@ function onSelect(e) {
     var screen = getActiveScreen();
     var loc = screen && Tree.locate(screen, e.detail.id);
     if (!loc || loc.orphan) return; // an orphan isn't on the canvas
+    // a dialog / drawer (or something in one) picked here: shown on the canvas to edit it
+    var hidden = Tree.ancestors(screen, e.detail.id).concat([loc.node]).filter(function (n) { return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id]; });
+    if (hidden.length) {
+        hidden.forEach(function (n) { state.overlayPreview[n.id] = true; });
+        renderActiveScreen();
+    }
     if (e.detail.additive) {
         if (isSelected(e.detail.id)) selectMultiple(state.selectedIds.filter(function (id) { return id !== e.detail.id; }));
         else selectMultiple(state.selectedIds.concat([e.detail.id]));

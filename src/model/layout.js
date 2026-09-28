@@ -153,6 +153,47 @@ export function layoutOf(frame) {
 // they are and their length follows the zoom; only the content zooms (Ctrl + wheel / a
 // pinch at the pointer) and pans (scrolling, a drag on the background). dblclick: a double
 // click / tap goes back to the start (Fit / 100 %); controls: the editor's zoom toolbar.
+// ---- Overlays: a frame shown on top of its scope, opened / closed by Logic ---------------
+// frame.overlay = { kind, … }: the frame is a dialog (placed in its scope by alignX /
+// alignY, `margin` from the edges) or a drawer (along one `side`, filling the other
+// axis). Its scope is its parent: the page (a root node) or the frame it is in — the
+// backdrop, the placement and the drag limits are that box. Hidden until opened
+// (Logic: Open / Close; startOpen), closed by the backdrop, Esc, a timer or Logic.
+export var OVERLAY_KINDS = ["dialog", "drawer"];
+export var OVERLAY_DEFAULT = {
+    kind: "dialog", alignX: "center", alignY: "center", margin: 16, side: "right",
+    backdrop: "dim", backdropOpacity: 0.4, modal: true,
+    closeOnBackdrop: true, closeOnEsc: true, autoClose: 0,
+    draggable: false, dragWithin: "scope",
+    animation: "auto", duration: 200, startOpen: false
+};
+export function overlayOf(node) {
+    if (!node || node.type !== "@frame" || !node.overlay || OVERLAY_KINDS.indexOf(node.overlay.kind) === -1) return null;
+    var o = Object.assign({}, OVERLAY_DEFAULT, node.overlay);
+    o.margin = Math.max(0, num(o.margin, 16));
+    o.duration = Math.max(0, num(o.duration, 200));
+    o.autoClose = Math.max(0, num(o.autoClose, 0));
+    o.backdropOpacity = Math.min(1, Math.max(0, num(o.backdropOpacity, 0.4)));
+    if (["left", "right", "top", "bottom"].indexOf(o.side) === -1) o.side = "right";
+    if (o.animation === "auto") o.animation = o.kind === "drawer" ? "slide" : "scale";
+    return o;
+}
+/** Where an overlay sits in a scope of `pw` × `ph` (the editor draws it there): { x, y, w, h }. */
+export function overlayBox(node, pw, ph) {
+    var o = overlayOf(node);
+    var w = num(node.w), h = num(node.h);
+    if (!o) return { x: num(node.x), y: num(node.y), w: w, h: h };
+    if (o.kind === "drawer") {
+        if (o.side === "left") return { x: 0, y: 0, w: Math.min(w, pw), h: ph };
+        if (o.side === "right") return { x: Math.max(0, pw - w), y: 0, w: Math.min(w, pw), h: ph };
+        if (o.side === "top") return { x: 0, y: 0, w: pw, h: Math.min(h, ph) };
+        return { x: 0, y: Math.max(0, ph - h), w: pw, h: Math.min(h, ph) };
+    }
+    var m = o.margin;
+    var cw = Math.min(w, Math.max(0, pw - 2 * m)), ch = Math.min(h, Math.max(0, ph - 2 * m));
+    return { x: m + (pw - 2 * m - cw) * alignFraction(o.alignX), y: m + (ph - 2 * m - ch) * alignFraction(o.alignY), w: cw, h: ch };
+}
+
 export var ZOOM_DEFAULT = { enabled: false, min: 0.25, max: 4, wheel: "ctrl", controls: true, start: "fit", dblclick: true };
 export function zoomOf(frame) {
     if (!frame || frame.type !== "@frame" || !frame.zoom || !frame.zoom.enabled) return null;
@@ -191,7 +232,8 @@ export function hasAutoLayout(node) {
 
 /** Whether `child` is placed by its parent's auto layout (not by its own x / y). */
 export function isInFlow(child, parent) {
-    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute);
+    // an overlay is on top of its scope, never in its flow
+    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
 }
 
 /** A child's sizing on one axis ("w" | "h") inside an auto layout. */
@@ -347,7 +389,7 @@ export function constraintsOf(node) {
 
 /** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
 export function hasConstraints(node, parent) {
-    return (!parent || parent.type === "@frame") && !isInFlow(node, parent);
+    return (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
 }
 
 /** The box children are positioned in: a frame without its border (the root: the screen). */

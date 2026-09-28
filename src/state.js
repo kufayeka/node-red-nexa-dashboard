@@ -55,6 +55,9 @@ export const LOGIC_NODE_KINDS = {
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
     "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
+    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
+    "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
+    "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
@@ -80,6 +83,8 @@ export const state = {
     templates: [],
     assetsPane: null,
     breakpointsPane: null,
+    // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
+    overlayPreview: {},
     templateCounter: 0,
     editingMode: "screen", // "screen" | "template"
     activeTemplateId: null,

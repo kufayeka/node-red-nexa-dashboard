@@ -93,6 +93,7 @@ back: a two-way binding. Writes never fire component events.
 | **Set Variable** | Changes a variable: **set**, **merge** (object), **append** / **remove** (array item or object key), **toggle** (boolean), **increment** (a number, or 1). The value comes from `msg.payload`, a msg property or a fixed value. The msg goes on. |
 | **Get Variable** | Puts a variable's value into a msg property. |
 | **On Variable Change** | Starts a flow when a variable really changes, from any source. `msg.payload` = new value, `msg.previous` = old value, `msg.variable` = the name. |
+| **Open** / **Close** (a dialog / drawer) | Open shows it (dialogs stack). Its output fires when it closes, with `msg.payload` = the result and `msg.closedBy`. Close closes it with `msg.payload` as the result. See LAYOUT.md §4d. |
 
 A variable is chosen by scope (App, this screen / template, or the group /
 frame that declares it) and name. The Events tab has **Set …** and

@@ -49,8 +49,8 @@ var LEGACY = { md: "tablet", sm: "phone" };
 
 /** What a breakpoint may change on a node. */
 export var OVERRIDABLE = ["x", "y", "w", "h", "visibility", "layout", "layoutChild", "style", "constraints", "props",
-    "minW", "maxW", "minH", "maxH", "scrollBehavior"];
-var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true };
+    "minW", "maxW", "minH", "maxH", "scrollBehavior", "overlay"];
+var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true };
 
 function clone(v) { return v === undefined || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v)); }
 function isPlain(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }

@@ -16,6 +16,7 @@ import { openPopulateNodeEditor, openLayoutNodeEditor } from "../dialogs/populat
 import { openTemplateOutputNodeEditor } from "../dialogs/template-output-dialog.js";
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
+import { openOverlayNodeEditor, overlayLabel } from "../dialogs/overlay-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -53,6 +54,12 @@ export function logicNodeLabel(node) {
         var lScreen = getActiveScreen();
         var lf = node.container && lScreen ? Tree.find(lScreen, node.container) : null;
         return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+    }
+    if (node.type === "overlay-open" || node.type === "overlay-close") {
+        var oScreen = getActiveScreen();
+        var of = node.overlay && oScreen ? Tree.find(oScreen, node.overlay) : null;
+        var verb = node.type === "overlay-open" ? "Open " : "Close ";
+        return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
     }
     if (node.type === "populate" && !node.container) {
         var tplP = node.template ? findTemplate(node.template) : null;
@@ -246,6 +253,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function (e) {
             e.stopPropagation();
             openLayoutNodeEditor(node);
+        });
+    }
+    if (node.type === "overlay-open" || node.type === "overlay-close") {
+        box.attr("title", node.type === "overlay-open" ? "Double-click to choose the dialog / drawer. Its output fires when it closes (msg.payload = the result)." : "Double-click to choose what it closes and its result").on("dblclick", function (e) {
+            e.stopPropagation();
+            openOverlayNodeEditor(node);
         });
     }
     if (node.type === "populate") {

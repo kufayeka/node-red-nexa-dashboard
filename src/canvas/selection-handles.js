@@ -27,7 +27,7 @@ function capabilitiesOf(comp) {
         var typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
         caps = (typeDef && typeDef.capabilities) || {};
     }
-    if (!Layout.canRotate(comp, parent)) caps = Object.assign({}, caps, { rotatable: false });
+    if (!Layout.canRotate(comp, parent) || Layout.overlayOf(comp)) caps = Object.assign({}, caps, { rotatable: false });
     return caps;
 }
 
