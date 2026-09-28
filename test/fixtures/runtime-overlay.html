@@ -25,6 +25,11 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, or
       label("pl", 10, 10, 100, 20, "panel"),
       { id: "drw", type: "@frame", name: "Drawer", x: 0, y: 0, w: 150, h: 100, style: { fill: "#fff" }, overlay: Object.assign({ kind: "drawer", side: "right" }, quick), children: [label("dt", 10, 10, 100, 20, "drawer")] }
     ] },
+    // a frame that scrolls (tall content): its drawer covers what is in view, wherever it is scrolled to
+    { id: "sc", type: "@frame", name: "Scroller", x: 100, y: 350, w: 300, h: 200, style: { scroll: "vertical", clip: true }, children: [
+      label("far", 10, 700, 100, 20, "far below"),
+      { id: "scd", type: "@frame", name: "ScrollDrawer", x: 0, y: 0, w: 100, h: 50, overlay: Object.assign({ kind: "drawer", side: "right" }, quick), children: [] }
+    ] },
     // a dialog on the page: a button inside closes it with a result
     { id: "dlg", type: "@frame", name: "Dialog", x: 0, y: 0, w: 300, h: 200, style: { fill: "#fff" }, overlay: Object.assign({ kind: "dialog" }, quick), children: [
       label("dl", 10, 10, 200, 20, "dialog"), btn("ok", 10, 100)
@@ -51,10 +56,13 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, or
     { id: "e6", type: "ui-event", compId: "ctl", event: "drag" }, { id: "o6", type: "overlay-open", overlay: "drg" },
     { id: "e7", type: "ui-event", compId: "ctl", event: "top" }, { id: "c7", type: "overlay-close", overlay: "", valueSource: "none" },
     { id: "e8", type: "ui-event", compId: "ctl", event: "anim" }, { id: "o8", type: "overlay-open", overlay: "anim" },
+    { id: "e9", type: "ui-event", compId: "ctl", event: "scd" }, { id: "o9", type: "overlay-open", overlay: "scd" },
     // its On Open event: what it was opened with
     { id: "ev", type: "ui-event", compId: "dlg", event: "open" }, { id: "fv", type: "function", code: "setVariable('openedWith', String(msg.payload), '@app'); return msg;" }
   ], wires: [W("e1", "o1"), W("o1", "f1"), W("e2", "f2"), W("f2", "c1"), W("e3", "o2"), W("o2", "f3"), W("e4", "o4"), W("e5", "o5"), W("o5", "f5"),
-    W("e6", "o6"), W("e7", "c7"), W("e8", "o8"), W("ev", "fv")] } };
+    W("e6", "o6"), W("e7", "c7"), W("e8", "o8"), W("ev", "fv"), W("e9", "o9")] } };
+// ?fitWidth: the page scaled to the window's width, taller than the window (it scrolls)
+if (/fitWidth/.test(location.search)) { window.__NEXA_SCREEN__.displayMode = "fitWidth"; window.__NEXA_SCREEN__.height = 1800; }
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

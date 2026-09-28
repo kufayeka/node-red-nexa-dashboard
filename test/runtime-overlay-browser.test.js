@@ -68,6 +68,18 @@ async function main() {
                 await emit('ctl', 'top');   // "Close the top overlay"
                 assert.strictEqual(await shown('drw'), false);
             });
+            await ok('in a frame that scrolls: the drawer covers the part in view, and stays there while it scrolls', async () => {
+                await js(`document.querySelector('[data-id="sc"]').scrollTop = 300; 1`);
+                await emit('ctl', 'scd');
+                // the frame is 100..400 × 350..550 on the page; its view is that less its scrollbar
+                const cw = await js(`document.querySelector('[data-id="sc"]').clientWidth`);
+                assert.deepStrictEqual(await rect('[data-id="scd"]'), [100 + cw - 100, 350, 100, 200], 'along the right of what is in view (left of the scrollbar)');
+                assert.deepStrictEqual(await rect('[data-overlay="scd"] .nexa-overlay-backdrop'), [100, 350, cw, 200]);
+                await js(`document.querySelector('[data-id="sc"]').scrollTop = 450; 1`);
+                await wait(80);
+                assert.deepStrictEqual(await rect('[data-id="scd"]'), [100 + cw - 100, 350, 100, 200], 'scrolled further: still in view');
+                await key('Escape');
+            });
             await ok('a timer closes it (closedBy "timer")', async () => {
                 await emit('ctl', 'timed');
                 assert.strictEqual(await shown('tmr'), true);
@@ -102,6 +114,19 @@ async function main() {
             return true;
         }, { width: 1000, height: 600, ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 });
         if (r === null) return null;
+        // the page scaled to the window's width (0.5) and scrolled: a dialog in the middle of what is in view
+        await withPage(server.url + '/fx/runtime-overlay.html?fitWidth', async ({ js, logs }) => {
+            await ok('a scaled page, scrolled: the dialog and its backdrop are where the window is', async () => {
+                await js('window.scrollTo(0, 300); new Promise(function (r) { setTimeout(r, 80); })');
+                await js(`(function () { window.__ctx.ctl.emit("open", null); return new Promise(function (r) { setTimeout(r, 80); }); })()`);
+                const box = (sel) => js(`(function () { var b = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; })()`);
+                assert.deepStrictEqual(await box('[data-id="dlg"]'), [175, 150, 150, 100], '300 × 200 at 0.5, centred in the 500 × 400 window');
+                assert.deepStrictEqual(await box('[data-overlay="dlg"] .nexa-overlay-backdrop'), [0, 0, 500, 400]);
+                await js('window.scrollTo(0, 500); new Promise(function (r) { setTimeout(r, 80); })');
+                assert.deepStrictEqual(await box('[data-id="dlg"]'), [175, 150, 150, 100], 'scrolled further: it stays');
+            });
+            assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
+        }, { width: 500, height: 400, ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 });
     } finally {
         await server.close();
     }
