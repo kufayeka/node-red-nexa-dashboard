@@ -62,7 +62,11 @@ export class KitElement extends LitElement {
         actions: { attribute: false },
         // A tag / template-parameter binding instead of a static value: the
         // widget then shows a tag picker in place of its own control.
-        binding: { attribute: false }
+        binding: { attribute: false },
+        // bound: its own control below the binding edits the fallback (nx-fallback event)
+        fallback: { type: Boolean },
+        // a value per breakpoint: { items: [{ id, name, range, design, set, selected, value }], pick(id), clear(id) }
+        responsive: { attribute: false }
     };
 
     constructor() {
@@ -81,10 +85,26 @@ export class KitElement extends LitElement {
         this.classList.add("nx-kit");
     }
 
-    /** Set the value and tell the world. */
+    /** Set the value and tell the world (bound: the control's value is the fallback -> nx-fallback). */
     change(value) {
         this.value = value;
-        this.dispatchEvent(new CustomEvent("nx-change", { detail: { value: value }, bubbles: true, composed: true }));
+        var type = this.fallback && this.binding !== undefined && this.binding !== null && !this._bindingChange ? "nx-fallback" : "nx-change";
+        this.dispatchEvent(new CustomEvent(type, { detail: { value: value }, bubbles: true, composed: true }));
+    }
+
+    _changeBinding(value) {
+        this._bindingChange = true;
+        try { this.change(value); } finally { this._bindingChange = false; }
+    }
+
+    _chips() {
+        var r = this.responsive;
+        if (!r || !r.items || !r.items.length) return nothing;
+        return html`<div class="nx-bp-strip">${r.items.map(function (it) {
+            var cls = "nx-bp-chip" + (it.selected ? " nx-sel" : "") + (it.set ? " nx-set" : "") + (it.design ? " nx-design" : "");
+            var tip = it.name + (it.range ? " (" + it.range + ")" : "") + (it.design ? " — the design" : it.set ? " — set here" : " — inherited") + (it.value !== undefined && it.value !== "" ? ": " + it.value : "");
+            return html`<button type="button" class="${cls}" data-bp="${it.id}" title="${tip}" @click="${function (e) { e.stopPropagation(); r.pick(it.id); }}">${it.design ? html`<i class="fa fa-star" aria-hidden="true"></i>` : nothing}<span>${it.name}</span>${(it.design || it.set) && it.value !== undefined && it.value !== "" ? html`<span class="nx-bp-val">${it.value}</span>` : nothing}${it.set && it.selected ? html`<i class="fa fa-times nx-bp-x" title="Inherit again" @click="${function (e) { e.stopPropagation(); r.clear(it.id); }}"></i>` : nothing}</button>`;
+        })}</div>`;
     }
 
     get controlId() {
@@ -104,11 +124,17 @@ export class KitElement extends LitElement {
         return html`${this.invalid && this.message ? html`<div class="nx-message">${this.message}</div>` : nothing}${this.help ? html`<div class="nx-help">${this.help}</div>` : nothing}`;
     }
 
-    /** Label on top, the control (or, bound, the binding editor: nx-binding), then the message / help. */
+    /**
+     * Label on top (+ the breakpoint chips), the control (or, bound, the binding editor:
+     * nx-binding, and the control below it for the fallback), then the message / help.
+     */
     frame(control) {
         if (this.binding !== undefined && this.binding !== null) {
-            control = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-binding>`;
+            var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding>`;
+            control = this.fallback
+                ? html`${editor}<div class="nx-fallback"><div class="nx-fallback-label">Fallback — shown while the binding has no value (none yet, null, ???)</div>${control}</div>`
+                : editor;
         }
-        return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${control}${this._foot()}</div>`;
+        return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${this._chips()}${control}${this._foot()}</div>`;
     }
 }

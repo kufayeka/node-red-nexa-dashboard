@@ -8,6 +8,7 @@ import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTem
 import { renderSparkplugPanel } from "./sparkplug-panel.js";
 import { renderTypesPanel } from "./types-panel.js";
 import { renderAssetsPanel } from "./assets-panel.js";
+import { renderBreakpointsPanel } from "./breakpoints-panel.js";
 
 export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -37,6 +38,7 @@ export function buildSidebarContent() {
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.typesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.assetsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     // Same flex/column reasoning as componentsPane/eventsPane above (see
     // that comment) — the metric rows dragged out of this pane go through
@@ -117,6 +119,7 @@ export function buildSidebarContent() {
             state.templatesPane.toggle(tab.id === "templates");
             state.typesPane.toggle(tab.id === "types");
             state.assetsPane.toggle(tab.id === "assets");
+            state.breakpointsPane.toggle(tab.id === "breakpoints");
             state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
             if (tab.id === "screens") {
                 // The Screens form (name/URL path/width/height/grid/snap) is
@@ -141,6 +144,7 @@ export function buildSidebarContent() {
             if (tab.id === "sparkplug") renderSparkplugPanel();
             if (tab.id === "types") renderTypesPanel();
             if (tab.id === "assets") renderAssetsPanel();
+            if (tab.id === "breakpoints") renderBreakpointsPanel();
         }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
@@ -148,6 +152,7 @@ export function buildSidebarContent() {
     state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
+    state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

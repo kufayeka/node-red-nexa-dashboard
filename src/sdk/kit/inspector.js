@@ -1,10 +1,17 @@
 // --- The inspector: a component's `inspector` template, or an automatic one -----
-// renderInspector(container, { meta, props, set, preview, persistKey })
+// renderInspector(container, { meta, props, set, preview, persistKey, responsive })
 //   meta     the component's normalized metadata (def.nexa, see src/sdk/schema.js)
 //   props    its stored props (read here; every change goes through set)
 //   set(key, value)      commit one prop (the editor adds undo / dirty / re-render)
 //   preview(key, value)  design-time only (the state switcher); defaults to set
+//   responsive           optional, the host's values per breakpoint (the editor's
+//                        canvas/breakpoints-ui.js responsiveHost): every field gets a
+//                        📱 button and, when used, its breakpoint chips
 // Returns { update(), destroy(), root }.
+//
+// Every bound field (⛓, and a tag input) also edits its fallback: the value shown
+// while the binding has none (props.__fallback[key]). Nothing to write for either:
+// bind(key) does it.
 //
 // The component writes its panel itself:
 //   inspector: ({ p, ui, bind }) => html`
@@ -26,6 +33,20 @@ function clone(v) {
 
 function same(a, b) {
     return str(a) === str(b);
+}
+
+// A value on a breakpoint chip: short.
+function shortValue(v) {
+    if (v === undefined || v === null) return "";
+    if (typeof v === "boolean") return v ? "on" : "off";
+    if (Array.isArray(v)) return v.length + "×";
+    if (typeof v === "object") {
+        if ("t" in v && "r" in v && "b" in v && "l" in v) return v.t === v.r && v.r === v.b && v.b === v.l ? String(v.t) : [v.t, v.r, v.b, v.l].join(" ");
+        if ("x" in v && "y" in v) return v.x + "·" + v.y;
+        return "{…}";
+    }
+    var s = String(v);
+    return s.length > 10 ? s.slice(0, 9) + "…" : s;
 }
 
 // "{provider:address}" / "{param}" as the whole value, or embedded in text.
@@ -74,6 +95,8 @@ export function renderInspector(container, opts) {
     var meta = opts.meta;
     var persist = opts.persistKey || meta.id || "component";
     var bindMode = {};             // keys switched to "bound" by ⛓ before a binding was typed
+    var respOpen = {};             // keys whose breakpoint chips are shown (📱)
+    var respSel = {};              // key -> the breakpoint its control edits
     var asyncCache = {};           // ui.async results
     var root = document.createElement("div");
     root.className = "nx-kit nx-inspector";
@@ -102,8 +125,12 @@ export function renderInspector(container, opts) {
         return list.some(function (s) { return s.name === v; }) ? v : (list[0] && list[0].name);
     }
 
-    function actionsFor(prop, value, bound) {
+    function actionsFor(prop, value, bound, resp) {
         var btns = [];
+        if (resp) {
+            btns.push(html`<button type="button" class="nx-icon-btn nx-bp-toggle ${resp.shown ? "nx-on" : ""}" title="${resp.anySet ? "Responsive: set per breakpoint (clear them to go back to one value)" : resp.shown ? "Responsive: one value again" : "Responsive: a value per breakpoint (xs … 3xl)"}"
+                @click="${() => { respOpen[prop.key] = !resp.shown; if (!respOpen[prop.key]) delete respSel[prop.key]; update(); }}"><i class="fa fa-mobile"></i></button>`);
+        }
         if (prop.bindable && BINDABLE_BY_TOGGLE[prop.type]) {
             btns.push(html`<button type="button" class="nx-icon-btn ${bound ? "nx-on" : ""}" title="${bound ? "Bound — click for a static value" : "Bind to a tag or template parameter"}"
                 @click="${() => {
@@ -133,6 +160,25 @@ export function renderInspector(container, opts) {
         var p = props();
         var value = p[key] === undefined ? prop.default : p[key];
 
+        // a value per breakpoint (📱): the chips; the control edits the one picked
+        var R = opts.responsive, resp = null;
+        if (R && !prop.noResponsive && R.canVary(key)) {
+            var bands = R.list(), active = R.active();
+            var anySet = bands.some(function (b) { return R.has(key, b.id); });
+            var shown = !!respOpen[key] || anySet;
+            var sel = respSel[key] && bands.some(function (b) { return b.id === respSel[key]; }) ? respSel[key] : active;
+            resp = { shown: shown, anySet: anySet, sel: sel, active: active };
+            if (shown) {
+                var at = function (id) { var v = R.valueAt(key, id); return v === undefined ? prop.default : v; };
+                value = at(sel);
+                el.responsive = {
+                    items: bands.map(function (b) { return { id: b.id, name: b.name, range: b.range, design: b.design, set: R.has(key, b.id), selected: b.id === sel, value: shortValue(at(b.id)) }; }),
+                    pick: function (id) { respSel[key] = id; update(); },
+                    clear: function (id) { R.clearAt(key, id); update(); }
+                };
+            } else el.responsive = null;
+        } else el.responsive = null;
+
         // an attribute written in the template wins over the schema
         Object.keys(SCHEMA_ATTRS).forEach(function (name) {
             if (prop[name] !== undefined && !el.hasAttribute(SCHEMA_ATTRS[name])) el[name] = prop[name];
@@ -156,15 +202,39 @@ export function renderInspector(container, opts) {
         var message = validateProp(prop, value, p);
         el.value = prop.type === "json" && value !== null && typeof value !== "string" ? JSON.stringify(value, null, 2) : value;
         el.binding = bound ? (isBinding(value) ? value : "") : null;   // entering bind mode from a static value: empty picker
+        // bound: its control edits the fallback (props.__fallback[key])
+        var fallbacks = p.__fallback || {};
+        var takesFallback = opts.fallbacks !== false && (bound || (prop.type === "tag" && prop.access !== "write"));
+        el.fallback = takesFallback;
+        if (bound && takesFallback) el.value = fallbacks[key] !== undefined ? fallbacks[key] : prop.default;
+        if (prop.type === "tag") el.fallbackValue = fallbacks[key];
         el.modified = !prop.noReset && !same(value, prop.default);
         el.invalid = !!message;
         el.message = message || "";
-        el.actions = actionsFor(prop, value, bound);
+        el.actions = actionsFor(prop, value, bound, resp);
         if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
         if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
         wire(el, function (v) {
             if (prop.type === "json" && typeof v === "string") { try { v = v.trim() ? JSON.parse(v) : null; } catch (e) { /* kept as text: shown invalid */ } }
+            // another breakpoint than the one being edited: kept as that breakpoint's value
+            if (resp && resp.shown && resp.sel !== resp.active) { R.setAt(key, resp.sel, v); update(); return; }
             set(key, v);
+        });
+        wireFallback(el, function (v) {
+            var next = Object.assign({}, props().__fallback || {});
+            if (v === undefined || v === null || v === "") delete next[key]; else next[key] = v;
+            set("__fallback", Object.keys(next).length ? next : undefined);
+        });
+    }
+
+    function wireFallback(el, handler) {
+        el._nxFallback = handler;
+        if (el._nxFallbackWired) return;
+        el._nxFallbackWired = true;
+        el.addEventListener("nx-fallback", function (e) {
+            if (e.target !== el) return;
+            e.stopPropagation();
+            if (el._nxFallback) el._nxFallback(e.detail.value);
         });
     }
 
@@ -308,6 +378,7 @@ export function renderInspector(container, opts) {
     }
 
     function view() {
+        if (opts.responsive && typeof opts.responsive.begin === "function") opts.responsive.begin();
         return withCtx(function () {
             if (typeof meta.inspector === "function") return meta.inspector({ p: props(), ui: ui, bind: bind, meta: meta });
             return autoInspector();

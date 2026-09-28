@@ -10,6 +10,8 @@ import { refreshComponentRender } from "../canvas/component-renderer.js";
 import { openCodeEditorTray } from "../dialogs/lit-code-dialog.js";
 import { listKnownSparkplugBindings } from "../canvas/sparkplug-live.js";
 import { uploadAssets, loadAssets } from "../assets-client.js";
+import { pushTreeChange, treeSnapshot } from "../history.js";
+import { responsiveHost } from "../canvas/breakpoints-ui.js";
 
 // Changes to the same prop within this window are one undo step (typing).
 var PROP_HISTORY_MERGE_MS = 1500;
@@ -38,7 +40,7 @@ function ensureKitHost() {
             list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 → {a, b})", owner: route });
             list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
             // the breakpoint in use on the page (the window's width)
-            list.push({ name: "$breakpoint", type: "string", value: "desktop | tablet | phone", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
+            list.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
             return list;
         }
     });
@@ -84,10 +86,23 @@ export function renderKitInspector(container, comp, typeDef) {
     if (!typeDef || !typeDef.nexa || !window.NexaKit) return false;
     ensureKitHost();
     comp.props = comp.props || {};
+    var screen = getActiveScreen();
+    // a prop per breakpoint (📱 of each field): kept in comp.overrides[band].props
+    var responsive = screen ? responsiveHost(comp, Tree.parentOf(screen, comp.id), function (n) { return n.props || {}; },
+        function (n, key, v) { n.props = Object.assign({}, n.props || {}); if (v === undefined) delete n.props[key]; else n.props[key] = v; },
+        function (key) { return key !== "__previewState" && key !== "__fallback"; },
+        function (fn) {
+            var before = treeSnapshot(screen);
+            fn();
+            pushTreeChange(screen, before);
+            markDirty();
+            refreshComponentRender(comp);
+        }) : null;
     window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
         meta: typeDef.nexa,
         props: comp.props,
         persistKey: comp.type,
+        responsive: responsive,
         set: function (key, value) { setComponentProp(comp, key, value); },
         // the state switcher: design-time only, no undo step, not "unsaved"
         preview: function (key, value) { comp.props[key] = value; refreshComponentRender(comp); }

@@ -5,6 +5,7 @@ import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
 import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } from "./drag-feedback.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString } from "./sparkplug-live.js";
+import { applyFallbacks } from "../model/breakpoints.js";
 
 // Re-invokes just one component's render() with its current props
 // The variable scope each drawn node was rendered with (src/model/scope.js) —
@@ -279,7 +280,8 @@ export function interpolateProps(props, paramState) {
         });
         withTemplateBindings = out;
     }
-    return resolveSparkplugProps(withTemplateBindings);
+    // a bound prop with no value (yet): its fallback (props.__fallback), as on the live page
+    return applyFallbacks(props, resolveSparkplugProps(withTemplateBindings));
 }
 
 // A "@template" instance's per-instance param state (Subflow env-vars

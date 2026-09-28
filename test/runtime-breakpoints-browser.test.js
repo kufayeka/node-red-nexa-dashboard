@@ -1,10 +1,12 @@
 'use strict';
 
-// Breakpoints on a deployed page, in headless Chrome: the window's width picks the
-// breakpoint (desktop / tablet < 1024 / phone < 768); its overrides apply — a row
-// becomes a column, a node hides, a text and a width change — and crossing one while
-// the page is open applies them in place; {$breakpoint} and On Variable Change follow.
-// Needs `npm run build`.   node test/runtime-breakpoints-browser.test.js   (skipped without Chrome)
+// Breakpoints on a deployed page, in headless Chrome: the screen is designed at xl
+// (1280 wide); the window's band (xs … 3xl, the app's defaults) applies the overrides
+// from the design to it — a row becomes a column (md), a node hides (sm, saved as
+// "phone" before the bands), a text and a width change (sm), a text only wider than
+// the design (3xl) — and crossing one while the page is open applies them in place;
+// {$breakpoint} and On Variable Change follow. Bound props with no value show their
+// fallback. Needs `npm run build`.   node test/runtime-breakpoints-browser.test.js   (skipped without Chrome)
 
 const assert = require('assert');
 const path = require('path');
@@ -23,51 +25,66 @@ async function main() {
             const shown = (id) => js(`getComputedStyle(document.querySelector('[data-id="${id}"]')).display !== "none"`);
             const text = (id) => js(`document.querySelector('[data-id="${id}"]').textContent`);
 
-            await ok('desktop (1100 wide): as designed — a row, all shown; {$breakpoint} = desktop', async () => {
-                await width(1100);
-                assert.strictEqual(await text('bp'), 'desktop');
+            await ok('xl (1300 wide, the design): as designed — a row, all shown; {$breakpoint} = xl', async () => {
+                await width(1300);
+                assert.strictEqual(await text('bp'), 'xl');
                 const a = await box('a'), b = await box('b');
                 assert.deepStrictEqual([a[1] === b[1], b[0] - a[0]], [true, 110], 'side by side: 100 + gap 10');
                 assert.strictEqual(await shown('side'), true);
+                assert.strictEqual(await text('big'), 'big');
             });
-            await ok('narrowed to 900 (tablet), in place: the row is a column; On Variable Change fired', async () => {
+            await ok('bound, no value yet: each prop shows its fallback', async () => {
+                assert.strictEqual(await text('fb'), '— no value —');
+                assert.strictEqual(await text('fb2'), 'waiting');
+            });
+            await ok('narrowed to 900 (md), in place: the row is a column; On Variable Change fired', async () => {
                 await width(900);
-                assert.strictEqual(await text('bp'), 'tablet');
+                assert.strictEqual(await text('bp'), 'md');
                 const a = await box('a'), b = await box('b');
                 assert.deepStrictEqual([a[0] === b[0], b[1] - a[1]], [true, 50], 'stacked: 40 + gap 10');
-                assert.strictEqual(await text('log'), '>tablet');
+                assert.strictEqual(await text('log'), '>md');
+                assert.strictEqual(await shown('side'), true, 'sm\'s override is not md\'s');
             });
-            await ok('500 (phone): still a column (from the tablet); the side hidden; the title\'s text and width changed', async () => {
+            await ok('500 (xs): still a column (from md); the side hidden (sm, saved as Phone); the title\'s text and width changed', async () => {
                 await width(500);
-                assert.strictEqual(await text('bp'), 'phone');
+                assert.strictEqual(await text('bp'), 'xs');
                 const a = await box('a'), b = await box('b');
-                assert.strictEqual(a[0], b[0], 'the tablet\'s column carries down');
+                assert.strictEqual(a[0], b[0], 'md\'s column carries down');
                 assert.strictEqual(await shown('side'), false);
                 assert.strictEqual(await text('title'), 'Phone title');
                 assert.strictEqual((await box('title'))[2], 120);
-                assert.strictEqual(await text('log'), '>tablet>phone');
+                assert.strictEqual(await text('big'), 'big', 'the 3xl override is not for a narrow window');
+                assert.strictEqual(await text('log'), '>md>xs');
             });
-            await ok('back to 1100: exactly the desktop design again', async () => {
-                await width(1100);
-                assert.strictEqual(await text('bp'), 'desktop');
+            await ok('2000 (3xl, wider than the design): its own override; the narrower ones\' are not applied', async () => {
+                await width(2000);
+                assert.strictEqual(await text('bp'), '3xl');
+                assert.strictEqual(await text('big'), 'Big screen');
+                assert.strictEqual(await shown('side'), true);
+                assert.strictEqual(await text('title'), 'title');
+                const a = await box('a'), b = await box('b');
+                assert.strictEqual(a[1], b[1], 'a row');
+            });
+            await ok('back to 1300: exactly the design again', async () => {
+                await width(1300);
+                assert.strictEqual(await text('bp'), 'xl');
                 assert.strictEqual(await shown('side'), true);
                 assert.strictEqual(await text('title'), 'title');
                 assert.strictEqual((await box('title'))[2], 200);
-                const a = await box('a'), b = await box('b');
-                assert.strictEqual(a[1], b[1], 'a row again');
-                assert.strictEqual(await text('log'), '>tablet>phone>desktop');
+                assert.strictEqual(await text('big'), 'big');
+                assert.strictEqual(await text('log'), '>md>xs>3xl>xl');
             });
-            await ok('opened narrow (a phone): drawn at the phone from the start', async () => {
+            await ok('opened narrow (a phone): drawn at xs from the start', async () => {
                 await width(400);
                 await js('location.reload(); 1');
                 await js('new Promise(function (r) { setTimeout(r, 800); })');
-                assert.strictEqual(await text('bp'), 'phone');
+                assert.strictEqual(await text('bp'), 'xs');
                 assert.strictEqual(await shown('side'), false);
                 assert.strictEqual(await text('title'), 'Phone title');
             });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;
-        }, { width: 1100, height: 800, ready: "!!document.querySelector('[data-id=\"bp\"]')", readyTries: 60 });
+        }, { width: 1300, height: 800, ready: "!!document.querySelector('[data-id=\"bp\"]')", readyTries: 60 });
         if (r === null) return null;
     } finally {
         await server.close();

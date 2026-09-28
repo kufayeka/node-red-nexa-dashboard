@@ -79,6 +79,7 @@ export const state = {
     // template-aware for free, with zero call-site changes.
     templates: [],
     assetsPane: null,
+    breakpointsPane: null,
     templateCounter: 0,
     editingMode: "screen", // "screen" | "template"
     activeTemplateId: null,

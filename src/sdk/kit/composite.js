@@ -74,7 +74,7 @@ var EMBEDDED_RE = /\{([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*)\}/g;
 
 export class NxTag extends NxCombobox {
     // tags-only: just tag suggestions (inside nx-binding's Tag source; variables have their own)
-    static properties = { access: { type: String }, providers: { attribute: false }, tagsOnly: { type: Boolean, attribute: "tags-only" }, _provider: { state: true } };
+    static properties = { access: { type: String }, providers: { attribute: false }, tagsOnly: { type: Boolean, attribute: "tags-only" }, fallbackValue: { attribute: false }, _provider: { state: true } };
     constructor() {
         super();
         this.mono = true;
@@ -163,8 +163,14 @@ export class NxTag extends NxCombobox {
         // an input / output of a component: bound to any source (Variable / Tag / Message /
         // Expression; a write target: Variable / Tag) — nx-binding, with this widget's label
         if (!this.tagsOnly) {
+            // bound (an input): the fallback, shown while the binding has no value
+            var fb = this.fallback && str(this.value).trim() && this.access !== "write"
+                ? html`<div class="nx-fallback"><div class="nx-fallback-label">Fallback — shown while the binding has no value (none yet, null, ???)</div>
+                    <nx-text .value="${this.fallbackValue === undefined || this.fallbackValue === null ? "" : this.fallbackValue}" placeholder="(none: unknown)"
+                        @nx-change="${(e) => { e.stopPropagation(); this.dispatchEvent(new CustomEvent("nx-fallback", { detail: { value: e.detail.value }, bubbles: true, composed: true })); }}"></nx-text></div>`
+                : nothing;
             return this.frame(html`<nx-binding default-source="tag" .access="${this.access === "write" ? "write" : "read"}" .providers="${this.providers || null}" .value="${str(this.value)}"
-                @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-binding>`);
+                @nx-change="${(e) => { e.stopPropagation(); this.change(e.detail.value); }}"></nx-binding>${fb}`);
         }
         var allowed = this._allowed();
         var field = super.render();

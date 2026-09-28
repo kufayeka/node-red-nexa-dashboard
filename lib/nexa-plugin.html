@@ -150,9 +150,9 @@
   }
   function walk(surface, fn, opts) {
     var stop = false;
-    function visit(list, parent, depth) {
-      for (var i2 = 0; i2 < list.length && !stop; i2++) {
-        var node = list[i2];
+    function visit(list2, parent, depth) {
+      for (var i2 = 0; i2 < list2.length && !stop; i2++) {
+        var node = list2[i2];
         var r = fn(node, parent, i2, depth);
         if (r === "stop") {
           stop = true;
@@ -173,11 +173,11 @@
   }
   function locate(surface, id2) {
     var found = null;
-    function search(list, parent, orphan) {
-      for (var i2 = 0; i2 < list.length; i2++) {
-        var n = list[i2];
+    function search(list2, parent, orphan) {
+      for (var i2 = 0; i2 < list2.length; i2++) {
+        var n = list2[i2];
         if (n.id === id2) {
-          found = { node: n, parent, list, index: i2, orphan };
+          found = { node: n, parent, list: list2, index: i2, orphan };
           return true;
         }
         if (n.children && search(n.children, n, orphan)) return true;
@@ -213,9 +213,9 @@
   function insert(surface, parentId, index, node) {
     var parent = parentId ? find(surface, parentId) : null;
     if (parentId && !isContainer(parent)) throw new Error("[nexa] insert: " + parentId + " is not a container");
-    var list = listOf(surface, parent);
-    var at = index === void 0 || index === null || index > list.length ? list.length : Math.max(0, index);
-    list.splice(at, 0, node);
+    var list2 = listOf(surface, parent);
+    var at = index === void 0 || index === null || index > list2.length ? list2.length : Math.max(0, index);
+    list2.splice(at, 0, node);
     return node;
   }
   function detach(surface, id2) {
@@ -293,10 +293,10 @@
     return p ? { w: p.w || 0, h: p.h || 0 } : { w: surface.width || 0, h: surface.height || 0 };
   }
   function childBounds(node) {
-    var list = kids(node);
-    if (!list.length) return null;
+    var list2 = kids(node);
+    if (!list2.length) return null;
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    list.forEach(function(c) {
+    list2.forEach(function(c) {
       minX = Math.min(minX, c.x || 0);
       minY = Math.min(minY, c.y || 0);
       maxX = Math.max(maxX, (c.x || 0) + (c.w || 0));
@@ -356,9 +356,9 @@
       return a.index - b2.index;
     });
     var at = locs[locs.length - 1].index - (locs.length - 1);
-    var list = listOf(surface, parent);
+    var list2 = listOf(surface, parent);
     locs.slice().reverse().forEach(function(l) {
-      list.splice(l.index, 1);
+      list2.splice(l.index, 1);
     });
     group.type = group.type === "@frame" ? "@frame" : "@group";
     group.children = locs.map(function(l) {
@@ -375,7 +375,7 @@
     group.y = b.y;
     group.w = b.w;
     group.h = b.h;
-    list.splice(at, 0, group);
+    list2.splice(at, 0, group);
     return group;
   }
   function unwrap(surface, id2) {
@@ -561,8 +561,8 @@
     var size = num(t2.size, 1);
     return t2.unit === "px" ? size + "px" : size + "fr";
   }
-  function tracksCss(list) {
-    return (list || []).map(track).join(" ");
+  function tracksCss(list2) {
+    return (list2 || []).map(track).join(" ");
   }
   function frameCss(frame, opts) {
     var l = layoutOf(frame);
@@ -852,8 +852,8 @@
     variableValue: () => variableValue
   });
   var TYPES = [];
-  function setTypes(list) {
-    TYPES = Array.isArray(list) ? list : [];
+  function setTypes(list2) {
+    TYPES = Array.isArray(list2) ? list2 : [];
   }
   function getTypes() {
     return TYPES;
@@ -974,10 +974,10 @@
     }
     return scope;
   }
-  function visibleVariables(surface, ancestors2, isTemplate, self, app) {
+  function visibleVariables(surface, ancestors2, isTemplate, self, app2) {
     var seen = {}, out = [];
-    function add(list, owner, valueKey) {
-      (list || []).forEach(function(v) {
+    function add(list2, owner, valueKey) {
+      (list2 || []).forEach(function(v) {
         if (!v || !NAME_RE.test(v.name || "") || seen[v.name]) return;
         seen[v.name] = true;
         var t2 = isTypeRef(v.type) ? findType(v.type) : null;
@@ -994,12 +994,12 @@
     }
     if (isTemplate) add(surface.params, { id: surface.id, name: surface.name || "template", kind: "template" }, "defaultValue");
     add(surface.variables, { id: surface.id, name: isTemplate ? surface.name || "template" : "screen", kind: isTemplate ? "template" : "screen" }, "defaultValue");
-    if (app) add(app.variables, { id: "@app", name: "App", kind: "app" }, "defaultValue");
+    if (app2) add(app2.variables, { id: "@app", name: "App", kind: "app" }, "defaultValue");
     return out;
   }
-  function allDeclarations(surface, walk2, app) {
+  function allDeclarations(surface, walk2, app2) {
     var out = [];
-    if (app) (app.variables || []).forEach(function(v) {
+    if (app2) (app2.variables || []).forEach(function(v) {
       out.push({ scopeId: "@app", scopeName: "App", variable: v });
     });
     (surface.params || []).forEach(function(p) {
@@ -1016,6 +1016,200 @@
     return out;
   }
 
+  // src/model/breakpoints.js
+  var DEFAULT_BREAKPOINTS = [
+    { id: "xs", name: "xs", min: 0, preview: 390, device: "Phone" },
+    { id: "sm", name: "sm", min: 640, preview: 640, device: "Large phone" },
+    { id: "md", name: "md", min: 768, preview: 820, device: "Tablet" },
+    { id: "lg", name: "lg", min: 1024, preview: 1024, device: "Tablet landscape / small laptop" },
+    { id: "xl", name: "xl", min: 1280, preview: 1366, device: "Laptop" },
+    { id: "2xl", name: "2xl", min: 1536, preview: 1600, device: "Desktop" },
+    { id: "3xl", name: "3xl", min: 1920, preview: 1920, device: "Full HD and up" }
+  ];
+  var DEVICE_PRESETS = [
+    { name: "iPhone SE", w: 375, h: 667 },
+    { name: "iPhone 15", w: 393, h: 852 },
+    { name: "Android phone", w: 412, h: 915 },
+    { name: "Phone landscape", w: 740, h: 360 },
+    { name: 'HMI 7" (800 \xD7 480)', w: 800, h: 480 },
+    { name: "iPad mini", w: 768, h: 1024 },
+    { name: "iPad Air", w: 820, h: 1180 },
+    { name: 'HMI 10" (1024 \xD7 600)', w: 1024, h: 600 },
+    { name: "iPad Pro landscape", w: 1366, h: 1024 },
+    { name: 'HMI 15" (1280 \xD7 800)', w: 1280, h: 800 },
+    { name: "Laptop (1366 \xD7 768)", w: 1366, h: 768 },
+    { name: "Laptop (1440 \xD7 900)", w: 1440, h: 900 },
+    { name: "Desktop (1600 \xD7 900)", w: 1600, h: 900 },
+    { name: "Full HD (1920 \xD7 1080)", w: 1920, h: 1080 },
+    { name: "QHD (2560 \xD7 1440)", w: 2560, h: 1440 },
+    { name: "4K (3840 \xD7 2160)", w: 3840, h: 2160 }
+  ];
+  var LEGACY = { md: "tablet", sm: "phone" };
+  var OVERRIDABLE = [
+    "x",
+    "y",
+    "w",
+    "h",
+    "visibility",
+    "layout",
+    "layoutChild",
+    "style",
+    "constraints",
+    "props",
+    "minW",
+    "maxW",
+    "minH",
+    "maxH",
+    "scrollBehavior"
+  ];
+  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true };
+  function clone3(v) {
+    return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+  }
+  function isPlain(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+  }
+  function merge(into, patch) {
+    var out = isPlain(into) ? clone3(into) : {};
+    Object.keys(patch || {}).forEach(function(k) {
+      out[k] = isPlain(patch[k]) && isPlain(out[k]) ? merge(out[k], patch[k]) : clone3(patch[k]);
+    });
+    return out;
+  }
+  function breakpointsOf(app2) {
+    var src = app2 && Array.isArray(app2.breakpoints) && app2.breakpoints.length ? app2.breakpoints : DEFAULT_BREAKPOINTS;
+    var seen = {};
+    var list2 = src.filter(function(b) {
+      if (!b || !b.id || seen[b.id] || !isFinite(Number(b.min))) return false;
+      seen[b.id] = true;
+      return true;
+    }).map(function(b) {
+      return Object.assign({}, b, { min: Math.max(0, Number(b.min)), name: b.name || b.id });
+    }).sort(function(a, b) {
+      return a.min - b.min;
+    });
+    if (!list2.length) return breakpointsOf(null);
+    list2[0].min = 0;
+    return list2;
+  }
+  function bandOf(app2, width) {
+    var list2 = breakpointsOf(app2), id2 = list2[0].id;
+    list2.forEach(function(b) {
+      if (Number(width) >= b.min) id2 = b.id;
+    });
+    return id2;
+  }
+  function designBreakpoint(app2, surface) {
+    return bandOf(app2, surface && surface.width ? surface.width : 1920);
+  }
+  function chainFor(app2, surface, id2) {
+    var list2 = breakpointsOf(app2).map(function(b) {
+      return b.id;
+    });
+    var d = list2.indexOf(designBreakpoint(app2, surface)), t2 = list2.indexOf(id2);
+    if (t2 === -1 || d === -1 || t2 === d) return [];
+    var out = [];
+    if (t2 < d) for (var i2 = d - 1; i2 >= t2; i2--) out.push(list2[i2]);
+    else for (var j = d + 1; j <= t2; j++) out.push(list2[j]);
+    return out;
+  }
+  function rangeOf(app2, id2) {
+    var list2 = breakpointsOf(app2);
+    for (var i2 = 0; i2 < list2.length; i2++) {
+      if (list2[i2].id !== id2) continue;
+      var next = list2[i2 + 1];
+      return next ? list2[i2].min + " \u2013 " + (next.min - 1) + " px" : list2[i2].min + " px and up";
+    }
+    return "";
+  }
+  function previewWidthOf(app2, id2) {
+    var list2 = breakpointsOf(app2);
+    for (var i2 = 0; i2 < list2.length; i2++) {
+      if (list2[i2].id !== id2) continue;
+      var next = list2[i2 + 1], w = Number(list2[i2].preview) || list2[i2].min || 360;
+      return Math.max(list2[i2].min, next ? Math.min(w, next.min - 1) : w);
+    }
+    return 0;
+  }
+  function overrideOf(node, id2) {
+    var o = node && node.overrides;
+    if (!o) return null;
+    return o[id2] || LEGACY[id2] && o[LEGACY[id2]] || null;
+  }
+  function migrateOverrideKeys(nodes) {
+    (nodes || []).forEach(function(n) {
+      if (n.overrides) Object.keys(LEGACY).forEach(function(id2) {
+        var old = LEGACY[id2];
+        if (!n.overrides[old]) return;
+        if (!n.overrides[id2]) n.overrides[id2] = n.overrides[old];
+        delete n.overrides[old];
+      });
+      migrateOverrideKeys(n.children);
+    });
+  }
+  function baseOf(node) {
+    var b = {};
+    OVERRIDABLE.forEach(function(k) {
+      if (node && node[k] !== void 0) b[k] = clone3(node[k]);
+    });
+    return b;
+  }
+  function applyOverrides(node, base2, chain) {
+    OVERRIDABLE.forEach(function(k) {
+      if (base2[k] === void 0) delete node[k];
+      else node[k] = clone3(base2[k]);
+    });
+    (chain || []).forEach(function(id2) {
+      var o = overrideOf(node, id2);
+      if (!o) return;
+      Object.keys(o).forEach(function(k) {
+        if (OVERRIDABLE.indexOf(k) === -1) return;
+        node[k] = MERGED[k] && isPlain(o[k]) ? merge(node[k], o[k]) : clone3(o[k]);
+      });
+    });
+    return node;
+  }
+  function resolveNode(node, chain, base2) {
+    var copy = Object.assign({}, node);
+    return applyOverrides(copy, base2 || baseOf(node), chain);
+  }
+  function overrideDiff(inherited, current) {
+    var out = {};
+    OVERRIDABLE.forEach(function(k) {
+      var a = inherited[k], b = current[k];
+      if (JSON.stringify(a) === JSON.stringify(b)) return;
+      if (MERGED[k] && isPlain(a) && isPlain(b)) {
+        var d = {};
+        Object.keys(b).forEach(function(kk) {
+          if (JSON.stringify(a[kk]) !== JSON.stringify(b[kk])) d[kk] = clone3(b[kk]);
+        });
+        if (Object.keys(d).length) out[k] = d;
+        return;
+      }
+      if (b !== void 0) out[k] = clone3(b);
+    });
+    return out;
+  }
+  function isNoValue(v) {
+    return v === void 0 || v === null || v === "???";
+  }
+  function applyFallbacks(raw, resolved) {
+    var fb = raw && raw.__fallback;
+    if (!fb || typeof fb !== "object") return resolved;
+    var out = null;
+    Object.keys(fb).forEach(function(k) {
+      var r = raw[k];
+      if (typeof r !== "string" || !/\{[^{}]+\}/.test(r) || fb[k] === void 0) return;
+      var v = resolved[k];
+      var whole = /^\{[^{}]+\}$/.test(r.trim());
+      var empty = isNoValue(v) || v === r || whole && v === "" && /^\{msg\b/.test(r.trim()) || !whole && typeof v === "string" && (/\?\?\?/.test(v) || /\{[^{}]+\}/.test(v));
+      if (!empty) return;
+      if (!out) out = Object.assign({}, resolved);
+      out[k] = clone3(fb[k]);
+    });
+    return out || resolved;
+  }
+
   // src/model/migrate.js
   var TREE_VERSION = 1;
   function genIdFallback() {
@@ -1027,6 +1221,8 @@
     if (!surface.components) surface.components = [];
     if (!surface.orphans) surface.orphans = [];
     if (!surface.logic) surface.logic = { nodes: [], wires: [] };
+    migrateOverrideKeys(surface.components);
+    delete surface.breakpoints;
     if (surface.treeVersion >= TREE_VERSION) return surface;
     var layers = (surface.layers || []).map(function(l) {
       return { id: l.id, name: l.name || "Layer", parentId: l.parentId || null, state: l.state || (l.visible === false ? "hide" : "show") };
@@ -1175,6 +1371,7 @@
     // template-aware for free, with zero call-site changes.
     templates: [],
     assetsPane: null,
+    breakpointsPane: null,
     templateCounter: 0,
     editingMode: "screen",
     // "screen" | "template"
@@ -1288,9 +1485,9 @@
     var p = state.projectConfigNode;
     if (p && !Array.isArray(p.variables)) p.variables = [];
     if (p && !Array.isArray(p.types)) p.types = [];
-    var app = p || { variables: [], types: [] };
-    setTypes(app.types);
-    return app;
+    var app2 = p || { variables: [], types: [] };
+    setTypes(app2.types);
+    return app2;
   }
   function appScope() {
     return makeScope(null, getApp().variables);
@@ -1411,10 +1608,10 @@
     tree_exports.allNodes(surface, { orphans: true }).forEach(function(n) {
       existing[n.id] = n;
     });
-    function revive(list, into) {
+    function revive(list2, into) {
       var out = into || [];
       out.length = 0;
-      list.forEach(function(s) {
+      list2.forEach(function(s) {
         var node = existing[s.id] || {};
         var oldChildren = node.children;
         Object.keys(node).forEach(function(k) {
@@ -1592,19 +1789,19 @@
   // src/canvas/constraints.js
   function snapshotBoxes(nodeOrList) {
     var out = {};
-    (function walk2(list) {
-      list.forEach(function(c) {
+    (function walk2(list2) {
+      list2.forEach(function(c) {
         out[c.id] = { x: c.x, y: c.y, w: c.w, h: c.h };
         if (c.children) walk2(c.children);
       });
     })(Array.isArray(nodeOrList) ? nodeOrList : tree_exports.kids(nodeOrList));
     return out;
   }
-  function applyConstraints(parent, list, oldInner, newInner, orig) {
-    var changed2 = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed2;
-    orig = orig || snapshotBoxes(list);
-    list.forEach(function(c) {
+  function applyConstraints(parent, list2, oldInner, newInner, orig) {
+    var changed3 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed3;
+    orig = orig || snapshotBoxes(list2);
+    list2.forEach(function(c) {
       if (!layout_exports.hasConstraints(c, parent)) return;
       var o = orig[c.id];
       if (!o) return;
@@ -1619,12 +1816,12 @@
       c.y = nb.y;
       c.w = nb.w;
       c.h = nb.h;
-      changed2.push(c.id);
+      changed3.push(c.id);
       if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed2 = changed2.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+        changed3 = changed3.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
       }
     });
-    return changed2;
+    return changed3;
   }
   function constrainFrameChildren(frame, oldBox, orig) {
     if (!frame || frame.type !== "@frame") return [];
@@ -1639,9 +1836,9 @@
   }
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
-    var changed2 = [];
+    var changed3 = [];
     var redraw = false;
-    if (!screen) return changed2;
+    if (!screen) return changed3;
     tree_exports.walk(screen, function(node, parent) {
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
@@ -1662,22 +1859,22 @@
         node.y = box2.y;
         node.w = box2.w;
         node.h = box2.h;
-        changed2.push(node.id);
+        changed3.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
           redraw = true;
-          changed2 = changed2.concat(moved);
+          changed3 = changed3.concat(moved);
         }
       }
     });
-    changed2.forEach(function(id2) {
+    changed3.forEach(function(id2) {
       if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
-    changed2.redraw = redraw;
-    return changed2;
+    changed3.redraw = redraw;
+    return changed3;
   }
 
   // src/canvas/drop-target.js
@@ -1704,13 +1901,13 @@
   function flowInsert(screen, frame, x, y, excludeIds) {
     var l = layout_exports.layoutOf(frame);
     var fb = tree_exports.absBox(screen, frame.id);
-    var list = flowKids(frame, excludeIds);
-    var boxes = list.map(function(c) {
+    var list2 = flowKids(frame, excludeIds);
+    var boxes = list2.map(function(c) {
       return tree_exports.absBox(screen, c.id);
     });
     var horizontal = layout_exports.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || horizontal && l.wrap;
-    var at = list.length;
+    var at = list2.length;
     for (var i2 = 0; i2 < boxes.length; i2++) {
       var b = boxes[i2];
       var before;
@@ -1729,7 +1926,7 @@
     var all = tree_exports.kids(frame).filter(function(c) {
       return (excludeIds || []).indexOf(c.id) === -1;
     });
-    var index = at < list.length ? all.indexOf(list[at]) : all.length;
+    var index = at < list2.length ? all.indexOf(list2[at]) : all.length;
     var pad = l.padding;
     var line;
     var prev = boxes[at - 1], next = boxes[at];
@@ -1900,7 +2097,7 @@
   }
   function applyDelta(delta) {
     if (!delta) return;
-    var changed2 = [];
+    var changed3 = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
     var metricsTarget;
     if (delta.type === "death") {
@@ -1915,7 +2112,7 @@
         if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
         if (liveCache[key].online) {
           liveCache[key] = Object.assign({}, liveCache[key], { online: false });
-          changed2.push(key);
+          changed3.push(key);
         }
       });
     } else {
@@ -1959,10 +2156,10 @@
           isHistorical: !!m.isHistorical,
           isTransient: !!m.isTransient
         };
-        changed2.push(key);
+        changed3.push(key);
       });
     }
-    if (changed2.length) notify(changed2);
+    if (changed3.length) notify(changed3);
   }
   function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
@@ -2203,19 +2400,19 @@
   function buildSparkplugBindingIndex(screen) {
     var index = {};
     tree_exports.allNodes(screen).forEach(function(comp) {
-      var list = [];
+      var list2 = [];
       if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
-        list.push(comp.sparkplugBinding);
+        list2.push(comp.sparkplugBinding);
       }
       var props = comp.props || {};
       Object.keys(props).forEach(function(k) {
         var v = props[k];
-        if (typeof v === "string") list.push(v);
+        if (typeof v === "string") list2.push(v);
         else if (Array.isArray(v)) v.forEach(function(x) {
-          if (typeof x === "string") list.push(x);
+          if (typeof x === "string") list2.push(x);
         });
       });
-      list.forEach(function(v) {
+      list2.forEach(function(v) {
         refKeysInString(v).forEach(function(key) {
           if (!index[key]) index[key] = [];
           if (index[key].indexOf(comp) === -1) index[key].push(comp);
@@ -2363,7 +2560,7 @@
       });
       withTemplateBindings = out;
     }
-    return resolveSparkplugProps(withTemplateBindings);
+    return applyFallbacks(props, resolveSparkplugProps(withTemplateBindings));
   }
   function resolveInstanceParamState(comp, template, enclosingParamState) {
     var paramState = appScope();
@@ -5089,11 +5286,11 @@
     return true;
   }
   function ensureAll(state2, addrs) {
-    let changed2 = false;
+    let changed3 = false;
     for (let addr of addrs)
       if (ensureAddr(state2, addr) & 1)
-        changed2 = true;
-    return changed2;
+        changed3 = true;
+    return changed3;
   }
   function dynamicFacetSlot(addresses, facet, providers) {
     let providerAddrs = providers.map((p) => addresses[p.id]);
@@ -5414,8 +5611,8 @@
     if (status & 2)
       return status;
     state2.status[idx] = 4;
-    let changed2 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
-    return state2.status[idx] = 2 | changed2;
+    let changed3 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
+    return state2.status[idx] = 2 | changed3;
   }
   function getAddr(state2, addr) {
     return addr & 1 ? state2.config.staticValues[addr >> 1] : state2.values[addr >> 1];
@@ -7261,11 +7458,11 @@
     }
   }
   function updateAttrs(dom, prev, attrs) {
-    let changed2 = false;
+    let changed3 = false;
     if (prev) {
       for (let name2 in prev)
         if (!(attrs && name2 in attrs)) {
-          changed2 = true;
+          changed3 = true;
           if (name2 == "style")
             dom.style.cssText = "";
           else
@@ -7275,14 +7472,14 @@
     if (attrs) {
       for (let name2 in attrs)
         if (!(prev && prev[name2] == attrs[name2])) {
-          changed2 = true;
+          changed3 = true;
           if (name2 == "style")
             dom.style.cssText = attrs[name2];
           else
             dom.setAttribute(name2, attrs[name2]);
         }
     }
-    return changed2;
+    return changed3;
   }
   function getAttrs(dom) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -12107,13 +12304,13 @@
     }
     refresh(whiteSpace, lineHeight, charWidth, textHeight, lineLength, knownHeights) {
       let lineWrapping = wrappingWhiteSpace.indexOf(whiteSpace) > -1;
-      let changed2 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
+      let changed3 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
       this.lineWrapping = lineWrapping;
       this.lineHeight = lineHeight;
       this.charWidth = charWidth;
       this.textHeight = textHeight;
       this.lineLength = lineLength;
-      if (changed2) {
+      if (changed3) {
         this.heightSamples = {};
         for (let i2 = 0; i2 < knownHeights.length; i2++) {
           let h = knownHeights[i2];
@@ -12123,7 +12320,7 @@
             this.heightSamples[Math.floor(h * 10)] = true;
         }
       }
-      return changed2;
+      return changed3;
     }
   };
   var MeasuredHeights = class {
@@ -13247,21 +13444,21 @@
         point() {
         }
       }, 20);
-      let changed2 = 0;
+      let changed3 = 0;
       if (ranges.length != this.visibleRanges.length) {
-        changed2 = 8 | 4;
+        changed3 = 8 | 4;
       } else {
-        for (let i2 = 0; i2 < ranges.length && !(changed2 & 8); i2++) {
+        for (let i2 = 0; i2 < ranges.length && !(changed3 & 8); i2++) {
           let old = this.visibleRanges[i2], nw = ranges[i2];
           if (old.from != nw.from || old.to != nw.to) {
-            changed2 |= 4;
+            changed3 |= 4;
             if (!(changes && changes.mapPos(old.from, -1) == nw.from && changes.mapPos(old.to, 1) == nw.to))
-              changed2 |= 8;
+              changed3 |= 8;
           }
         }
       }
       this.visibleRanges = ranges;
-      return changed2;
+      return changed3;
     }
     lineBlockAt(pos) {
       return pos >= this.viewport.from && pos <= this.viewport.to && this.viewportLines.find((b) => b.from <= pos && b.to >= pos) || scaleBlock(this.heightMap.lineAt(pos, QueryType.ByPos, this.heightOracle, 0, 0), this.scaler);
@@ -13890,15 +14087,15 @@
     }
     listenForScroll() {
       this.parentCheck = -1;
-      let i2 = 0, changed2 = null;
+      let i2 = 0, changed3 = null;
       for (let dom = this.dom; dom; ) {
         if (dom.nodeType == 1) {
-          if (!changed2 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
+          if (!changed3 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
             i2++;
-          else if (!changed2)
-            changed2 = this.scrollTargets.slice(0, i2);
-          if (changed2)
-            changed2.push(dom);
+          else if (!changed3)
+            changed3 = this.scrollTargets.slice(0, i2);
+          if (changed3)
+            changed3.push(dom);
           dom = dom.assignedSlot || dom.parentNode;
         } else if (dom.nodeType == 11) {
           dom = dom.host;
@@ -13906,12 +14103,12 @@
           break;
         }
       }
-      if (i2 < this.scrollTargets.length && !changed2)
-        changed2 = this.scrollTargets.slice(0, i2);
-      if (changed2) {
+      if (i2 < this.scrollTargets.length && !changed3)
+        changed3 = this.scrollTargets.slice(0, i2);
+      if (changed3) {
         for (let dom of this.scrollTargets)
           dom.removeEventListener("scroll", this.onScroll);
-        for (let dom of this.scrollTargets = changed2)
+        for (let dom of this.scrollTargets = changed3)
           dom.addEventListener("scroll", this.onScroll);
       }
     }
@@ -14695,15 +14892,15 @@
             scrollScale = this.viewState.scaleY;
           }
           this.updateState = 1;
-          let changed2 = this.viewState.measure();
-          if (!changed2 && !this.measureRequests.length && this.viewState.scrollTarget == null)
+          let changed3 = this.viewState.measure();
+          if (!changed3 && !this.measureRequests.length && this.viewState.scrollTarget == null)
             break;
           if (i2 > 5) {
             console.warn(this.measureRequests.length ? "Measure loop restarted more than 5 times" : "Viewport failed to stabilize");
             break;
           }
           let measuring = [];
-          if (!(changed2 & 4))
+          if (!(changed3 & 4))
             [this.measureRequests, measuring] = [measuring, this.measureRequests];
           let measured = measuring.map((m) => {
             try {
@@ -14714,11 +14911,11 @@
             }
           });
           let update = ViewUpdate.create(this, this.state, []), redrawn = false;
-          update.flags |= changed2;
+          update.flags |= changed3;
           if (!updated)
             updated = update;
           else
-            updated.flags |= changed2;
+            updated.flags |= changed3;
           this.updateState = 2;
           if (!update.empty) {
             this.updatePlugins(update);
@@ -14799,14 +14996,14 @@
       if (this.state.readOnly)
         contentAttrs["aria-readonly"] = "true";
       attrsFromFacet(this, contentAttributes, contentAttrs);
-      let changed2 = this.observer.ignore(() => {
+      let changed3 = this.observer.ignore(() => {
         let changedContent = updateAttrs(this.contentDOM, this.contentAttrs, contentAttrs);
         let changedEditor = updateAttrs(this.dom, this.editorAttrs, editorAttrs);
         return changedContent || changedEditor;
       });
       this.editorAttrs = editorAttrs;
       this.contentAttrs = contentAttrs;
-      return changed2;
+      return changed3;
     }
     showAnnouncements(trs) {
       let first = true;
@@ -16726,7 +16923,7 @@
     [`resolveInner`](#common.Tree.resolveInner) instead.
     */
     resolve(pos, side = 0) {
-      let node = resolveNode(CachedNode.get(this) || this.topNode, pos, side, false);
+      let node = resolveNode2(CachedNode.get(this) || this.topNode, pos, side, false);
       CachedNode.set(this, node);
       return node;
     }
@@ -16738,7 +16935,7 @@
     the host trees).
     */
     resolveInner(pos, side = 0) {
-      let node = resolveNode(CachedInnerNode.get(this) || this.topNode, pos, side, true);
+      let node = resolveNode2(CachedInnerNode.get(this) || this.topNode, pos, side, true);
       CachedInnerNode.set(this, node);
       return node;
     }
@@ -16933,7 +17130,7 @@
         return true;
     }
   }
-  function resolveNode(node, pos, side, overlays) {
+  function resolveNode2(node, pos, side, overlays) {
     var _a2;
     while (node.from == node.to || (side < 1 ? node.from >= pos : node.from > pos) || (side > -1 ? node.to <= pos : node.to < pos)) {
       let parent = !overlays && node instanceof TreeNode && node.index < 0 ? null : node.parent;
@@ -16966,10 +17163,10 @@
       return getChildren(this, type, before, after);
     }
     resolve(pos, side = 0) {
-      return resolveNode(this, pos, side, false);
+      return resolveNode2(this, pos, side, false);
     }
     resolveInner(pos, side = 0) {
-      return resolveNode(this, pos, side, true);
+      return resolveNode2(this, pos, side, true);
     }
     matchContext(context) {
       return matchNodeContext(this.parent, context);
@@ -17330,7 +17527,7 @@
         let mount = MountedTree.get(scan.tree);
         if (mount && mount.overlay && mount.overlay[0].from <= pos && mount.overlay[mount.overlay.length - 1].to >= pos) {
           let root = new TreeNode(mount.tree, mount.overlay[0].from + scan.from, -1, scan);
-          (layers || (layers = [inner])).push(resolveNode(root, pos, side, false));
+          (layers || (layers = [inner])).push(resolveNode2(root, pos, side, false));
         }
       }
     }
@@ -21244,8 +21441,8 @@
     let source = toSet(first) + toSet(rest) + "*$";
     return [new RegExp("^" + source), new RegExp(source)];
   }
-  function completeFromList(list) {
-    let options = list.map((o) => typeof o == "string" ? { label: o } : o);
+  function completeFromList(list2) {
+    let options = list2.map((o) => typeof o == "string" ? { label: o } : o);
     let [validFor, match] = options.every((o) => /^\w+$/.test(o.label)) ? [/\w*$/, /\w+$/] : prefixMatch(options);
     return (context) => {
       let token = context.matchBefore(match);
@@ -21481,35 +21678,35 @@
   function joinClass(a, b) {
     return a ? b ? a + " " + b : a : b;
   }
-  function defaultPositionInfo(view, list, option, info, space3, tooltip) {
+  function defaultPositionInfo(view, list2, option, info, space3, tooltip) {
     let rtl = view.textDirection == Direction.RTL, left = rtl, narrow = false;
     let side = "top", offset, maxWidth;
-    let spaceLeft = list.left - space3.left, spaceRight = space3.right - list.right;
+    let spaceLeft = list2.left - space3.left, spaceRight = space3.right - list2.right;
     let infoWidth = info.right - info.left, infoHeight = info.bottom - info.top;
     if (left && spaceLeft < Math.min(infoWidth, spaceRight))
       left = false;
     else if (!left && spaceRight < Math.min(infoWidth, spaceLeft))
       left = true;
     if (infoWidth <= (left ? spaceLeft : spaceRight)) {
-      offset = Math.max(space3.top, Math.min(option.top, space3.bottom - infoHeight)) - list.top;
+      offset = Math.max(space3.top, Math.min(option.top, space3.bottom - infoHeight)) - list2.top;
       maxWidth = Math.min(400, left ? spaceLeft : spaceRight);
     } else {
       narrow = true;
       maxWidth = Math.min(
         400,
-        (rtl ? list.right : space3.right - list.left) - 30
+        (rtl ? list2.right : space3.right - list2.left) - 30
         /* Info.Margin */
       );
-      let spaceBelow = space3.bottom - list.bottom;
-      if (spaceBelow >= infoHeight || spaceBelow > list.top) {
-        offset = option.bottom - list.top;
+      let spaceBelow = space3.bottom - list2.bottom;
+      if (spaceBelow >= infoHeight || spaceBelow > list2.top) {
+        offset = option.bottom - list2.top;
       } else {
         side = "bottom";
-        offset = list.bottom - option.top;
+        offset = list2.bottom - option.top;
       }
     }
-    let scaleY = (list.bottom - list.top) / tooltip.offsetHeight;
-    let scaleX = (list.right - list.left) / tooltip.offsetWidth;
+    let scaleY = (list2.bottom - list2.top) / tooltip.offsetHeight;
+    let scaleX = (list2.right - list2.left) / tooltip.offsetWidth;
     return {
       style: `${side}: ${offset / scaleY}px; max-width: ${maxWidth / scaleX}px`,
       class: "cm-completionInfo-" + (narrow ? rtl ? "left-narrow" : "right-narrow" : left ? "left" : "right")
@@ -26398,15 +26595,15 @@
   }
   function litBindablePropsCompletionSource(litBindable) {
     return function(context) {
-      var list = litBindable || [];
-      if (!list.length) return null;
+      var list2 = litBindable || [];
+      if (!list2.length) return null;
       var braceWord = context.matchBefore(/\{[\w]*/);
       var thisWord = context.matchBefore(/this\.[\w]*/);
       if (!braceWord && !thisWord) return null;
       if (thisWord) {
         return {
           from: thisWord.from + "this.".length,
-          options: list.map(function(p) {
+          options: list2.map(function(p) {
             return { label: p.name, type: "property", detail: p.type || "string" };
           }),
           validFor: /^[\w]*$/
@@ -26414,7 +26611,7 @@
       }
       return {
         from: braceWord.from,
-        options: list.map(function(p) {
+        options: list2.map(function(p) {
           return { label: "{" + p.name + "}", displayLabel: p.name, type: "variable", detail: p.type || "string" };
         }),
         validFor: /^\{[\w]*$/
@@ -27185,9 +27382,9 @@
     if (loading && !force) return loading;
     loading = ajax({ url: "nexa-dashboard/_assets" }).then(function(d) {
       if (d.maxBytes) assetLimits = { maxBytes: d.maxBytes, warnBytes: d.warnBytes, warnPx: d.warnPx };
-      var list = d.assets || [];
-      if (sdk() && sdk().setAssets) sdk().setAssets(list);
-      return list;
+      var list2 = d.assets || [];
+      if (sdk() && sdk().setAssets) sdk().setAssets(list2);
+      return list2;
     }, function() {
       return [];
     });
@@ -27240,6 +27437,288 @@
     if (window.RED && window.RED.notify) window.RED.notify(text, { type: type || "compact", timeout: 4e3 });
   }
 
+  // src/canvas/breakpoints-ui.js
+  var session = null;
+  function app() {
+    return getApp();
+  }
+  function breakpointList() {
+    return breakpointsOf(app()).slice().reverse();
+  }
+  function designId(screen) {
+    return designBreakpoint(app(), screen || getActiveScreen());
+  }
+  function activeBreakpointId() {
+    return session ? session.id : designId();
+  }
+  function isDesign(id2, screen) {
+    return !id2 || id2 === designId(screen);
+  }
+  function rangeOf2(id2) {
+    return rangeOf(app(), id2);
+  }
+  function previewWidth(screen) {
+    return session && screen && session.screenId === screen.id ? session.preview.w : screen ? screen.width : 0;
+  }
+  function bandPreviewWidth(screen, id2) {
+    return isDesign(id2, screen) ? screen.width : previewWidthOf(app(), id2);
+  }
+  function chainFor2(screen, id2) {
+    return chainFor(app(), screen, id2);
+  }
+  function each(list2, parent, fn) {
+    (list2 || []).forEach(function(n) {
+      fn(n, parent);
+      if (n.children) each(n.children, n, fn);
+    });
+  }
+  function box(n) {
+    return { x: n.x, y: n.y, w: n.w, h: n.h };
+  }
+  function setBox(n, b) {
+    n.x = b.x;
+    n.y = b.y;
+    n.w = b.w;
+    n.h = b.h;
+  }
+  function toPreview(n, parent) {
+    if (parent || !session) return;
+    setBox(n, layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.design, session.preview));
+  }
+  function toDesign(n, parent) {
+    if (parent || !session) return box(n);
+    return layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.preview, session.design);
+  }
+  function screenOf(id2) {
+    return (state.screens || []).filter(function(s) {
+      return s.id === id2;
+    })[0] || null;
+  }
+  function setBase(n, base2) {
+    Object.defineProperty(n, "__bpBase", { value: base2, writable: true, configurable: true });
+  }
+  function tidy(n) {
+    if (n.overrides && !Object.keys(n.overrides).length) delete n.overrides;
+  }
+  function enterBreakpoint(screen, id2) {
+    leaveBreakpoint();
+    if (!screen || !id2 || isDesign(id2, screen) || state.editingMode === "template") return;
+    if (!breakpointsOf(app()).some(function(b) {
+      return b.id === id2;
+    })) return;
+    migrateOverrideKeys(screen.components);
+    session = {
+      screenId: screen.id,
+      id: id2,
+      chain: chainFor2(screen, id2),
+      design: { w: screen.width, h: screen.height },
+      preview: { w: bandPreviewWidth(screen, id2), h: screen.height }
+    };
+    each(screen.components, null, function(n, p) {
+      setBase(n, baseOf(n));
+      applyOverrides(n, n.__bpBase, session.chain);
+      toPreview(n, p);
+    });
+    publishBase();
+  }
+  function leaveBreakpoint() {
+    if (!session) return;
+    var screen = screenOf(session.screenId);
+    if (screen) {
+      syncBreakpoint();
+      each(screen.components, null, function(n) {
+        if (n.__bpBase) {
+          applyOverrides(n, n.__bpBase, []);
+          delete n.__bpBase;
+        }
+      });
+    }
+    session = null;
+    if (state.projectConfigNode) state.projectConfigNode.screens = state.screens;
+  }
+  function syncBreakpoint() {
+    if (!session) return;
+    var screen = screenOf(session.screenId);
+    if (!screen) return;
+    var inheritChain = session.chain.slice(0, -1);
+    each(screen.components, null, function(n, p) {
+      var live = baseOf(n);
+      var d = toDesign(n, p);
+      live.x = d.x;
+      live.y = d.y;
+      live.w = d.w;
+      live.h = d.h;
+      if (!n.__bpBase) {
+        setBase(n, live);
+        return;
+      }
+      var inherited = applyOverrides({ overrides: n.overrides }, n.__bpBase, inheritChain);
+      var inFlow = p && layout_exports.isInFlow(n, p);
+      if (inFlow) {
+        live.x = inherited.x;
+        live.y = inherited.y;
+      }
+      if (inFlow && layout_exports.childSizing(n, "w") !== "fixed") live.w = inherited.w;
+      if (inFlow && layout_exports.childSizing(n, "h") !== "fixed") live.h = inherited.h;
+      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "w")) live.w = inherited.w;
+      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "h")) live.h = inherited.h;
+      ["x", "y", "w", "h"].forEach(function(k) {
+        if (Math.abs((live[k] || 0) - (inherited[k] || 0)) <= 1) live[k] = inherited[k];
+      });
+      var diff = overrideDiff(inherited, live);
+      n.overrides = n.overrides || {};
+      if (Object.keys(diff).length) n.overrides[session.id] = diff;
+      else delete n.overrides[session.id];
+      tidy(n);
+    });
+  }
+  function publishBase() {
+    if (!session || !state.projectConfigNode) return;
+    var live = screenOf(session.screenId);
+    var copy = JSON.parse(JSON.stringify(state.screens));
+    var bases = {};
+    if (live) each(live.components, null, function(n) {
+      bases[n.id] = n.__bpBase;
+    });
+    copy.forEach(function(s) {
+      if (s.id !== session.screenId) return;
+      each(s.components, null, function(n) {
+        var b = bases[n.id];
+        if (!b) return;
+        OVERRIDABLE.forEach(function(k) {
+          if (b[k] === void 0) delete n[k];
+          else n[k] = JSON.parse(JSON.stringify(b[k]));
+        });
+      });
+    });
+    state.projectConfigNode.screens = copy;
+  }
+  function onDirty() {
+    if (!session) return;
+    syncBreakpoint();
+    publishBase();
+  }
+  function overriddenKeys(node) {
+    var o = session && overrideOf(node, session.id);
+    return o ? Object.keys(o) : [];
+  }
+  function resetOverride(node, parent) {
+    if (!session || !node || !node.overrides) return;
+    delete node.overrides[session.id];
+    tidy(node);
+    applyOverrides(node, node.__bpBase || baseOf(node), session.chain);
+    toPreview(node, parent);
+  }
+  function checkSession(screen) {
+    if (session && (!screen || screen.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
+  }
+  function baseFor(node) {
+    return node.__bpBase || baseOf(node);
+  }
+  function resolvedAt(node, id2, screen) {
+    screen = screen || getActiveScreen();
+    var copy = resolveNode(node, isDesign(id2, screen) ? [] : chainFor2(screen, id2), baseFor(node));
+    copy.children = [];
+    return copy;
+  }
+  function editAt(node, parent, id2, fn) {
+    var screen = getActiveScreen();
+    if (!node || !screen) return;
+    if (parent && !parent.type) parent = null;
+    if (isDesign(id2, screen)) {
+      if (!session) {
+        fn(node);
+        return;
+      }
+      var d = resolvedAt(node, id2, screen);
+      fn(d);
+      setBase(node, baseOf(d));
+    } else {
+      var chain = chainFor2(screen, id2);
+      var inherited = resolveNode(node, chain.slice(0, -1), baseFor(node));
+      var current = resolvedAt(node, id2, screen);
+      fn(current);
+      var diff = overrideDiff(inherited, current);
+      node.overrides = node.overrides || {};
+      if (node.overrides.tablet || node.overrides.phone) migrateOverrideKeys([node]);
+      if (Object.keys(diff).length) node.overrides[id2] = diff;
+      else delete node.overrides[id2];
+      tidy(node);
+    }
+    if (session) {
+      applyOverrides(node, baseFor(node), session.chain);
+      toPreview(node, parent);
+    }
+  }
+  function responsiveHost(node, parent, view, write, canVary, commitFn) {
+    var screen = getActiveScreen();
+    if (!screen || state.editingMode === "template" || !node || !isOnScreen(screen, node)) return null;
+    var at = {}, inh = {};
+    function viewAt(id2) {
+      if (!(id2 in at)) at[id2] = view(resolvedAt(node, id2, screen));
+      return at[id2];
+    }
+    function inheritedAt(id2) {
+      if (!(id2 in inh)) inh[id2] = view(resolveNode(node, chainFor2(screen, id2).slice(0, -1), baseFor(node)));
+      return inh[id2];
+    }
+    function forget() {
+      at = {};
+      inh = {};
+    }
+    return {
+      begin: forget,
+      list: function() {
+        var d = designId(screen);
+        return breakpointList().map(function(b) {
+          return { id: b.id, name: b.name, design: b.id === d, range: rangeOf2(b.id) };
+        });
+      },
+      active: function() {
+        return activeBreakpointId();
+      },
+      canVary: canVary || function() {
+        return true;
+      },
+      valueAt: function(key, id2) {
+        return viewAt(id2)[key];
+      },
+      /** Whether band `id` changes `key` (from what it inherits). */
+      has: function(key, id2) {
+        if (isDesign(id2, screen)) return false;
+        return JSON.stringify(viewAt(id2)[key]) !== JSON.stringify(inheritedAt(id2)[key]);
+      },
+      setAt: function(key, id2, v) {
+        forget();
+        commitFn(function() {
+          editAt(node, parent, id2, function(n) {
+            write(n, key, v);
+          });
+        });
+        forget();
+      },
+      clearAt: function(key, id2) {
+        if (isDesign(id2, screen)) return;
+        var inherited = inheritedAt(id2)[key];
+        forget();
+        commitFn(function() {
+          editAt(node, parent, id2, function(n) {
+            write(n, key, inherited);
+          });
+        });
+        forget();
+      }
+    };
+  }
+  function isOnScreen(screen, node) {
+    var found = false;
+    each(screen.components, null, function(n) {
+      if (n === node) found = true;
+    });
+    return found;
+  }
+  state.onBreakpointDirty = onDirty;
+
   // src/sidebar/kit-inspector.js
   var PROP_HISTORY_MERGE_MS = 1500;
   var hostReady = false;
@@ -27259,15 +27738,15 @@
         var screen = getActiveScreen();
         var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
         if (!screen || !id2) return [];
-        var list = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
+        var list2 = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
         var route = { id: "$route", name: "the URL", kind: "route" };
         ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
-          list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
+          list2.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
         });
-        list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
-        list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
-        list.push({ name: "$breakpoint", type: "string", value: "desktop | tablet | phone", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
-        return list;
+        list2.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
+        list2.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
+        list2.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
+        return list2;
       }
     });
     if (window.NexaSDK && window.NexaSDK.getTagProvider("sparkplug")) {
@@ -27281,7 +27760,7 @@
       });
     }
   }
-  function clone3(v) {
+  function clone4(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
@@ -27292,11 +27771,11 @@
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
     if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
-      last2.to = clone3(value);
+      last2.to = clone4(value);
       last2.at = now;
       state.redoStack = [];
     } else if (screen) {
-      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone3(from), to: clone3(value), at: now });
+      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone4(from), to: clone4(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -27305,10 +27784,34 @@
     if (!typeDef || !typeDef.nexa || !window.NexaKit) return false;
     ensureKitHost();
     comp.props = comp.props || {};
+    var screen = getActiveScreen();
+    var responsive = screen ? responsiveHost(
+      comp,
+      tree_exports.parentOf(screen, comp.id),
+      function(n) {
+        return n.props || {};
+      },
+      function(n, key, v) {
+        n.props = Object.assign({}, n.props || {});
+        if (v === void 0) delete n.props[key];
+        else n.props[key] = v;
+      },
+      function(key) {
+        return key !== "__previewState" && key !== "__fallback";
+      },
+      function(fn) {
+        var before = treeSnapshot(screen);
+        fn();
+        pushTreeChange(screen, before);
+        markDirty();
+        refreshComponentRender(comp);
+      }
+    ) : null;
     window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: typeDef.nexa,
       props: comp.props,
       persistKey: comp.type,
+      responsive,
       set: function(key, value) {
         setComponentProp(comp, key, value);
       },
@@ -27322,6 +27825,9 @@
   }
 
   // src/sidebar/frame-inspector.js
+  function framePartVaries(key) {
+    return !/^z[A-Z]/.test(key) && key !== "cIndex";
+  }
   var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
   var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
   var TRACK = { row: true, fields: { size: { type: "number", default: 1, min: 0 }, unit: { type: "enum", default: "fr", options: [{ value: "fr", label: "fr" }, { value: "px", label: "px" }, { value: "auto", label: "auto" }] } } };
@@ -27608,19 +28114,35 @@
       selectOnly(node.id);
     } else redrawCanvas();
   }
-  function mountLive(container, meta2, persistKey, view, onSet) {
+  function mountLive(container, meta2, persistKey, view, onSet, r) {
     var current = view();
+    var refresh = function() {
+      Object.keys(current).forEach(function(k) {
+        delete current[k];
+      });
+      Object.assign(current, view());
+      handle.update();
+    };
+    var screen = getActiveScreen();
+    var responsive = r && screen ? responsiveHost(
+      r.node,
+      r.parent,
+      r.view,
+      r.write,
+      r.canVary,
+      function(fn) {
+        commit(r.node, fn);
+        refresh();
+      }
+    ) : null;
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: meta2,
       props: current,
       persistKey,
+      responsive,
       set: function(key, v) {
         onSet(key, v);
-        Object.keys(current).forEach(function(k) {
-          delete current[k];
-        });
-        Object.assign(current, view());
-        handle.update();
+        refresh();
       }
     });
     return handle;
@@ -27701,7 +28223,8 @@
         commit(frame, function() {
           writeFrame(frame, key, v);
         });
-      }
+      },
+      { node: frame, parent: tree_exports.parentOf(getActiveScreen(), frame.id), view: frameView, write: writeFrame, canVary: framePartVaries }
     );
     return true;
   }
@@ -27745,7 +28268,8 @@
         commit(node, function() {
           writeChild(node, key, v);
         }, key === "absolute");
-      }
+      },
+      { node, parent, view: childView, write: writeChild }
     );
     return true;
   }
@@ -27789,21 +28313,34 @@
             </nx-section>`;
       }
     });
-    mountLive(container, meta2, "nexa-constraints", function() {
-      return Object.assign({}, layout_exports.constraintsOf(node), { scrollBehavior: node.scrollBehavior || "scrolls" });
-    }, function(key, v) {
-      commit(node, function() {
-        if (key === "scrollBehavior") {
-          if (v === "scrolls") delete node.scrollBehavior;
-          else node.scrollBehavior = v;
-          return;
-        }
-        var c = Object.assign({}, layout_exports.constraintsOf(node));
-        c[key] = v;
-        if (c.h === "left" && c.v === "top") delete node.constraints;
-        else node.constraints = c;
-      });
-    });
+    var constraintView = function(n) {
+      return Object.assign({}, layout_exports.constraintsOf(n), { scrollBehavior: n.scrollBehavior || "scrolls" });
+    };
+    var writeConstraint = function(n, key, v) {
+      if (key === "scrollBehavior") {
+        if (v === "scrolls") delete n.scrollBehavior;
+        else n.scrollBehavior = v;
+        return;
+      }
+      var c = Object.assign({}, layout_exports.constraintsOf(n));
+      c[key] = v;
+      if (c.h === "left" && c.v === "top") delete n.constraints;
+      else n.constraints = c;
+    };
+    mountLive(
+      container,
+      meta2,
+      "nexa-constraints",
+      function() {
+        return constraintView(node);
+      },
+      function(key, v) {
+        commit(node, function() {
+          writeConstraint(node, key, v);
+        });
+      },
+      { node, parent, view: constraintView, write: writeConstraint }
+    );
     return true;
   }
 
@@ -27851,9 +28388,9 @@
     }
     return t2;
   }
-  function variableProblems(list) {
+  function variableProblems(list2) {
     var seen = {}, out = [];
-    (list || []).forEach(function(v) {
+    (list2 || []).forEach(function(v) {
       if (!scope_exports.NAME_RE.test(v.name || "")) out.push('"' + (v.name || "") + '" is not a valid name (letters, digits, _ or $, not starting with a digit)');
       else if (seen[v.name]) out.push('"' + v.name + '" is declared twice');
       seen[v.name] = true;
@@ -27939,255 +28476,6 @@
     return true;
   }
 
-  // src/model/breakpoints.js
-  var DEFAULT_BREAKPOINTS = [
-    { id: "tablet", name: "Tablet", max: 1023, preview: 820 },
-    { id: "phone", name: "Phone", max: 767, preview: 390 }
-  ];
-  var BASE_BREAKPOINT = { id: "desktop", name: "Desktop" };
-  var OVERRIDABLE = [
-    "x",
-    "y",
-    "w",
-    "h",
-    "visibility",
-    "layout",
-    "layoutChild",
-    "style",
-    "constraints",
-    "props",
-    "minW",
-    "maxW",
-    "minH",
-    "maxH",
-    "scrollBehavior"
-  ];
-  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true };
-  function clone4(v) {
-    return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
-  }
-  function isPlain(v) {
-    return v !== null && typeof v === "object" && !Array.isArray(v);
-  }
-  function merge(into, patch) {
-    var out = isPlain(into) ? clone4(into) : {};
-    Object.keys(patch || {}).forEach(function(k) {
-      out[k] = isPlain(patch[k]) && isPlain(out[k]) ? merge(out[k], patch[k]) : clone4(patch[k]);
-    });
-    return out;
-  }
-  function breakpointsOf(surface) {
-    var list = surface && Array.isArray(surface.breakpoints) ? surface.breakpoints : DEFAULT_BREAKPOINTS;
-    return list.filter(function(b) {
-      return b && b.id && b.id !== BASE_BREAKPOINT.id && isFinite(Number(b.max));
-    }).slice().sort(function(a, b) {
-      return Number(b.max) - Number(a.max);
-    });
-  }
-  function chainFor(surface, id2) {
-    var out = [];
-    var list = breakpointsOf(surface);
-    for (var i2 = 0; i2 < list.length; i2++) {
-      out.push(list[i2].id);
-      if (list[i2].id === id2) return out;
-    }
-    return [];
-  }
-  function baseOf(node) {
-    var b = {};
-    OVERRIDABLE.forEach(function(k) {
-      if (node && node[k] !== void 0) b[k] = clone4(node[k]);
-    });
-    return b;
-  }
-  function applyOverrides(node, base2, chain) {
-    OVERRIDABLE.forEach(function(k) {
-      if (base2[k] === void 0) delete node[k];
-      else node[k] = clone4(base2[k]);
-    });
-    (chain || []).forEach(function(id2) {
-      var o = node.overrides && node.overrides[id2];
-      if (!o) return;
-      Object.keys(o).forEach(function(k) {
-        if (OVERRIDABLE.indexOf(k) === -1) return;
-        node[k] = MERGED[k] && isPlain(o[k]) ? merge(node[k], o[k]) : clone4(o[k]);
-      });
-    });
-    return node;
-  }
-  function overrideDiff(inherited, current) {
-    var out = {};
-    OVERRIDABLE.forEach(function(k) {
-      var a = inherited[k], b = current[k];
-      if (JSON.stringify(a) === JSON.stringify(b)) return;
-      if (MERGED[k] && isPlain(a) && isPlain(b)) {
-        var d = {};
-        Object.keys(b).forEach(function(kk) {
-          if (JSON.stringify(a[kk]) !== JSON.stringify(b[kk])) d[kk] = clone4(b[kk]);
-        });
-        if (Object.keys(d).length) out[k] = d;
-        return;
-      }
-      if (b !== void 0) out[k] = clone4(b);
-    });
-    return out;
-  }
-
-  // src/canvas/breakpoints-ui.js
-  var session = null;
-  function activeBreakpointId() {
-    return session ? session.id : "desktop";
-  }
-  function breakpointList(screen) {
-    return breakpointsOf(screen);
-  }
-  function previewWidth(screen) {
-    return session && screen && session.screenId === screen.id ? session.preview.w : screen ? screen.width : 0;
-  }
-  function each(list, parent, fn) {
-    (list || []).forEach(function(n) {
-      fn(n, parent);
-      if (n.children) each(n.children, n, fn);
-    });
-  }
-  function box(n) {
-    return { x: n.x, y: n.y, w: n.w, h: n.h };
-  }
-  function setBox(n, b) {
-    n.x = b.x;
-    n.y = b.y;
-    n.w = b.w;
-    n.h = b.h;
-  }
-  function toPreview(n, parent) {
-    if (parent || !session) return;
-    setBox(n, layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.design, session.preview));
-  }
-  function toDesign(n, parent) {
-    if (parent || !session) return box(n);
-    return layout_exports.resizeWithConstraints(box(n), layout_exports.constraintsOf(n), session.preview, session.design);
-  }
-  function screenOf(id2) {
-    return (state.screens || []).filter(function(s) {
-      return s.id === id2;
-    })[0] || null;
-  }
-  function setBase(n, base2) {
-    Object.defineProperty(n, "__bpBase", { value: base2, writable: true, configurable: true });
-  }
-  function enterBreakpoint(screen, id2) {
-    leaveBreakpoint();
-    if (!screen || !id2 || id2 === "desktop" || state.editingMode === "template") return;
-    var bp = breakpointsOf(screen).filter(function(b) {
-      return b.id === id2;
-    })[0];
-    if (!bp) return;
-    session = {
-      screenId: screen.id,
-      id: id2,
-      chain: chainFor(screen, id2),
-      design: { w: screen.width, h: screen.height },
-      preview: { w: Math.min(screen.width, Number(bp.preview || bp.max) || screen.width), h: screen.height }
-    };
-    each(screen.components, null, function(n, p) {
-      setBase(n, baseOf(n));
-      applyOverrides(n, n.__bpBase, session.chain);
-      toPreview(n, p);
-    });
-    publishBase();
-  }
-  function leaveBreakpoint() {
-    if (!session) return;
-    var screen = screenOf(session.screenId);
-    if (screen) {
-      syncBreakpoint();
-      each(screen.components, null, function(n) {
-        if (n.__bpBase) {
-          applyOverrides(n, n.__bpBase, []);
-          delete n.__bpBase;
-        }
-      });
-    }
-    session = null;
-    if (state.projectConfigNode) state.projectConfigNode.screens = state.screens;
-  }
-  function syncBreakpoint() {
-    if (!session) return;
-    var screen = screenOf(session.screenId);
-    if (!screen) return;
-    var inheritChain = session.chain.slice(0, -1);
-    each(screen.components, null, function(n, p) {
-      var live = baseOf(n);
-      var d = toDesign(n, p);
-      live.x = d.x;
-      live.y = d.y;
-      live.w = d.w;
-      live.h = d.h;
-      if (!n.__bpBase) {
-        setBase(n, live);
-        return;
-      }
-      var inherited = applyOverrides({ overrides: n.overrides }, n.__bpBase, inheritChain);
-      var inFlow = p && layout_exports.isInFlow(n, p);
-      if (inFlow) {
-        live.x = inherited.x;
-        live.y = inherited.y;
-      }
-      if (inFlow && layout_exports.childSizing(n, "w") !== "fixed") live.w = inherited.w;
-      if (inFlow && layout_exports.childSizing(n, "h") !== "fixed") live.h = inherited.h;
-      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "w")) live.w = inherited.w;
-      if (n.type === "@frame" && layout_exports.frameHugs && layout_exports.frameHugs(n, "h")) live.h = inherited.h;
-      ["x", "y", "w", "h"].forEach(function(k) {
-        if (Math.abs((live[k] || 0) - (inherited[k] || 0)) <= 1) live[k] = inherited[k];
-      });
-      var diff = overrideDiff(inherited, live);
-      n.overrides = n.overrides || {};
-      if (Object.keys(diff).length) n.overrides[session.id] = diff;
-      else delete n.overrides[session.id];
-      if (!Object.keys(n.overrides).length) delete n.overrides;
-    });
-  }
-  function publishBase() {
-    if (!session || !state.projectConfigNode) return;
-    var live = screenOf(session.screenId);
-    var copy = JSON.parse(JSON.stringify(state.screens));
-    var bases = {};
-    if (live) each(live.components, null, function(n) {
-      bases[n.id] = n.__bpBase;
-    });
-    copy.forEach(function(s) {
-      if (s.id !== session.screenId) return;
-      each(s.components, null, function(n) {
-        var b = bases[n.id];
-        if (!b) return;
-        OVERRIDABLE.forEach(function(k) {
-          if (b[k] === void 0) delete n[k];
-          else n[k] = JSON.parse(JSON.stringify(b[k]));
-        });
-      });
-    });
-    state.projectConfigNode.screens = copy;
-  }
-  function onDirty() {
-    if (!session) return;
-    syncBreakpoint();
-    publishBase();
-  }
-  function overriddenKeys(node) {
-    return session && node && node.overrides && node.overrides[session.id] ? Object.keys(node.overrides[session.id]) : [];
-  }
-  function resetOverride(node, parent) {
-    if (!session || !node || !node.overrides) return;
-    delete node.overrides[session.id];
-    if (!Object.keys(node.overrides).length) delete node.overrides;
-    applyOverrides(node, node.__bpBase || baseOf(node), session.chain);
-    toPreview(node, parent);
-  }
-  function checkSession(screen) {
-    if (session && (!screen || screen.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
-  }
-  state.onBreakpointDirty = onDirty;
-
   // src/sidebar/properties-panel.js
   function renderLayoutChildSection(comp) {
     var screen = getActiveScreen();
@@ -28236,14 +28524,14 @@
       return;
     }
     var bpId = activeBreakpointId();
-    if (bpId !== "desktop") {
+    if (!isDesign(bpId)) {
       var bpScreen = getActiveScreen();
-      var bpName = (breakpointList(bpScreen).filter(function(b) {
+      var bpName = (breakpointList().filter(function(b) {
         return b.id === bpId;
-      })[0] || { name: bpId }).name;
+      })[0] || { name: bpId }).name + " (" + rangeOf2(bpId) + ")";
       var keys = overriddenKeys(comp);
       var banner = window.$("<div>", { "class": "nexa-bp-banner" }).css({ background: "#fff3e0", border: "1px solid #ffb74d", "border-radius": "4px", padding: "6px 8px", "margin-bottom": "10px", "font-size": "11px", color: "#6d4c00" }).appendTo(state.propertiesPane);
-      window.$("<div>").html('<i class="fa fa-mobile"></i> Editing <b>' + bpName + "</b>: changes here are kept for " + bpName + " (and narrower); Desktop keeps the design.").appendTo(banner);
+      window.$("<div>").html('<i class="fa fa-mobile"></i> Editing <b>' + bpName + `</b>: changes here are kept for this breakpoint (and the ones further from the design); \u2605 keeps the design. A field's <i class="fa fa-mobile"></i> sets one value per breakpoint without switching.`).appendTo(banner);
       if (keys.length) {
         var row = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px", "margin-top": "5px" }).appendTo(banner);
         window.$("<span>").css({ flex: "1 1 auto" }).text("\u25CF Overridden here: " + keys.join(", ")).appendTo(row);
@@ -30243,16 +30531,16 @@
   }
   function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
-    var changed2 = false;
+    var changed3 = false;
     ids.forEach(function(id2) {
       var c = findComponent(id2);
       if (c && !!c.locked !== locked) {
         pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
         c.locked = locked;
-        changed2 = true;
+        changed3 = true;
       }
     });
-    if (!changed2) return;
+    if (!changed3) return;
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
@@ -30431,8 +30719,8 @@
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed2 = readbackLayout(screen);
-    if (changed2.redraw && !renderActiveScreen._again) {
+    var changed3 = readbackLayout(screen);
+    if (changed3.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen(opts);
@@ -30533,17 +30821,20 @@
     var template = state.editingMode === "template";
     bpBar.toggle(!!screen && !template);
     if (!screen || template) return;
-    var active = activeBreakpointId();
-    var items = [{ id: "desktop", name: "Desktop", icon: "fa-desktop", width: screen.width }].concat(breakpointList(screen).map(function(b) {
-      return { id: b.id, name: b.name, icon: b.id === "phone" ? "fa-mobile" : "fa-tablet", width: Math.min(screen.width, Number(b.preview || b.max)), max: b.max };
-    }));
-    items.forEach(function(it) {
-      var on = it.id === active;
-      window.$("<a>", { href: "#", title: it.id === "desktop" ? "The design (" + it.width + " px)" : it.name + ": below " + (Number(it.max) + 1) + " px \u2014 edits here are kept for " + it.name + " (and narrower)", "data-breakpoint": it.id }).css({ display: "flex", "align-items": "center", gap: "5px", padding: "0 10px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none" }).html('<i class="fa ' + it.icon + '"></i> ' + it.name + ' <span style="opacity:.7">' + it.width + "</span>").on("click", function(e) {
+    var active = activeBreakpointId(), design = designId(screen);
+    var list2 = breakpointList();
+    list2.forEach(function(b, i2) {
+      var on = b.id === active, isDesign2 = b.id === design;
+      var width = bandPreviewWidth(screen, b.id);
+      var icon = width < 640 ? "fa-mobile" : width < 1200 ? "fa-tablet" : "fa-desktop";
+      var tip = b.name + " (" + rangeOf2(b.id) + ")" + (b.device ? " \xB7 " + b.device : "") + " \u2014 " + (isDesign2 ? "the design (the screen's width, " + width + " px)" : "shown at " + width + " px; edits here are kept for " + b.name + (i2 > list2.map(function(x) {
+        return x.id;
+      }).indexOf(design) ? " and narrower" : " and wider"));
+      window.$("<a>", { href: "#", title: tip, "data-breakpoint": b.id }).css({ display: "flex", "align-items": "center", gap: "4px", padding: "0 8px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none", "white-space": "nowrap" }).html('<i class="fa ' + icon + '"></i> ' + (isDesign2 ? '<i class="fa fa-star" style="font-size:9px"></i>' : "") + window.$("<span>").text(b.name).html() + ' <span style="opacity:.7">' + width + "</span>").on("click", function(e) {
         e.preventDefault();
-        if (it.id === activeBreakpointId()) return;
-        if (it.id === "desktop") leaveBreakpoint();
-        else enterBreakpoint(getActiveScreen(), it.id);
+        if (b.id === activeBreakpointId()) return;
+        if (b.id === designId(getActiveScreen())) leaveBreakpoint();
+        else enterBreakpoint(getActiveScreen(), b.id);
         renderActiveScreen();
         zoomToFit();
       }).appendTo(bpBar);
@@ -31097,8 +31388,8 @@
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return def && def.icon || "fa fa-cube";
   }
-  function rows(screen, list, orphan) {
-    return list.slice().reverse().map(function(node) {
+  function rows(screen, list2, orphan) {
+    return list2.slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
       var eff = orphan ? vis : tree_exports.effectiveVisibility(screen, node.id);
       return {
@@ -31595,8 +31886,8 @@
   var editBarEl = null;
   function templateUsageCount(id2) {
     var count = 0;
-    function scan(list) {
-      (list || []).forEach(function(surface) {
+    function scan(list2) {
+      (list2 || []).forEach(function(surface) {
         tree_exports.allNodes(surface, { orphans: true }).forEach(function(c) {
           if (c.type === "@template" && c.templateId === id2) count++;
         });
@@ -32558,9 +32849,9 @@
       return { value: "type:" + t2.id, label: t2.name + " (type)" };
     }));
   }
-  function uniqueName(base2, list) {
+  function uniqueName(base2, list2) {
     var n = 1, name2 = base2;
-    while (list.some(function(x) {
+    while (list2.some(function(x) {
       return x.name === name2;
     })) name2 = base2 + ++n;
     return name2;
@@ -32573,13 +32864,13 @@
     var pane = state.typesPane;
     if (!pane) return;
     pane.empty();
-    var app = getApp();
+    var app2 = getApp();
     if (!window.NexaKit || !lit2()) {
       window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Types tab needs the Nexa property kit.").appendTo(pane);
       return;
     }
     var html = lit2().html, nothing = lit2().nothing;
-    var types2 = app.types;
+    var types2 = app2.types;
     if (!types2.some(function(t2) {
       return t2.id === selectedId;
     })) selectedId = types2[0] ? types2[0].id : null;
@@ -32606,7 +32897,7 @@
     });
     if (type) {
       window.$("<button>", { type: "button", "class": "nx-icon-btn", title: "Delete this type" }).html('<i class="fa fa-trash-o"></i>').appendTo(bar).on("click", function() {
-        var users = app.variables.filter(function(v) {
+        var users = app2.variables.filter(function(v) {
           return v.type === "type:" + type.id;
         }).length;
         if (users && !window.confirm(type.name + " has " + users + " app instance(s). Delete the type anyway? (The instances stay, without a type.)")) return;
@@ -32735,7 +33026,7 @@
         fields["p_" + p.name] = { type: "string", label: p.name, default: p.defaultValue === void 0 ? "" : String(p.defaultValue) };
       });
       var mine = function() {
-        return app.variables.filter(function(v) {
+        return app2.variables.filter(function(v) {
           return v.type === "type:" + type.id;
         });
       };
@@ -32769,7 +33060,7 @@
         persistKey: "nexa-type-instances",
         set: function(key, rows2) {
           var old = mine();
-          var others = app.variables.filter(function(v) {
+          var others = app2.variables.filter(function(v) {
             return v.type !== "type:" + type.id;
           });
           var next = (rows2 || []).map(function(r, i2) {
@@ -32780,7 +33071,7 @@
             var prev = old[i2] || {};
             return { id: prev.id || genId(), name: String(r.name || "").trim() || uniqueName(type.name.replace(/\W/g, "") + "_", others), type: "type:" + type.id, params: p, overrides: prev.overrides || {} };
           });
-          app.variables = others.concat(next);
+          app2.variables = others.concat(next);
           Object.keys(icurrent).forEach(function(k) {
             delete icurrent[k];
           });
@@ -32917,16 +33208,16 @@
     function drawGrid() {
       grid.empty();
       var q = query.trim().toLowerCase();
-      var list = (sdk2() ? sdk2().listAssets() : []).filter(function(a) {
+      var list2 = (sdk2() ? sdk2().listAssets() : []).filter(function(a) {
         return !q || a.name.toLowerCase().indexOf(q) !== -1;
       }).sort(function(a, b) {
         return a.name.localeCompare(b.name);
       });
-      if (!list.length) {
+      if (!list2.length) {
         $2("<div>").css({ "grid-column": "1 / -1", color: "#999", "font-size": "12px", padding: "12px 0" }).text(q ? "No image matches." : "No images yet.").appendTo(grid);
         return;
       }
-      list.forEach(function(a) {
+      list2.forEach(function(a) {
         var big = a.size > assetLimits.warnBytes || a.w && Math.max(a.w, a.h) > assetLimits.warnPx;
         var tile = $2("<div>", { "class": "nexa-asset-tile", "data-type-id": "@asset:" + a.name, title: a.name + (a.w ? " \xB7 " + a.w + " \xD7 " + a.h : "") + " \xB7 " + kb(a.size) }).css({
           border: "1px solid var(--red-ui-secondary-border-color, #ddd)",
@@ -33003,6 +33294,153 @@
     drawGrid();
   }
 
+  // src/sidebar/breakpoints-panel.js
+  function list() {
+    var app2 = getApp();
+    return app2.breakpoints && app2.breakpoints.length ? app2.breakpoints : DEFAULT_BREAKPOINTS;
+  }
+  function own() {
+    var app2 = getApp();
+    if (!Array.isArray(app2.breakpoints) || !app2.breakpoints.length) app2.breakpoints = JSON.parse(JSON.stringify(DEFAULT_BREAKPOINTS));
+    return app2.breakpoints;
+  }
+  function changed2(rebuild) {
+    leaveBreakpoint();
+    markDirty();
+    renderActiveScreen();
+    if (rebuild) renderBreakpointsPanel();
+    else refreshRanges();
+  }
+  function slug(name2, taken) {
+    var base2 = String(name2 || "bp").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "bp";
+    var id2 = base2, n = 1;
+    while (taken.indexOf(id2) !== -1) id2 = base2 + "-" + ++n;
+    return id2;
+  }
+  var rangeCells = {};
+  function refreshRanges() {
+    var app2 = getApp();
+    Object.keys(rangeCells).forEach(function(id2) {
+      rangeCells[id2].text(rangeOf(app2, id2));
+    });
+  }
+  function renderBreakpointsPanel() {
+    var pane = state.breakpointsPane;
+    if (!pane) return;
+    pane.empty();
+    rangeCells = {};
+    var app2 = getApp();
+    var muted = "var(--red-ui-secondary-text-color, #888)";
+    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-bottom": "8px", "line-height": "1.4" }).html(`The app's breakpoints: bands of window widths (like Tailwind's <code>sm md lg xl</code>). A screen is designed in the band of its own width (<i class="fa fa-star"></i> on the canvas bar); every other band can change a field \u2014 its <i class="fa fa-mobile"></i> \u2014 or anything, on the canvas bar. Desktop-first: a narrower band inherits from the next wider one.`).appendTo(pane);
+    var screen = getActiveScreen();
+    if (screen) window.$("<div>").css({ "font-size": "11px", "margin-bottom": "8px" }).html("<b>" + window.$("<span>").text(screen.name || "This screen").html() + "</b> (" + screen.width + " px) is designed in <b>" + designBreakpoint(app2, screen) + "</b>.").appendTo(pane);
+    var table = window.$("<table>").css({ width: "100%", "border-collapse": "collapse", "font-size": "11px" }).appendTo(pane);
+    window.$("<tr>").html('<th style="text-align:left">Name</th><th style="text-align:left">From (px)</th><th style="text-align:left">Range</th><th></th>').css({ color: muted }).appendTo(table);
+    var bps = breakpointsOf(app2).slice().reverse();
+    bps.forEach(function(b) {
+      var row = window.$("<tr>", { "data-breakpoint": b.id }).css({ "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)" }).appendTo(table);
+      var find3 = function() {
+        return own().filter(function(x) {
+          return x.id === b.id;
+        })[0];
+      };
+      var name2 = window.$("<input>", { type: "text", "class": "nexa-bp-name" }).val(b.name).css({ width: "60px" });
+      name2.on("change", function() {
+        var v = String(name2.val() || "").trim();
+        if (!v) {
+          name2.val(b.name);
+          return;
+        }
+        find3().name = v;
+        changed2(false);
+      });
+      var first = b.min === 0 && bps[bps.length - 1].id === b.id;
+      var min = window.$("<input>", { type: "number", min: 0, step: 1, "class": "nexa-bp-min" }).val(b.min).css({ width: "64px" }).prop("disabled", first).attr("title", first ? "The narrowest breakpoint starts at 0" : "The window width it starts at");
+      min.on("change", function() {
+        var v = Math.round(Number(min.val()));
+        if (!isFinite(v) || v <= 0 || own().some(function(x) {
+          return x.id !== b.id && Number(x.min) === v;
+        })) {
+          min.val(find3().min);
+          return;
+        }
+        find3().min = v;
+        changed2(true);
+      });
+      window.$("<td>").css({ padding: "4px 2px" }).append(name2).appendTo(row);
+      window.$("<td>").css({ padding: "4px 2px" }).append(min).appendTo(row);
+      rangeCells[b.id] = window.$("<td>").css({ padding: "4px 2px", color: muted, "white-space": "nowrap" }).text(rangeOf(app2, b.id)).appendTo(row);
+      var del = window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Delete this breakpoint (what was set for it is no longer used)" }).html('<i class="fa fa-trash-o"></i>').prop("disabled", bps.length <= 1).on("click", function() {
+        var mine = own();
+        mine.splice(mine.indexOf(find3()), 1);
+        if (!mine.some(function(x) {
+          return Number(x.min) === 0;
+        })) {
+          var lowest = mine.slice().sort(function(a, c) {
+            return a.min - c.min;
+          })[0];
+          if (lowest) lowest.min = 0;
+        }
+        changed2(true);
+      });
+      window.$("<td>").css({ padding: "4px 2px", "text-align": "right" }).append(del).appendTo(row);
+      var row2 = window.$("<tr>", { "data-breakpoint-preview": b.id }).appendTo(table);
+      var cell = window.$("<td>", { colspan: 4 }).css({ padding: "0 2px 6px" }).appendTo(row2);
+      var device = window.$("<input>", { type: "text", "class": "nexa-bp-device", placeholder: "Device (e.g. Tablet)" }).val(b.device || "").css({ width: "45%" });
+      device.on("change", function() {
+        find3().device = String(device.val() || "").trim();
+        changed2(false);
+      });
+      var preview = window.$("<select>", { "class": "nexa-bp-preview", title: "The width the editor shows this breakpoint at" }).css({ width: "52%", "margin-left": "3%" });
+      var pw = previewWidthOf(app2, b.id);
+      window.$("<option>", { value: "" }).text("Preview at " + pw + " px").appendTo(preview);
+      var next = breakpointsOf(app2).filter(function(x) {
+        return x.min > b.min;
+      })[0];
+      DEVICE_PRESETS.filter(function(d) {
+        return d.w >= b.min && (!next || d.w < next.min);
+      }).forEach(function(d) {
+        window.$("<option>", { value: String(d.w) }).text(d.name).appendTo(preview);
+      });
+      window.$("<option>", { value: "custom" }).text("Another width\u2026").appendTo(preview);
+      preview.on("change", function() {
+        var v = preview.val();
+        if (!v) return;
+        if (v === "custom") {
+          var typed = window.prompt("Preview " + b.name + " at (px, " + rangeOf(app2, b.id) + "):", String(pw));
+          if (typed === null || !isFinite(Number(typed))) {
+            preview.val("");
+            return;
+          }
+          v = typed;
+        }
+        find3().preview = Math.round(Number(v));
+        changed2(true);
+      });
+      cell.append(device).append(preview);
+    });
+    var bar = window.$("<div>").css({ display: "flex", gap: "6px", "margin-top": "10px" }).appendTo(pane);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-bp-add" }).html('<i class="fa fa-plus"></i> Breakpoint').appendTo(bar).on("click", function() {
+      var mine = own();
+      var widest = mine.slice().sort(function(a, c) {
+        return c.min - a.min;
+      })[0];
+      var min = (widest ? Number(widest.min) : 0) + 640;
+      var m = widest && /^(\d*)xl$/.exec(widest.name || "");
+      var id2 = slug(m ? Number(m[1] || 1) + 1 + "xl" : "bp" + (mine.length + 1), mine.map(function(x) {
+        return x.id;
+      }));
+      mine.push({ id: id2, name: id2, min, preview: min });
+      changed2(true);
+    });
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "xs 0 \xB7 sm 640 \xB7 md 768 \xB7 lg 1024 \xB7 xl 1280 \xB7 2xl 1536 \xB7 3xl 1920" }).text("Reset to the defaults").appendTo(bar).on("click", function() {
+      if (list() !== DEFAULT_BREAKPOINTS && !window.confirm("Go back to the default breakpoints? What was set for a breakpoint whose name is not among them is no longer used.")) return;
+      getApp().breakpoints = [];
+      changed2(true);
+    });
+    window.$("<div>").css({ "font-size": "11px", color: muted, "margin-top": "10px", "line-height": "1.4" }).html('On the live page: <code>{$breakpoint}</code> is the band in use ("md", \u2026); an <i>On Breakpoint Change</i> event fires when it changes.').appendTo(pane);
+  }
+
   // src/sidebar/sidebar-content.js
   function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
@@ -33019,6 +33457,7 @@
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
     state.typesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.assetsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
@@ -33107,6 +33546,7 @@
         state.templatesPane.toggle(tab.id === "templates");
         state.typesPane.toggle(tab.id === "types");
         state.assetsPane.toggle(tab.id === "assets");
+        state.breakpointsPane.toggle(tab.id === "breakpoints");
         state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
           if (state.editingMode === "template") exitTemplateEditing();
@@ -33128,6 +33568,7 @@
         if (tab.id === "sparkplug") renderSparkplugPanel();
         if (tab.id === "types") renderTypesPanel();
         if (tab.id === "assets") renderAssetsPanel();
+        if (tab.id === "breakpoints") renderBreakpointsPanel();
       }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
@@ -33135,6 +33576,7 @@
     state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
+    state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

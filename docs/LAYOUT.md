@@ -212,32 +212,54 @@ Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, 
 
 ## 4c. Breakpoints (desktop-first)
 
-A screen is designed for the desktop. Its breakpoints are narrower windows:
-**Tablet** (below 1024 px) and **Phone** (below 768 px).
+**The app's breakpoints** (the **Breakpoints** tab) are bands of window widths, the Tailwind way. Each one starts at its "from" width and runs up to the next:
 
-**In the editor**, the bar above the canvas switches between 🖥 Desktop | Tablet | Phone.
+| xs | sm | md | lg | xl | 2xl | 3xl |
+|---|---|---|---|---|---|---|
+| 0 | 640 | 768 | 1024 | 1280 | 1536 | 1920 |
 
-- **Tablet / Phone** shows the screen at that width (820 / 390 px, at most the design's width) with the breakpoint's changes applied.
-- **What you change there is kept for that breakpoint**, e.g. a row made a column, a node hidden in the Hierarchy, another width or text. The desktop design stays as it is. The project always stores the design plus the changes.
-- **The changes cascade down**: Desktop → Tablet → Phone. The Phone starts from what the Tablet made and changes only what it overrides.
-- **The Properties panel says which breakpoint is being edited**, lists what the node overrides there (●), and offers **Reset** to inherit again.
-- **Nodes placed freely follow their constraints** to the narrower width (Right, Center, Scale…), like the page does.
-- **What a breakpoint may change**:
-  - position and size;
-  - visibility;
-  - a frame's layout (mode, gap, padding, columns);
-  - how a child fills;
-  - the frame's style, constraints and When scrolling;
-  - a component's props.
+- Rename, add or delete them, or change where they start. Renaming keeps a breakpoint's id, so what was set for it stays.
+- Each one has a **preview width** (a device preset: iPhone, iPad, HMI 800 × 480, Full HD, … or any width in the band) and a device label.
+
+**The design**: a screen is designed in the band of its own width. A 1920 screen is 3xl, a 1280 one xl. It is ★ on the canvas bar.
+
+**The cascade goes away from the design**:
+
+- A narrower band inherits from the next wider one: xl → lg → md → sm → xs. What is set at md also holds at sm and xs, unless they change it.
+- A band wider than the design inherits from the next narrower one, so a 3xl value (a big wall screen) never reaches the laptop.
+
+**Two ways to set a value per breakpoint** (both store the same thing):
+
+1. **A field's 📱** (every field of the Properties panel: a frame's layout, a child's sizing, constraints, and every prop of every component, plugins included). It shows the breakpoint chips, like Tailwind classes: `★ md 8 · sm 20 · xs`. Pick a chip and edit the field: the value is kept for that breakpoint, without switching the canvas. A chip with a value set has a border; its × makes it inherit again.
+2. **The canvas bar** (`3xl · 2xl · xl · lg · md★ · sm · xs`). It shows the screen at that band's preview width with its values applied. Anything changed there is kept for that band: a row made a column, a node hidden in the Hierarchy, another width, a text. The Properties panel says which band is being edited, lists what the node sets there (●), and offers **Reset**.
+
+In both, the design stays as it is, and the project always stores the design plus the changes. Nodes placed freely follow their constraints to the band's width (Right, Center, Scale…), like the page does.
+
+**What a breakpoint may change**:
+
+- position and size, min / max;
+- visibility;
+- a frame's layout (mode, gap, padding, alignment, wrap, grid columns / rows, a carousel's settings);
+- how a child fills;
+- the frame's style, constraints and When scrolling;
+- a component's props.
+
+It cannot change a frame's zoom & pan settings or the variable a carousel's slide goes to.
 
 **On the page**:
 
-- The window's width picks the breakpoint before anything is drawn.
+- The window's width picks the band before anything is drawn.
 - Crossing one while the page is open applies it **in place**: a Populate's copies, variables and a carousel's slide stay.
-- `{$breakpoint}` is `desktop`, `tablet` or `phone`.
+- `{$breakpoint}` is the band in use (`"md"`, …).
 - Events → **On Breakpoint Change** fires with `msg.payload`, the new one.
 
-**The data**: `node.overrides = { tablet: { layout: { mode: "vertical" } }, phone: { visibility: "hide" } }`. Object fields (`layout`, `layoutChild`, `style`, `constraints`, `props`) merge key by key; the rest is replaced. See `src/model/breakpoints.js`.
+**The data**: `project.breakpoints = [{ id, name, min, preview, device }]` (empty = the defaults) and `node.overrides = { md: { layout: { mode: "vertical" } }, sm: { visibility: "hide" } }`. Object fields (`layout`, `layoutChild`, `style`, `constraints`, `props`) merge key by key; the rest is replaced. Overrides saved as `tablet` / `phone` (before the bands) are read as `md` / `sm` and renamed when the screen is opened. See `src/model/breakpoints.js`.
+
+### Fallbacks of bound props
+
+A prop bound to a tag, a variable, the message or an expression can have a **fallback**: what it shows while the binding has no value. That covers no value yet, `null`, `???` (offline), no message yet, or a variable not declared around it. An expression falls back when any binding inside it has no value.
+
+In the Properties panel, a bound field (⛓) shows its own control below the binding, labelled **Fallback**. A Read Tag input shows a text field. The editor's canvas shows the fallback too. The data is `props.__fallback = { key: value }`.
 
 ## 5. Variables and the scope chain
 

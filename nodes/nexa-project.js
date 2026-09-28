@@ -20,6 +20,7 @@ module.exports = function (RED) {
     this.templates = Array.isArray(config.templates) ? config.templates : [];
     this.variables = Array.isArray(config.variables) ? config.variables : [];
     this.types = Array.isArray(config.types) ? config.types : [];
+    this.breakpoints = Array.isArray(config.breakpoints) ? config.breakpoints : [];
     // Which kufayeka-nexa-sparkplug config node instance this project's
     // canvas bindings / SSE stream / Sparkplug Write nodes resolve against —
     // a normal Node-RED config-node reference (several nexa-sparkplug

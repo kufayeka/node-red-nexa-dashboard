@@ -13,6 +13,11 @@ import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen, redrawCanvas } from "../canvas/canvas-ui.js";
 import { selectOnly } from "../canvas/selection.js";
 import { constrainFrameChildren } from "../canvas/constraints.js";
+import { responsiveHost } from "../canvas/breakpoints-ui.js";
+
+// What a breakpoint may change (src/model/breakpoints.js OVERRIDABLE): not the zoom, not
+// the variable a carousel's slide goes to
+function framePartVaries(key) { return !/^z[A-Z]/.test(key) && key !== "cIndex"; }
 
 var SIZING_FRAME = [{ value: "fixed", label: "Fixed" }, { value: "hug", label: "Hug" }];
 var SIZING_CHILD = [{ value: "fixed", label: "Fixed" }, { value: "fill", label: "Fill" }, { value: "hug", label: "Hug" }];
@@ -213,17 +218,25 @@ function commit(node, fn, rebuild) {
 }
 
 // A kit inspector over a view of the node, kept in step after every edit.
-function mountLive(container, meta, persistKey, view, onSet) {
+// `r` = { node, parent, view(n), write(n, key, v), canVary(key) }: its values per breakpoint.
+function mountLive(container, meta, persistKey, view, onSet, r) {
     var current = view();
+    var refresh = function () {
+        Object.keys(current).forEach(function (k) { delete current[k]; });
+        Object.assign(current, view());
+        handle.update();
+    };
+    var screen = getActiveScreen();
+    var responsive = r && screen ? responsiveHost(r.node, r.parent, r.view, r.write, r.canVary,
+        function (fn) { commit(r.node, fn); refresh(); }) : null;
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
         meta: meta,
         props: current,
         persistKey: persistKey,
+        responsive: responsive,
         set: function (key, v) {
             onSet(key, v);
-            Object.keys(current).forEach(function (k) { delete current[k]; });
-            Object.assign(current, view());
-            handle.update();
+            refresh();
         }
     });
     return handle;
@@ -294,7 +307,8 @@ export function renderFrameInspector(container, frame) {
         }
     });
     mountLive(container, meta, "nexa-frame", function () { return frameView(frame); },
-        function (key, v) { commit(frame, function () { writeFrame(frame, key, v); }); });
+        function (key, v) { commit(frame, function () { writeFrame(frame, key, v); }); },
+        { node: frame, parent: Tree.parentOf(getActiveScreen(), frame.id), view: frameView, write: writeFrame, canVary: framePartVaries });
     return true;
 }
 
@@ -327,7 +341,8 @@ export function renderLayoutChildInspector(container, node, parent) {
     });
     // "absolute" moves the node out of the flow: the Constraints block appears / goes
     mountLive(container, meta, "nexa-layout-child", function () { return childView(node); },
-        function (key, v) { commit(node, function () { writeChild(node, key, v); }, key === "absolute"); });
+        function (key, v) { commit(node, function () { writeChild(node, key, v); }, key === "absolute"); },
+        { node: node, parent: parent, view: childView, write: writeChild });
     return true;
 }
 
@@ -365,13 +380,15 @@ export function renderConstraintsInspector(container, node, parent) {
             </nx-section>`;
         }
     });
-    mountLive(container, meta, "nexa-constraints", function () { return Object.assign({}, Layout.constraintsOf(node), { scrollBehavior: node.scrollBehavior || "scrolls" }); }, function (key, v) {
-        commit(node, function () {
-            if (key === "scrollBehavior") { if (v === "scrolls") delete node.scrollBehavior; else node.scrollBehavior = v; return; }
-            var c = Object.assign({}, Layout.constraintsOf(node));
-            c[key] = v;
-            if (c.h === "left" && c.v === "top") delete node.constraints; else node.constraints = c;
-        });
-    });
+    var constraintView = function (n) { return Object.assign({}, Layout.constraintsOf(n), { scrollBehavior: n.scrollBehavior || "scrolls" }); };
+    var writeConstraint = function (n, key, v) {
+        if (key === "scrollBehavior") { if (v === "scrolls") delete n.scrollBehavior; else n.scrollBehavior = v; return; }
+        var c = Object.assign({}, Layout.constraintsOf(n));
+        c[key] = v;
+        if (c.h === "left" && c.v === "top") delete n.constraints; else n.constraints = c;
+    };
+    mountLive(container, meta, "nexa-constraints", function () { return constraintView(node); },
+        function (key, v) { commit(node, function () { writeConstraint(node, key, v); }); },
+        { node: node, parent: parent, view: constraintView, write: writeConstraint });
     return true;
 }

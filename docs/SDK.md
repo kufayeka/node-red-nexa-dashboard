@@ -333,7 +333,9 @@ inspector: ({ p, ui }) => html`
   - the value;
   - the property's label, help, placeholder, limits, options, access and providers, **unless you wrote that attribute yourself**;
   - validation messages;
-  - a modified dot, a reset button and, for plain values, the **⛓ bind button**, which switches the same widget to a tag / parameter binding.
+  - a modified dot, a reset button and, for plain values, the **⛓ bind button**, which switches the same widget to a tag / parameter binding;
+  - bound (⛓, or a Read Tag input): a **Fallback** field below the binding, the value shown while it has none (no value yet, `null`, `???`, no message). Stored as `props.__fallback[key]`, applied before your view sees `this.p`;
+  - in the editor, the **📱 responsive button**: a value per breakpoint (xs … 3xl, the app's Breakpoints tab), picked from chips above the widget (`★ xl 16 · md 8 · sm 4`). The view just gets `this.p` for the window's width: nothing to write. Opt a property out with `noResponsive: true`.
 
   Changes are applied live with undo, and consecutive edits of one field are one undo step.
 - **`p`** holds the current props. Show or hide parts with ordinary template logic.

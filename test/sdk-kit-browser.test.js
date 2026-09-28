@@ -456,6 +456,86 @@ async function main() {
             ]);
         });
 
+        await ok('responsive (📱): every bound field offers breakpoint chips; a chip edits that breakpoint (the host keeps it), × inherits again', async () => {
+            const r = await js(`(async function () {
+                var root = document.createElement("div"); document.body.appendChild(root);
+                var props = { gap: 8 }, calls = [];
+                var over = {};   // the host's values per breakpoint: { md: { gap: 4 } }
+                var bands = [{ id: "xl", name: "xl", design: true, range: "1280 – 1535 px" }, { id: "md", name: "md", range: "768 – 1023 px" }, { id: "sm", name: "sm", range: "640 – 767 px" }];
+                var responsive = {
+                    list: function () { return bands; }, active: function () { return "xl"; },
+                    canVary: function (k) { return k !== "fixed"; },
+                    valueAt: function (k, id) { if (id === "sm" && over.sm && k in over.sm) return over.sm[k]; if ((id === "md" || id === "sm") && over.md && k in over.md) return over.md[k]; return props[k]; },
+                    has: function (k, id) { return !!(over[id] && k in over[id]); },
+                    setAt: function (k, id, v) { calls.push(["setAt", k, id, v]); over[id] = Object.assign({}, over[id], { [k]: v }); },
+                    clearAt: function (k, id) { calls.push(["clearAt", k, id]); if (over[id]) delete over[id][k]; }
+                };
+                var meta = { id: "rs", stateList: [], inputs: [], outputs: [], props: {
+                    gap: { key: "gap", type: "number", label: "Gap", default: 0 },
+                    fixed: { key: "fixed", type: "number", label: "Fixed", default: 0 } } };
+                var h = NexaKit.renderInspector(root, { meta: meta, props: props, responsive: responsive, set: function (k, v) { calls.push(["set", k, v]); props[k] = v; } });
+                await NexaTest.wait();
+                var field = function (label) { return Array.from(root.querySelectorAll("nx-number")).filter(function (e) { return e.label === label; })[0]; };
+                var chips = function () { return Array.from(field("Gap").querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp") + (c.classList.contains("nx-sel") ? "*" : "") + (c.classList.contains("nx-set") ? "!" : "") + ":" + c.textContent.trim(); }); };
+                var type = async function (label, v) { var i = field(label).querySelector("input"); i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
+                var out = {};
+                out.toggles = [!!field("Gap").querySelector(".nx-bp-toggle"), !!field("Fixed").querySelector(".nx-bp-toggle")];
+                out.closed = chips().length;
+                field("Gap").querySelector(".nx-bp-toggle").click(); await NexaTest.wait();
+                out.open = chips();
+                field("Gap").querySelector('.nx-bp-chip[data-bp="md"]').click(); await NexaTest.wait();
+                out.mdShows = field("Gap").querySelector("input").value;
+                await type("Gap", "4");
+                out.afterMd = chips();
+                field("Gap").querySelector('.nx-bp-chip[data-bp="sm"]').click(); await NexaTest.wait();
+                out.smShows = field("Gap").querySelector("input").value;
+                field("Gap").querySelector('.nx-bp-chip[data-bp="xl"]').click(); await NexaTest.wait();
+                await type("Gap", "12");
+                field("Gap").querySelector('.nx-bp-chip[data-bp="md"]').click(); await NexaTest.wait();
+                field("Gap").querySelector('.nx-bp-chip[data-bp="md"] .nx-bp-x').click(); await NexaTest.wait();
+                out.cleared = chips();
+                out.calls = calls;
+                h.destroy(); root.remove();
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.toggles, [true, false], 'a field the host says cannot vary has no 📱');
+            assert.strictEqual(r.closed, 0, 'no chips until asked (or set somewhere)');
+            assert.deepStrictEqual(r.open, ['xl*:xl8', 'md:md', 'sm:sm']);
+            assert.strictEqual(r.mdShows, '8', 'md inherits the design');
+            assert.deepStrictEqual(r.afterMd, ['xl:xl8', 'md*!:md4', 'sm:sm']);
+            assert.strictEqual(r.smShows, '4', 'sm inherits md');
+            assert.deepStrictEqual(r.cleared, ['xl:xl12', 'md*:md', 'sm:sm'], 'kept open while picked; md inherits again');
+            assert.deepStrictEqual(r.calls, [['setAt', 'gap', 'md', 4], ['set', 'gap', 12], ['clearAt', 'gap', 'md']]);
+        });
+
+        await ok('fallback: a bound field (⛓) and a tag input edit their fallback (props.__fallback) below the binding', async () => {
+            const r = await js(`(async function () {
+                var root = document.createElement("div"); document.body.appendChild(root);
+                var props = { label: "{speed}", inputValue: "{sparkplug:G::N::D::Speed}", outputValue: "{sparkplug:G::N::D::Set}" }, calls = [];
+                var meta = { id: "fb", stateList: [], inputs: [], outputs: [], props: {
+                    label: { key: "label", type: "string", label: "Label", default: "", bindable: true },
+                    inputValue: { key: "inputValue", type: "tag", label: "Read tag", default: "" },
+                    outputValue: { key: "outputValue", type: "tag", label: "Write tag", default: "", access: "write" } } };
+                var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { calls.push([k, JSON.stringify(v)]); props[k] = v; } });
+                await NexaTest.wait();
+                var byLabel = function (sel, label) { return Array.from(root.querySelectorAll(sel)).filter(function (e) { return e.label === label; })[0]; };
+                var label = byLabel("nx-text", "Label"), read = byLabel("nx-tag", "Read tag"), write = byLabel("nx-tag", "Write tag");
+                var out = { hasFallback: [!!label.querySelector(".nx-fallback"), !!read.querySelector(".nx-fallback"), !!write.querySelector(".nx-fallback")] };
+                var type = async function (input, v) { input.value = v; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
+                await type(label.querySelector(".nx-fallback input"), "n/a");
+                await type(read.querySelector(".nx-fallback input"), "0");
+                out.shown = [label.querySelector(".nx-fallback input").value, read.querySelector(".nx-fallback input").value];
+                out.binding = props.label;
+                out.calls = calls;
+                h.destroy(); root.remove();
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.hasFallback, [true, true, false], 'an output (a write target) has none');
+            assert.deepStrictEqual(r.calls, [['__fallback', '{"label":"n/a"}'], ['__fallback', '{"label":"n/a","inputValue":"0"}']]);
+            assert.deepStrictEqual(r.shown, ['n/a', '0']);
+            assert.strictEqual(r.binding, '{speed}', 'the binding itself is untouched');
+        });
+
         await ok('no JavaScript errors or warnings in the page', async () => {
             assert.deepStrictEqual(quiet(logs), []);
         });

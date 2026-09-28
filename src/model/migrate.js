@@ -11,6 +11,7 @@
 //   - a group's box hugs its members; their x / y become relative to it, so
 //     nothing moves on screen
 import { fitGroup } from "./tree.js";
+import { migrateOverrideKeys } from "./breakpoints.js";
 
 export var TREE_VERSION = 1;
 
@@ -24,6 +25,9 @@ export function migrateSurface(surface, genId) {
     if (!surface.components) surface.components = [];
     if (!surface.orphans) surface.orphans = [];
     if (!surface.logic) surface.logic = { nodes: [], wires: [] };
+    // breakpoint overrides saved as Tablet / Phone: the md / sm bands
+    migrateOverrideKeys(surface.components);
+    delete surface.breakpoints;
     if (surface.treeVersion >= TREE_VERSION) return surface;
 
     var layers = (surface.layers || []).map(function (l) {

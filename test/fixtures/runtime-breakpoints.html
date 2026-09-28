@@ -3,7 +3,7 @@
 <style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
 <body>
 <!-- Breakpoints on a deployed page (test/runtime-breakpoints-browser.test.js). -->
-<div id="nexa-runtime-artboard" style="width:1000px;height:600px;"></div>
+<div id="nexa-runtime-artboard" style="width:1280px;height:600px;"></div>
 <script src="/lib/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {};
@@ -12,16 +12,21 @@ NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.
 function label(id, x, y, w, h, extra) { return Object.assign({ id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: id } }, extra || {}); }
 window.__NEXA_APP__ = { variables: [{ id: "cn", name: "changes", type: "string", defaultValue: "" }] };
 window.__NEXA_TEMPLATES__ = [];
-window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, orphans: [],
+window.__NEXA_SCREEN__ = { id: "s", width: 1280, height: 600, treeVersion: 1, orphans: [],
   components: [
-    // a row on the desktop, a column from the tablet down
+    // designed at xl (1280); a row there, a column from md down
     { id: "row", type: "@frame", x: 0, y: 0, w: 600, h: 300, layout: { mode: "horizontal", gap: 10 },
-      overrides: { tablet: { layout: { mode: "vertical" } } },
+      overrides: { md: { layout: { mode: "vertical" } } },
       children: [label("a", 0, 0, 100, 40), label("b", 0, 0, 100, 40)] },
-    // hidden on the phone
+    // hidden from sm down (saved as Phone before the bands: read as sm)
     label("side", 700, 0, 200, 300, { overrides: { phone: { visibility: "hide" } } }),
-    // another text and a narrower box on the phone
-    label("title", 700, 350, 200, 30, { overrides: { phone: { props: { text: "Phone title" }, w: 120 } } }),
+    // another text and a narrower box from sm down
+    label("title", 700, 350, 200, 30, { overrides: { sm: { props: { text: "Phone title" }, w: 120 } } }),
+    // only on a window wider than the design (3xl): not on the narrower ones
+    label("big", 700, 500, 200, 30, { overrides: { "3xl": { props: { text: "Big screen" } } } }),
+    // bound, no value yet: the fallbacks
+    label("fb", 950, 0, 200, 30, { props: { text: "{sparkplug:G::N::D::Speed}", __fallback: { text: "— no value —" } } }),
+    label("fb2", 950, 40, 200, 30, { props: { text: "{msg.payload.x}", __fallback: { text: "waiting" } } }),
     label("bp", 700, 400, 200, 30, { props: { text: "{$breakpoint}" } }),
     label("log", 700, 450, 300, 30, { props: { text: "{changes}" } })
   ],

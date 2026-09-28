@@ -4,7 +4,7 @@ import { refreshSelectionVisuals } from "./selection.js";
 import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
 import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
-import { activeBreakpointId, breakpointList, previewWidth, enterBreakpoint, leaveBreakpoint, checkSession } from "./breakpoints-ui.js";
+import { activeBreakpointId, breakpointList, previewWidth, bandPreviewWidth, designId, rangeOf, enterBreakpoint, leaveBreakpoint, checkSession } from "./breakpoints-ui.js";
 
 // opts.keepPanel: redraw the canvas only — the selection stays, the properties
 // panel is not rebuilt (an edit made IN the panel must not lose its field).
@@ -130,7 +130,9 @@ export function zoomToFit() {
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
 }
 
-// --- the breakpoint bar (top of the canvas): Desktop | Tablet | Phone ------------------
+// --- the breakpoint bar (top of the canvas): the app's breakpoints, the widest first ---
+// ★ = the band the screen is designed in (its width): the design. Another band shows the
+// screen at its preview width; what is changed there is kept for that band.
 var bpBar = null;
 export function buildBreakpointBar(trayBody) {
     bpBar = window.$("<div>", { "class": "nexa-breakpoint-bar" }).css({
@@ -146,18 +148,21 @@ function refreshBreakpointBar(screen) {
     var template = state.editingMode === "template";
     bpBar.toggle(!!screen && !template);
     if (!screen || template) return;
-    var active = activeBreakpointId();
-    var items = [{ id: "desktop", name: "Desktop", icon: "fa-desktop", width: screen.width }]
-        .concat(breakpointList(screen).map(function (b) { return { id: b.id, name: b.name, icon: b.id === "phone" ? "fa-mobile" : "fa-tablet", width: Math.min(screen.width, Number(b.preview || b.max)), max: b.max }; }));
-    items.forEach(function (it) {
-        var on = it.id === active;
-        window.$("<a>", { href: "#", title: it.id === "desktop" ? "The design (" + it.width + " px)" : it.name + ": below " + (Number(it.max) + 1) + " px — edits here are kept for " + it.name + " (and narrower)", "data-breakpoint": it.id })
-            .css({ display: "flex", "align-items": "center", gap: "5px", padding: "0 10px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none" })
-            .html('<i class="fa ' + it.icon + '"></i> ' + it.name + ' <span style="opacity:.7">' + it.width + '</span>')
+    var active = activeBreakpointId(), design = designId(screen);
+    var list = breakpointList();
+    list.forEach(function (b, i) {
+        var on = b.id === active, isDesign = b.id === design;
+        var width = bandPreviewWidth(screen, b.id);
+        var icon = width < 640 ? "fa-mobile" : width < 1200 ? "fa-tablet" : "fa-desktop";
+        var tip = b.name + " (" + rangeOf(b.id) + ")" + (b.device ? " · " + b.device : "") + " — " + (isDesign ? "the design (the screen's width, " + width + " px)"
+            : "shown at " + width + " px; edits here are kept for " + b.name + (i > list.map(function (x) { return x.id; }).indexOf(design) ? " and narrower" : " and wider"));
+        window.$("<a>", { href: "#", title: tip, "data-breakpoint": b.id })
+            .css({ display: "flex", "align-items": "center", gap: "4px", padding: "0 8px", height: "26px", color: on ? "#fff" : "#555", background: on ? "#ff5722" : "transparent", "text-decoration": "none", "white-space": "nowrap" })
+            .html('<i class="fa ' + icon + '"></i> ' + (isDesign ? '<i class="fa fa-star" style="font-size:9px"></i>' : "") + window.$("<span>").text(b.name).html() + ' <span style="opacity:.7">' + width + '</span>')
             .on("click", function (e) {
                 e.preventDefault();
-                if (it.id === activeBreakpointId()) return;
-                if (it.id === "desktop") leaveBreakpoint(); else enterBreakpoint(getActiveScreen(), it.id);
+                if (b.id === activeBreakpointId()) return;
+                if (b.id === designId(getActiveScreen())) leaveBreakpoint(); else enterBreakpoint(getActiveScreen(), b.id);
                 renderActiveScreen();
                 zoomToFit();
             }).appendTo(bpBar);
