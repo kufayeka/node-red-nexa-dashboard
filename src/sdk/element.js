@@ -19,7 +19,7 @@
 //
 // Subclasses that override connectedCallback / disconnectedCallback /
 // updated must call super.
-import { LitElement } from "lit";
+import { LitElement, html } from "lit";
 import { buildStylesheet, defaultValues } from "./schema.js";
 import { parseTag, getTagProvider, isWriteTarget } from "./tags.js";
 import F from "./format.js";
@@ -118,6 +118,32 @@ export class NexaElement extends LitElement {
     get isEditor() { return this.mode === "editor"; }
     get previewState() { return this.isEditor ? this.p.__previewState : undefined; }
     get stylesheet() { return this.meta ? buildStylesheet(this.meta, this.p) : ""; }
+
+    // ---- slots: a component that holds other nodes ----------------------------------
+
+    /** The slots declared now ([{ name, label }], from the props: `slots` of the definition). */
+    get slotList() { return this.meta && this.meta.slots ? this.meta.slots(this.p) : []; }
+
+    /**
+     * Where slot `name`'s content is drawn: a box (position: relative) the slot's frame
+     * fills. Size it with CSS (`.nx-slot`, or opts.class / opts.style); not rendered = not
+     * shown (an inactive tab). Styled from outside as ::part(slot) / ::part(slot-<name>).
+     */
+    renderSlot(name, opts) {
+        var n = String(name);
+        var o = opts || {};
+        var partName = "slot slot-" + n.replace(/[^A-Za-z0-9_-]/g, "_");
+        return html`<div class="nx-slot${o.class ? " " + o.class : ""}" part="${partName}" data-slot="${n}" style="position:relative;min-width:0;min-height:0;${o.style || ""}"><slot name="${n}"></slot></div>`;
+    }
+
+    /** Hook: the editor wants slot `name` seen (something in it was picked): e.g. a Tabs switches to it. */
+    revealSlot(name) {}
+
+    /** Tell the editor which slot is shown now (a tab clicked on the canvas): kept while it redraws. */
+    slotShown(name) {
+        if (!this.isEditor) return;
+        this.dispatchEvent(new CustomEvent("nexa-slot-shown", { detail: { name: String(name) }, bubbles: true, composed: true }));
+    }
 
     // ---- inputs / outputs ---------------------------------------------------------
 
@@ -348,6 +374,8 @@ export class NexaElement extends LitElement {
     updated(changed) {
         if (super.updated) super.updated(changed);
         var meta = this.meta;
+        // a component with slots drew them (a tab switched): the editor reads their boxes
+        if (meta && meta.slots && this.isEditor) this.dispatchEvent(new CustomEvent("nexa-slots-rendered", { bubbles: true, composed: true }));
         var interactive = meta && meta.editor && meta.editor.interactive && meta.editor.interactive.length;
         this.style.pointerEvents = this.isEditor && !interactive ? "none" : "auto";
         if (meta && meta.props.opacity) {

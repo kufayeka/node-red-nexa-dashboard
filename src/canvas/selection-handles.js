@@ -18,6 +18,8 @@ function boxOf(comp) {
 // Nothing a parent's auto layout places rotates (src/model/layout.js).
 function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
+    // a component's slot: the component places and sizes it
+    if (Tree.isSlotFrame(comp)) return { resizable: false, rotatable: false, flippable: false, lockable: true };
     var screen = getActiveScreen();
     var parent = screen ? Tree.parentOf(screen, comp.id) : null;
     var caps;

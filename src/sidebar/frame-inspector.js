@@ -313,7 +313,10 @@ export function renderFrameInspector(container, frame) {
         inspector: function (o) {
             var p = o.p, bind = o.bind;
             var auto = p.mode !== "none";
+            // a component's slot: the component places and sizes it — its layout and look only
+            var slot = Layout.inSlot(frame);
             return html`
+                ${slot ? html`<div class="nx-help">A slot of its component (a tab's panel): what you drop in it shows there. The component sets its place and size; here its layout, padding and fill.</div>` : html`
                 <nx-section heading="Frame" persist-key="nexa-frame:box">
                     <nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>
                     <nx-row><nx-number ${bind("w")} ?disabled="${auto && p.sizeW === "hug"}"></nx-number><nx-number ${bind("h")} ?disabled="${auto && p.sizeH === "hug"}"></nx-number></nx-row>
@@ -332,11 +335,11 @@ export function renderFrameInspector(container, frame) {
                         <nx-row><nx-select ${bind("oAnimation")}></nx-select><nx-number ${bind("oDuration")}></nx-number></nx-row>
                         <nx-checkbox ${bind("oStartOpen")}></nx-checkbox>
                         <div class="nx-help">Logic (Events tab → Overlays): <b>Open</b> it — its output fires when it closes, msg.payload = the result, msg.closedBy = backdrop / esc / timer / node; <b>Close</b> it with msg.payload as the result; <b>on Open / on Close</b> events. Its size: W × H (a drawer: its width, or height for Top / Bottom).</div>`}
-                </nx-section>
+                </nx-section>`}
                 <nx-section heading="Auto layout" persist-key="nexa-frame:layout">
                     <nx-segmented ${bind("mode")} icons-only></nx-segmented>
                     ${auto ? html`
-                        <nx-row><nx-segmented ${bind("sizeW")}></nx-segmented><nx-segmented ${bind("sizeH")}></nx-segmented></nx-row>
+                        ${slot ? nothing : html`<nx-row><nx-segmented ${bind("sizeW")}></nx-segmented><nx-segmented ${bind("sizeH")}></nx-segmented></nx-row>`}
                         <nx-row>
                             <nx-align ${bind("align")}></nx-align>
                             <div>

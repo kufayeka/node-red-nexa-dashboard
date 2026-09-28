@@ -235,6 +235,11 @@ export function hasAutoLayout(node) {
 }
 
 /** Whether `child` is placed by its parent's auto layout (not by its own x / y). */
+/** A component's slot frame (Tree.isSlotFrame): the component places it, filling its slot. */
+export function inSlot(node) {
+    return !!(node && node.type === "@frame" && typeof node.inSlot === "string" && node.inSlot !== "");
+}
+
 export function isInFlow(child, parent) {
     // an overlay is on top of its scope, never in its flow
     return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
@@ -252,7 +257,7 @@ export function childSizing(child, axis) {
 
 /** Whether a frame's own size follows its content on one axis. */
 export function frameHugs(frame, axis) {
-    if (!hasAutoLayout(frame)) return false;
+    if (!hasAutoLayout(frame) || inSlot(frame)) return false;
     var l = layoutOf(frame);
     return (axis === "w" ? l.sizeW : l.sizeH) === "hug";
 }
@@ -392,7 +397,7 @@ export function constraintsOf(node) {
 
 /** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
 export function hasConstraints(node, parent) {
-    return (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
+    return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
 }
 
 /** The box children are positioned in: a frame without its border (the root: the screen). */
@@ -448,6 +453,11 @@ export function resizeWithConstraints(box, constraints, oldP, newP) {
  * opts.parentSize = the screen's size for a root node.
  */
 export function boxCss(node, parent, opts) {
+    // a slot frame fills its slot (the component's box for it: position: relative)
+    if (inSlot(node)) {
+        return { position: "absolute", left: "0", top: "0", width: "100%", height: "100%", right: "", bottom: "", flex: "", "align-self": "", "justify-self": "",
+            "grid-column": "", "grid-row": "", "min-width": "", "max-width": "", "min-height": "", "max-height": "", "scroll-snap-align": "", "z-index": "" };
+    }
     var css = {
         position: "absolute",
         left: num(node.x) + "px",
@@ -534,7 +544,7 @@ export function boxCss(node, parent, opts) {
 
 /** Whether a node may be rotated (not while its parent's layout places it). */
 export function canRotate(node, parent) {
-    return !isInFlow(node, parent);
+    return !isInFlow(node, parent) && !inSlot(node);
 }
 
 /** A new frame (without id / x / y). */

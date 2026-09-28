@@ -483,7 +483,7 @@ export function renderEventsPanel() {
     }
 
     // every component at any depth (groups / frames have no events of their own)
-    var eventComps = screen ? Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n); }) : [];
+    var eventComps = screen ? Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n) || Tree.isSlotHost(n); }) : [];
     if (eventComps.length) {
         sectionHeader(state.eventsPane, "Components on this screen");
         eventComps.forEach(function (comp) {

@@ -14,7 +14,73 @@
 export var CONTAINER_TYPES = { "@group": true, "@frame": true };
 
 export function isContainer(node) {
-    return !!(node && CONTAINER_TYPES[node.type]);
+    return !!(node && (CONTAINER_TYPES[node.type] || isSlotHost(node)));
+}
+
+// ---- slots: a component that holds other nodes (Tabs, Accordion, a card…) -----------
+// A component whose definition declares `slots` is a SLOT HOST (node.slots = true): its
+// children are one @frame per slot (child.inSlot = the slot's name), made and kept in step
+// by syncSlots(). A slot frame is an ordinary frame — auto layout, fill, variables, what
+// is dropped in it — but the component places it (a native <slot> in its shadow DOM), so
+// it isn't moved, resized or taken out on its own. What goes in the component goes into
+// one of its slot frames.
+
+export function isSlotHost(node) {
+    return !!(node && node.slots === true && !CONTAINER_TYPES[node.type]);
+}
+
+export function isSlotFrame(node) {
+    return !!(node && node.type === "@frame" && typeof node.inSlot === "string" && node.inSlot !== "");
+}
+
+function slotFrame(slot, genId) {
+    return {
+        id: genId(), type: "@frame", inSlot: slot.name, slotLabel: slot.label || slot.name,
+        x: 0, y: 0, w: 0, h: 0, children: [],
+        layout: Object.assign({ mode: "vertical", padding: { t: 16, r: 16, b: 16, l: 16 }, gap: 8 }, slot.layout || {}),
+        style: { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: true }
+    };
+}
+
+/**
+ * Makes `node` a slot host with one frame per slot of `slots` ([{ name, label, layout? }],
+ * in order): a missing one is added, a frame whose slot is gone is kept (marked
+ * slotUnused: its content stays, not drawn) — the slot may come back (a tab renamed back).
+ * Returns true when it changed anything.
+ */
+export function syncSlots(node, slots, genId) {
+    if (!node || CONTAINER_TYPES[node.type]) return false;
+    var changed = false;
+    if (node.slots !== true) { node.slots = true; changed = true; }
+    var list = node.children || (node.children = []);
+    var byName = {};
+    list.forEach(function (c) { if (isSlotFrame(c) && !byName[c.inSlot]) byName[c.inSlot] = c; });
+    var ordered = [];
+    (slots || []).forEach(function (slot) {
+        if (!slot || slot.name === undefined || slot.name === null || slot.name === "") return;
+        var name = String(slot.name);
+        var f = byName[name];
+        if (!f) { f = slotFrame({ name: name, label: slot.label, layout: slot.layout }, genId); changed = true; }
+        var label = slot.label || name;
+        if (f.slotLabel !== label) { f.slotLabel = label; changed = true; }
+        if (f.slotUnused) { delete f.slotUnused; changed = true; }
+        delete byName[name];
+        ordered.push(f);
+    });
+    // kept: the frames of slots no longer declared (and anything else that ended up here)
+    list.forEach(function (c) {
+        if (ordered.indexOf(c) !== -1) return;
+        if (isSlotFrame(c) && !c.slotUnused) { c.slotUnused = true; changed = true; }
+        ordered.push(c);
+    });
+    if (ordered.length !== list.length || ordered.some(function (c, i) { return c !== list[i]; })) changed = true;
+    node.children = ordered;
+    return changed;
+}
+
+/** The slot frame of a host by slot name (or null). */
+export function slotOf(node, name) {
+    return kids(node).filter(function (c) { return isSlotFrame(c) && c.inSlot === String(name); })[0] || null;
 }
 
 export function kids(node) {
@@ -93,6 +159,7 @@ export function isAncestor(surface, ancestorId, id) {
 export function insert(surface, parentId, index, node) {
     var parent = parentId ? find(surface, parentId) : null;
     if (parentId && !isContainer(parent)) throw new Error("[nexa] insert: " + parentId + " is not a container");
+    if (parent && isSlotHost(parent) && !(isSlotFrame(node) && !slotOf(parent, node.inSlot))) throw new Error("[nexa] it goes into one of the component's slots (a panel), not into the component itself");
     var list = listOf(surface, parent);
     var at = index === undefined || index === null || index > list.length ? list.length : Math.max(0, index);
     list.splice(at, 0, node);
@@ -110,6 +177,8 @@ export function detach(surface, id) {
 /** Moves a node under parentId (null = root) at index. Refuses a move into itself. */
 export function move(surface, id, parentId, index) {
     if (parentId && (parentId === id || isAncestor(surface, id, parentId))) throw new Error("[nexa] move: a node can't go inside itself");
+    var here = locate(surface, id);
+    if (here && isSlotFrame(here.node) && here.parent && isSlotHost(here.parent) && (parentId || null) !== here.parent.id) throw new Error("[nexa] a component's slot stays in its component");
     var d = detach(surface, id);
     if (!d) return null;
     // moving within the same list: the index was counted with the node still in it
@@ -130,12 +199,22 @@ export function remove(surface, id) {
     if (!d) return null;
     if (isContainer(d.node) && d.node.children && d.node.children.length) {
         surface.orphans = surface.orphans || [];
-        d.node.children.forEach(function (c) {
-            c.x = (c.x || 0) + origin.x;
-            c.y = (c.y || 0) + origin.y;
+        var orphan = function (c, ox, oy) {
+            c.x = (c.x || 0) + ox;
+            c.y = (c.y || 0) + oy;
             surface.orphans.push(c);
-        });
-        d.node.children = [];
+        };
+        if (isSlotHost(d.node)) {
+            // a slot host: what its slots held (the slot frames go with it)
+            d.node.children.forEach(function (f) {
+                var bw = borderOf(f);
+                kids(f).forEach(function (c) { orphan(c, origin.x + (f.x || 0) + bw, origin.y + (f.y || 0) + bw); });
+                f.children = [];
+            });
+        } else {
+            d.node.children.forEach(function (c) { orphan(c, origin.x, origin.y); });
+            d.node.children = [];
+        }
     }
     return d.node;
 }
@@ -263,6 +342,7 @@ export function wrapInGroup(surface, ids, group) {
     if (!locs.length) return null;
     var parent = locs[0].parent;
     if (locs.some(function (l) { return l.parent !== parent || l.orphan; })) throw new Error("[nexa] wrap: nodes must share one parent");
+    if (parent && isSlotHost(parent)) throw new Error("[nexa] wrap: a component's slots stay in it");
     locs.sort(function (a, b) { return a.index - b.index; });
     var at = locs[locs.length - 1].index - (locs.length - 1);
     var list = listOf(surface, parent);
@@ -280,7 +360,7 @@ export function wrapInGroup(surface, ids, group) {
 /** Replaces a group by its children (they keep their place on screen). Returns the children. */
 export function unwrap(surface, id) {
     var loc = locate(surface, id);
-    if (!loc || !isContainer(loc.node)) return [];
+    if (!loc || !isContainer(loc.node) || isSlotHost(loc.node) || (isSlotFrame(loc.node) && isSlotHost(loc.parent))) return [];
     var g = loc.node;
     var children = kids(g);
     children.forEach(function (c) { c.x = (c.x || 0) + (g.x || 0); c.y = (c.y || 0) + (g.y || 0); });

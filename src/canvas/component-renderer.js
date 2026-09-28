@@ -22,13 +22,10 @@ export function editorScopeFor(comp) {
     return scope;
 }
 
-export function refreshComponentRender(comp) {
-    if (!state.artboardEl) return;
-    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    var node = el && el.get && el.get(0);
-    if (!node) return;
-    var ctx = {
-        namespace: comp.id, // top-level selection, so the raw id IS the full namespace
+// The ctx a component gets on the canvas (its props, events logged, a two-way value saved).
+function editorCtx(comp) {
+    return {
+        namespace: comp.id, // node ids are unique in a surface, so the raw id IS the full namespace
         mode: "editor",
         getRawProps: function () { return comp.props || {}; },
         emit: function (eventName, payload) {
@@ -40,6 +37,14 @@ export function refreshComponentRender(comp) {
             markDirty();
         }
     };
+}
+
+export function refreshComponentRender(comp) {
+    if (!state.artboardEl) return;
+    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    var node = el && el.get && el.get(0);
+    if (!node) return;
+    var ctx = editorCtx(comp);
     // Goes through interpolateProps ({variable} / {param} substitution in the
     // node's scope chain, THEN sparkplug resolution), not resolveSparkplugProps
     // alone — matching the fix in nexa-runtime-client.js's own
@@ -56,6 +61,28 @@ export function refreshComponentRender(comp) {
     } catch (e) {
         el.text("(render error: " + e.message + ")");
     }
+    // its slots changed (a tab added / removed): the frames follow, drawn again
+    if (typeof typeDef.slotsOf === "function" && Tree.syncSlots(comp, typeDef.slotsOf(comp.props || {}), genId)) {
+        markDirty();
+        _renderScreen();
+    }
+}
+
+/** Something inside a component's slot was picked (Hierarchy): the component shows that slot (a tab switches). */
+export function revealSlotsOf(id) {
+    var screen = getActiveScreen();
+    if (!screen || !state.artboardEl) return false;
+    var shown = false;
+    var chain = Tree.ancestors(screen, id).concat([Tree.find(screen, id)]);
+    chain.forEach(function (n, i) {
+        if (!n || !Tree.isSlotFrame(n) || i === 0 || !Tree.isSlotHost(chain[i - 1])) return;
+        var host = chain[i - 1];
+        var def = window.NEXA.getComponent(host.type);
+        var el = state.artboardEl.find('[data-id="' + host.id + '"]').get(0);
+        (state.slotPreview = state.slotPreview || {})[host.id] = n.inSlot;
+        if (def && el && typeof def.revealSlot === "function") { def.revealSlot(el, n.inSlot); shown = true; }
+    });
+    return shown;
 }
 
 // Tag (sparkplug refKey) -> [component, ...] currently bound to it, for the
@@ -722,15 +749,33 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
         if (!state.overlayPreview[comp.id]) return;
         placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
     }
+    // a component with slots: one frame per slot, kept in step with its props (Tabs: one per tab)
+    var hostDef = !Layout.inSlot(comp) && !Tree.CONTAINER_TYPES[comp.type] ? window.NEXA.getComponent(comp.type) : null;
+    var slotHost = !!(hostDef && typeof hostDef.slotsOf === "function");
+    if (slotHost && Tree.syncSlots(comp, hostDef.slotsOf(comp.props || {}), genId)) markDirty();
+    // a slot no longer declared keeps its content, not drawn
+    if (comp.slotUnused) return;
     var interactable = isNodeInteractable(comp.id);
-    var container = Tree.isContainer(comp);
+    var container = Tree.isContainer(comp) && !slotHost;
     var css = nodeCss(comp, parentNode);
+    // in a slot: under the component's element, which takes no pointer in the editor
+    if (Layout.inSlot(comp) && interactable) css["pointer-events"] = "auto";
     if (overlay) css["z-index"] = "41";
     css.cursor = (isNodeLocked(comp.id) || !interactable || inFlow) ? "default" : "move";
     css["user-select"] = "none";
-    css["pointer-events"] = interactable ? "" : "none";
+    if (!(Layout.inSlot(comp) && interactable)) css["pointer-events"] = interactable ? "" : "none";
     css.display = isNodeVisible(comp.id) ? (css.display || "") : "none";
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css).appendTo(parentEl);
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") + (slotHost ? " nexa-slot-host" : "") }).css(css).appendTo(parentEl);
+    if (Layout.inSlot(comp)) {
+        el.attr("slot", comp.inSlot);
+        // the panel's area, seen while designing (an empty one says what it is for)
+        el.css({ outline: "1px dashed rgba(13, 153, 255, 0.45)", "outline-offset": "-1px" });
+        if (!Tree.kids(comp).length) {
+            window.$("<span>", { "class": "nexa-slot-hint" }).text("Drop components here — " + (comp.slotLabel || comp.inSlot))
+                .css({ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", color: "rgba(13, 153, 255, 0.8)", "font-size": "11px", "pointer-events": "none", "white-space": "nowrap" })
+                .appendTo(el);
+        }
+    }
     // teleported on the live page: drawn here (its place in the tree), marked where it goes
     if (comp.teleport) {
         el.css({ outline: "1px dashed #8e44ad", "outline-offset": "-1px" });
@@ -750,21 +795,19 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
         Tree.kids(comp).forEach(function (child) { renderComponent(child, el, comp, inner); });
     } else {
         nodeScopes.set(comp, scope);
-        renderComponentContent(el.get(0), comp, {
-            namespace: comp.id, // node ids are unique in a surface, so the raw id IS the full namespace
-            mode: "editor",
-            getRawProps: function () { return comp.props || {}; },
-            emit: function (eventName, payload) {
-                if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
-            },
-            setBindableValue: function (name, value) {
-                comp.props = comp.props || {};
-                comp.props[name] = value;
-                markDirty();
-            }
-        }, comp.id, [], scope);
+        renderComponentContent(el.get(0), comp, editorCtx(comp), comp.id, [], scope);
+        // its slot frames, into its element (light DOM): its <slot>s place them
+        if (slotHost && typeof hostDef.slotHost === "function") {
+            // the slot shown while designing (a tab clicked, a node picked in it): kept across redraws
+            var shownSlot = state.slotPreview && state.slotPreview[comp.id];
+            if (shownSlot !== undefined && typeof hostDef.revealSlot === "function") hostDef.revealSlot(el.get(0), shownSlot);
+            el.get(0).addEventListener("nexa-slot-shown", function (ev) {
+                (state.slotPreview = state.slotPreview || {})[comp.id] = ev.detail && ev.detail.name;
+            });
+            var slotParent = window.$(hostDef.slotHost(el.get(0)));
+            Tree.kids(comp).forEach(function (child) { renderComponent(child, slotParent, comp, scope); });
+        }
     }
-
     if (!interactable) return;
 
     // Figma-style selection: a click selects the node at the depth of the current
@@ -798,6 +841,8 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     });
 
     if (isNodeLocked(comp.id)) return;
+    // a slot frame stays where its component puts it
+    if (Layout.inSlot(comp)) return;
     // Dragging moves the SELECTED nodes — when the pointer is on a child of a
     // selected group, the group moves and the child stays put inside it.
     // Frames capture (Figma): let go over another frame and the nodes go into
@@ -834,7 +879,7 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
             before = treeSnapshot(screen);
             // selected nodes that aren't inside another selected node, and not locked
             movers = state.selectedIds.filter(function (id) {
-                return Tree.find(screen, id) && !isNodeLocked(id) && !state.selectedIds.some(function (o) { return o !== id && Tree.isAncestor(screen, o, id); });
+                return Tree.find(screen, id) && !isNodeLocked(id) && !Tree.isSlotFrame(Tree.find(screen, id)) && !state.selectedIds.some(function (o) { return o !== id && Tree.isAncestor(screen, o, id); });
             });
             starts = {};
             movers.forEach(function (id) {
@@ -1069,3 +1114,6 @@ export function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
         sparkplugBinding: bindingPath, props: props
     }, artboardX, artboardY);
 }
+
+// Reachable from the browser console and the tests.
+if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { addComponentAt: addComponentAt, revealSlotsOf: revealSlotsOf });

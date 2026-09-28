@@ -15,7 +15,7 @@
 //   });
 // It registers an ordinary registry def, so the editor and the runtime
 // treat it like any component; def.nexa carries the normalized metadata.
-import { buildMeta, legacyDefaults, migrateProps } from "./schema.js";
+import { buildMeta, legacyDefaults, migrateProps, defaultValues } from "./schema.js";
 import { NexaElement } from "./element.js";
 
 function tagFor(id) {
@@ -72,6 +72,15 @@ export function defineComponent(def) {
         migrateProps: function (props) { return migrateProps(meta, props || {}); },
         render: function (el, props, ctx) {
             mount(el, tag)._nexaRender(props, ctx);
+        },
+        /** A component with slots: the slots its props declare now ([{ name, label, layout }]); null: none. */
+        slotsOf: meta.slots ? function (props) { return meta.slots(Object.assign(defaultValues(meta), props || {})); } : null,
+        /** Where its slot frames go (light DOM of its element: its <slot>s place them). */
+        slotHost: function (el) { return el.__nexaEl || mount(el, tag); },
+        /** The editor wants slot `name` seen (a tab switches to it). */
+        revealSlot: function (el, name) {
+            var wc = el.__nexaEl;
+            if (wc && typeof wc.revealSlot === "function") wc.revealSlot(name);
         },
         onBind: function (el, target, value) {
             var wc = el.__nexaEl;

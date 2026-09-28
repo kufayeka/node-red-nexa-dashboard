@@ -88,6 +88,7 @@ export const state = {
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
     overlayPreview: {},
+    slotPreview: {},     // host id -> the slot shown on the canvas (a Tabs' tab while designing)
     // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
     themePreview: null,
     themePane: null,

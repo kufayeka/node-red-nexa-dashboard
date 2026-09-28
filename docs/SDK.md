@@ -441,6 +441,36 @@ theme.token("colors.primary.solid");  theme.cssVar("colors.bg");  theme.mode(); 
 
 In a view: `this.token(path)` / `this.tokenVar(path)`; the view redraws when the theme or the mode changes. Prefer `var(--nexa-…)` in CSS.
 
+## 11b-2. Slots: a component that holds other components
+
+A component can hold other components, the way a Tabs holds a panel per tab. It declares **slots**. The editor gives each slot a frame of the page (a **slot frame**), and the user drops components into it on the canvas. The component only decides where each slot is drawn and whether it shows.
+
+```js
+defineComponent({
+    id: "acme-tabs", label: "Tabs",
+    properties: { tabs: { type: "list", default: [{ value: "a", label: "A" }, { value: "b", label: "B" }] } },
+    // a list ([{ name, label }] or names), or a function of the props: one slot per tab
+    slots: (p) => p.tabs.map((t) => ({ name: t.value, label: t.label })),
+    editor: { interactive: [".tab"] },   // tab headers take clicks on the canvas
+    view: class extends NexaElement {
+        render() {
+            return html`<div class="head">…</div>
+                ${this.renderSlot(this.shown, { style: "position:absolute;inset:0" })}`;
+        }
+        revealSlot(name) { this.shown = name; this.requestUpdate(); }   // the editor wants it seen
+    }
+});
+```
+
+- `this.renderSlot(name, opts)` draws the place of slot `name`: a `position: relative` box with a native `<slot>` in it. The slot frame fills that box. Give it a size with CSS (`.nx-slot`, `opts.class`, `opts.style`). Style it from outside as `::part(slot)` or `::part(slot-<name>)`.
+- If you don't render a slot, it isn't shown (an inactive tab). Its content stays mounted and keeps its state.
+- `this.slotList` gives the slots declared right now.
+- `revealSlot(name)` is called when the user picks something inside that slot (in the Hierarchy); switch to it. `this.slotShown(name)` tells the editor which slot is shown after a click on the canvas, so the canvas keeps it when it redraws.
+- A slot frame is a normal frame: auto layout, padding, fill, variables. In Properties you see its layout and look; the component sets its position and size. It can't be moved, resized or taken out of its component. A double click on the component selects the slot frame.
+- If a slot goes away (a tab is removed or its value renamed), its frame is **kept** (`slotUnused`) and not drawn. Its content comes back if the slot comes back.
+- Deleting the component turns what its slots held into orphans (Hierarchy → Unplaced).
+- The data: the component node has `slots: true`, and its `children` are the slot frames (`@frame`, `inSlot: "<name>"`, `slotLabel`). On the live page each slot frame is a light-DOM child of the component's element with `slot="<name>"`. Tests: `test/model-slots.test.js`, `test/runtime-slots-browser.test.js`.
+
 ## 11c. zag.js (accessible widgets)
 
 The SDK includes [zag.js](https://zagjs.com): state machines for keyboard, focus, ARIA and positioning of complex widgets. Take it from the SDK, not from npm:

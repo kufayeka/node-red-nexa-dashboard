@@ -176,7 +176,7 @@ export function buildCanvasArea(trayBody, chrome) {
                 }
                 if (!targetComp && screen) {
                     // the top-most component under the drop point, at any depth
-                    var nodes = Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n); });
+                    var nodes = Tree.allNodes(screen).filter(function (n) { return !Tree.isContainer(n) || Tree.isSlotHost(n); });
                     for (var i = nodes.length - 1; i >= 0; i--) {
                         var b = Tree.absBox(screen, nodes[i].id);
                         if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {

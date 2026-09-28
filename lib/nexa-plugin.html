@@ -123,6 +123,8 @@
     insert: () => insert,
     isAncestor: () => isAncestor,
     isContainer: () => isContainer,
+    isSlotFrame: () => isSlotFrame,
+    isSlotHost: () => isSlotHost,
     kids: () => kids,
     locate: () => locate,
     move: () => move,
@@ -131,6 +133,8 @@
     placeOrphan: () => placeOrphan,
     refitGroupsUp: () => refitGroupsUp,
     remove: () => remove,
+    slotOf: () => slotOf,
+    syncSlots: () => syncSlots,
     tidyContainer: () => tidyContainer,
     unwrap: () => unwrap,
     walk: () => walk,
@@ -139,7 +143,80 @@
   });
   var CONTAINER_TYPES = { "@group": true, "@frame": true };
   function isContainer(node) {
-    return !!(node && CONTAINER_TYPES[node.type]);
+    return !!(node && (CONTAINER_TYPES[node.type] || isSlotHost(node)));
+  }
+  function isSlotHost(node) {
+    return !!(node && node.slots === true && !CONTAINER_TYPES[node.type]);
+  }
+  function isSlotFrame(node) {
+    return !!(node && node.type === "@frame" && typeof node.inSlot === "string" && node.inSlot !== "");
+  }
+  function slotFrame(slot, genId2) {
+    return {
+      id: genId2(),
+      type: "@frame",
+      inSlot: slot.name,
+      slotLabel: slot.label || slot.name,
+      x: 0,
+      y: 0,
+      w: 0,
+      h: 0,
+      children: [],
+      layout: Object.assign({ mode: "vertical", padding: { t: 16, r: 16, b: 16, l: 16 }, gap: 8 }, slot.layout || {}),
+      style: { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: true }
+    };
+  }
+  function syncSlots(node, slots, genId2) {
+    if (!node || CONTAINER_TYPES[node.type]) return false;
+    var changed3 = false;
+    if (node.slots !== true) {
+      node.slots = true;
+      changed3 = true;
+    }
+    var list = node.children || (node.children = []);
+    var byName = {};
+    list.forEach(function(c) {
+      if (isSlotFrame(c) && !byName[c.inSlot]) byName[c.inSlot] = c;
+    });
+    var ordered = [];
+    (slots || []).forEach(function(slot) {
+      if (!slot || slot.name === void 0 || slot.name === null || slot.name === "") return;
+      var name2 = String(slot.name);
+      var f = byName[name2];
+      if (!f) {
+        f = slotFrame({ name: name2, label: slot.label, layout: slot.layout }, genId2);
+        changed3 = true;
+      }
+      var label = slot.label || name2;
+      if (f.slotLabel !== label) {
+        f.slotLabel = label;
+        changed3 = true;
+      }
+      if (f.slotUnused) {
+        delete f.slotUnused;
+        changed3 = true;
+      }
+      delete byName[name2];
+      ordered.push(f);
+    });
+    list.forEach(function(c) {
+      if (ordered.indexOf(c) !== -1) return;
+      if (isSlotFrame(c) && !c.slotUnused) {
+        c.slotUnused = true;
+        changed3 = true;
+      }
+      ordered.push(c);
+    });
+    if (ordered.length !== list.length || ordered.some(function(c, i2) {
+      return c !== list[i2];
+    })) changed3 = true;
+    node.children = ordered;
+    return changed3;
+  }
+  function slotOf(node, name2) {
+    return kids(node).filter(function(c) {
+      return isSlotFrame(c) && c.inSlot === String(name2);
+    })[0] || null;
   }
   function kids(node) {
     return node && node.children || [];
@@ -213,6 +290,7 @@
   function insert(surface, parentId, index, node) {
     var parent = parentId ? find(surface, parentId) : null;
     if (parentId && !isContainer(parent)) throw new Error("[nexa] insert: " + parentId + " is not a container");
+    if (parent && isSlotHost(parent) && !(isSlotFrame(node) && !slotOf(parent, node.inSlot))) throw new Error("[nexa] it goes into one of the component's slots (a panel), not into the component itself");
     var list = listOf(surface, parent);
     var at = index === void 0 || index === null || index > list.length ? list.length : Math.max(0, index);
     list.splice(at, 0, node);
@@ -226,6 +304,8 @@
   }
   function move(surface, id2, parentId, index) {
     if (parentId && (parentId === id2 || isAncestor(surface, id2, parentId))) throw new Error("[nexa] move: a node can't go inside itself");
+    var here = locate(surface, id2);
+    if (here && isSlotFrame(here.node) && here.parent && isSlotHost(here.parent) && (parentId || null) !== here.parent.id) throw new Error("[nexa] a component's slot stays in its component");
     var d = detach(surface, id2);
     if (!d) return null;
     if (d.parentId === (parentId || null) && !d.orphan && index !== void 0 && index !== null && index > d.index) index--;
@@ -239,12 +319,25 @@
     if (!d) return null;
     if (isContainer(d.node) && d.node.children && d.node.children.length) {
       surface.orphans = surface.orphans || [];
-      d.node.children.forEach(function(c) {
-        c.x = (c.x || 0) + origin.x;
-        c.y = (c.y || 0) + origin.y;
+      var orphan = function(c, ox, oy) {
+        c.x = (c.x || 0) + ox;
+        c.y = (c.y || 0) + oy;
         surface.orphans.push(c);
-      });
-      d.node.children = [];
+      };
+      if (isSlotHost(d.node)) {
+        d.node.children.forEach(function(f) {
+          var bw = borderOf(f);
+          kids(f).forEach(function(c) {
+            orphan(c, origin.x + (f.x || 0) + bw, origin.y + (f.y || 0) + bw);
+          });
+          f.children = [];
+        });
+      } else {
+        d.node.children.forEach(function(c) {
+          orphan(c, origin.x, origin.y);
+        });
+        d.node.children = [];
+      }
     }
     return d.node;
   }
@@ -352,6 +445,7 @@
     if (locs.some(function(l) {
       return l.parent !== parent || l.orphan;
     })) throw new Error("[nexa] wrap: nodes must share one parent");
+    if (parent && isSlotHost(parent)) throw new Error("[nexa] wrap: a component's slots stay in it");
     locs.sort(function(a, b2) {
       return a.index - b2.index;
     });
@@ -380,7 +474,7 @@
   }
   function unwrap(surface, id2) {
     var loc = locate(surface, id2);
-    if (!loc || !isContainer(loc.node)) return [];
+    if (!loc || !isContainer(loc.node) || isSlotHost(loc.node) || isSlotFrame(loc.node) && isSlotHost(loc.parent)) return [];
     var g = loc.node;
     var children = kids(g);
     children.forEach(function(c) {
@@ -441,6 +535,7 @@
     guessConstraints: () => guessConstraints,
     hasAutoLayout: () => hasAutoLayout,
     hasConstraints: () => hasConstraints,
+    inSlot: () => inSlot,
     innerSize: () => innerSize,
     isInFlow: () => isInFlow,
     layoutOf: () => layoutOf,
@@ -958,6 +1053,9 @@
   function hasAutoLayout(node) {
     return !!node && node.type === "@frame" && layoutOf(node).mode !== "none";
   }
+  function inSlot(node) {
+    return !!(node && node.type === "@frame" && typeof node.inSlot === "string" && node.inSlot !== "");
+  }
   function isInFlow(child, parent) {
     return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
   }
@@ -969,7 +1067,7 @@
     return "fixed";
   }
   function frameHugs(frame, axis) {
-    if (!hasAutoLayout(frame)) return false;
+    if (!hasAutoLayout(frame) || inSlot(frame)) return false;
     var l = layoutOf(frame);
     return (axis === "w" ? l.sizeW : l.sizeH) === "hug";
   }
@@ -1090,7 +1188,7 @@
     return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
   }
   function hasConstraints(node, parent) {
-    return (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
+    return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
   }
   function innerSize(frame) {
     var s = styleOf(frame);
@@ -1137,6 +1235,28 @@
     return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
   }
   function boxCss(node, parent, opts) {
+    if (inSlot(node)) {
+      return {
+        position: "absolute",
+        left: "0",
+        top: "0",
+        width: "100%",
+        height: "100%",
+        right: "",
+        bottom: "",
+        flex: "",
+        "align-self": "",
+        "justify-self": "",
+        "grid-column": "",
+        "grid-row": "",
+        "min-width": "",
+        "max-width": "",
+        "min-height": "",
+        "max-height": "",
+        "scroll-snap-align": "",
+        "z-index": ""
+      };
+    }
     var css2 = {
       position: "absolute",
       left: num(node.x) + "px",
@@ -1228,7 +1348,7 @@
     return css2;
   }
   function canRotate(node, parent) {
-    return !isInFlow(node, parent);
+    return !isInFlow(node, parent) && !inSlot(node);
   }
   function makeFrame(mode, w, h) {
     var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
@@ -1798,6 +1918,8 @@
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
     overlayPreview: {},
+    slotPreview: {},
+    // host id -> the slot shown on the canvas (a Tabs' tab while designing)
     // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
     themePreview: null,
     themePane: null,
@@ -2269,6 +2391,29 @@
     var redraw = false;
     if (!screen) return changed3;
     tree_exports.walk(screen, function(node, parent) {
+      if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
+        if (node.slotUnused) return false;
+        var sel = elementOf(node.id), hel = elementOf(parent.id);
+        if (!sel || !hel || !sel.getClientRects().length) return false;
+        var hr = hel.getBoundingClientRect(), sr = sel.getBoundingClientRect();
+        var k = hel.offsetWidth ? hr.width / hel.offsetWidth : 1;
+        if (!k) k = 1;
+        var sb = { x: Math.round((sr.left - hr.left) / k), y: Math.round((sr.top - hr.top) / k), w: sel.offsetWidth, h: sel.offsetHeight };
+        if (sb.x !== node.x || sb.y !== node.y || sb.w !== node.w || sb.h !== node.h) {
+          var was = { w: node.w, h: node.h };
+          node.x = sb.x;
+          node.y = sb.y;
+          node.w = sb.w;
+          node.h = sb.h;
+          changed3.push(node.id);
+          var shifted = constrainFrameChildren(node, was);
+          if (shifted.length) {
+            redraw = true;
+            changed3 = changed3.concat(shifted);
+          }
+        }
+        return;
+      }
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
       if (!inFlow && !hugW && !hugH) return;
@@ -2316,11 +2461,18 @@
     tree_exports.walk(screen, function(node) {
       if (excluded[node.id]) return false;
       if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
+      if (node.slotUnused) return false;
       if (node.type !== "@frame" || isNodeLocked(node.id)) return;
+      if (tree_exports.isSlotFrame(node) && !slotShown(node.id)) return false;
       var b = tree_exports.absBox(screen, node.id);
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) hit = node;
     });
     return hit;
+  }
+  function slotShown(id2) {
+    var el = state.artboardEl && state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
+    if (!el || typeof el.getClientRects !== "function") return true;
+    return el.getClientRects().length > 0;
   }
   function flowKids(frame, excludeIds) {
     return tree_exports.kids(frame).filter(function(c) {
@@ -2792,14 +2944,10 @@
     });
     return scope;
   }
-  function refreshComponentRender(comp) {
-    if (!state.artboardEl) return;
-    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    var node = el && el.get && el.get(0);
-    if (!node) return;
-    var ctx = {
+  function editorCtx(comp) {
+    return {
       namespace: comp.id,
-      // top-level selection, so the raw id IS the full namespace
+      // node ids are unique in a surface, so the raw id IS the full namespace
       mode: "editor",
       getRawProps: function() {
         return comp.props || {};
@@ -2813,6 +2961,13 @@
         markDirty();
       }
     };
+  }
+  function refreshComponentRender(comp) {
+    if (!state.artboardEl) return;
+    var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    var node = el && el.get && el.get(0);
+    if (!node) return;
+    var ctx = editorCtx(comp);
     var scope = nodeScopes.has(comp) ? nodeScopes.get(comp) : editorScopeFor(comp);
     if (comp.type === "@lit-component") {
       renderLitComponentInstance(node, comp, interpolateProps(comp.props || {}, scope), ctx);
@@ -2825,6 +2980,28 @@
     } catch (e) {
       el.text("(render error: " + e.message + ")");
     }
+    if (typeof typeDef.slotsOf === "function" && tree_exports.syncSlots(comp, typeDef.slotsOf(comp.props || {}), genId)) {
+      markDirty();
+      _renderScreen();
+    }
+  }
+  function revealSlotsOf(id2) {
+    var screen = getActiveScreen();
+    if (!screen || !state.artboardEl) return false;
+    var shown = false;
+    var chain = tree_exports.ancestors(screen, id2).concat([tree_exports.find(screen, id2)]);
+    chain.forEach(function(n, i2) {
+      if (!n || !tree_exports.isSlotFrame(n) || i2 === 0 || !tree_exports.isSlotHost(chain[i2 - 1])) return;
+      var host = chain[i2 - 1];
+      var def = window.NEXA.getComponent(host.type);
+      var el = state.artboardEl.find('[data-id="' + host.id + '"]').get(0);
+      (state.slotPreview = state.slotPreview || {})[host.id] = n.inSlot;
+      if (def && el && typeof def.revealSlot === "function") {
+        def.revealSlot(el, n.inSlot);
+        shown = true;
+      }
+    });
+    return shown;
   }
   function buildSparkplugBindingIndex(screen) {
     var index = {};
@@ -3323,15 +3500,27 @@
       if (!state.overlayPreview[comp.id]) return;
       placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
     }
+    var hostDef = !layout_exports.inSlot(comp) && !tree_exports.CONTAINER_TYPES[comp.type] ? window.NEXA.getComponent(comp.type) : null;
+    var slotHost = !!(hostDef && typeof hostDef.slotsOf === "function");
+    if (slotHost && tree_exports.syncSlots(comp, hostDef.slotsOf(comp.props || {}), genId)) markDirty();
+    if (comp.slotUnused) return;
     var interactable = isNodeInteractable(comp.id);
-    var container = tree_exports.isContainer(comp);
+    var container = tree_exports.isContainer(comp) && !slotHost;
     var css2 = nodeCss(comp, parentNode);
+    if (layout_exports.inSlot(comp) && interactable) css2["pointer-events"] = "auto";
     if (overlay) css2["z-index"] = "41";
     css2.cursor = isNodeLocked(comp.id) || !interactable || inFlow ? "default" : "move";
     css2["user-select"] = "none";
-    css2["pointer-events"] = interactable ? "" : "none";
+    if (!(layout_exports.inSlot(comp) && interactable)) css2["pointer-events"] = interactable ? "" : "none";
     css2.display = isNodeVisible(comp.id) ? css2.display || "" : "none";
-    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css2).appendTo(parentEl);
+    var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") + (slotHost ? " nexa-slot-host" : "") }).css(css2).appendTo(parentEl);
+    if (layout_exports.inSlot(comp)) {
+      el.attr("slot", comp.inSlot);
+      el.css({ outline: "1px dashed rgba(13, 153, 255, 0.45)", "outline-offset": "-1px" });
+      if (!tree_exports.kids(comp).length) {
+        window.$("<span>", { "class": "nexa-slot-hint" }).text("Drop components here \u2014 " + (comp.slotLabel || comp.inSlot)).css({ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", color: "rgba(13, 153, 255, 0.8)", "font-size": "11px", "pointer-events": "none", "white-space": "nowrap" }).appendTo(el);
+      }
+    }
     if (comp.teleport) {
       el.css({ outline: "1px dashed #8e44ad", "outline-offset": "-1px" });
       window.$("<span>", { "class": "nexa-teleport-badge", title: "On the live page: drawn in " + (comp.teleport === "@page" ? "the page itself" : 'the frame named "' + comp.teleport + '"') }).css({ position: "absolute", right: "0", top: "0", "z-index": "5", background: "#8e44ad", color: "#fff", "font-size": "9px", padding: "0 4px", "line-height": "14px", "border-radius": "0 0 0 3px", "pointer-events": "none", "white-space": "nowrap" }).text("\u21E2 " + (comp.teleport === "@page" ? "page" : comp.teleport)).appendTo(el);
@@ -3346,22 +3535,18 @@
       });
     } else {
       nodeScopes.set(comp, scope);
-      renderComponentContent(el.get(0), comp, {
-        namespace: comp.id,
-        // node ids are unique in a surface, so the raw id IS the full namespace
-        mode: "editor",
-        getRawProps: function() {
-          return comp.props || {};
-        },
-        emit: function(eventName, payload) {
-          if (window.RED && window.RED.log) window.RED.log.info("[kufayeka-nexa-dashboard] component event: " + comp.type + "#" + comp.id + " " + eventName + " " + JSON.stringify(payload));
-        },
-        setBindableValue: function(name2, value) {
-          comp.props = comp.props || {};
-          comp.props[name2] = value;
-          markDirty();
-        }
-      }, comp.id, [], scope);
+      renderComponentContent(el.get(0), comp, editorCtx(comp), comp.id, [], scope);
+      if (slotHost && typeof hostDef.slotHost === "function") {
+        var shownSlot = state.slotPreview && state.slotPreview[comp.id];
+        if (shownSlot !== void 0 && typeof hostDef.revealSlot === "function") hostDef.revealSlot(el.get(0), shownSlot);
+        el.get(0).addEventListener("nexa-slot-shown", function(ev) {
+          (state.slotPreview = state.slotPreview || {})[comp.id] = ev.detail && ev.detail.name;
+        });
+        var slotParent = window.$(hostDef.slotHost(el.get(0)));
+        tree_exports.kids(comp).forEach(function(child) {
+          renderComponent(child, slotParent, comp, scope);
+        });
+      }
     }
     if (!interactable) return;
     el.on("mousedown", function(e) {
@@ -3391,6 +3576,7 @@
       showHover(pickSelectionTarget(comp.id, e.originalEvent || e));
     });
     if (isNodeLocked(comp.id)) return;
+    if (layout_exports.inSlot(comp)) return;
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
@@ -3421,7 +3607,7 @@
         dragStartPage = { x: e.pageX, y: e.pageY };
         before = treeSnapshot(screen);
         movers = state.selectedIds.filter(function(id2) {
-          return tree_exports.find(screen, id2) && !isNodeLocked(id2) && !state.selectedIds.some(function(o) {
+          return tree_exports.find(screen, id2) && !isNodeLocked(id2) && !tree_exports.isSlotFrame(tree_exports.find(screen, id2)) && !state.selectedIds.some(function(o) {
             return o !== id2 && tree_exports.isAncestor(screen, o, id2);
           });
         });
@@ -3655,6 +3841,7 @@
       props
     }, artboardX, artboardY);
   }
+  if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { addComponentAt, revealSlotsOf });
 
   // src/canvas/selection-handles.js
   function boxOf(comp) {
@@ -3663,6 +3850,7 @@
   }
   function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
+    if (tree_exports.isSlotFrame(comp)) return { resizable: false, rotatable: false, flippable: false, lockable: true };
     var screen = getActiveScreen();
     var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     var caps;
@@ -27846,7 +28034,7 @@
       });
     }
     var eventComps = screen ? tree_exports.allNodes(screen).filter(function(n) {
-      return !tree_exports.isContainer(n);
+      return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
     }) : [];
     if (eventComps.length) {
       sectionHeader(state.eventsPane, "Components on this screen");
@@ -28837,7 +29025,9 @@
       inspector: function(o) {
         var p = o.p, bind = o.bind;
         var auto = p.mode !== "none";
+        var slot = layout_exports.inSlot(frame);
         return html`
+                ${slot ? html`<div class="nx-help">A slot of its component (a tab's panel): what you drop in it shows there. The component sets its place and size; here its layout, padding and fill.</div>` : html`
                 <nx-section heading="Frame" persist-key="nexa-frame:box">
                     <nx-row><nx-number ${bind("x")}></nx-number><nx-number ${bind("y")}></nx-number></nx-row>
                     <nx-row><nx-number ${bind("w")} ?disabled="${auto && p.sizeW === "hug"}"></nx-number><nx-number ${bind("h")} ?disabled="${auto && p.sizeH === "hug"}"></nx-number></nx-row>
@@ -28856,11 +29046,11 @@
                         <nx-row><nx-select ${bind("oAnimation")}></nx-select><nx-number ${bind("oDuration")}></nx-number></nx-row>
                         <nx-checkbox ${bind("oStartOpen")}></nx-checkbox>
                         <div class="nx-help">Logic (Events tab → Overlays): <b>Open</b> it — its output fires when it closes, msg.payload = the result, msg.closedBy = backdrop / esc / timer / node; <b>Close</b> it with msg.payload as the result; <b>on Open / on Close</b> events. Its size: W × H (a drawer: its width, or height for Top / Bottom).</div>`}
-                </nx-section>
+                </nx-section>`}
                 <nx-section heading="Auto layout" persist-key="nexa-frame:layout">
                     <nx-segmented ${bind("mode")} icons-only></nx-segmented>
                     ${auto ? html`
-                        <nx-row><nx-segmented ${bind("sizeW")}></nx-segmented><nx-segmented ${bind("sizeH")}></nx-segmented></nx-row>
+                        ${slot ? nothing : html`<nx-row><nx-segmented ${bind("sizeW")}></nx-segmented><nx-segmented ${bind("sizeH")}></nx-segmented></nx-row>`}
                         <nx-row>
                             <nx-align ${bind("align")}></nx-align>
                             <div>
@@ -29373,7 +29563,7 @@
     }
     var isTemplateInstance = comp.type === "@template";
     var isLitComponent = comp.type === "@lit-component";
-    var isContainer2 = tree_exports.isContainer(comp);
+    var isContainer2 = tree_exports.isContainer(comp) && !tree_exports.isSlotHost(comp);
     var typeDef = isTemplateInstance || isLitComponent || isContainer2 ? null : window.NEXA.getComponent(comp.type);
     if (isContainer2) {
       renderContainerProperties(comp);
@@ -29636,6 +29826,16 @@
     var screen = getActiveScreen();
     var pane = state.propertiesPane;
     var isFrame = comp.type === "@frame";
+    if (tree_exports.isSlotFrame(comp)) {
+      var host = screen ? tree_exports.parentOf(screen, comp.id) : null;
+      var hostDef = host && window.NEXA.getComponent(host.type);
+      window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text("Slot \u201C" + (comp.slotLabel || comp.inSlot) + "\u201D of " + (host && host.name || hostDef && hostDef.label || "its component") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
+      if (comp.slotUnused) window.$("<div>").css({ "font-size": "11px", color: "#b35c00", "margin-bottom": "8px" }).text("Not used now: its slot is gone (a tab removed). Its content is kept; the slot coming back shows it again.").appendTo(pane);
+      renderNameField(comp);
+      renderVariablesInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp, false);
+      renderFrameInspector(window.$("<div>").appendTo(pane), comp);
+      return;
+    }
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).html('<i class="fa ' + (isFrame ? "fa-square-o" : "fa-object-group") + '"></i> ' + (isFrame ? "Frame" : "Group") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
     renderNameField(comp);
     renderLayoutChildSection(comp);
@@ -31517,9 +31717,11 @@
     var k = 0;
     while (k < chain.length - 1) {
       var f = findComponent(chain[k]);
-      if (!f || f.type !== "@frame") break;
+      if (!f || f.type !== "@frame" && !tree_exports.isSlotHost(f)) break;
       k++;
     }
+    var picked = findComponent(chain[k]);
+    if (k > 0 && tree_exports.isSlotFrame(picked) && tree_exports.isSlotHost(findComponent(chain[k - 1]))) return chain[k - 1];
     return chain[k];
   }
   function selectParentOrChild(up) {
@@ -31748,6 +31950,28 @@
         renderActiveScreen._again = false;
       }
     }
+    var art = state.artboardEl && state.artboardEl[0];
+    if (art && art.addEventListener && !art.__nexaSlotWatch) {
+      art.__nexaSlotWatch = true;
+      art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
+    }
+    if (tree_exports.allNodes(screen).some(tree_exports.isSlotHost)) scheduleSlotReadback();
+  }
+  var slotReadbackQueued = false;
+  function scheduleSlotReadback() {
+    if (slotReadbackQueued) return;
+    slotReadbackQueued = true;
+    var later = typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame.bind(window) : function(f) {
+      return setTimeout(f, 16);
+    };
+    later(function() {
+      slotReadbackQueued = false;
+      var screen = getActiveScreen();
+      if (!screen || !state.artboardEl) return;
+      var changed3 = readbackLayout(screen);
+      if (changed3.redraw) redrawCanvas();
+      else if (changed3.length) refreshSelectionVisuals({ keepPanel: true });
+    });
   }
   function redrawCanvas() {
     var screen = getActiveScreen();
@@ -32217,7 +32441,7 @@
           }
           if (!targetComp && screen) {
             var nodes = tree_exports.allNodes(screen).filter(function(n) {
-              return !tree_exports.isContainer(n);
+              return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
             });
             for (var i2 = nodes.length - 1; i2 >= 0; i2--) {
               var b = tree_exports.absBox(screen, nodes[i2].id);
@@ -32444,6 +32668,7 @@
   var treeEl = null;
   var orphanEl = null;
   function labelOf(node) {
+    if (tree_exports.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
     if (node.name) return node.name;
     if (node.type === "@group") return "Group";
     if (node.type === "@frame") return "Frame";
@@ -32459,6 +32684,7 @@
     if (node.type === "@group") return "fa fa-object-group";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
+    if (tree_exports.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
     if (node.type === "@frame") return "fa fa-square-o";
     if (node.type === "@template") return "fa fa-clone";
     if (node.type === "@lit-component") return "fa fa-code";
@@ -32476,7 +32702,7 @@
         icon: iconOf(node),
         container: tree_exports.isContainer(node),
         badge: tree_exports.isContainer(node) ? String(tree_exports.kids(node).length) : "",
-        muted: eff !== "show",
+        muted: eff !== "show" || !!node.slotUnused,
         children: tree_exports.isContainer(node) ? rows(screen, tree_exports.kids(node), orphan) : [],
         actions: orphan ? [{ id: "delete", icon: "fa fa-trash-o", title: "Delete for good" }] : [
           { id: "visibility", icon: VIS_ICON[vis], title: VIS_TITLE[vis], on: vis !== "show" },
@@ -32580,6 +32806,7 @@
       });
       renderActiveScreen();
     }
+    revealSlotsOf(e.detail.id);
     if (e.detail.additive) {
       if (isSelected(e.detail.id)) selectMultiple(state.selectedIds.filter(function(id2) {
         return id2 !== e.detail.id;

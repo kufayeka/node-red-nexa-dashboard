@@ -318,6 +318,18 @@ For example, a Settings panel teleports into the header while an admin is logged
 
 **The data**: `node.teleport = "<name>" | "@page"`, `node.teleportOn = "logic"` (absent: when the page opens), `frame.slot = "<name>"`; the Logic node `{ type: "teleport", node, to, toSource }`. Tests: `test/runtime-teleport-browser.test.js`.
 
+## 4f. Components with slots (Tabs…)
+
+Some components hold other components: a Tabs has one panel per tab. Each panel is a **slot frame**, an ordinary frame made and kept in step by the editor (`Tree.syncSlots`).
+
+- **Drop** onto the visible panel and the component goes into that panel's frame. Clicking a tab header on the canvas switches the panel, and the canvas keeps that tab while you edit.
+- **Select**: a click selects what is under the pointer through the panel, as with frames. A click on the panel's empty area selects the component. A double click selects the panel's frame, so you can set its auto layout, padding and fill.
+- **Hierarchy**: the panels are listed under the component by their tab's name. Picking something in a hidden panel switches the component to it.
+- A panel can't be moved, resized, grouped or taken out. What goes in the component goes into one of its panels.
+- When a tab is removed, its panel is kept, marked "(not used)", and not drawn. Its content comes back with the tab.
+
+The data: `node.slots = true`, and `children` = `@frame`s with `inSlot: "<name>"`. See `docs/SDK.md` §11b-2.
+
 ## 4c. Breakpoints (desktop-first)
 
 **The app's breakpoints** (the **Breakpoints** tab) are bands of window widths, the Tailwind way. Each one starts at its "from" width and runs up to the next:

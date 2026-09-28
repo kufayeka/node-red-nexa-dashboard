@@ -3,7 +3,7 @@
 // INTO it — into its auto layout at the pointer's place in the flow, or at the
 // pointer in a frame without one. Out of every frame = the screen (root).
 // Groups don't capture (a group is just its members).
-import { Tree, Layout, isNodeLocked } from "../state.js";
+import { state, Tree, Layout, isNodeLocked } from "../state.js";
 
 /**
  * The top-most visible, unlocked frame under a point (surface coordinates),
@@ -17,11 +17,20 @@ export function frameAt(screen, x, y, excludeIds) {
     Tree.walk(screen, function (node) {
         if (excluded[node.id]) return false;             // nor anything inside it
         if (Tree.effectiveVisibility(screen, node.id) !== "show") return false;
+        if (node.slotUnused) return false;
         if (node.type !== "@frame" || isNodeLocked(node.id)) return;
+        // a component's slot not drawn now (an inactive tab): nothing lands in it
+        if (Tree.isSlotFrame(node) && !slotShown(node.id)) return false;
         var b = Tree.absBox(screen, node.id);
         if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) hit = node;
     });
     return hit;
+}
+
+function slotShown(id) {
+    var el = state.artboardEl && state.artboardEl.find('[data-id="' + id + '"]').get(0);
+    if (!el || typeof el.getClientRects !== "function") return true; // no DOM (tests): by the model
+    return el.getClientRects().length > 0;
 }
 
 function flowKids(frame, excludeIds) {

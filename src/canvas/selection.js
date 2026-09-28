@@ -83,12 +83,16 @@ export function pickSelectionTarget(nodeId, e) {
     // Rows / Columns / cards), like Webflow / Framer: a component or a template instance
     // is what you click; a frame's own empty area (padding, gap) selects the frame.
     // A group stays one thing (its members: a double click). Shift+Enter: the parent.
+    // A component with slots (Tabs…) is clicked through like a frame; its slot's own
+    // empty area selects the component (a double click: the slot, to set its layout).
     var k = 0;
     while (k < chain.length - 1) {
         var f = findComponent(chain[k]);
-        if (!f || f.type !== "@frame") break;
+        if (!f || (f.type !== "@frame" && !Tree.isSlotHost(f))) break;
         k++;
     }
+    var picked = findComponent(chain[k]);
+    if (k > 0 && Tree.isSlotFrame(picked) && Tree.isSlotHost(findComponent(chain[k - 1]))) return chain[k - 1];
     return chain[k];
 }
 

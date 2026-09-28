@@ -25,6 +25,24 @@ export function readbackLayout(screen) {
     var redraw = false;
     if (!screen) return changed;
     Tree.walk(screen, function (node, parent) {
+        // a component's slot frame: where the component's <slot> put it (inside its box)
+        if (Layout.inSlot(node) && Tree.isSlotHost(parent)) {
+            if (node.slotUnused) return false;
+            var sel = elementOf(node.id), hel = elementOf(parent.id);
+            if (!sel || !hel || !sel.getClientRects().length) return false; // not drawn now (an inactive tab)
+            var hr = hel.getBoundingClientRect(), sr = sel.getBoundingClientRect();
+            var k = hel.offsetWidth ? hr.width / hel.offsetWidth : 1; // the canvas zoom
+            if (!k) k = 1;
+            var sb = { x: Math.round((sr.left - hr.left) / k), y: Math.round((sr.top - hr.top) / k), w: sel.offsetWidth, h: sel.offsetHeight };
+            if (sb.x !== node.x || sb.y !== node.y || sb.w !== node.w || sb.h !== node.h) {
+                var was = { w: node.w, h: node.h };
+                node.x = sb.x; node.y = sb.y; node.w = sb.w; node.h = sb.h;
+                changed.push(node.id);
+                var shifted = constrainFrameChildren(node, was);
+                if (shifted.length) { redraw = true; changed = changed.concat(shifted); }
+            }
+            return;
+        }
         var inFlow = Layout.isInFlow(node, parent);
         var hugW = Layout.frameHugs(node, "w"), hugH = Layout.frameHugs(node, "h");
         if (!inFlow && !hugW && !hugH) return;

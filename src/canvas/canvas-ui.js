@@ -56,6 +56,30 @@ export function renderActiveScreen(opts) {
         renderActiveScreen._again = true;
         try { renderActiveScreen(opts); } finally { renderActiveScreen._again = false; }
     }
+    // components with slots draw them (Lit) after this: their boxes are read once they did
+    var art = state.artboardEl && state.artboardEl[0];
+    if (art && art.addEventListener && !art.__nexaSlotWatch) {
+        art.__nexaSlotWatch = true;
+        art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
+    }
+    if (Tree.allNodes(screen).some(Tree.isSlotHost)) scheduleSlotReadback();
+}
+
+// A component with slots drew (its first render, a tab switched): where its slot frames
+// are now, back into the nodes — the selection box and drops follow.
+var slotReadbackQueued = false;
+function scheduleSlotReadback() {
+    if (slotReadbackQueued) return;
+    slotReadbackQueued = true;
+    var later = typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame.bind(window) : function (f) { return setTimeout(f, 16); };
+    later(function () {
+        slotReadbackQueued = false;
+        var screen = getActiveScreen();
+        if (!screen || !state.artboardEl) return;
+        var changed = readbackLayout(screen);
+        if (changed.redraw) redrawCanvas();
+        else if (changed.length) refreshSelectionVisuals({ keepPanel: true });
+    });
 }
 
 /** Redraws the canvas, keeping the selection and the properties panel as they are. */

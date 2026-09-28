@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>slots</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Components with slots on a deployed page (test/runtime-slots-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:600px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+// a component with slots, the way the SDK's defineComponent builds one: its element's
+// shadow DOM has a 40px header and a <slot> for the slot shown (props.show)
+function slotted(type) {
+  return {
+    render: function (el, p) {
+      var host = el.__host;
+      if (!host) {
+        host = el.__host = document.createElement("div");
+        host.style.cssText = "position:absolute;inset:0";
+        host.attachShadow({ mode: "open" }).innerHTML = '<div style="height:40px"></div><div class="panel" style="position:absolute;left:0;top:40px;right:0;bottom:0"></div>';
+        el.appendChild(host);
+      }
+      el.__show = function (name) { host.shadowRoot.querySelector(".panel").innerHTML = '<div style="position:absolute;inset:0"><slot name="' + name + '"></slot></div>'; };
+      el.__show(p.show || "a");
+    },
+    slotsOf: function (p) { return [{ name: "a" }, { name: "b" }]; },
+    slotHost: function (el) { return el.__host; }
+  };
+}
+NEXA.registerComponent("tabsx", slotted());
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+function label(id, x, y, w, h, text, extra) { return Object.assign({ id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: text || id } }, extra || {}); }
+function slot(id, name, kids, extra) { return Object.assign({ id: id, type: "@frame", inSlot: name, x: 0, y: 40, w: 400, h: 260, layout: { mode: "vertical", padding: { t: 16, r: 16, b: 16, l: 16 }, gap: 8 }, style: {}, children: kids }, extra || {}); }
+window.__NEXA_APP__ = { variables: [{ id: "r", name: "result", type: "string", defaultValue: "" }] };
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, orphans: [],
+  components: [
+    { id: "ctl", type: "btn", x: 0, y: 580, w: 10, h: 10, props: {} },
+    label("res", 20, 580, 200, 20, "{result}"),
+    { id: "T", type: "tabsx", x: 100, y: 100, w: 400, h: 300, props: { show: "a" }, slots: true, children: [
+      slot("sa", "a", [label("la", 0, 0, 120, 20, "in A"), { id: "ba", type: "btn", x: 0, y: 0, w: 60, h: 20, props: { text: "go" } }, label("named", 0, 0, 80, 20, "named", { name: "Extra" })]),
+      slot("sb", "b", [label("lb", 0, 0, 120, 20, "in B")]),
+      slot("sold", "old", [label("lo", 0, 0, 120, 20, "old")], { slotUnused: true })
+    ] },
+    // its plugin registers after the page was drawn (an ES module)
+    { id: "L", type: "late", x: 600, y: 100, w: 300, h: 200, props: { show: "b" }, slots: true, children: [slot("la2", "a", [label("xa", 0, 0, 80, 20)]), slot("lb2", "b", [label("xb", 0, 0, 80, 20)])] }
+  ],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ba", event: "click" },
+    { id: "f1", type: "function", code: "setVariable('result', 'clicked in A', '@app'); return msg;" },
+    { id: "e2", type: "ui-event", compId: "ctl", event: "remove" }, { id: "v2", type: "layer-control", states: [{ name: "Extra", state: "remove" }] },
+    { id: "e3", type: "ui-event", compId: "ctl", event: "show" }, { id: "v3", type: "layer-control", states: [{ name: "Extra", state: "show" }] }
+  ], wires: [W("e1", "f1"), W("e2", "v2"), W("e3", "v3")] } };
+window.__registerLate = function () { NEXA.registerComponent("late", slotted()); };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

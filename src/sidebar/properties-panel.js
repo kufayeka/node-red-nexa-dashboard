@@ -82,7 +82,7 @@ export function renderPropertiesPanel() {
     }
     var isTemplateInstance = comp.type === "@template";
     var isLitComponent = comp.type === "@lit-component";
-    var isContainer = Tree.isContainer(comp);
+    var isContainer = Tree.isContainer(comp) && !Tree.isSlotHost(comp);
     var typeDef = (isTemplateInstance || isLitComponent || isContainer) ? null : window.NEXA.getComponent(comp.type);
     if (isContainer) {
         renderContainerProperties(comp);
@@ -446,6 +446,19 @@ function renderContainerProperties(comp) {
     var screen = getActiveScreen();
     var pane = state.propertiesPane;
     var isFrame = comp.type === "@frame";
+    // a component's slot (a tab's panel): its layout and look; the component places it
+    if (Tree.isSlotFrame(comp)) {
+        var host = screen ? Tree.parentOf(screen, comp.id) : null;
+        var hostDef = host && window.NEXA.getComponent(host.type);
+        window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" })
+            .text("Slot “" + (comp.slotLabel || comp.inSlot) + "” of " + ((host && host.name) || (hostDef && hostDef.label) || "its component") + " — " + Tree.kids(comp).length + " children")
+            .appendTo(pane);
+        if (comp.slotUnused) window.$("<div>").css({ "font-size": "11px", color: "#b35c00", "margin-bottom": "8px" }).text("Not used now: its slot is gone (a tab removed). Its content is kept; the slot coming back shows it again.").appendTo(pane);
+        renderNameField(comp);
+        renderVariablesInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp, false);
+        renderFrameInspector(window.$("<div>").appendTo(pane), comp);
+        return;
+    }
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" })
         .html('<i class="fa ' + (isFrame ? "fa-square-o" : "fa-object-group") + '"></i> ' + (isFrame ? "Frame" : "Group") + " — " + Tree.kids(comp).length + " children")
         .appendTo(pane);

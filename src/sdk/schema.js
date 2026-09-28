@@ -71,6 +71,29 @@ function ioList(map, dir) {
     });
 }
 
+// `slots`: the component holds other nodes — a list ([{ name, label }] or names), or a
+// function of the props (one slot per tab of a Tabs). Normalized to fn(props) -> list.
+function slotsFn(decl) {
+    if (!decl) return null;
+    var fn = typeof decl === "function" ? decl : function () { return decl; };
+    return function (p) {
+        var list;
+        try { list = fn(p || {}); } catch (e) { list = []; }
+        var seen = {};
+        return (Array.isArray(list) ? list : []).map(function (x) {
+            return x !== null && typeof x === "object" ? x : { name: x };
+        }).filter(function (x) {
+            if (x.name === undefined || x.name === null || x.name === "") return false;
+            var k = String(x.name);
+            if (seen[k]) return false;
+            seen[k] = true;
+            return true;
+        }).map(function (x) {
+            return { name: String(x.name), label: x.label !== undefined && x.label !== null && x.label !== "" ? String(x.label) : String(x.name), layout: x.layout };
+        });
+    };
+}
+
 export function buildMeta(def) {
     if (!def || !def.id) throw new Error("[nexa] defineComponent: `id` is required");
     var meta = {
@@ -88,7 +111,8 @@ export function buildMeta(def) {
         assets: def.assets || null,
         state: def.state || {},
         inspector: def.inspector || null,
-        help: def.help || ""
+        help: def.help || "",
+        slots: slotsFn(def.slots)
     };
 
     meta.inputs = ioList(def.inputs, "input");

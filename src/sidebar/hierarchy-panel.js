@@ -11,6 +11,7 @@ import { state, getActiveScreen, markDirty, Tree, findTemplate } from "../state.
 import { pushHistory, pushTreeChange, treeSnapshot, onTreeChange } from "../history.js";
 import { selectOnly, selectMultiple, onSelectionChange, isSelected, groupSelection, frameSelection } from "../canvas/selection.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
+import { revealSlotsOf } from "../canvas/component-renderer.js";
 import { setHierarchyRefresher } from "./properties-panel.js";
 import { reparentKeepingPlace } from "../canvas/drop-target.js";
 
@@ -22,6 +23,8 @@ var UNPLACED_ID = "__unplaced__";
 var treeEl = null, orphanEl = null;
 
 function labelOf(node) {
+    // a component's slot (a tab's panel): its slot's label
+    if (Tree.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
     if (node.name) return node.name;
     if (node.type === "@group") return "Group";
     if (node.type === "@frame") return "Frame";
@@ -38,6 +41,7 @@ function iconOf(node) {
     if (node.type === "@group") return "fa fa-object-group";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
+    if (Tree.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
     if (node.type === "@frame") return "fa fa-square-o";
     if (node.type === "@template") return "fa fa-clone";
     if (node.type === "@lit-component") return "fa fa-code";
@@ -57,7 +61,7 @@ function rows(screen, list, orphan) {
             icon: iconOf(node),
             container: Tree.isContainer(node),
             badge: Tree.isContainer(node) ? String(Tree.kids(node).length) : "",
-            muted: eff !== "show",
+            muted: eff !== "show" || !!node.slotUnused,
             children: Tree.isContainer(node) ? rows(screen, Tree.kids(node), orphan) : [],
             actions: orphan
                 ? [{ id: "delete", icon: "fa fa-trash-o", title: "Delete for good" }]
@@ -159,6 +163,8 @@ function onSelect(e) {
         hidden.forEach(function (n) { state.overlayPreview[n.id] = true; });
         renderActiveScreen();
     }
+    // in a component's slot (an inactive tab): the component shows that slot
+    revealSlotsOf(e.detail.id);
     if (e.detail.additive) {
         if (isSelected(e.detail.id)) selectMultiple(state.selectedIds.filter(function (id) { return id !== e.detail.id; }));
         else selectMultiple(state.selectedIds.concat([e.detail.id]));
