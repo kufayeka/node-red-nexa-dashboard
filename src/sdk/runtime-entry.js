@@ -19,6 +19,7 @@ import { bind, withInspector } from "./bind.js";
 import { defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag } from "./tags.js";
 import F from "./format.js";
 import { setAssets, listAssets, getAsset, onAssetsChange, assetRef, resolveAsset, assetUrl } from "./assets.js";
+import { theme, setTheme } from "./theme.js";
 
 export var SDK_VERSION = "1.0.0";
 
@@ -44,7 +45,9 @@ if (!window.NexaSDK) {
         defineCodec: defineCodec, getCodec: getCodec, format: F, isUnknown: isUnknown,
         // image assets (the Assets tab): {asset:name} or a name -> a URL
         assetUrl: assetUrl, resolveAsset: resolveAsset, assetRef: assetRef, listAssets: listAssets, getAsset: getAsset,
-        onAssetsChange: onAssetsChange, setAssets: setAssets
+        onAssetsChange: onAssetsChange, setAssets: setAssets,
+        // the app's theme: design tokens in the current mode (token / cssVar / mode / list / onChange)
+        theme: theme, setTheme: setTheme
     };
     var NEXA = ensureRegistry();
     NEXA.sdk = window.NexaSDK;

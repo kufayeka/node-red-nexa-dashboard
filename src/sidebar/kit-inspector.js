@@ -41,6 +41,8 @@ function ensureKitHost() {
             list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
             // the breakpoint in use on the page (the window's width)
             list.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
+            // the colour mode in use on the page
+            list.push({ name: "$colorMode", type: "string", value: "light | dark", owner: { id: "$colorMode", name: "the theme", kind: "route" } });
             return list;
         }
     });

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>theme</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- The theme on a deployed page (test/runtime-theme-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-sdk.bundle.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = "btn"; } });
+function label(id, x, y, text) { return { id: id, type: "label", x: x, y: y, w: 300, h: 20, props: { text: text } }; }
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+// ?own: the app's own theme (primary green, its own font sizes); ?system: opens in the viewer's mode
+var own = /own/.test(location.search);
+window.__NEXA_APP__ = { variables: [], theme: own ? { primary: "green", fontSizes: { body: 15 } } : (/system/.test(location.search) ? { defaultMode: "system" } : null) };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orphans: [],
+  components: [
+    { id: "ctl", type: "btn", x: 0, y: 380, w: 10, h: 10, props: {} },
+    label("fg", 0, 0, "{token:colors.fg}"),
+    label("prim", 0, 20, "{token:colors.primary.solid}"),
+    label("mix", 0, 40, "size {token:fontSizes.lg}px"),
+    label("mode", 0, 60, "{$colorMode}"),
+    label("body", 0, 80, "{token:fontSizes.body}"),
+    { id: "box", type: "@frame", name: "Box", x: 400, y: 0, w: 200, h: 100, layout: { mode: "horizontal", gap: "{token:spacing.4}" },
+      style: { fill: "{token:colors.bg.subtle}", radius: "{token:radii.lg}" }, children: [label("a", 0, 0, "a"), label("b", 0, 0, "b")] }
+  ],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ctl", event: "mode" },
+    { id: "s1", type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "payload" }
+  ], wires: [W("e1", "s1")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

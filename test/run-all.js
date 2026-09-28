@@ -44,7 +44,7 @@ const STANDALONE_TESTS = [
     // Nexa SDK: pure modules in Node, then the SDK + property kit in headless Chrome (skipped without Chrome)
     "sdk-format.test.js", "sdk-schema.test.js", "sdk-kit-browser.test.js",
     // the node tree, frames / auto layout (model in Node; deployed page in headless Chrome)
-    "model-tree.test.js", "model-breakpoints.test.js", "runtime-layout-browser.test.js", "runtime-variables-browser.test.js", "runtime-display-browser.test.js", "runtime-state-browser.test.js", "runtime-repeater-browser.test.js", "runtime-virtual-browser.test.js", "media-browser.test.js", "runtime-carousel-browser.test.js", "runtime-pin-browser.test.js", "runtime-zoom-browser.test.js", "runtime-breakpoints-browser.test.js", "runtime-overlay-browser.test.js", "runtime-teleport-browser.test.js"
+    "model-tree.test.js", "model-breakpoints.test.js", "model-theme.test.js", "runtime-layout-browser.test.js", "runtime-variables-browser.test.js", "runtime-display-browser.test.js", "runtime-state-browser.test.js", "runtime-repeater-browser.test.js", "runtime-virtual-browser.test.js", "media-browser.test.js", "runtime-carousel-browser.test.js", "runtime-pin-browser.test.js", "runtime-zoom-browser.test.js", "runtime-breakpoints-browser.test.js", "runtime-overlay-browser.test.js", "runtime-teleport-browser.test.js", "runtime-theme-browser.test.js"
 ];
 
 function runBuild() {

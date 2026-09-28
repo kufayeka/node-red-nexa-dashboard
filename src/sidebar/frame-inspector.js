@@ -8,7 +8,7 @@
 // The kit edits a flat view of the node; each change is written back into the
 // node (src/model/layout.js) as one undo step, then the screen re-renders (the
 // browser re-flows the layout, see canvas/layout-readback.js).
-import { state, getActiveScreen, markDirty, Tree, Layout, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, markDirty, Tree, Layout, Theme, isNodeLocked } from "../state.js";
 import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen, redrawCanvas } from "../canvas/canvas-ui.js";
 import { selectOnly } from "../canvas/selection.js";
@@ -53,7 +53,7 @@ var FRAME_META = {
         sizeW: prop("sizeW", "enum", "Width", { options: SIZING_FRAME }),
         sizeH: prop("sizeH", "enum", "Height", { options: SIZING_FRAME }),
         align: prop("align", "align", "Alignment"),
-        gap: prop("gap", "number", "Gap", { min: 0, unit: "px" }),
+        gap: prop("gap", "number", "Gap", { min: 0, unit: "px", tokens: "spacing" }),
         gapAuto: prop("gapAuto", "boolean", "Space between"),
         rowGap: prop("rowGap", "number", "Row gap", { min: 0, unit: "px", placeholder: "= gap" }),
         padding: prop("padding", "spacing", "Padding"),
@@ -63,7 +63,7 @@ var FRAME_META = {
         fill: prop("fill", "color", "Fill"),
         stroke: prop("stroke", "color", "Stroke"),
         strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
-        radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
+        radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px", tokens: "radii" }),
         clip: prop("clip", "boolean", "Clip content"),
         scrollbarHidden: prop("scrollbarHidden", "boolean", "Hide the scrollbar (it still scrolls)"),
         // zoom & pan of what is inside (live page)
@@ -176,7 +176,7 @@ function writeFrame(frame, key, v) {
         }
         case "align": layout.alignX = v.x; layout.alignY = v.y; break;
         case "gapAuto": layout.gap = v ? "auto" : 0; break;
-        case "gap": layout.gap = Number(v) || 0; break;
+        case "gap": layout.gap = Theme.isTokenRef(v) ? v : Number(v) || 0; break;
         case "mode":
             layout.mode = v;
             // a new auto layout starts with some breathing room (a carousel: edge to edge, clipped)

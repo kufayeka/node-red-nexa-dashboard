@@ -6,6 +6,7 @@ import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } f
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString } from "./sparkplug-live.js";
 import { applyFallbacks } from "../model/breakpoints.js";
+import * as Theme from "../model/theme.js";
 
 // Re-invokes just one component's render() with its current props
 // The variable scope each drawn node was rendered with (src/model/scope.js) —
@@ -280,8 +281,12 @@ export function interpolateProps(props, paramState) {
         });
         withTemplateBindings = out;
     }
-    // a bound prop with no value (yet): its fallback (props.__fallback), as on the live page
-    return applyFallbacks(props, resolveSparkplugProps(withTemplateBindings));
+    // theme tokens ({token:…}): their value in the canvas's preview mode; then a bound prop
+    // with no value (yet): its fallback (props.__fallback), as on the live page
+    var resolved = resolveSparkplugProps(withTemplateBindings);
+    var th = Theme.currentTheme();
+    resolved = Theme.resolveTokenProps(resolved, th.theme, th.mode);
+    return applyFallbacks(props, resolved);
 }
 
 // A "@template" instance's per-instance param state (Subflow env-vars

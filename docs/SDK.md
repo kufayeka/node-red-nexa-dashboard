@@ -335,6 +335,7 @@ inspector: ({ p, ui }) => html`
   - validation messages;
   - a modified dot, a reset button and, for plain values, the **⛓ bind button**, which switches the same widget to a tag / parameter binding;
   - bound (⛓, or a Read Tag input): a **Fallback** field below the binding, the value shown while it has none (no value yet, `null`, `???`, no message). Stored as `props.__fallback[key]`, applied before your view sees `this.p`;
+  - a **◆ theme token** picker for a `color` prop, or any prop with `tokens: "fontSizes"` (see docs/THEME.md): the value becomes `{token:…}`, resolved in `this.p`;
   - in the editor, the **📱 responsive button**: a value per breakpoint (xs … 3xl, the app's Breakpoints tab), picked from chips above the widget (`★ xl 16 · md 8 · sm 4`). The view just gets `this.p` for the window's width: nothing to write. Opt a property out with `noResponsive: true`.
 
   Changes are applied live with undo, and consecutive edits of one field are one undo step.
@@ -427,6 +428,17 @@ view: class extends NexaElement {
 - **Codecs:** `text`, `int` and `float` are built in (decimals, decimal and thousands separators, min/max). Add your own with `defineCodec(name, { kind, props, parse, format, editText, equals, live, inputMode, align })`. Codecs are pure and synchronous.
 
 ---
+
+## 11b. The theme
+
+The app's design tokens, in the current colour mode, from the SDK (docs/THEME.md):
+
+```js
+import { theme } from "../../nexa-sdk/nexa-component-sdk.js";
+theme.token("colors.primary.solid");  theme.cssVar("colors.bg");  theme.mode();  theme.list("spacing");  theme.onChange(fn);
+```
+
+In a view: `this.token(path)` / `this.tokenVar(path)`; the view redraws when the theme or the mode changes. Prefer `var(--nexa-…)` in CSS.
 
 ## 12. Tag providers
 

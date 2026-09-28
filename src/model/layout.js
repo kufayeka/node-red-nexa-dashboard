@@ -1,3 +1,4 @@
+import { mentionsToken, tokenCss } from "./theme.js";
 // --- Frames and auto layout (Figma-style) -------------------------------------
 // An "@frame" is a container with a box of its own (fill, stroke, radius,
 // clip) and an optional auto layout that places its children:
@@ -130,6 +131,9 @@ function num(v, d) {
     var n = typeof v === "number" ? v : parseFloat(v);
     return isFinite(n) ? n : (d || 0);
 }
+// a CSS length / colour that may be a theme token ({token:spacing.4} -> var(--nexa-spacing-4))
+function pxCss(v) { return mentionsToken(v) ? tokenCss(v) : num(v) + "px"; }
+function has(v) { return mentionsToken(v) || num(v) > 0; }
 
 /** A frame's layout with every field filled in. */
 export function layoutOf(frame) {
@@ -276,9 +280,9 @@ export function frameCss(frame, opts) {
     var l = layoutOf(frame);
     var s = styleOf(frame);
     var css = {
-        background: s.fill || "",
-        border: num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) + "px solid " + s.stroke : "",
-        "border-radius": num(s.radius) ? num(s.radius) + "px" : "",
+        background: tokenCss(s.fill) || "",
+        border: has(s.strokeWidth) && s.stroke ? pxCss(s.strokeWidth) + " solid " + tokenCss(s.stroke) : "",
+        "border-radius": has(s.radius) ? pxCss(s.radius) : "",
         overflow: s.clip ? "hidden" : "",
         "overflow-x": "",
         "overflow-y": "",
@@ -305,8 +309,8 @@ export function frameCss(frame, opts) {
         css["grid-template-columns"] = tracksCss(l.columns) || "1fr";
         css["grid-template-rows"] = tracksCss(l.rows);
         css["grid-auto-rows"] = "auto";
-        css["column-gap"] = num(l.gap) + "px";
-        css["row-gap"] = num(l.rowGap !== undefined && l.rowGap !== "" ? l.rowGap : l.gap) + "px";
+        css["column-gap"] = pxCss(l.gap);
+        css["row-gap"] = pxCss(l.rowGap !== undefined && l.rowGap !== "" ? l.rowGap : l.gap);
         css["justify-items"] = l.alignX;
         css["align-items"] = l.alignY;
         css["align-content"] = l.alignY;
@@ -321,9 +325,8 @@ export function frameCss(frame, opts) {
         css["justify-content"] = l.gap === "auto" ? "space-between" : FLEX_ALIGN[main] || "flex-start";
         css["align-items"] = FLEX_ALIGN[cross] || "flex-start";
         css["align-content"] = FLEX_ALIGN[horizontal ? l.alignY : l.alignX] || "flex-start";
-        var gap = l.gap === "auto" ? 0 : num(l.gap);
-        css[horizontal ? "column-gap" : "row-gap"] = gap + "px";
-        css[horizontal ? "row-gap" : "column-gap"] = (horizontal && l.wrap ? num(l.rowGap !== undefined && l.rowGap !== "" ? l.rowGap : l.gap) : 0) + "px";
+        css[horizontal ? "column-gap" : "row-gap"] = l.gap === "auto" ? "0px" : pxCss(l.gap);
+        css[horizontal ? "row-gap" : "column-gap"] = horizontal && l.wrap ? pxCss(l.rowGap !== undefined && l.rowGap !== "" ? l.rowGap : l.gap) : "0px";
     }
     return css;
 }

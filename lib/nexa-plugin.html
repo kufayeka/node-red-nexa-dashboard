@@ -455,6 +455,336 @@
     tracksCss: () => tracksCss,
     zoomOf: () => zoomOf
   });
+
+  // src/model/theme.js
+  var theme_exports = {};
+  __export(theme_exports, {
+    DEFAULT_THEME: () => DEFAULT_THEME,
+    SHADES: () => SHADES,
+    TOKEN_CATEGORIES: () => TOKEN_CATEGORIES,
+    currentTheme: () => currentTheme,
+    generatePalette: () => generatePalette,
+    isTokenRef: () => isTokenRef,
+    listTokens: () => listTokens,
+    mentionsToken: () => mentionsToken,
+    resolveToken: () => resolveToken,
+    resolveTokenProps: () => resolveTokenProps,
+    resolveTokenValue: () => resolveTokenValue,
+    setTheme: () => setTheme,
+    themeCss: () => themeCss,
+    themeOf: () => themeOf,
+    tokenCss: () => tokenCss,
+    tokenPathOf: () => tokenPathOf,
+    tokenVar: () => tokenVar,
+    tokenVarName: () => tokenVarName
+  });
+  var PALETTES = {
+    gray: ["#fafafa", "#f4f4f5", "#e4e4e7", "#d4d4d8", "#a1a1aa", "#71717a", "#52525b", "#3f3f46", "#27272a", "#18181b", "#09090b"],
+    red: ["#fef2f2", "#fee2e2", "#fecaca", "#fca5a5", "#f87171", "#ef4444", "#dc2626", "#b91c1c", "#991b1b", "#7f1d1d", "#450a0a"],
+    orange: ["#fff7ed", "#ffedd5", "#fed7aa", "#fdba74", "#fb923c", "#f97316", "#ea580c", "#c2410c", "#9a3412", "#7c2d12", "#431407"],
+    yellow: ["#fefce8", "#fef9c3", "#fef08a", "#fde047", "#facc15", "#eab308", "#ca8a04", "#a16207", "#854d0e", "#713f12", "#422006"],
+    green: ["#f0fdf4", "#dcfce7", "#bbf7d0", "#86efac", "#4ade80", "#22c55e", "#16a34a", "#15803d", "#166534", "#14532d", "#052e16"],
+    teal: ["#f0fdfa", "#ccfbf1", "#99f6e4", "#5eead4", "#2dd4bf", "#14b8a6", "#0d9488", "#0f766e", "#115e59", "#134e4a", "#042f2e"],
+    blue: ["#eff6ff", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb", "#1d4ed8", "#1e40af", "#1e3a8a", "#172554"],
+    cyan: ["#ecfeff", "#cffafe", "#a5f3fc", "#67e8f9", "#22d3ee", "#06b6d4", "#0891b2", "#0e7490", "#155e75", "#164e63", "#083344"],
+    purple: ["#faf5ff", "#f3e8ff", "#e9d5ff", "#d8b4fe", "#c084fc", "#a855f7", "#9333ea", "#7e22ce", "#6b21a8", "#581c87", "#3b0764"],
+    pink: ["#fdf2f8", "#fce7f3", "#fbcfe8", "#f9a8d4", "#f472b6", "#ec4899", "#db2777", "#be185d", "#9d174d", "#831843", "#500724"]
+  };
+  var SHADES = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"];
+  function shadesOf(list) {
+    var o = {};
+    SHADES.forEach(function(s, i2) {
+      o[s] = list[i2];
+    });
+    return o;
+  }
+  function sem(light, dark) {
+    return { light, dark: dark === void 0 ? light : dark };
+  }
+  var DEFAULT_SEMANTIC = {
+    "bg": sem("{colors.white}", "{colors.black}"),
+    "bg.subtle": sem("{colors.gray.50}", "{colors.gray.950}"),
+    "bg.muted": sem("{colors.gray.100}", "{colors.gray.900}"),
+    "bg.emphasized": sem("{colors.gray.200}", "{colors.gray.800}"),
+    "bg.inverted": sem("{colors.black}", "{colors.white}"),
+    "bg.panel": sem("{colors.white}", "{colors.gray.950}"),
+    "bg.error": sem("{colors.red.50}", "{colors.red.950}"),
+    "bg.warning": sem("{colors.orange.50}", "{colors.orange.950}"),
+    "bg.success": sem("{colors.green.50}", "{colors.green.950}"),
+    "bg.info": sem("{colors.blue.50}", "{colors.blue.950}"),
+    "fg": sem("{colors.black}", "{colors.gray.50}"),
+    "fg.muted": sem("{colors.gray.600}", "{colors.gray.400}"),
+    "fg.subtle": sem("{colors.gray.400}", "{colors.gray.500}"),
+    "fg.inverted": sem("{colors.gray.50}", "{colors.black}"),
+    "fg.error": sem("{colors.red.500}", "{colors.red.400}"),
+    "fg.warning": sem("{colors.orange.600}", "{colors.orange.300}"),
+    "fg.success": sem("{colors.green.600}", "{colors.green.300}"),
+    "fg.info": sem("{colors.blue.600}", "{colors.blue.300}"),
+    "border": sem("{colors.gray.200}", "{colors.gray.800}"),
+    "border.muted": sem("{colors.gray.100}", "{colors.gray.900}"),
+    "border.subtle": sem("{colors.gray.50}", "{colors.gray.950}"),
+    "border.emphasized": sem("{colors.gray.300}", "{colors.gray.700}"),
+    "border.inverted": sem("{colors.gray.800}", "{colors.gray.200}"),
+    "border.error": sem("{colors.red.500}", "{colors.red.400}"),
+    "border.warning": sem("{colors.orange.500}", "{colors.orange.400}"),
+    "border.success": sem("{colors.green.500}", "{colors.green.400}"),
+    "border.info": sem("{colors.blue.500}", "{colors.blue.400}")
+  };
+  var STACK = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+  var DEFAULT_THEME = {
+    defaultMode: "light",
+    // light | dark | system (the viewer's OS setting)
+    primary: "blue",
+    // colors.primary.* = this palette's
+    palettes: (function() {
+      var o = {};
+      Object.keys(PALETTES).forEach(function(k) {
+        o[k] = shadesOf(PALETTES[k]);
+      });
+      return o;
+    })(),
+    semantic: DEFAULT_SEMANTIC,
+    fonts: { heading: STACK, body: STACK, mono: "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" },
+    // px (numbers): font sizes, spacing, radii
+    fontSizes: { "2xs": 10, xs: 12, sm: 14, md: 16, lg: 18, xl: 20, "2xl": 24, "3xl": 30, "4xl": 36, "5xl": 48, "6xl": 60, "7xl": 72 },
+    fontWeights: { thin: 100, extralight: 200, light: 300, normal: 400, medium: 500, semibold: 600, bold: 700, extrabold: 800, black: 900 },
+    lineHeights: { none: 1, shorter: 1.25, short: 1.375, moderate: 1.5, tall: 1.625, taller: 2 },
+    letterSpacings: { tighter: "-0.05em", tight: "-0.025em", wide: "0.025em", wider: "0.05em", widest: "0.1em" },
+    spacing: { "0": 0, "0.5": 2, "1": 4, "1.5": 6, "2": 8, "2.5": 10, "3": 12, "3.5": 14, "4": 16, "5": 20, "6": 24, "7": 28, "8": 32, "9": 36, "10": 40, "12": 48, "14": 56, "16": 64, "20": 80, "24": 96, "32": 128, "40": 160 },
+    radii: { none: 0, "2xs": 1, xs: 2, sm: 4, md: 6, lg: 8, xl: 12, "2xl": 16, "3xl": 24, "4xl": 32, full: 9999 },
+    shadows: {
+      xs: "0 1px 2px 0 rgba(24,24,27,0.05)",
+      sm: "0 1px 3px 0 rgba(24,24,27,0.1), 0 1px 2px -1px rgba(24,24,27,0.1)",
+      md: "0 4px 6px -1px rgba(24,24,27,0.1), 0 2px 4px -2px rgba(24,24,27,0.1)",
+      lg: "0 10px 15px -3px rgba(24,24,27,0.1), 0 4px 6px -4px rgba(24,24,27,0.1)",
+      xl: "0 20px 25px -5px rgba(24,24,27,0.1), 0 8px 10px -6px rgba(24,24,27,0.1)",
+      "2xl": "0 25px 50px -12px rgba(24,24,27,0.25)",
+      inner: "inset 0 2px 4px 0 rgba(0,0,0,0.05)"
+    },
+    durations: { fastest: "50ms", faster: "100ms", fast: "150ms", moderate: "200ms", slow: "300ms", slower: "400ms", slowest: "500ms" },
+    zIndex: { hide: -1, base: 0, docked: 10, dropdown: 1e3, sticky: 1100, banner: 1200, overlay: 1300, modal: 1400, popover: 1500, toast: 1700, tooltip: 1800 }
+  };
+  var TOKEN_CATEGORIES = ["colors", "fonts", "fontSizes", "fontWeights", "lineHeights", "letterSpacings", "spacing", "radii", "shadows", "durations", "zIndex"];
+  var PX = { fontSizes: true, spacing: true, radii: true };
+  var BASE_COLORS = { white: "#ffffff", black: "#09090b", transparent: "transparent", current: "currentColor" };
+  var PALETTE_ROLES = ["solid", "contrast", "fg", "muted", "subtle", "emphasized", "focusRing", "border"];
+  function clone(v) {
+    return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+  }
+  function themeOf(app2) {
+    var own = app2 && app2.theme || {};
+    var t2 = clone(DEFAULT_THEME);
+    Object.keys(own).forEach(function(k) {
+      if (own[k] === void 0 || own[k] === null) return;
+      t2[k] = clone(own[k]);
+    });
+    if (!t2.palettes || !Object.keys(t2.palettes).length) t2.palettes = clone(DEFAULT_THEME.palettes);
+    if (!t2.palettes[t2.primary]) t2.primary = t2.palettes.blue ? "blue" : Object.keys(t2.palettes)[0];
+    return t2;
+  }
+  function hexToHsl(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return null;
+    var n = parseInt(m[1], 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, h = 0, s = 0;
+    if (max !== min) {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  }
+  function hslToHex(h, s, l) {
+    s /= 100;
+    l /= 100;
+    var k = function(n) {
+      return (n + h / 30) % 12;
+    };
+    var a = s * Math.min(l, 1 - l);
+    var f = function(n) {
+      return l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    };
+    return "#" + [f(0), f(8), f(4)].map(function(x) {
+      var v = Math.round(x * 255).toString(16);
+      return v.length < 2 ? "0" + v : v;
+    }).join("");
+  }
+  var TOWARDS = [0.93, 0.83, 0.66, 0.46, 0.24, 0, 0.18, 0.36, 0.54, 0.7, 0.86];
+  function generatePalette(base2) {
+    var hsl = hexToHsl(base2);
+    if (!hsl) return null;
+    var out = {};
+    SHADES.forEach(function(s, i2) {
+      if (i2 === 5) {
+        out[s] = String(base2).toLowerCase();
+        return;
+      }
+      var l = i2 < 5 ? hsl.l + (97 - hsl.l) * TOWARDS[i2] : hsl.l - (hsl.l - 8) * TOWARDS[i2];
+      var sat = i2 < 5 ? Math.min(100, hsl.s * (0.8 + i2 * 0.04)) : hsl.s;
+      out[s] = hslToHex(hsl.h, sat, l);
+    });
+    return out;
+  }
+  function paletteRole(name2, role) {
+    var p = "{colors." + name2 + ".";
+    if (name2 === "gray") {
+      return {
+        solid: sem(p + "900}", "{colors.white}"),
+        contrast: sem("{colors.white}", "{colors.black}"),
+        fg: sem(p + "800}", p + "200}"),
+        muted: sem(p + "200}", p + "800}"),
+        subtle: sem(p + "100}", p + "900}"),
+        emphasized: sem(p + "300}", p + "700}"),
+        focusRing: sem(p + "800}", p + "200}"),
+        border: sem(p + "200}", p + "800}")
+      }[role];
+    }
+    return {
+      solid: sem(p + "600}", p + "600}"),
+      contrast: sem(name2 === "yellow" ? "{colors.black}" : "{colors.white}"),
+      fg: sem(p + "700}", p + "300}"),
+      muted: sem(p + "200}", p + "800}"),
+      subtle: sem(p + "100}", p + "900}"),
+      emphasized: sem(p + "300}", p + "700}"),
+      focusRing: sem(p + "500}", p + "500}"),
+      border: sem(p + "500}", p + "400}")
+    }[role];
+  }
+  function listTokens(theme2, category) {
+    var t2 = theme2 || DEFAULT_THEME, out = [];
+    function add(path, cat, light, dark, semantic) {
+      if (!category || category === cat) out.push({ path, category: cat, light, dark: dark === void 0 ? light : dark, semantic: !!semantic });
+    }
+    Object.keys(BASE_COLORS).forEach(function(k) {
+      add("colors." + k, "colors", BASE_COLORS[k]);
+    });
+    Object.keys(t2.semantic || {}).forEach(function(k) {
+      var v = t2.semantic[k] || {};
+      add("colors." + k, "colors", v.light, v.dark, true);
+    });
+    var palettes = t2.palettes || {};
+    var names = Object.keys(palettes).concat(palettes[t2.primary] ? ["primary"] : []);
+    names.forEach(function(name2) {
+      var real = name2 === "primary" ? t2.primary : name2;
+      SHADES.forEach(function(s) {
+        if (palettes[real] && palettes[real][s]) add("colors." + name2 + "." + s, "colors", name2 === "primary" ? "{colors." + real + "." + s + "}" : palettes[real][s]);
+      });
+      PALETTE_ROLES.forEach(function(role) {
+        var r = paletteRole(real, role);
+        add("colors." + name2 + "." + role, "colors", r.light, r.dark, true);
+      });
+    });
+    TOKEN_CATEGORIES.forEach(function(cat) {
+      if (cat === "colors") return;
+      Object.keys(t2[cat] || {}).forEach(function(k) {
+        add(cat + "." + k, cat, t2[cat][k]);
+      });
+    });
+    return out;
+  }
+  var cache = { theme: null, index: null };
+  function indexOf(theme2) {
+    if (cache.theme === theme2 && cache.index) return cache.index;
+    var ix = {};
+    listTokens(theme2).forEach(function(tk) {
+      ix[tk.path] = tk;
+    });
+    cache.theme = theme2;
+    cache.index = ix;
+    return ix;
+  }
+  var REF_RE = /\{([A-Za-z0-9_.\-]+)\}/g;
+  function resolveToken(theme2, path, mode) {
+    var ix = indexOf(theme2 || DEFAULT_THEME);
+    var seen = 0;
+    function value(p) {
+      var tk = ix[p];
+      if (!tk) return void 0;
+      var v = mode === "dark" ? tk.dark : tk.light;
+      return follow(v);
+    }
+    function follow(v) {
+      if (typeof v !== "string" || v.indexOf("{") === -1 || ++seen > 20) return v;
+      var whole = /^\{([A-Za-z0-9_.\-]+)\}$/.exec(v.trim());
+      if (whole) return value(whole[1]);
+      return v.replace(REF_RE, function(m, p) {
+        var r = value(p);
+        return r === void 0 ? m : String(r);
+      });
+    }
+    return value(path);
+  }
+  function tokenVarName(path) {
+    return "--nexa-" + String(path).replace(/\./g, "-").replace(/[^A-Za-z0-9_-]/g, "_");
+  }
+  function tokenVar(path) {
+    return "var(" + tokenVarName(path) + ")";
+  }
+  function cssValue(cat, v) {
+    return PX[cat] && typeof v === "number" ? v + "px" : String(v);
+  }
+  function themeCss(theme2, root, dark) {
+    var t2 = theme2 || DEFAULT_THEME;
+    var light = [], darkRules = [];
+    listTokens(t2).forEach(function(tk) {
+      var l = resolveToken(t2, tk.path, "light"), d = resolveToken(t2, tk.path, "dark");
+      if (l === void 0) return;
+      light.push(tokenVarName(tk.path) + ": " + cssValue(tk.category, l) + ";");
+      if (d !== void 0 && String(d) !== String(l)) darkRules.push(tokenVarName(tk.path) + ": " + cssValue(tk.category, d) + ";");
+    });
+    return (root || ":root") + " { " + light.join(" ") + " }\n" + (dark || '[data-nexa-mode="dark"]') + " { " + darkRules.join(" ") + " }";
+  }
+  var TOKEN_RE = /\{token:([A-Za-z0-9_.\-]+)\}/g;
+  var WHOLE_TOKEN_RE = /^\{token:([A-Za-z0-9_.\-]+)\}$/;
+  function isTokenRef(v) {
+    return typeof v === "string" && WHOLE_TOKEN_RE.test(v.trim());
+  }
+  function tokenPathOf(v) {
+    var m = typeof v === "string" && WHOLE_TOKEN_RE.exec(v.trim());
+    return m ? m[1] : null;
+  }
+  function mentionsToken(v) {
+    return typeof v === "string" && v.indexOf("{token:") !== -1;
+  }
+  function resolveTokenValue(v, theme2, mode) {
+    if (!mentionsToken(v)) return v;
+    var whole = WHOLE_TOKEN_RE.exec(v.trim());
+    if (whole) {
+      var r = resolveToken(theme2, whole[1], mode);
+      return r === void 0 ? v : r;
+    }
+    return v.replace(TOKEN_RE, function(m, p) {
+      var r2 = resolveToken(theme2, p, mode);
+      return r2 === void 0 ? m : String(r2);
+    });
+  }
+  function resolveTokenProps(props, theme2, mode) {
+    var out = null;
+    Object.keys(props || {}).forEach(function(k) {
+      if (!mentionsToken(props[k])) return;
+      if (!out) out = Object.assign({}, props);
+      out[k] = resolveTokenValue(props[k], theme2, mode);
+    });
+    return out || props;
+  }
+  function tokenCss(v) {
+    if (!mentionsToken(v)) return v;
+    return v.replace(TOKEN_RE, function(m, p) {
+      return tokenVar(p);
+    });
+  }
+  var current = { theme: DEFAULT_THEME, mode: "light" };
+  function setTheme(theme2, mode) {
+    if (theme2) current.theme = theme2;
+    if (mode) current.mode = mode === "dark" ? "dark" : "light";
+    return current;
+  }
+  function currentTheme() {
+    return current;
+  }
+
+  // src/model/layout.js
   var LAYOUT_MODES = ["none", "horizontal", "vertical", "grid", "carousel"];
   var CAROUSEL_DEFAULT = {
     direction: "horizontal",
@@ -527,6 +857,12 @@
   function num(v, d) {
     var n = typeof v === "number" ? v : parseFloat(v);
     return isFinite(n) ? n : d || 0;
+  }
+  function pxCss(v) {
+    return mentionsToken(v) ? tokenCss(v) : num(v) + "px";
+  }
+  function has(v) {
+    return mentionsToken(v) || num(v) > 0;
   }
   function layoutOf(frame) {
     var l = frame && frame.layout || {};
@@ -649,9 +985,9 @@
     var l = layoutOf(frame);
     var s = styleOf(frame);
     var css2 = {
-      background: s.fill || "",
-      border: num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) + "px solid " + s.stroke : "",
-      "border-radius": num(s.radius) ? num(s.radius) + "px" : "",
+      background: tokenCss(s.fill) || "",
+      border: has(s.strokeWidth) && s.stroke ? pxCss(s.strokeWidth) + " solid " + tokenCss(s.stroke) : "",
+      "border-radius": has(s.radius) ? pxCss(s.radius) : "",
       overflow: s.clip ? "hidden" : "",
       "overflow-x": "",
       "overflow-y": "",
@@ -676,8 +1012,8 @@
       css2["grid-template-columns"] = tracksCss(l.columns) || "1fr";
       css2["grid-template-rows"] = tracksCss(l.rows);
       css2["grid-auto-rows"] = "auto";
-      css2["column-gap"] = num(l.gap) + "px";
-      css2["row-gap"] = num(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) + "px";
+      css2["column-gap"] = pxCss(l.gap);
+      css2["row-gap"] = pxCss(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap);
       css2["justify-items"] = l.alignX;
       css2["align-items"] = l.alignY;
       css2["align-content"] = l.alignY;
@@ -692,9 +1028,8 @@
       css2["justify-content"] = l.gap === "auto" ? "space-between" : FLEX_ALIGN[main] || "flex-start";
       css2["align-items"] = FLEX_ALIGN[cross] || "flex-start";
       css2["align-content"] = FLEX_ALIGN[horizontal ? l.alignY : l.alignX] || "flex-start";
-      var gap = l.gap === "auto" ? 0 : num(l.gap);
-      css2[horizontal ? "column-gap" : "row-gap"] = gap + "px";
-      css2[horizontal ? "row-gap" : "column-gap"] = (horizontal && l.wrap ? num(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) : 0) + "px";
+      css2[horizontal ? "column-gap" : "row-gap"] = l.gap === "auto" ? "0px" : pxCss(l.gap);
+      css2[horizontal ? "row-gap" : "column-gap"] = horizontal && l.wrap ? pxCss(l.rowGap !== void 0 && l.rowGap !== "" ? l.rowGap : l.gap) : "0px";
     }
     return css2;
   }
@@ -961,7 +1296,7 @@
   function isBindingRef(v) {
     return !!v && typeof v === "object" && typeof v.__nexaBinding === "string";
   }
-  function clone(v) {
+  function clone2(v) {
     return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
   }
   function fillParams(text, params) {
@@ -993,7 +1328,7 @@
       } else if (m.source) {
         out[m.name] = new BindingRef(fillParams(m.source, p), m.access);
       } else {
-        out[m.name] = clone(ov !== void 0 ? ov : m.defaultValue);
+        out[m.name] = clone2(ov !== void 0 ? ov : m.defaultValue);
       }
     });
     return out;
@@ -1003,7 +1338,7 @@
       var t2 = findType(v.type);
       return t2 ? buildInstance(t2, v.name, v.params, v.overrides) : null;
     }
-    return clone(v ? v.defaultValue : void 0);
+    return clone2(v ? v.defaultValue : void 0);
   }
   function memberAt(instance, path) {
     var cur2 = instance, member = null;
@@ -1040,7 +1375,7 @@
     });
     return scope;
   }
-  function clone2(v) {
+  function clone3(v) {
     return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
   }
   function hasVariables(node) {
@@ -1050,7 +1385,7 @@
     var scope = makeScope(parent || null, surface && surface.variables);
     if (isTemplate) {
       (surface.params || []).forEach(function(p) {
-        if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone2(p.defaultValue);
+        if (p && NAME_RE.test(p.name || "")) scope[p.name] = clone3(p.defaultValue);
       });
     }
     return scope;
@@ -1145,16 +1480,16 @@
     "overlay"
   ];
   var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true };
-  function clone3(v) {
+  function clone4(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function isPlain(v) {
     return v !== null && typeof v === "object" && !Array.isArray(v);
   }
   function merge(into, patch) {
-    var out = isPlain(into) ? clone3(into) : {};
+    var out = isPlain(into) ? clone4(into) : {};
     Object.keys(patch || {}).forEach(function(k) {
-      out[k] = isPlain(patch[k]) && isPlain(out[k]) ? merge(out[k], patch[k]) : clone3(patch[k]);
+      out[k] = isPlain(patch[k]) && isPlain(out[k]) ? merge(out[k], patch[k]) : clone4(patch[k]);
     });
     return out;
   }
@@ -1232,21 +1567,21 @@
   function baseOf(node) {
     var b = {};
     OVERRIDABLE.forEach(function(k) {
-      if (node && node[k] !== void 0) b[k] = clone3(node[k]);
+      if (node && node[k] !== void 0) b[k] = clone4(node[k]);
     });
     return b;
   }
   function applyOverrides(node, base2, chain) {
     OVERRIDABLE.forEach(function(k) {
       if (base2[k] === void 0) delete node[k];
-      else node[k] = clone3(base2[k]);
+      else node[k] = clone4(base2[k]);
     });
     (chain || []).forEach(function(id2) {
       var o = overrideOf(node, id2);
       if (!o) return;
       Object.keys(o).forEach(function(k) {
         if (OVERRIDABLE.indexOf(k) === -1) return;
-        node[k] = MERGED[k] && isPlain(o[k]) ? merge(node[k], o[k]) : clone3(o[k]);
+        node[k] = MERGED[k] && isPlain(o[k]) ? merge(node[k], o[k]) : clone4(o[k]);
       });
     });
     return node;
@@ -1255,20 +1590,20 @@
     var copy = Object.assign({}, node);
     return applyOverrides(copy, base2 || baseOf(node), chain);
   }
-  function overrideDiff(inherited, current) {
+  function overrideDiff(inherited, current2) {
     var out = {};
     OVERRIDABLE.forEach(function(k) {
-      var a = inherited[k], b = current[k];
+      var a = inherited[k], b = current2[k];
       if (JSON.stringify(a) === JSON.stringify(b)) return;
       if (MERGED[k] && isPlain(a) && isPlain(b)) {
         var d = {};
         Object.keys(b).forEach(function(kk) {
-          if (JSON.stringify(a[kk]) !== JSON.stringify(b[kk])) d[kk] = clone3(b[kk]);
+          if (JSON.stringify(a[kk]) !== JSON.stringify(b[kk])) d[kk] = clone4(b[kk]);
         });
         if (Object.keys(d).length) out[k] = d;
         return;
       }
-      if (b !== void 0) out[k] = clone3(b);
+      if (b !== void 0) out[k] = clone4(b);
     });
     return out;
   }
@@ -1287,7 +1622,7 @@
       var empty = isNoValue(v) || v === r || whole && v === "" && /^\{msg\b/.test(r.trim()) || !whole && typeof v === "string" && (/\?\?\?/.test(v) || /\{[^{}]+\}/.test(v));
       if (!empty) return;
       if (!out) out = Object.assign({}, resolved);
-      out[k] = clone3(fb[k]);
+      out[k] = clone4(fb[k]);
     });
     return out || resolved;
   }
@@ -1459,6 +1794,9 @@
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
     overlayPreview: {},
+    // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
+    themePreview: null,
+    themePane: null,
     templateCounter: 0,
     editingMode: "screen",
     // "screen" | "template"
@@ -1885,8 +2223,8 @@
     return out;
   }
   function applyConstraints(parent, list, oldInner, newInner, orig) {
-    var changed2 = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed2;
+    var changed3 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed3;
     orig = orig || snapshotBoxes(list);
     list.forEach(function(c) {
       if (!layout_exports.hasConstraints(c, parent)) return;
@@ -1903,12 +2241,12 @@
       c.y = nb.y;
       c.w = nb.w;
       c.h = nb.h;
-      changed2.push(c.id);
+      changed3.push(c.id);
       if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed2 = changed2.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+        changed3 = changed3.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
       }
     });
-    return changed2;
+    return changed3;
   }
   function constrainFrameChildren(frame, oldBox, orig) {
     if (!frame || frame.type !== "@frame") return [];
@@ -1923,9 +2261,9 @@
   }
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
-    var changed2 = [];
+    var changed3 = [];
     var redraw = false;
-    if (!screen) return changed2;
+    if (!screen) return changed3;
     tree_exports.walk(screen, function(node, parent) {
       var inFlow = layout_exports.isInFlow(node, parent);
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
@@ -1946,22 +2284,22 @@
         node.y = box2.y;
         node.w = box2.w;
         node.h = box2.h;
-        changed2.push(node.id);
+        changed3.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
           redraw = true;
-          changed2 = changed2.concat(moved);
+          changed3 = changed3.concat(moved);
         }
       }
     });
-    changed2.forEach(function(id2) {
+    changed3.forEach(function(id2) {
       if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
-    changed2.redraw = redraw;
-    return changed2;
+    changed3.redraw = redraw;
+    return changed3;
   }
 
   // src/canvas/drop-target.js
@@ -2184,7 +2522,7 @@
   }
   function applyDelta(delta) {
     if (!delta) return;
-    var changed2 = [];
+    var changed3 = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
     var metricsTarget;
     if (delta.type === "death") {
@@ -2199,7 +2537,7 @@
         if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
         if (liveCache[key].online) {
           liveCache[key] = Object.assign({}, liveCache[key], { online: false });
-          changed2.push(key);
+          changed3.push(key);
         }
       });
     } else {
@@ -2243,10 +2581,10 @@
           isHistorical: !!m.isHistorical,
           isTransient: !!m.isTransient
         };
-        changed2.push(key);
+        changed3.push(key);
       });
     }
-    if (changed2.length) notify(changed2);
+    if (changed3.length) notify(changed3);
   }
   function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
@@ -2647,7 +2985,10 @@
       });
       withTemplateBindings = out;
     }
-    return applyFallbacks(props, resolveSparkplugProps(withTemplateBindings));
+    var resolved = resolveSparkplugProps(withTemplateBindings);
+    var th = currentTheme();
+    resolved = resolveTokenProps(resolved, th.theme, th.mode);
+    return applyFallbacks(props, resolved);
   }
   function resolveInstanceParamState(comp, template, enclosingParamState) {
     var paramState = appScope();
@@ -5455,11 +5796,11 @@
     return true;
   }
   function ensureAll(state2, addrs) {
-    let changed2 = false;
+    let changed3 = false;
     for (let addr of addrs)
       if (ensureAddr(state2, addr) & 1)
-        changed2 = true;
-    return changed2;
+        changed3 = true;
+    return changed3;
   }
   function dynamicFacetSlot(addresses, facet, providers) {
     let providerAddrs = providers.map((p) => addresses[p.id]);
@@ -5780,8 +6121,8 @@
     if (status & 2)
       return status;
     state2.status[idx] = 4;
-    let changed2 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
-    return state2.status[idx] = 2 | changed2;
+    let changed3 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
+    return state2.status[idx] = 2 | changed3;
   }
   function getAddr(state2, addr) {
     return addr & 1 ? state2.config.staticValues[addr >> 1] : state2.values[addr >> 1];
@@ -6468,12 +6809,12 @@
     let result = {};
     for (let config2 of configs)
       for (let key of Object.keys(config2)) {
-        let value = config2[key], current = result[key];
-        if (current === void 0)
+        let value = config2[key], current2 = result[key];
+        if (current2 === void 0)
           result[key] = value;
-        else if (current === value || value === void 0) ;
+        else if (current2 === value || value === void 0) ;
         else if (Object.hasOwnProperty.call(combine, key))
-          result[key] = combine[key](current, value);
+          result[key] = combine[key](current2, value);
         else
           throw new Error("Config merge conflict for field " + key);
       }
@@ -7627,11 +7968,11 @@
     }
   }
   function updateAttrs(dom, prev, attrs) {
-    let changed2 = false;
+    let changed3 = false;
     if (prev) {
       for (let name2 in prev)
         if (!(attrs && name2 in attrs)) {
-          changed2 = true;
+          changed3 = true;
           if (name2 == "style")
             dom.style.cssText = "";
           else
@@ -7641,14 +7982,14 @@
     if (attrs) {
       for (let name2 in attrs)
         if (!(prev && prev[name2] == attrs[name2])) {
-          changed2 = true;
+          changed3 = true;
           if (name2 == "style")
             dom.style.cssText = attrs[name2];
           else
             dom.setAttribute(name2, attrs[name2]);
         }
     }
-    return changed2;
+    return changed3;
   }
   function getAttrs(dom) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -9574,8 +9915,8 @@
     }
   };
   var TileBuilder = class {
-    constructor(cache2, root, blockWrappers2) {
-      this.cache = cache2;
+    constructor(cache3, root, blockWrappers2) {
+      this.cache = cache3;
       this.root = root;
       this.blockWrappers = blockWrappers2;
       this.curLine = null;
@@ -12473,13 +12814,13 @@
     }
     refresh(whiteSpace, lineHeight, charWidth, textHeight, lineLength, knownHeights) {
       let lineWrapping = wrappingWhiteSpace.indexOf(whiteSpace) > -1;
-      let changed2 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
+      let changed3 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
       this.lineWrapping = lineWrapping;
       this.lineHeight = lineHeight;
       this.charWidth = charWidth;
       this.textHeight = textHeight;
       this.lineLength = lineLength;
-      if (changed2) {
+      if (changed3) {
         this.heightSamples = {};
         for (let i2 = 0; i2 < knownHeights.length; i2++) {
           let h = knownHeights[i2];
@@ -12489,7 +12830,7 @@
             this.heightSamples[Math.floor(h * 10)] = true;
         }
       }
-      return changed2;
+      return changed3;
     }
   };
   var MeasuredHeights = class {
@@ -13497,7 +13838,7 @@
     // since actual DOM coordinates aren't always available and
     // predictable. Relies on generous margins (see LG.Margin) to hide
     // the artifacts this might produce from the user.
-    ensureLineGaps(current, mayMeasure) {
+    ensureLineGaps(current2, mayMeasure) {
       let wrapping = this.heightOracle.lineWrapping;
       let margin = wrapping ? 1e4 : 2e3, halfMargin = margin >> 1, doubleMargin = margin << 1;
       if (this.defaultTextDirection != Direction.LTR && !wrapping)
@@ -13516,7 +13857,7 @@
             return;
           }
         }
-        let gap = find2(current, (gap2) => gap2.from >= line.from && gap2.to <= line.to && Math.abs(gap2.from - from) < halfMargin && Math.abs(gap2.to - to) < halfMargin && !avoid.some((pos) => gap2.from < pos && gap2.to > pos));
+        let gap = find2(current2, (gap2) => gap2.from >= line.from && gap2.to <= line.to && Math.abs(gap2.from - from) < halfMargin && Math.abs(gap2.to - to) < halfMargin && !avoid.some((pos) => gap2.from < pos && gap2.to > pos));
         if (!gap) {
           if (to < line.to && mayMeasure && wrapping && mayMeasure.visibleRanges.some((r) => r.from <= to && r.to >= to)) {
             let lineStart = mayMeasure.moveToLineBoundary(EditorSelection.cursor(to), false, true).head;
@@ -13556,7 +13897,7 @@
           let marginWidth = margin * this.heightOracle.charWidth;
           let horizOffset = 0;
           if (totalWidth > 2e6)
-            for (let old of current) {
+            for (let old of current2) {
               if (old.from >= line.from && old.from < line.to && old.size != old.displaySize && old.from * this.heightOracle.charWidth + horizOffset < this.pixelViewport.left)
                 horizOffset = old.size - old.displaySize;
             }
@@ -13613,21 +13954,21 @@
         point() {
         }
       }, 20);
-      let changed2 = 0;
+      let changed3 = 0;
       if (ranges.length != this.visibleRanges.length) {
-        changed2 = 8 | 4;
+        changed3 = 8 | 4;
       } else {
-        for (let i2 = 0; i2 < ranges.length && !(changed2 & 8); i2++) {
+        for (let i2 = 0; i2 < ranges.length && !(changed3 & 8); i2++) {
           let old = this.visibleRanges[i2], nw = ranges[i2];
           if (old.from != nw.from || old.to != nw.to) {
-            changed2 |= 4;
+            changed3 |= 4;
             if (!(changes && changes.mapPos(old.from, -1) == nw.from && changes.mapPos(old.to, 1) == nw.to))
-              changed2 |= 8;
+              changed3 |= 8;
           }
         }
       }
       this.visibleRanges = ranges;
-      return changed2;
+      return changed3;
     }
     lineBlockAt(pos) {
       return pos >= this.viewport.from && pos <= this.viewport.to && this.viewportLines.find((b) => b.from <= pos && b.to >= pos) || scaleBlock(this.heightMap.lineAt(pos, QueryType.ByPos, this.heightOracle, 0, 0), this.scaler);
@@ -14256,15 +14597,15 @@
     }
     listenForScroll() {
       this.parentCheck = -1;
-      let i2 = 0, changed2 = null;
+      let i2 = 0, changed3 = null;
       for (let dom = this.dom; dom; ) {
         if (dom.nodeType == 1) {
-          if (!changed2 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
+          if (!changed3 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
             i2++;
-          else if (!changed2)
-            changed2 = this.scrollTargets.slice(0, i2);
-          if (changed2)
-            changed2.push(dom);
+          else if (!changed3)
+            changed3 = this.scrollTargets.slice(0, i2);
+          if (changed3)
+            changed3.push(dom);
           dom = dom.assignedSlot || dom.parentNode;
         } else if (dom.nodeType == 11) {
           dom = dom.host;
@@ -14272,12 +14613,12 @@
           break;
         }
       }
-      if (i2 < this.scrollTargets.length && !changed2)
-        changed2 = this.scrollTargets.slice(0, i2);
-      if (changed2) {
+      if (i2 < this.scrollTargets.length && !changed3)
+        changed3 = this.scrollTargets.slice(0, i2);
+      if (changed3) {
         for (let dom of this.scrollTargets)
           dom.removeEventListener("scroll", this.onScroll);
-        for (let dom of this.scrollTargets = changed2)
+        for (let dom of this.scrollTargets = changed3)
           dom.addEventListener("scroll", this.onScroll);
       }
     }
@@ -15061,15 +15402,15 @@
             scrollScale = this.viewState.scaleY;
           }
           this.updateState = 1;
-          let changed2 = this.viewState.measure();
-          if (!changed2 && !this.measureRequests.length && this.viewState.scrollTarget == null)
+          let changed3 = this.viewState.measure();
+          if (!changed3 && !this.measureRequests.length && this.viewState.scrollTarget == null)
             break;
           if (i2 > 5) {
             console.warn(this.measureRequests.length ? "Measure loop restarted more than 5 times" : "Viewport failed to stabilize");
             break;
           }
           let measuring = [];
-          if (!(changed2 & 4))
+          if (!(changed3 & 4))
             [this.measureRequests, measuring] = [measuring, this.measureRequests];
           let measured = measuring.map((m) => {
             try {
@@ -15080,11 +15421,11 @@
             }
           });
           let update = ViewUpdate.create(this, this.state, []), redrawn = false;
-          update.flags |= changed2;
+          update.flags |= changed3;
           if (!updated)
             updated = update;
           else
-            updated.flags |= changed2;
+            updated.flags |= changed3;
           this.updateState = 2;
           if (!update.empty) {
             this.updatePlugins(update);
@@ -15165,14 +15506,14 @@
       if (this.state.readOnly)
         contentAttrs["aria-readonly"] = "true";
       attrsFromFacet(this, contentAttributes, contentAttrs);
-      let changed2 = this.observer.ignore(() => {
+      let changed3 = this.observer.ignore(() => {
         let changedContent = updateAttrs(this.contentDOM, this.contentAttrs, contentAttrs);
         let changedEditor = updateAttrs(this.dom, this.editorAttrs, editorAttrs);
         return changedContent || changedEditor;
       });
       this.editorAttrs = editorAttrs;
       this.contentAttrs = contentAttrs;
-      return changed2;
+      return changed3;
     }
     showAnnouncements(trs) {
       let first = true;
@@ -15706,12 +16047,12 @@
       this.fresh = fresh;
       this.order = order;
     }
-    static update(cache2, changes) {
-      if (changes.empty && !cache2.some((c) => c.fresh))
-        return cache2;
-      let result = [], lastDir = cache2.length ? cache2[cache2.length - 1].dir : Direction.LTR;
-      for (let i2 = Math.max(0, cache2.length - 10); i2 < cache2.length; i2++) {
-        let entry = cache2[i2];
+    static update(cache3, changes) {
+      if (changes.empty && !cache3.some((c) => c.fresh))
+        return cache3;
+      let result = [], lastDir = cache3.length ? cache3[cache3.length - 1].dir : Direction.LTR;
+      for (let i2 = Math.max(0, cache3.length - 10); i2 < cache3.length; i2++) {
+        let entry = cache3[i2];
         if (entry.dir == lastDir && !changes.touchesRange(entry.from, entry.to))
           result.push(new _CachedOrder(changes.mapPos(entry.from, 1), changes.mapPos(entry.to, -1), entry.dir, entry.isolates, false, entry.order));
       }
@@ -15792,10 +16133,10 @@
     let bound = /* @__PURE__ */ Object.create(null);
     let isPrefix = /* @__PURE__ */ Object.create(null);
     let checkPrefix = (name2, is) => {
-      let current = isPrefix[name2];
-      if (current == null)
+      let current2 = isPrefix[name2];
+      if (current2 == null)
         isPrefix[name2] = is;
-      else if (current != is)
+      else if (current2 != is)
         throw new Error("Key binding " + name2 + " is used both as a regular binding and as a multi-stroke prefix");
     };
     let add = (scope, key, command2, preventDefault, stopPropagation) => {
@@ -16266,8 +16607,8 @@
     }
   });
   function setLeftStyle(elt, value) {
-    let current = parseInt(elt.style.left, 10);
-    if (isNaN(current) || Math.abs(value - current) > 1)
+    let current2 = parseInt(elt.style.left, 10);
+    if (isNaN(current2) || Math.abs(value - current2) > 1)
       elt.style.left = value + "px";
   }
   var baseTheme = /* @__PURE__ */ EditorView.baseTheme({
@@ -17963,10 +18304,10 @@
     get node() {
       if (!this.buffer)
         return this._tree;
-      let cache2 = this.bufferNode, result = null, depth = 0;
-      if (cache2 && cache2.context == this.buffer) {
+      let cache3 = this.bufferNode, result = null, depth = 0;
+      if (cache3 && cache3.context == this.buffer) {
         scan: for (let index = this.index, d = this.stack.length; d >= 0; ) {
-          for (let c = cache2; c; c = c._parent)
+          for (let c = cache3; c; c = c._parent)
             if (c.index == index) {
               if (index == this.index)
                 return c;
@@ -22690,8 +23031,8 @@
             continue;
           }
         }
-        let current = cState.active.find((a) => a.source == query2.active.source);
-        if (current && current.isPending) {
+        let current2 = cState.active.find((a) => a.source == query2.active.source);
+        if (current2 && current2.isPending) {
           if (query2.done == null) {
             let active = new ActiveSource(
               query2.active.source,
@@ -22703,7 +23044,7 @@
             if (!active.isPending)
               updated.push(active);
           } else {
-            this.startQuery(current);
+            this.startQuery(current2);
           }
         }
       }
@@ -25390,7 +25731,7 @@
       type: "keyword"
     })
   ]);
-  var cache = /* @__PURE__ */ new NodeWeakMap();
+  var cache2 = /* @__PURE__ */ new NodeWeakMap();
   var ScopeNodes = /* @__PURE__ */ new Set([
     "Script",
     "Block",
@@ -25426,7 +25767,7 @@
     __proto__: null
   };
   function getScope(doc2, node) {
-    let cached = cache.get(node);
+    let cached = cache2.get(node);
     if (cached)
       return cached;
     let completions = [], top2 = true;
@@ -25447,7 +25788,7 @@
         return false;
       }
     });
-    cache.set(node, completions);
+    cache2.set(node, completions);
     return completions;
   }
   var Identifier = /^[\w$\xa1-\uffff][\w$\d\xa1-\uffff]*$/;
@@ -26800,7 +27141,7 @@
   // src/dialogs/lit-code-dialog.js
   function openLitComponentCodeEditor(comp) {
     var jsValue = comp.litCode || "";
-    var cssValue = comp.litStyles || "";
+    var cssValue2 = comp.litStyles || "";
     var activeTab = "js";
     var jsEditor, cssEditor, jsPane, cssPane, jsTabBtn, cssTabBtn;
     var jsCompletionSource = combineCompletionSources([
@@ -26809,7 +27150,7 @@
     ]);
     function flushActiveValue() {
       if (activeTab === "js") jsValue = jsEditor.getValue();
-      else cssValue = cssEditor.getValue();
+      else cssValue2 = cssEditor.getValue();
     }
     function setActiveTabStyle() {
       var selectedCss = { "border-bottom-color": "var(--red-ui-primary-border-color, #3379b7)", "font-weight": "600" };
@@ -26841,7 +27182,7 @@
           click: function() {
             flushActiveValue();
             comp.litCode = jsValue;
-            comp.litStyles = cssValue;
+            comp.litStyles = cssValue2;
             refreshComponentRender(comp);
             markDirty();
             window.RED.tray.close();
@@ -26878,7 +27219,7 @@
         cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "440px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" }).text("CSS \u2014 scoped to this component only, via Shadow DOM.").appendTo(cssPane);
         var cssEditorContainer = window.$("<div>", { id: "nexa-lit-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
-        cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue, language: "css" });
+        cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue2, language: "css" });
         setActiveTabStyle();
       },
       close: function() {
@@ -26890,7 +27231,7 @@
   function openCssCodeEditor(comp, propKey, title) {
     var key = propKey || "css";
     comp.props = comp.props || {};
-    var cssValue = comp.props[key] !== void 0 ? comp.props[key] : "";
+    var cssValue2 = comp.props[key] !== void 0 ? comp.props[key] : "";
     var cssEditor;
     window.RED.tray.show({
       id: "nexa-css-editor",
@@ -26918,7 +27259,7 @@
         var cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" }).text("CSS \u2014 scoped to this component's shadow DOM. Target :host, button, button.active, etc.").appendTo(cssPane);
         var cssEditorContainer = window.$("<div>", { id: "nexa-comp-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
-        cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue, language: "css" });
+        cssEditor = createCM6Editor({ parent: cssEditorContainer.get(0), value: cssValue2, language: "css" });
         if (cssEditor) cssEditor.focus();
       },
       close: function() {
@@ -27402,6 +27743,19 @@
       var p0 = first && (first.params || [])[0];
       return { type: "populate", container: "", template: first ? first.id : "", itemParam: p0 ? p0.name : void 0, mode: "append", key: "id", valueSource: "payload" };
     }, "", "populate");
+    sectionHeader(state.eventsPane, "Theme");
+    chip(state.eventsPane, "Set colour mode (msg.payload: light / dark / system)", function() {
+      return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "payload" };
+    }, "", "set-variable");
+    chip(state.eventsPane, "Dark mode", function() {
+      return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "dark" };
+    }, "", "set-variable");
+    chip(state.eventsPane, "Light mode", function() {
+      return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "light" };
+    }, "", "set-variable");
+    chip(state.eventsPane, "On colour mode change", function() {
+      return { type: "on-variable-change", scope: "@app", name: "$colorMode" };
+    }, "", "on-variable-change");
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function() {
       return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 1e4 };
@@ -27830,9 +28184,9 @@
     } else {
       var chain = chainFor2(screen, id2);
       var inherited = resolveNode(node, chain.slice(0, -1), baseFor(node));
-      var current = resolvedAt(node, id2, screen);
-      fn(current);
-      var diff = overrideDiff(inherited, current);
+      var current2 = resolvedAt(node, id2, screen);
+      fn(current2);
+      var diff = overrideDiff(inherited, current2);
       node.overrides = node.overrides || {};
       if (node.overrides.tablet || node.overrides.phone) migrateOverrideKeys([node]);
       if (Object.keys(diff).length) node.overrides[id2] = diff;
@@ -27940,6 +28294,7 @@
         list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
         list.push({ name: "$route.path", type: "string", value: "(the page path)", owner: route });
         list.push({ name: "$breakpoint", type: "string", value: "xs | sm | md | lg | xl | 2xl | 3xl", owner: { id: "$breakpoint", name: "the window's width", kind: "route" } });
+        list.push({ name: "$colorMode", type: "string", value: "light | dark", owner: { id: "$colorMode", name: "the theme", kind: "route" } });
         return list;
       }
     });
@@ -27954,7 +28309,7 @@
       });
     }
   }
-  function clone4(v) {
+  function clone5(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
@@ -27965,11 +28320,11 @@
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
     if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
-      last2.to = clone4(value);
+      last2.to = clone5(value);
       last2.at = now;
       state.redoStack = [];
     } else if (screen) {
-      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone4(from), to: clone4(value), at: now });
+      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone5(from), to: clone5(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -28059,7 +28414,7 @@
       sizeW: prop("sizeW", "enum", "Width", { options: SIZING_FRAME }),
       sizeH: prop("sizeH", "enum", "Height", { options: SIZING_FRAME }),
       align: prop("align", "align", "Alignment"),
-      gap: prop("gap", "number", "Gap", { min: 0, unit: "px" }),
+      gap: prop("gap", "number", "Gap", { min: 0, unit: "px", tokens: "spacing" }),
       gapAuto: prop("gapAuto", "boolean", "Space between"),
       rowGap: prop("rowGap", "number", "Row gap", { min: 0, unit: "px", placeholder: "= gap" }),
       padding: prop("padding", "spacing", "Padding"),
@@ -28069,7 +28424,7 @@
       fill: prop("fill", "color", "Fill"),
       stroke: prop("stroke", "color", "Stroke"),
       strokeWidth: prop("strokeWidth", "number", "Stroke width", { min: 0, unit: "px" }),
-      radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px" }),
+      radius: prop("radius", "number", "Corner radius", { min: 0, unit: "px", tokens: "radii" }),
       clip: prop("clip", "boolean", "Clip content"),
       scrollbarHidden: prop("scrollbarHidden", "boolean", "Hide the scrollbar (it still scrolls)"),
       // zoom & pan of what is inside (live page)
@@ -28240,7 +28595,7 @@
         layout.gap = v ? "auto" : 0;
         break;
       case "gap":
-        layout.gap = Number(v) || 0;
+        layout.gap = theme_exports.isTokenRef(v) ? v : Number(v) || 0;
         break;
       case "mode":
         layout.mode = v;
@@ -28419,12 +28774,12 @@
     } else redrawCanvas();
   }
   function mountLive(container, meta2, persistKey, view, onSet, r) {
-    var current = view();
+    var current2 = view();
     var refresh = function() {
-      Object.keys(current).forEach(function(k) {
-        delete current[k];
+      Object.keys(current2).forEach(function(k) {
+        delete current2[k];
       });
-      Object.assign(current, view());
+      Object.assign(current2, view());
       handle.update();
     };
     var screen = getActiveScreen();
@@ -28441,7 +28796,7 @@
     ) : null;
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: meta2,
-      props: current,
+      props: current2,
       persistKey,
       responsive,
       set: function(key, v) {
@@ -28861,7 +29216,7 @@
       value: { type: "string", label: "Default", default: "" }
     };
     if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
-    var current = view();
+    var current2 = view();
     var meta2 = {
       id: "@variables",
       stateList: [],
@@ -28890,7 +29245,7 @@
     };
     var handle = window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: meta2,
-      props: current,
+      props: current2,
       persistKey: "nexa-variables",
       set: function(key, items) {
         if (!isSurface && isNodeLocked(owner.id)) return;
@@ -28912,7 +29267,7 @@
         var screen = getActiveScreen();
         if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
         markDirty();
-        current.variables = view().variables;
+        current2.variables = view().variables;
         handle.update();
         redrawCanvas();
       }
@@ -29059,8 +29414,8 @@
       (templateRef.params || []).forEach(function(param) {
         var row2 = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(param.label + " {" + param.name + "}").appendTo(row2);
-        var current = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
-        buildTypedInputWidget(row2, param.type, current, function(v) {
+        var current2 = comp.paramValues && comp.paramValues[param.name] !== void 0 ? comp.paramValues[param.name] : param.defaultValue;
+        buildTypedInputWidget(row2, param.type, current2, function(v) {
           comp.paramValues = comp.paramValues || {};
           comp.paramValues[param.name] = v;
           markDirty();
@@ -29499,18 +29854,18 @@
           if (msgBound[key]) return;
           var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
           window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
-          var current = node.config && node.config[key] !== void 0 ? node.config[key] : "";
+          var current2 = node.config && node.config[key] !== void 0 ? node.config[key] : "";
           var input;
           if (type === "checkbox") {
             var checkWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
             var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.config && node.config[key] !== void 0).appendTo(checkWrap);
             window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
-            input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current).appendTo(checkWrap);
+            input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current2).appendTo(checkWrap);
             fieldEls[key] = { input, overrideCheck, type: "checkbox" };
           } else if (type === "color") {
             var colorWrap = window.$("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(row);
-            input = window.$("<input>", { type: "text", placeholder: "leave blank to keep unchanged (e.g. #ff8800)" }).css({ flex: "1", "box-sizing": "border-box" }).val(current).appendTo(colorWrap);
-            var picker = window.$("<input>", { type: "color" }).css({ width: "36px", height: "26px", padding: "0", cursor: "pointer", border: "1px solid #ccc" }).val(current && /^#[0-9a-fA-F]{6}$/.test(current) ? current : "#cfe0ff").appendTo(colorWrap);
+            input = window.$("<input>", { type: "text", placeholder: "leave blank to keep unchanged (e.g. #ff8800)" }).css({ flex: "1", "box-sizing": "border-box" }).val(current2).appendTo(colorWrap);
+            var picker = window.$("<input>", { type: "color" }).css({ width: "36px", height: "26px", padding: "0", cursor: "pointer", border: "1px solid #ccc" }).val(current2 && /^#[0-9a-fA-F]{6}$/.test(current2) ? current2 : "#cfe0ff").appendTo(colorWrap);
             var clearBtn = window.$("<button>", { type: "button" }).text("Clear").css({ "font-size": "11px", padding: "2px 6px" }).appendTo(colorWrap);
             picker.on("input change", function() {
               input.val(picker.val());
@@ -29525,7 +29880,7 @@
             });
             fieldEls[key] = { input, type: "color" };
           } else {
-            input = window.$("<input>", { type: type || "text", placeholder: "leave blank to keep unchanged" }).css({ width: "100%", "box-sizing": "border-box" }).val(current).appendTo(row);
+            input = window.$("<input>", { type: type || "text", placeholder: "leave blank to keep unchanged" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2).appendTo(row);
             fieldEls[key] = { input, type: type || "text" };
           }
         }
@@ -31071,16 +31426,16 @@
   }
   function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
-    var changed2 = false;
+    var changed3 = false;
     ids.forEach(function(id2) {
       var c = findComponent(id2);
       if (c && !!c.locked !== locked) {
         pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
         c.locked = locked;
-        changed2 = true;
+        changed3 = true;
       }
     });
-    if (!changed2) return;
+    if (!changed3) return;
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
@@ -31235,6 +31590,7 @@
     if (!screen) return;
     checkSession(screen);
     refreshBreakpointBar(screen);
+    applyEditorTheme();
     var canvasW = previewWidth(screen);
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
@@ -31247,10 +31603,10 @@
     state.artboardEl.css({
       width: canvasW + "px",
       height: screen.height + "px",
-      "background-color": "#fff",
       "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
       "background-size": screen.gridSize + "px " + screen.gridSize + "px"
     });
+    if (state.artboardEl[0] && state.artboardEl[0].style) state.artboardEl[0].style.backgroundColor = "var(--nexa-colors-bg, #fff)";
     if (state.stageEl) {
       state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
     }
@@ -31259,8 +31615,8 @@
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed2 = readbackLayout(screen);
-    if (changed2.redraw && !renderActiveScreen._again) {
+    var changed3 = readbackLayout(screen);
+    if (changed3.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen(opts);
@@ -31336,6 +31692,30 @@
     var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+  }
+  function editorThemeMode(theme2) {
+    var t2 = theme2 || theme_exports.themeOf(getApp());
+    return state.themePreview || (t2.defaultMode === "dark" ? "dark" : "light");
+  }
+  function applyEditorTheme() {
+    var theme2 = theme_exports.themeOf(getApp());
+    var mode = editorThemeMode(theme2);
+    theme_exports.setTheme(theme2, mode);
+    if (window.NexaSDK && window.NexaSDK.setTheme) window.NexaSDK.setTheme(theme2, mode);
+    if (typeof document === "undefined" || typeof document.getElementById !== "function" || !document.head) return;
+    var css2 = theme_exports.themeCss(theme2, ".nexa-theme-root", '.nexa-theme-root[data-nexa-mode="dark"]');
+    var style = document.getElementById("nexa-editor-theme-css");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "nexa-editor-theme-css";
+      document.head.appendChild(style);
+    }
+    if (style.textContent !== css2) style.textContent = css2;
+    var ab = state.artboardEl && state.artboardEl[0];
+    if (ab && ab.classList && typeof ab.setAttribute === "function") {
+      ab.classList.add("nexa-theme-root");
+      ab.setAttribute("data-nexa-mode", mode);
+    }
   }
   var bpBar = null;
   function buildBreakpointBar(trayBody) {
@@ -33220,16 +33600,16 @@
     var names = Object.keys(metricsMap || {}).sort();
     names.forEach(function(fullName) {
       var parts = fullName.split("/");
-      var current = root;
+      var current2 = root;
       for (var i2 = 0; i2 < parts.length - 1; i2++) {
         var folderName = parts[i2];
-        if (!current.folders[folderName]) {
-          current.folders[folderName] = { folders: {}, metrics: [] };
+        if (!current2.folders[folderName]) {
+          current2.folders[folderName] = { folders: {}, metrics: [] };
         }
-        current = current.folders[folderName];
+        current2 = current2.folders[folderName];
       }
       var leafName = parts[parts.length - 1];
-      current.metrics.push({
+      current2.metrics.push({
         name: leafName,
         fullName,
         entry: metricsMap[fullName]
@@ -33544,7 +33924,7 @@
         })
       };
     };
-    var current = view();
+    var current2 = view();
     var meta2 = {
       id: "@type",
       stateList: [],
@@ -33589,7 +33969,7 @@
     };
     var handle = window.NexaKit.renderInspector(host, {
       meta: meta2,
-      props: current,
+      props: current2,
       persistKey: "nexa-type",
       set: function(key, v) {
         if (key === "name") type.name = String(v || "").trim() || type.name;
@@ -33624,10 +34004,10 @@
             };
           });
         }
-        Object.keys(current).forEach(function(k) {
-          delete current[k];
+        Object.keys(current2).forEach(function(k) {
+          delete current2[k];
         });
-        Object.assign(current, view());
+        Object.assign(current2, view());
         handle.update();
         changed();
         if (key === "name") sel.find('option[value="' + type.id + '"]').text(type.name);
@@ -33927,13 +34307,13 @@
     while (taken.indexOf(id2) !== -1) id2 = base2 + "-" + ++n;
     return id2;
   }
-  function previewOptions(current) {
+  function previewOptions(current2) {
     var seen = {};
     var out = DEVICE_PRESETS.map(function(d) {
       seen[d.w] = true;
       return { value: d.w, label: d.w + " \xB7 " + d.name.replace(/\s*\(.*\)$/, "") };
     });
-    if (current && !seen[current]) out.unshift({ value: current, label: current + " px" });
+    if (current2 && !seen[current2]) out.unshift({ value: current2, label: current2 + " px" });
     return out.sort(function(a, b) {
       return a.value - b.value;
     });
@@ -33953,7 +34333,7 @@
         return { id: b.id, name: b.name, min: b.min, preview: previewWidthOf(app2, b.id), device: b.device || "" };
       }) };
     };
-    var current = view();
+    var current2 = view();
     var screen = getActiveScreen();
     var meta2 = {
       id: "@breakpoints",
@@ -33994,13 +34374,13 @@
                     ${o.ui.action("Reset to the defaults", function() {
           if (app2.breakpoints && app2.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 \xB7 sm 640 \xB7 md 768 \xB7 lg 1024 \xB7 xl 1280 \xB7 2xl 1536 \xB7 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
           app2.breakpoints = [];
-          changed2(true);
+          changed3(true);
         }, { icon: "fa fa-undo" })}
                 </div>
                 <div class="nx-help" style="margin-top:10px">On the live page: {$breakpoint} is the band in use ("md", …); an On Breakpoint Change event fires when it changes.</div>`;
       }
     };
-    meta2.props.bps.item.fields.preview.options = previewOptions(0).concat(current.bps.map(function(b) {
+    meta2.props.bps.item.fields.preview.options = previewOptions(0).concat(current2.bps.map(function(b) {
       return { value: b.preview, label: b.preview + " px" };
     })).filter(function(o, i2, all) {
       return all.findIndex(function(x) {
@@ -34012,7 +34392,7 @@
     var host = window.$("<div>").appendTo(pane).get(0);
     var handle = window.NexaKit.renderInspector(host, {
       meta: meta2,
-      props: current,
+      props: current2,
       persistKey: "nexa-breakpoints",
       set: function(key, rows2) {
         if (key !== "bps") return;
@@ -34042,20 +34422,234 @@
           return a.min - b.min;
         })[0].min = 0;
         app2.breakpoints = next;
-        changed2(false);
-        Object.keys(current).forEach(function(k) {
-          delete current[k];
+        changed3(false);
+        Object.keys(current2).forEach(function(k) {
+          delete current2[k];
         });
-        Object.assign(current, view());
+        Object.assign(current2, view());
         handle.update();
       }
     });
-    function changed2(rebuild) {
+    function changed3(rebuild) {
       leaveBreakpoint();
       markDirty();
       renderActiveScreen();
       if (rebuild) renderBreakpointsPanel();
     }
+  }
+
+  // src/sidebar/theme-panel.js
+  function lit4() {
+    return window.NEXA_LIT;
+  }
+  var SCALES = [
+    { key: "fontSizes", label: "Font sizes (px)", number: true },
+    { key: "fontWeights", label: "Font weights", number: true },
+    { key: "lineHeights", label: "Line heights", number: true },
+    { key: "letterSpacings", label: "Letter spacings" },
+    { key: "fonts", label: "Fonts" },
+    { key: "spacing", label: "Spacing (px)", number: true },
+    { key: "radii", label: "Corner radii (px)", number: true },
+    { key: "shadows", label: "Shadows" },
+    { key: "durations", label: "Durations" },
+    { key: "zIndex", label: "Layers (z-index)", number: true }
+  ];
+  function ownTheme() {
+    var app2 = getApp();
+    if (!app2.theme || typeof app2.theme !== "object") app2.theme = {};
+    return app2.theme;
+  }
+  function changed2() {
+    markDirty();
+    applyEditorTheme();
+    renderActiveScreen({ keepPanel: true });
+  }
+  function renderThemePanel() {
+    var pane = state.themePane;
+    if (!pane) return;
+    pane.empty();
+    if (!window.NexaKit || !lit4()) {
+      window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Theme tab needs the Nexa property kit.").appendTo(pane);
+      return;
+    }
+    var html = lit4().html, nothing = lit4().nothing;
+    var theme2 = theme_exports.themeOf(getApp());
+    var paletteNames = Object.keys(theme2.palettes);
+    var view = function() {
+      var t2 = theme_exports.themeOf(getApp());
+      var v = {
+        defaultMode: t2.defaultMode || "light",
+        primary: t2.primary,
+        preview: editorThemeMode(t2),
+        palettes: Object.keys(t2.palettes).map(function(n) {
+          return { name: n, base: t2.palettes[n]["500"] || "#888888" };
+        }),
+        semantic: Object.keys(t2.semantic || {}).map(function(n) {
+          var s = t2.semantic[n] || {};
+          return { name: n, light: String(s.light === void 0 ? "" : s.light), dark: String(s.dark === void 0 ? "" : s.dark) };
+        })
+      };
+      SCALES.forEach(function(sc) {
+        v[sc.key] = Object.keys(t2[sc.key] || {}).map(function(k) {
+          return { name: k, value: sc.number ? Number(t2[sc.key][k]) : String(t2[sc.key][k]) };
+        });
+      });
+      return v;
+    };
+    var current2 = view();
+    var props = {
+      defaultMode: { key: "defaultMode", type: "enum", label: "The page opens in", default: "light", noReset: true, options: [
+        { value: "light", label: "Light" },
+        { value: "dark", label: "Dark" },
+        { value: "system", label: "The viewer's system setting" }
+      ] },
+      primary: { key: "primary", type: "enum", label: "Primary palette (colors.primary.*)", default: "blue", noReset: true, options: paletteNames.map(function(n) {
+        return { value: n, label: n };
+      }) },
+      preview: { key: "preview", type: "enum", label: "The canvas shows", default: "light", noReset: true, options: [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }] },
+      palettes: { key: "palettes", type: "list", label: "", default: [], noReset: true, addLabel: "Palette", item: { row: true, fields: {
+        name: { type: "string", label: "Palette", default: "" },
+        base: { type: "color", label: "500 (its colour)", default: "#6366f1" }
+      } } },
+      semantic: { key: "semantic", type: "list", label: "", default: [], noReset: true, addLabel: "Semantic colour", item: { fields: {
+        name: { type: "string", label: "Name (colors.\u2026)", default: "", placeholder: "e.g. brand.accent" },
+        light: { type: "string", label: "Light", default: "{colors.gray.500}", mono: true },
+        dark: { type: "string", label: "Dark", default: "{colors.gray.400}", mono: true }
+      } } }
+    };
+    SCALES.forEach(function(sc) {
+      props[sc.key] = { key: sc.key, type: "list", label: "", default: [], noReset: true, addLabel: "Token", item: { row: true, fields: {
+        name: { type: "string", label: "Name", default: "" },
+        value: sc.number ? { type: "number", label: "Value", default: 0 } : { type: "string", label: "Value", default: "" }
+      } } };
+    });
+    function strips(t2) {
+      return Object.keys(t2.palettes).map(function(n) {
+        return html`<div class="nexa-theme-strip" data-palette="${n}" style="display:flex;align-items:center;gap:6px;margin:2px 0">
+                <span style="flex:0 0 56px;font-size:11px;font-family:monospace">${n}</span>
+                <span style="flex:1 1 auto;display:flex;height:14px;border-radius:3px;overflow:hidden;border:1px solid rgba(0,0,0,.1)">${theme_exports.SHADES.map(function(s) {
+          return html`<span title="colors.${n}.${s} ${t2.palettes[n][s]}" style="flex:1;background:${t2.palettes[n][s]}"></span>`;
+        })}</span>
+            </div>`;
+      });
+    }
+    function semanticSample(t2) {
+      var mode = editorThemeMode(t2);
+      var get = function(p) {
+        return theme_exports.resolveToken(t2, p, mode);
+      };
+      return html`<div style="border:1px solid ${get("colors.border")};background:${get("colors.bg")};color:${get("colors.fg")};border-radius:6px;padding:8px;font-size:12px;margin-bottom:8px">
+            <div style="font-weight:600;margin-bottom:4px">Sample (${mode})</div>
+            <div style="color:${get("colors.fg.muted")}">fg.muted text on bg</div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+                <span style="background:${get("colors.primary.solid")};color:${get("colors.primary.contrast")};padding:2px 8px;border-radius:4px">primary.solid</span>
+                <span style="background:${get("colors.primary.subtle")};color:${get("colors.primary.fg")};padding:2px 8px;border-radius:4px">primary.subtle</span>
+                <span style="background:${get("colors.bg.muted")};border:1px solid ${get("colors.border.emphasized")};padding:2px 8px;border-radius:4px">bg.muted</span>
+            </div>
+        </div>`;
+    }
+    var meta2 = {
+      id: "@theme",
+      stateList: [],
+      inputs: [],
+      outputs: [],
+      props,
+      inspector: function(o) {
+        var t2 = theme_exports.themeOf(getApp());
+        return html`
+                <div class="nx-help" style="margin-bottom:8px">The app's design tokens. Use one anywhere with the <i class="fa fa-diamond"></i> of a colour / size field ({token:colors.primary.solid}); on the page it is a CSS variable (var(--nexa-colors-bg)) that follows the colour mode. Set Variable <b>$colorMode</b> (light / dark / system) switches the page.</div>
+                ${semanticSample(t2)}
+                <nx-tabs persist-key="nexa-theme">
+                    <nx-tab label="Mode">
+                        <nx-select ${o.bind("defaultMode")}></nx-select>
+                        <nx-select ${o.bind("primary")}></nx-select>
+                        <nx-segmented ${o.bind("preview")}></nx-segmented>
+                        <div class="nx-help">The canvas preview only (not saved).</div>
+                    </nx-tab>
+                    <nx-tab label="Colors">
+                        <div class="nx-help" style="margin-bottom:6px">Each palette is 50 … 950 from its 500: change the colour and the shades follow. Every palette also has colors.&lt;name&gt;.solid / contrast / fg / muted / subtle / emphasized / focusRing / border, light and dark.</div>
+                        <nx-list ${o.bind("palettes")} .sortable="${false}"></nx-list>
+                        <div style="margin-top:8px">${strips(t2)}</div>
+                    </nx-tab>
+                    <nx-tab label="Semantic">
+                        <div class="nx-help" style="margin-bottom:6px">What a colour is for, light and dark: a colour (#1e293b) or a token ({colors.gray.900}). Name "bg.subtle" is the token colors.bg.subtle.</div>
+                        <nx-list ${o.bind("semantic")} .sortable="${false}"></nx-list>
+                    </nx-tab>
+                    <nx-tab label="Type">${["fonts", "fontSizes", "fontWeights", "lineHeights", "letterSpacings"].map(function(k) {
+          var sc = SCALES.filter(function(x) {
+            return x.key === k;
+          })[0];
+          return html`<nx-section heading="${sc.label}" persist-key="${"nexa-theme:" + k}"><nx-list ${o.bind(k)} .sortable="${false}"></nx-list></nx-section>`;
+        })}</nx-tab>
+                    <nx-tab label="Space & shape">${["spacing", "radii", "shadows", "durations", "zIndex"].map(function(k) {
+          var sc = SCALES.filter(function(x) {
+            return x.key === k;
+          })[0];
+          return html`<nx-section heading="${sc.label}" persist-key="${"nexa-theme:" + k}"><nx-list ${o.bind(k)} .sortable="${false}"></nx-list></nx-section>`;
+        })}</nx-tab>
+                </nx-tabs>
+                <div style="margin-top:10px">${o.ui.action("Reset the theme to the defaults", function() {
+          if (!window.confirm("Go back to the default theme? Your palettes, semantic colours and scales are replaced by the defaults.")) return;
+          getApp().theme = null;
+          changed2();
+          renderThemePanel();
+        }, { icon: "fa fa-undo" })}</div>`;
+      }
+    };
+    var host = window.$("<div>").appendTo(pane).get(0);
+    var handle = window.NexaKit.renderInspector(host, {
+      meta: meta2,
+      props: current2,
+      persistKey: "nexa-theme",
+      fallbacks: false,
+      set: function(key, v) {
+        var own = ownTheme(), t2 = theme_exports.themeOf(getApp());
+        if (key === "preview") {
+          state.themePreview = v;
+          applyEditorTheme();
+          renderActiveScreen({ keepPanel: true });
+        } else if (key === "defaultMode" || key === "primary") {
+          own[key] = v;
+          changed2();
+        } else if (key === "palettes") {
+          var next = {};
+          (v || []).forEach(function(r, i2) {
+            var name2 = String(r.name || "").trim().replace(/[^A-Za-z0-9_-]/g, "") || "palette" + (i2 + 1);
+            var old = t2.palettes[name2];
+            next[name2] = old && String(old["500"]).toLowerCase() === String(r.base).toLowerCase() ? old : theme_exports.generatePalette(r.base) || old || theme_exports.generatePalette("#888888");
+          });
+          if (!Object.keys(next).length) return;
+          own.palettes = next;
+          if (!next[own.primary || t2.primary]) own.primary = Object.keys(next)[0];
+          changed2();
+        } else if (key === "semantic") {
+          var sem2 = {};
+          (v || []).forEach(function(r) {
+            var n = String(r.name || "").trim();
+            if (n) sem2[n] = { light: r.light, dark: r.dark === "" ? r.light : r.dark };
+          });
+          own.semantic = sem2;
+          changed2();
+        } else {
+          var sc = SCALES.filter(function(x) {
+            return x.key === key;
+          })[0];
+          if (!sc) return;
+          var out = {};
+          (v || []).forEach(function(r) {
+            var n = String(r.name || "").trim();
+            if (n) out[n] = sc.number ? Number(r.value) || 0 : String(r.value || "");
+          });
+          own[key] = out;
+          changed2();
+        }
+        Object.keys(current2).forEach(function(k) {
+          delete current2[k];
+        });
+        Object.assign(current2, view());
+        handle.update();
+      }
+    });
   }
 
   // src/sidebar/sidebar-content.js
@@ -34075,6 +34669,7 @@
     state.typesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.assetsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
+    state.themePane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
@@ -34164,6 +34759,7 @@
         state.typesPane.toggle(tab.id === "types");
         state.assetsPane.toggle(tab.id === "assets");
         state.breakpointsPane.toggle(tab.id === "breakpoints");
+        state.themePane.toggle(tab.id === "theme");
         state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
           if (state.editingMode === "template") exitTemplateEditing();
@@ -34186,6 +34782,7 @@
         if (tab.id === "types") renderTypesPanel();
         if (tab.id === "assets") renderAssetsPanel();
         if (tab.id === "breakpoints") renderBreakpointsPanel();
+        if (tab.id === "theme") renderThemePanel();
       }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
@@ -34194,6 +34791,7 @@
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
+    state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
     state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });

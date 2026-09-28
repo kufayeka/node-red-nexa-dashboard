@@ -1,4 +1,4 @@
-import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen, Tree, Scope, appScope } from "../state.js";
+import { state, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, getActiveScreen, getApp, Tree, Scope, Theme, appScope } from "../state.js";
 import { readbackLayout } from "./layout-readback.js";
 import { refreshSelectionVisuals } from "./selection.js";
 import { renderComponent, ensureSparkplugLiveRenderWired, registerScreenRenderer } from "./component-renderer.js";
@@ -16,6 +16,7 @@ export function renderActiveScreen(opts) {
     // a breakpoint is edited on one screen: another screen / a template is the design
     checkSession(screen);
     refreshBreakpointBar(screen);
+    applyEditorTheme();
     var canvasW = previewWidth(screen);
     // Idempotent — safe to call on every render. Ensures any component
     // already bound to a Sparkplug metric (props containing "{sparkplug:
@@ -33,12 +34,13 @@ export function renderActiveScreen(opts) {
     state.artboardEl.css({
         width: canvasW + "px",
         height: screen.height + "px",
-        "background-color": "#fff",
         "background-image":
             "linear-gradient(to right, #e3e3e3 1px, transparent 1px)," +
             "linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
         "background-size": screen.gridSize + "px " + screen.gridSize + "px"
     });
+    // the page's background: the theme's (jQuery UI's colour hook would turn a var() into a fixed colour)
+    if (state.artboardEl[0] && state.artboardEl[0].style) state.artboardEl[0].style.backgroundColor = "var(--nexa-colors-bg, #fff)";
     if (state.stageEl) {
         state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
     }
@@ -128,6 +130,26 @@ export function zoomToFit() {
     var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
+}
+
+// --- the theme on the canvas: its tokens as CSS variables on the artboard, the preview mode ---
+// (like the live page's :root; components get their {token:} props resolved in this mode)
+export function editorThemeMode(theme) {
+    var t = theme || Theme.themeOf(getApp());
+    return state.themePreview || (t.defaultMode === "dark" ? "dark" : "light");
+}
+export function applyEditorTheme() {
+    var theme = Theme.themeOf(getApp());
+    var mode = editorThemeMode(theme);
+    Theme.setTheme(theme, mode);
+    if (window.NexaSDK && window.NexaSDK.setTheme) window.NexaSDK.setTheme(theme, mode);
+    if (typeof document === "undefined" || typeof document.getElementById !== "function" || !document.head) return;
+    var css = Theme.themeCss(theme, ".nexa-theme-root", '.nexa-theme-root[data-nexa-mode="dark"]');
+    var style = document.getElementById("nexa-editor-theme-css");
+    if (!style) { style = document.createElement("style"); style.id = "nexa-editor-theme-css"; document.head.appendChild(style); }
+    if (style.textContent !== css) style.textContent = css;
+    var ab = state.artboardEl && state.artboardEl[0];
+    if (ab && ab.classList && typeof ab.setAttribute === "function") { ab.classList.add("nexa-theme-root"); ab.setAttribute("data-nexa-mode", mode); }
 }
 
 // --- the breakpoint bar (top of the canvas): the app's breakpoints, the widest first ---

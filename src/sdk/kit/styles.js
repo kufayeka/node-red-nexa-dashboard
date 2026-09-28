@@ -238,6 +238,17 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit.nx-kit .nx-binding-source .nx-seg-item i { display: none; }
 .nx-kit.nx-kit .nx-binding-source .nx-seg-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-kit .nx-binding-expr { display: flex; flex-direction: column; gap: 4px; }
+/* theme tokens (base.js): the ◆ picker, a token as a chip */
+.nx-kit .nx-token-panel { margin: 0 0 4px; border: 1px solid var(--nx-border); border-radius: var(--nx-radius); background: var(--nx-bg); padding: 4px; }
+.nx-kit.nx-kit .nx-token-filter { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
+.nx-kit .nx-token-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; }
+.nx-kit.nx-kit .nx-token-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; margin: 0; border: none; background: transparent; text-align: left; cursor: pointer; font-size: 11px; border-radius: 3px; }
+.nx-kit.nx-kit .nx-token-item:hover { background: var(--nx-bg-hover); }
+.nx-kit .nx-token-swatch { flex: 0 0 auto; width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.15); }
+.nx-kit .nx-token-path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--nx-mono, monospace); color: var(--nx-text); }
+.nx-kit .nx-token-val { flex: 0 1 auto; color: var(--nx-text-faint); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.nx-kit .nx-token-chip { display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 6px; border: 1px solid var(--nx-accent); border-radius: var(--nx-radius); background: var(--nx-bg); font-size: 11px; min-height: 22px; }
+.nx-kit .nx-token-chip > .fa-diamond { color: var(--nx-accent); font-size: 10px; }
 /* a bound field's fallback (base.js frame) */
 .nx-kit .nx-fallback { margin-top: 6px; padding: 6px 0 0; border-top: 1px dashed var(--nx-border-subtle); }
 .nx-kit .nx-fallback-label { font-size: 10.5px; color: var(--nx-text-faint); margin-bottom: 3px; }

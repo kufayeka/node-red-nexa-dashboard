@@ -24,7 +24,8 @@ export const {
     bind, defineInspectorWidget,
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
     defineCodec, getCodec, format, isUnknown,
-    assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange
+    assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange,
+    theme
 } = SDK;
 
 export default SDK;

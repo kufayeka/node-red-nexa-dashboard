@@ -66,7 +66,11 @@ export class KitElement extends LitElement {
         // bound: its own control below the binding edits the fallback (nx-fallback event)
         fallback: { type: Boolean },
         // a value per breakpoint: { items: [{ id, name, range, design, set, selected, value }], pick(id), clear(id) }
-        responsive: { attribute: false }
+        responsive: { attribute: false },
+        // theme tokens it can take ("colors", "fontSizes,spacing"…): a ◆ picker; {token:…} shows as a chip
+        tokens: { type: String },
+        _tokenOpen: { state: true },
+        _tokenFilter: { state: true }
     };
 
     constructor() {
@@ -92,6 +96,50 @@ export class KitElement extends LitElement {
         this.dispatchEvent(new CustomEvent(type, { detail: { value: value }, bubbles: true, composed: true }));
     }
 
+    // ---- theme tokens (NexaSDK.theme) ----------------------------------------------------------
+    _tokenList() {
+        var t = window.NexaSDK && window.NexaSDK.theme;
+        if (!t || !this.tokens) return [];
+        var cats = String(this.tokens).split(",").map(function (c) { return c.trim(); }).filter(Boolean);
+        var f = String(this._tokenFilter || "").toLowerCase();
+        var out = [];
+        cats.forEach(function (c) { t.list(c).forEach(function (tk) { if (!f || tk.path.toLowerCase().indexOf(f) !== -1) out.push(tk); }); });
+        return out.slice(0, 400);
+    }
+    _tokenValue(path) { var t = window.NexaSDK && window.NexaSDK.theme; return t ? t.token(path) : undefined; }
+    _tokenButton() {
+        if (!this.tokens || (this.binding !== undefined && this.binding !== null)) return nothing;
+        return html`<button type="button" class="nx-icon-btn nx-token-btn ${this._tokenOpen ? "nx-on" : ""}" title="A theme token (${this.tokens})"
+            @click="${(e) => { e.stopPropagation(); this._tokenOpen = !this._tokenOpen; }}"><i class="fa fa-diamond"></i></button>`;
+    }
+    _tokenPanel() {
+        if (!this._tokenOpen) return nothing;
+        var self = this;
+        var list = this._tokenList();
+        var colors = /colors/.test(this.tokens);
+        return html`<div class="nx-token-panel">
+            <input class="nx-control nx-token-filter" type="text" placeholder="Filter: primary, bg, lg…" .value="${this._tokenFilter || ""}"
+                @input="${(e) => { e.stopPropagation(); self._tokenFilter = e.target.value; }}" @keydown="${(e) => { if (e.key === "Escape") self._tokenOpen = false; }}">
+            <div class="nx-token-list">${list.length ? list.map(function (tk) {
+                var v = self._tokenValue(tk.path);
+                return html`<button type="button" class="nx-token-item" data-token="${tk.path}" title="${tk.path} = ${v}"
+                    @click="${(e) => { e.stopPropagation(); self._tokenOpen = false; self.change("{token:" + tk.path + "}"); }}">
+                    ${colors ? html`<span class="nx-token-swatch" style="background:${v}"></span>` : nothing}
+                    <span class="nx-token-path">${tk.path.replace(/^[a-zA-Z]+\./, "")}</span><span class="nx-token-val">${v}</span></button>`;
+            }) : html`<div class="nx-help">No token.</div>`}</div>
+        </div>`;
+    }
+    _tokenChip(value) {
+        var m = /^\{token:([^{}]+)\}$/.exec(String(value || "").trim());
+        if (!m) return null;
+        var v = this._tokenValue(m[1]);
+        return html`<div class="nx-token-chip" title="${m[1]} = ${v}">
+            ${/colors/.test(this.tokens || "") ? html`<span class="nx-token-swatch" style="background:${v}"></span>` : html`<i class="fa fa-diamond"></i>`}
+            <span class="nx-token-path">${m[1]}</span><span class="nx-token-val">${v === undefined ? "(no such token)" : v}</span>
+            <button type="button" class="nx-icon-btn" title="Its value instead of the token" @click="${(e) => { e.stopPropagation(); this.change(v === undefined ? "" : v); }}"><i class="fa fa-times"></i></button>
+        </div>`;
+    }
+
     _changeBinding(value) {
         this._bindingChange = true;
         try { this.change(value); } finally { this._bindingChange = false; }
@@ -112,10 +160,11 @@ export class KitElement extends LitElement {
     }
 
     _head() {
-        if (!this.label && !this.actions && !this.badge) return nothing;
+        if (!this.label && !this.actions && !this.badge && !this.tokens) return nothing;
         return html`<div class="nx-field-head">
             <label class="nx-label" for="${this.controlId}">${icon(this.icon)}<span>${this.label || ""}</span>${this.required ? html`<span class="nx-req">*</span>` : nothing}${this.badge ? html`<span class="nx-badge">${this.badge}</span>` : nothing}</label>
             ${this.modified ? html`<span class="nx-dot" title="Changed from the default"></span>` : nothing}
+            ${this._tokenButton()}
             ${this.actions || nothing}
         </div>`;
     }
@@ -135,6 +184,11 @@ export class KitElement extends LitElement {
                 ? html`${editor}<div class="nx-fallback"><div class="nx-fallback-label">Fallback — shown while the binding has no value (none yet, null, ???)</div>${control}</div>`
                 : editor;
         }
-        return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${this._chips()}${control}${this._foot()}</div>`;
+        // a theme token: a chip instead of the control
+        if (this.tokens && (this.binding === undefined || this.binding === null)) {
+            var chip = this._tokenChip(this.value);
+            if (chip) control = chip;
+        }
+        return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${this._tokenPanel()}${this._chips()}${control}${this._foot()}</div>`;
     }
 }

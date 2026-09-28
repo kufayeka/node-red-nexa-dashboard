@@ -536,6 +536,33 @@ async function main() {
             assert.strictEqual(r.binding, '{speed}', 'the binding itself is untouched');
         });
 
+        await ok('theme tokens (◆): a colour field picks one ({token:…}), shows it as a chip, × gives its value back; a number field only with `tokens`', async () => {
+            const r = await js(`(async function () {
+                var root = document.createElement("div"); document.body.appendChild(root);
+                var props = { color: "#ff0000", size: 12, count: 3 }, calls = [];
+                var meta = { id: "tk", stateList: [], inputs: [], outputs: [], props: {
+                    color: { key: "color", type: "color", label: "Colour", default: "#000000" },
+                    size: { key: "size", type: "number", label: "Size", default: 12, tokens: "fontSizes" },
+                    count: { key: "count", type: "number", label: "Count", default: 0 } } };
+                var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { calls.push([k, v]); props[k] = v; h.update(); } });
+                await NexaTest.wait();
+                var by = function (sel, label) { return Array.from(root.querySelectorAll(sel)).filter(function (e) { return e.label === label; })[0]; };
+                var out = { buttons: [!!by("nx-color", "Colour").querySelector(".nx-token-btn"), !!by("nx-number", "Size").querySelector(".nx-token-btn"), !!by("nx-number", "Count").querySelector(".nx-token-btn")] };
+                by("nx-color", "Colour").querySelector(".nx-token-btn").click(); await NexaTest.wait();
+                out.listed = Array.from(by("nx-color", "Colour").querySelectorAll(".nx-token-item")).some(function (b) { return b.getAttribute("data-token") === "colors.primary.solid"; });
+                by("nx-color", "Colour").querySelector('.nx-token-item[data-token="colors.primary.solid"]').click(); await NexaTest.wait();
+                out.chip = by("nx-color", "Colour").querySelector(".nx-token-chip").textContent.replace(/\\s+/g, " ").trim();
+                by("nx-color", "Colour").querySelector(".nx-token-chip button").click(); await NexaTest.wait();
+                out.calls = calls;
+                h.destroy(); root.remove();
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.buttons, [true, true, false]);
+            assert.strictEqual(r.listed, true);
+            assert.strictEqual(r.chip.replace(/\s/g, ''), 'colors.primary.solid#2563eb');
+            assert.deepStrictEqual(r.calls, [['color', '{token:colors.primary.solid}'], ['color', '#2563eb']]);
+        });
+
         await ok('no JavaScript errors or warnings in the page', async () => {
             assert.deepStrictEqual(quiet(logs), []);
         });

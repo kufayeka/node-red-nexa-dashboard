@@ -52,7 +52,7 @@ function shortValue(v) {
 // "{provider:address}" / "{param}" as the whole value, or embedded in text.
 function isBinding(v) {
     // a whole {asset:name} is the picked image itself (nx-asset's own value), not a binding
-    return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{asset:[^{}]+\}$/.test(v.trim());
+    return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
 }
 
 // Types whose widget can switch to a binding (⛓: Variable / Tag / Message / Expression).
@@ -208,6 +208,8 @@ export function renderInspector(container, opts) {
         el.fallback = takesFallback;
         if (bound && takesFallback) el.value = fallbacks[key] !== undefined ? fallbacks[key] : prop.default;
         if (prop.type === "tag") el.fallbackValue = fallbacks[key];
+        // theme tokens: a colour takes the colour tokens; another prop names its categories (tokens: "fontSizes")
+        el.tokens = prop.tokens !== undefined ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
         el.modified = !prop.noReset && !same(value, prop.default);
         el.invalid = !!message;
         el.message = message || "";

@@ -23,6 +23,7 @@ import { LitElement } from "lit";
 import { buildStylesheet, defaultValues } from "./schema.js";
 import { parseTag, getTagProvider, isWriteTarget } from "./tags.js";
 import F from "./format.js";
+import { theme as themeApi } from "./theme.js";
 
 export function isUnknown(v) {
     return v === undefined || v === null || v === "???";
@@ -202,6 +203,11 @@ export class NexaElement extends LitElement {
         this.requestUpdate();
     }
 
+    /** A theme token's value in the current mode ("colors.primary.solid", "fontSizes.lg"…). */
+    token(path) { return themeApi.token(path); }
+    /** A theme token as a CSS variable, for the view's CSS (follows the mode by itself). */
+    tokenVar(path) { return themeApi.cssVar(path); }
+
     format(value, opts) {
         if (opts && typeof value !== "string" && typeof value !== "number") return value === null || value === undefined ? "" : String(value);
         return opts ? F.formatNumber(value, opts) : (value === null || value === undefined ? "" : String(value));
@@ -240,6 +246,8 @@ export class NexaElement extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         var self = this;
+        // a new theme / mode: a view reading this.token() draws again
+        this.onDestroy(themeApi.onChange(function () { self.requestUpdate(); }));
         if (typeof ResizeObserver === "function") {
             var ro = new ResizeObserver(function (entries) {
                 var r = entries[0] && entries[0].contentRect;

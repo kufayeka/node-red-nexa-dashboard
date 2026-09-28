@@ -412,6 +412,13 @@ export function renderEventsPanel() {
         return { type: "populate", container: "", template: first ? first.id : "", itemParam: p0 ? p0.name : undefined, mode: "append", key: "id", valueSource: "payload" };
     }, "", "populate");
 
+    // the colour mode ({$colorMode}): light / dark / the viewer's system setting
+    sectionHeader(state.eventsPane, "Theme");
+    chip(state.eventsPane, "Set colour mode (msg.payload: light / dark / system)", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "payload" }; }, "", "set-variable");
+    chip(state.eventsPane, "Dark mode", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "dark" }; }, "", "set-variable");
+    chip(state.eventsPane, "Light mode", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "light" }; }, "", "set-variable");
+    chip(state.eventsPane, "On colour mode change", function () { return { type: "on-variable-change", scope: "@app", name: "$colorMode" }; }, "", "on-variable-change");
+
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");
     chip(state.eventsPane, "Storage", function () { return { type: "storage", action: "get", store: "local", key: "", target: "payload", valueSource: "payload" }; }, "", "storage");

@@ -3,9 +3,10 @@ import * as Tree from "./model/tree.js";
 import * as Layout from "./model/layout.js";
 import * as Scope from "./model/scope.js";
 import * as Types from "./model/types.js";
+import * as Theme from "./model/theme.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
 
-export { Tree, Layout, Scope, Types };
+export { Tree, Layout, Scope, Types, Theme };
 
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 2.0;
@@ -85,6 +86,9 @@ export const state = {
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
     overlayPreview: {},
+    // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
+    themePreview: null,
+    themePane: null,
     templateCounter: 0,
     editingMode: "screen", // "screen" | "template"
     activeTemplateId: null,
