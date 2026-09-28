@@ -62,7 +62,8 @@ var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, s
 export function validateProp(prop, value, p) {
     var empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
     if (prop.required && empty) return "Required";
-    if ((prop.type === "number" || prop.type === "range") && !empty && !isBinding(value)) {
+    // a theme token ({token:spacing.4}) is a number the theme gives
+    if ((prop.type === "number" || prop.type === "range") && !empty && !isBinding(value) && !/^\{token:[^{}]+\}$/.test(String(value).trim())) {
         var n = Number(value);
         if (!Number.isFinite(n)) return "Not a number";
         if (prop.min !== undefined && prop.min !== null && n < prop.min) return "Minimum is " + prop.min;

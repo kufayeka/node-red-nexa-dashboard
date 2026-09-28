@@ -129,19 +129,21 @@ export function buildMeta(def) {
         return { name: name, label: pt.label || humanize(name), selector: pt.selector, css: pt.css || "" };
     });
     var styleable = def.css !== undefined || meta.partList.length > 0 || meta.stateList.some(function (s) { return s.selector; });
+    // the tab / section the CSS props go in (def.cssGroup, e.g. "Custom CSS")
+    var cssGroup = def.cssGroup || "Style";
     if (styleable && !props.css) {
-        props.css = { type: "css", default: def.css || "", group: "Style", label: "Base CSS", help: "Scoped to this component. Shared layout, font, border." };
+        props.css = { type: "css", default: def.css || "", group: cssGroup, label: "Base CSS", help: "Scoped to this component. Shared layout, font, border." };
     }
     meta.partList.forEach(function (pt) {
         var key = stateCssKey(pt.name);
         if (props[key]) throw new Error("[nexa] " + def.id + ": part \"" + pt.name + "\" collides with the property \"" + key + "\"");
-        props[key] = { type: "css", default: pt.css, group: "Style", label: pt.label + " CSS", part: pt.name };
+        props[key] = { type: "css", default: pt.css, group: cssGroup, label: pt.label + " CSS", part: pt.name };
     });
     meta.stateList.forEach(function (s) {
         if (!s.selector) return;
         var key = stateCssKey(s.name);
         if (props[key] && props[key].part) throw new Error("[nexa] " + def.id + ": state \"" + s.name + "\" and a part share the CSS prop \"" + key + "\"");
-        if (!props[key]) props[key] = { type: "css", default: s.css, group: "Style", label: s.label + " CSS", state: s.name };
+        if (!props[key]) props[key] = { type: "css", default: s.css, group: cssGroup, label: s.label + " CSS", state: s.name };
     });
 
     meta.props = {};

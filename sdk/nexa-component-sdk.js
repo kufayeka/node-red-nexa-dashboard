@@ -25,7 +25,7 @@ export const {
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
     defineCodec, getCodec, format, isUnknown,
     assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange,
-    theme
+    theme, zag
 } = SDK;
 
 export default SDK;

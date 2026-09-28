@@ -20,6 +20,7 @@ import { defineTagProvider, extendTagProvider, getTagProvider, listTagProviders,
 import F from "./format.js";
 import { setAssets, listAssets, getAsset, onAssetsChange, assetRef, resolveAsset, assetUrl } from "./assets.js";
 import { theme, setTheme } from "./theme.js";
+import { zag } from "./zag.js";
 
 export var SDK_VERSION = "1.0.0";
 
@@ -47,7 +48,9 @@ if (!window.NexaSDK) {
         assetUrl: assetUrl, resolveAsset: resolveAsset, assetRef: assetRef, listAssets: listAssets, getAsset: getAsset,
         onAssetsChange: onAssetsChange, setAssets: setAssets,
         // the app's theme: design tokens in the current mode (token / cssVar / mode / list / onChange)
-        theme: theme, setTheme: setTheme
+        theme: theme, setTheme: setTheme,
+        // zag.js (keyboard / focus / ARIA state machines) + a Lit controller and spread()
+        zag: zag
     };
     var NEXA = ensureRegistry();
     NEXA.sdk = window.NexaSDK;

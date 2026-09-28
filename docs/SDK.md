@@ -154,6 +154,7 @@ If your plugin bundles itself, alias the bare name `nexa-component-sdk.js` to th
 | `inputs` / `outputs` | object | [§5](#5-inputs-outputs-and-generic-tags) |
 | `events` / `actions` | object | [§6](#6-events-and-actions) |
 | `states`, `parts`, `css` | object, object, string | [§8](#8-states-and-per-state-css) |
+| `cssGroup` | string | The inspector group (tab) the CSS props go in, e.g. `"Custom CSS"`. Default `"Style"`. |
 | `state` | object | Internal reactive fields of the view (`this.<name>`), not saved. |
 | `inspector` | `({ p, ui, bind }) => TemplateResult` | [§9](#9-the-inspector). Optional; the default is an automatic panel. |
 | `view` | class extending `NexaElement` | [§7](#7-the-view-nexaelement), **required** |
@@ -439,6 +440,35 @@ theme.token("colors.primary.solid");  theme.cssVar("colors.bg");  theme.mode(); 
 ```
 
 In a view: `this.token(path)` / `this.tokenVar(path)`; the view redraws when the theme or the mode changes. Prefer `var(--nexa-…)` in CSS.
+
+## 11c. zag.js (accessible widgets)
+
+The SDK includes [zag.js](https://zagjs.com): state machines for keyboard, focus, ARIA and positioning of complex widgets. Take it from the SDK, not from npm:
+
+```js
+import { NexaElement, html, zag } from "../../nexa-sdk/nexa-component-sdk.js";
+const { ZagController, spread, select } = zag;
+
+class MySelect extends NexaElement {
+    sel = new ZagController(this, select, () => ({
+        collection: select.collection({ items: this.p.options }),
+        value: [this.p.value],
+        onValueChange: (d) => this.setProp("value", d.value[0])
+    }));
+    render() {
+        const api = this.sel.api;
+        return html`<button ${spread(api.getTriggerProps())}>${api.valueAsString || "Pick…"}</button>
+            <div ${spread(api.getPositionerProps())}><ul ${spread(api.getContentProps())}>
+                ${api.collection.items.map((it) => html`<li ${spread(api.getItemProps({ item: it }))}>${it.label}</li>`)}
+            </ul></div>`;
+    }
+}
+```
+
+- **`ZagController(host, module, props)`** runs the machine while the view is on the page. Its shadow root is the machine's root, and each view gets its own id. The view redraws on every change of the machine, and `props()` is read each time, so a bound prop reaches the machine.
+- **`spread(props)`** puts zag's attributes and listeners on an element, diffed between renders.
+- **Machines**: `select`, `combobox`, `slider`, `tagsInput`, `pinInput`, `ratingGroup`, `numberInput`.
+- **Lower level**: `VanillaMachine`, `normalizeProps`, `spreadProps`, `mergeProps`.
 
 ## 12. Tag providers
 
