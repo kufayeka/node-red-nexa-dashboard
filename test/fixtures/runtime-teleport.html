@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>teleport</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Teleport on a deployed page (test/runtime-teleport-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:600px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+function label(id, x, y, w, h, text, extra) { return Object.assign({ id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: text || id } }, extra || {}); }
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+window.__NEXA_APP__ = { variables: [{ id: "r", name: "result", type: "string", defaultValue: "" }] };
+// a template: a label teleported to the header's "actions", a button that stays, both using its param
+window.__NEXA_TEMPLATES__ = [
+  { id: "T", name: "Tpl", width: 200, height: 60, params: [{ id: "pp", name: "p", label: "p", type: "string", defaultValue: "" }],
+    components: [
+      label("tl", 0, 0, 80, 20, "{p}", { teleport: "actions" }),
+      { id: "tb", type: "btn", x: 0, y: 30, w: 60, h: 20, props: { text: "go" }, teleport: "actions" }
+    ],
+    logic: { nodes: [{ id: "c", type: "ui-event", compId: "tb", event: "click" },
+      { id: "f", type: "function", code: "setVariable('result', vars.get('p'), '@app'); return msg;" }], wires: [W("c", "f")] } },
+  // a list row: its badge goes to the header too
+  { id: "ROW", name: "Row", width: 200, height: 30, params: [{ id: "it", name: "item", label: "item", type: "object", defaultValue: {} }],
+    components: [label("badge", 0, 0, 40, 20, "#{item.id}", { teleport: "actions" }), label("rt", 50, 0, 100, 20, "{item.id}")], logic: { nodes: [], wires: [] } }
+];
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, orphans: [],
+  components: [
+    { id: "ctl", type: "btn", x: 0, y: 580, w: 10, h: 10, props: {} },
+    label("res", 20, 580, 200, 20, "{result}"),
+    // the target: a row in the header
+    { id: "hdr", type: "@frame", name: "Header", slot: "actions", x: 0, y: 0, w: 1000, h: 40, layout: { mode: "horizontal", gap: 10 }, children: [label("h1", 0, 0, 100, 20, "Title")] },
+    // a small clipped card: what it teleports leaves it
+    { id: "card", type: "@frame", name: "Card", x: 100, y: 100, w: 200, h: 100, style: { clip: true }, children: [
+      label("pop", 300, 300, 100, 50, "popped", { teleport: "@page" }),
+      { id: "inst", type: "@template", templateId: "T", x: 0, y: 0, w: 200, h: 60, paramValues: { p: "hello" } },
+      { id: "cdlg", type: "@frame", name: "CardDialog", x: 0, y: 0, w: 200, h: 100, teleport: "@page", overlay: { kind: "dialog", animation: "none", duration: 0 }, children: [] }
+    ] },
+    { id: "list", type: "@frame", name: "List", x: 400, y: 100, w: 300, h: 200, layout: { mode: "vertical", gap: 4 }, children: [] }
+  ],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ctl", event: "fill" }, { id: "p1", type: "populate", container: "list", template: "ROW", itemParam: "item", key: "id", mode: "replace", valueSource: "payload" },
+    { id: "e2", type: "ui-event", compId: "ctl", event: "dialog" }, { id: "o2", type: "overlay-open", overlay: "cdlg" }
+  ], wires: [W("e1", "p1"), W("e2", "o2")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

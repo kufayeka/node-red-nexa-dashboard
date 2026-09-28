@@ -283,6 +283,28 @@ It shows where the page opens it, over its backdrop.
 
 **The data**: `frame.overlay = { kind: "dialog" | "drawer", alignX, alignY, margin, side, backdrop, backdropOpacity, modal, closeOnBackdrop, closeOnEsc, autoClose, draggable, dragWithin, animation, duration, startOpen }`. See `src/model/layout.js` `overlayOf`. Tests: `test/runtime-overlay-browser.test.js`.
 
+## 4e. Teleport
+
+**Any node can be drawn in another place of the page**: a component, a frame, a template instance, a node inside a template, a Populate's copies, a dialog. Properties → **Teleport → Teleport to**:
+
+- **a target's name**: a frame named with "This frame is a teleport target named …". It is drawn inside that frame, which places it by its layout: a row puts it in the row.
+- **The page**: drawn on the page itself at its X / Y, above every frame. It is out of any frame's clip.
+
+**Only where it is drawn changes.** Its place in the tree stays, so its Logic, its template's params, the variables around it and its bindings work as before. For example:
+
+- a card in a Populate list teleports its "cart" badge into the header (one per copy, gone with its copy);
+- a template's toolbar buttons show in the screen's header;
+- a dialog inside a clipped card opens over the whole page.
+
+**Notes:**
+
+- A target that is not on the page leaves the node where it is.
+- Teleported nodes go into a target after its own children, in the order they are drawn.
+- Hiding the node's parent (Hierarchy, Layer Control) does not hide what it teleported; hide the node itself.
+- On the canvas a teleported node stays where it is in the tree, marked ⇢ with its target; a target is marked ⇠ with its name.
+
+**The data**: `node.teleport = "<name>" | "@page"`, `frame.slot = "<name>"`. Tests: `test/runtime-teleport-browser.test.js`.
+
 ## 4c. Breakpoints (desktop-first)
 
 **The app's breakpoints** (the **Breakpoints** tab) are bands of window widths, the Tailwind way. Each one starts at its "from" width and runs up to the next:

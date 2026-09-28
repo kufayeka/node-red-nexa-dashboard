@@ -726,6 +726,18 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     css["pointer-events"] = interactable ? "" : "none";
     css.display = isNodeVisible(comp.id) ? (css.display || "") : "none";
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css).appendTo(parentEl);
+    // teleported on the live page: drawn here (its place in the tree), marked where it goes
+    if (comp.teleport) {
+        el.css({ outline: "1px dashed #8e44ad", "outline-offset": "-1px" });
+        window.$("<span>", { "class": "nexa-teleport-badge", title: "On the live page: drawn in " + (comp.teleport === "@page" ? "the page itself" : "the frame named \"" + comp.teleport + "\"") })
+            .css({ position: "absolute", right: "0", top: "0", "z-index": "5", background: "#8e44ad", color: "#fff", "font-size": "9px", padding: "0 4px", "line-height": "14px", "border-radius": "0 0 0 3px", "pointer-events": "none", "white-space": "nowrap" })
+            .text("⇢ " + (comp.teleport === "@page" ? "page" : comp.teleport)).appendTo(el);
+    }
+    if (comp.slot) {
+        window.$("<span>", { "class": "nexa-slot-badge", title: "A teleport target: what is teleported to \"" + comp.slot + "\" is drawn here on the live page" })
+            .css({ position: "absolute", left: "0", bottom: "0", "z-index": "5", background: "#8e44ad", color: "#fff", "font-size": "9px", padding: "0 4px", "line-height": "14px", "border-radius": "0 3px 0 0", "pointer-events": "none", opacity: "0.85" })
+            .text("⇠ " + comp.slot).appendTo(el);
+    }
 
     if (container) {
         // a container with variables opens a scope for what is inside it

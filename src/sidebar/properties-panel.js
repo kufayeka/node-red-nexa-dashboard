@@ -9,7 +9,7 @@ import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-co
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
-import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector, renderInstanceInspector } from "./frame-inspector.js";
+import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector, renderInstanceInspector, renderTeleportInspector } from "./frame-inspector.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
 import { activeBreakpointId, breakpointList, overriddenKeys, resetOverride, isDesign, rangeOf } from "../canvas/breakpoints-ui.js";
 
@@ -109,6 +109,7 @@ export function renderPropertiesPanel() {
     // a template instance is a box like a frame: position, size, what its content does in it
     if (isTemplateInstance && templateRef) renderInstanceInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, templateRef);
     renderLayoutChildSection(comp);
+    renderTeleportInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp);
 
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
         // SDK component: the property kit rendered its inspector from the schema
@@ -450,6 +451,7 @@ function renderContainerProperties(comp) {
         .appendTo(pane);
     renderNameField(comp);
     renderLayoutChildSection(comp);
+    renderTeleportInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp);
     var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(pane);
     var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
     lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked (with everything inside)"));

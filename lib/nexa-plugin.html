@@ -2987,6 +2987,13 @@
     css2["pointer-events"] = interactable ? "" : "none";
     css2.display = isNodeVisible(comp.id) ? css2.display || "" : "none";
     var el = window.$("<div>", { "data-id": comp.id, "class": "nexa-component" + (container ? " nexa-container nexa-" + comp.type.slice(1) : "") }).css(css2).appendTo(parentEl);
+    if (comp.teleport) {
+      el.css({ outline: "1px dashed #8e44ad", "outline-offset": "-1px" });
+      window.$("<span>", { "class": "nexa-teleport-badge", title: "On the live page: drawn in " + (comp.teleport === "@page" ? "the page itself" : 'the frame named "' + comp.teleport + '"') }).css({ position: "absolute", right: "0", top: "0", "z-index": "5", background: "#8e44ad", color: "#fff", "font-size": "9px", padding: "0 4px", "line-height": "14px", "border-radius": "0 0 0 3px", "pointer-events": "none", "white-space": "nowrap" }).text("\u21E2 " + (comp.teleport === "@page" ? "page" : comp.teleport)).appendTo(el);
+    }
+    if (comp.slot) {
+      window.$("<span>", { "class": "nexa-slot-badge", title: 'A teleport target: what is teleported to "' + comp.slot + '" is drawn here on the live page' }).css({ position: "absolute", left: "0", bottom: "0", "z-index": "5", background: "#8e44ad", color: "#fff", "font-size": "9px", padding: "0 4px", "line-height": "14px", "border-radius": "0 3px 0 0", "pointer-events": "none", opacity: "0.85" }).text("\u21E0 " + comp.slot).appendTo(el);
+    }
     if (container) {
       var inner = scope_exports.hasVariables(comp) ? scope_exports.makeScope(scope, comp.variables) : scope;
       tree_exports.kids(comp).forEach(function(child) {
@@ -28655,6 +28662,61 @@
     );
     return true;
   }
+  function teleportTargets() {
+    var names = {};
+    function walk2(list) {
+      (list || []).forEach(function(n) {
+        if (typeof n.slot === "string" && n.slot.trim()) names[n.slot.trim()] = true;
+        walk2(n.children);
+      });
+    }
+    (state.screens || []).concat(state.templates || []).forEach(function(s) {
+      walk2(s.components);
+    });
+    return Object.keys(names).sort();
+  }
+  function renderTeleportInspector(container, node) {
+    if (!window.NexaKit || !lit()) return false;
+    var html = lit().html, nothing = lit().nothing;
+    var isFrame = node.type === "@frame";
+    var options = [{ value: "", label: "Nowhere else (where it is)" }, { value: "@page", label: "The page (above every frame, out of any clip)" }].concat(teleportTargets().filter(function(n) {
+      return n !== node.slot;
+    }).map(function(n) {
+      return { value: n, label: n };
+    }));
+    var meta2 = {
+      id: "@teleport",
+      stateList: [],
+      inputs: [],
+      outputs: [],
+      props: {
+        teleport: prop("teleport", "enum", "Teleport to", { options, style: "combobox", free: true, placeholder: "a target's name" }),
+        slot: prop("slot", "string", "This frame is a teleport target named", { placeholder: "e.g. header-actions" })
+      },
+      inspector: function(o) {
+        var bind = o.bind, p = o.p;
+        return html`<nx-section heading="Teleport" persist-key="nexa-teleport">
+                <nx-combobox ${bind("teleport")} .free="${true}"></nx-combobox>
+                ${p.teleport ? html`<div class="nx-help">Drawn ${p.teleport === "@page" ? "on the page itself, at its X / Y" : 'inside the frame named "' + p.teleport + '" (its layout places it)'} on the live page. Its Logic, params and variables stay those of where it is here.</div>` : nothing}
+                ${isFrame ? html`<nx-text ${bind("slot")}></nx-text>
+                    <div class="nx-help">What is teleported to this name (from this screen, a template, a Populate's copies) is drawn in this frame.</div>` : nothing}
+            </nx-section>`;
+      }
+    };
+    var view = function(n) {
+      return { teleport: n.teleport || "", slot: n.slot || "" };
+    };
+    mountLive(container, meta2, "nexa-teleport", function() {
+      return view(node);
+    }, function(key, v) {
+      commit(node, function() {
+        var t2 = String(v || "").trim();
+        if (t2) node[key] = t2;
+        else delete node[key];
+      }, true);
+    });
+    return true;
+  }
   var CONSTRAINT_META = {
     id: "@constraints",
     stateList: [],
@@ -28949,6 +29011,7 @@
     renderNameField(comp);
     if (isTemplateInstance && templateRef) renderInstanceInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp, templateRef);
     renderLayoutChildSection(comp);
+    renderTeleportInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane), comp);
     if (typeDef && typeDef.nexa && renderKitInspector(window.$("<div>").appendTo(state.propertiesPane), comp, typeDef)) {
     } else if (typeDef && typeof typeDef.renderProperties === "function") {
       typeDef.renderProperties(state.propertiesPane, comp, {
@@ -29193,6 +29256,7 @@
     window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).html('<i class="fa ' + (isFrame ? "fa-square-o" : "fa-object-group") + '"></i> ' + (isFrame ? "Frame" : "Group") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
     renderNameField(comp);
     renderLayoutChildSection(comp);
+    renderTeleportInspector(window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(pane), comp);
     var lockRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(pane);
     var lockInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!comp.locked).css({ "margin-right": "6px" });
     lockRow.append(lockInput).append(window.$("<label>").css({ "font-size": "11px", color: "#888" }).text("Locked (with everything inside)"));
