@@ -3,7 +3,7 @@
 <style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
 <body>
 <!-- The repeater (Populate node) on a deployed page (test/runtime-repeater-browser.test.js). -->
-<div id="nexa-runtime-artboard" style="width:800px;height:600px;"></div>
+<div id="nexa-runtime-artboard" style="width:800px;height:1300px;"></div>
 <script src="/lib/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {};
@@ -38,9 +38,18 @@ window.__NEXA_TEMPLATES__.push({ id: "WIDE", name: "Wide", width: 120, height: 3
 // an image slide: the item is a string (a URL), not an object
 window.__NEXA_TEMPLATES__.push({ id: "IMG", name: "Slide", width: 200, height: 40, params: [{ id: "up", name: "url", label: "url", type: "string", defaultValue: "" }],
   components: [{ id: "t", type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: "{url}" } }], logic: { nodes: [], wires: [] } });
+// the same design (200 x 100) three ways in a bigger box: constraints / scale / stretch
+function sized(id, content) {
+  return { id: id, name: id, width: 200, height: 100, live: content ? { content: content } : undefined, params: [],
+    components: [
+      { id: "bg", type: "label", x: 10, y: 10, w: 180, h: 80, constraints: { h: "leftRight", v: "topBottom" }, props: { text: "" } },
+      { id: "tag", type: "label", x: 150, y: 10, w: 40, h: 20, constraints: { h: "right", v: "top" }, props: { text: "R" } }
+    ], logic: { nodes: [], wires: [] } };
+}
+window.__NEXA_TEMPLATES__.push(sized("TC"), sized("TS", "scale"), sized("TX", "stretch"));
 function img(id, mode) { return { id: id, type: "populate", template: "IMG", itemParam: "url", key: "id", mode: mode, valueSource: "payload" }; }
 function node(id, mode, extra) { return Object.assign({ id: id, type: "populate", container: "list", template: "CARD", itemParam: "product", key: "id", mode: mode, valueSource: "payload" }, extra || {}); }
-window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 1300, treeVersion: 1, orphans: [],
   components: [
     { id: "list", type: "@frame", name: "List", x: 10, y: 10, w: 320, h: 400, layout: { mode: "vertical", gap: 4 },
       children: [{ id: "head", type: "label", x: 0, y: 0, w: 300, h: 20, props: { text: "Products" } }] },
@@ -53,6 +62,9 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 600, treeVersion: 1, orp
     { id: "vOut", type: "label", x: 750, y: 0, w: 200, h: 20, props: { text: "{lastOut}" } },
     { id: "vInst", type: "label", x: 750, y: 20, w: 200, h: 20, props: { text: "{lastInst}" } },
     { id: "vOther", type: "label", x: 750, y: 40, w: 200, h: 20, props: { text: "{lastOther}" } },
+    { id: "szC", type: "@template", templateId: "TC", x: 0, y: 700, w: 400, h: 200 },
+    { id: "szS", type: "@template", templateId: "TS", x: 0, y: 920, w: 400, h: 100 },
+    { id: "szX", type: "@template", templateId: "TX", x: 0, y: 1040, w: 400, h: 200 },
     { id: "inst", type: "@template", templateId: "CARD", x: 400, y: 100, w: 300, h: 40, paramValues: { product: { id: 99, name: "Solo", price: 1 } } }
   ],
   logic: { nodes: [

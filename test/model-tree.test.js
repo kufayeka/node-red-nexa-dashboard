@@ -312,4 +312,20 @@ ok('types (UDT): an instance fills the params into its members\' sources; overri
     Y.setTypes([]);
 });
 
+ok('templates: what the content does in another box (constraints / scale / stretch), and Auto constraints', () => {
+    const t = { width: 200, height: 100 };
+    assert.strictEqual(L.templateLiveOf(t).content, 'constraints');
+    assert.strictEqual(L.templateContentFit(t, 400, 200), null, 'constraints: laid out at the box size, no transform');
+    assert.deepStrictEqual(L.templateContentFit(Object.assign({ live: { content: 'scale' } }, t), 400, 100), { transform: 'scale(1)', left: 100, top: 0 });
+    assert.deepStrictEqual(L.templateContentFit(Object.assign({ live: { content: 'stretch' } }, t), 400, 200), { transform: 'scale(2,2)', left: 0, top: 0 });
+    // the ProductPreview (700 x 500): background, title, price, category (right), image area, description, buttons
+    const g = (x, y, w, h) => L.guessConstraints({ x, y, w, h }, 700, 500);
+    assert.deepStrictEqual(g(10, 10, 680, 480), { h: 'leftRight', v: 'topBottom' });
+    assert.deepStrictEqual(g(60, 30, 160, 35), { h: 'left', v: 'top' });
+    assert.deepStrictEqual(g(440, 60, 215, 35), { h: 'right', v: 'top' });
+    assert.deepStrictEqual(g(60, 310, 600, 100), { h: 'leftRight', v: 'bottom' });
+    assert.deepStrictEqual(g(60, 100, 600, 200), { h: 'leftRight', v: 'topBottom' }, 'the image area stretches: the description below it (pinned to the bottom) never runs into it');
+    assert.deepStrictEqual(g(550, 430, 115, 35), { h: 'right', v: 'bottom' });
+    assert.deepStrictEqual(g(290, 230, 120, 40), { h: 'center', v: 'center' });
+});
 console.log(`\n${passed} passed\nALL OK`);

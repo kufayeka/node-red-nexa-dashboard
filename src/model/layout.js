@@ -65,11 +65,54 @@ var DEFAULT_LAYOUT = {
 export var ITEMS_DEFAULT = { padX: 0, padY: 0, alignX: "center", alignY: "center" };
 
 // A template on the live page, per axis: "fixed" (its design size) or "fill" (the
-// space its host gives it: a list row, a grid cell, a slide; what is inside then
-// follows its constraints, like a screen in Fill mode), with an optional min / max.
-export var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" };
+// space its host gives it: a list row, a grid cell, a slide), with an optional min / max.
+// `content`: what its content does when its box is not its design size (it fills, or an
+// instance was resized):
+//   "constraints"  like a frame: each node follows its constraints (Left & Right, Scale…)
+//   "scale"        the whole design scaled to fit, proportions kept, centred
+//   "stretch"      scaled to the box on each axis (text and shapes are distorted)
+export var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" };
+export var TEMPLATE_CONTENT_MODES = ["constraints", "scale", "stretch"];
 export function templateLiveOf(template) {
-    return Object.assign({}, TEMPLATE_LIVE_DEFAULT, (template && template.live) || {});
+    var live = Object.assign({}, TEMPLATE_LIVE_DEFAULT, (template && template.live) || {});
+    if (TEMPLATE_CONTENT_MODES.indexOf(live.content) === -1) live.content = "constraints";
+    return live;
+}
+
+/**
+ * Where a template's design goes in a box of `bw` × `bh` (scale / stretch): the
+ * transform and offset of a layer of its design size. null for "constraints" (the
+ * design is laid out at the box's size instead).
+ */
+export function templateContentFit(template, bw, bh) {
+    var mode = templateLiveOf(template).content;
+    if (mode === "constraints") return null;
+    var tw = Number(template && template.width) || 1, th = Number(template && template.height) || 1;
+    var sx = bw / tw, sy = bh / th;
+    if (!(sx > 0) || !(sy > 0)) return { transform: "", left: 0, top: 0 };
+    if (mode === "stretch") return { transform: "scale(" + sx + "," + sy + ")", left: 0, top: 0 };
+    var s = Math.min(sx, sy);
+    return { transform: "scale(" + s + ")", left: (bw - tw * s) / 2, top: (bh - th * s) / 2 };
+}
+
+/**
+ * Constraints guessed from where a node sits in a `pw` × `ph` parent: most of the
+ * width (over a third) -> Left & Right, about centred -> Center, nearer the right edge -> Right; the
+ * same vertically. (The Templates tab's "Auto constraints": a start, to adjust.)
+ */
+export function guessConstraints(node, pw, ph) {
+    function axis(pos, size, total, a, b, both) {
+        var near = pos, far = total - pos - size;
+        // a big one (the background, an image area) stretches with the parent, so what is
+        // pinned to the far edge does not run into it when the parent shrinks
+        if (size >= total * 0.35) return both;
+        if (Math.abs(near - far) <= total * 0.06) return "center";
+        return far < near ? b : a;
+    }
+    return {
+        h: axis(num(node.x), num(node.w), pw, "left", "right", "leftRight"),
+        v: axis(num(node.y), num(node.h), ph, "top", "bottom", "topBottom")
+    };
 }
 
 // scroll: "none" | "vertical" | "horizontal" | "both" — on the deployed page

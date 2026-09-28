@@ -2,7 +2,7 @@
 import { state, snap, markDirty, getActiveScreen, findTemplate, Tree, Layout, isNodeLocked, isNodeVisible } from "../state.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { setLockedForSelection, selectOnly } from "./selection.js";
-import { nodeCss } from "./component-renderer.js";
+import { nodeCss, layoutTemplateInner } from "./component-renderer.js";
 import { renderActiveScreen } from "./canvas-ui.js";
 import { readbackLayout } from "./layout-readback.js";
 import { snapshotBoxes, constrainFrameChildren } from "./constraints.js";
@@ -54,11 +54,7 @@ export function updateComponentBox(comp) {
     // instance's contents the wrong size relative to its own selection box.
     if (comp.type === "@template") {
         var template = findTemplate(comp.templateId);
-        if (template) {
-            var scaleX = template.width ? (comp.w / template.width) : 1;
-            var scaleY = template.height ? (comp.h / template.height) : 1;
-            el.find(".nexa-template-instance-inner").css("transform", "scale(" + scaleX + "," + scaleY + ")");
-        }
+        if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner").first(), template, comp);
     }
     // Inside an auto layout (or a frame that lays out / hugs), this change moved
     // or resized its siblings / parent too: read the new boxes back so the

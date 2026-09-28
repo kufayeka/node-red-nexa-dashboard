@@ -108,6 +108,22 @@ async function main() {
                 await send('imgReset', ['z.png']);
                 assert.deepStrictEqual(await slides(), ['z.png']);
             });
+            // a node's box relative to its instance: [x, y, w, h]
+            const rel = (inst, id) => js(`(function () { var i = document.querySelector('[data-id="${inst}"]').getBoundingClientRect(), b = document.querySelector('[data-id="${inst}::${id}"]').getBoundingClientRect();
+                return [Math.round(b.left - i.left), Math.round(b.top - i.top), Math.round(b.width), Math.round(b.height)]; })()`);
+            await ok('a template in a bigger box (400 × 200, designed 200 × 100) — Follow constraints (the default): each node follows its own', async () => {
+                assert.deepStrictEqual(await rel('szC', 'bg'), [10, 10, 380, 180], 'Left & Right, Top & Bottom: 10 from each edge');
+                assert.deepStrictEqual(await rel('szC', 'tag'), [350, 10, 40, 20], 'Right: 10 from the right edge, its own size');
+            });
+            await ok('Scale to fit: the whole design, proportions kept, centred — and again when the box resizes', async () => {
+                assert.deepStrictEqual(await rel('szS', 'bg'), [110, 10, 180, 80], '400 × 100: scale 1 (the height), 100 px each side');
+                await js(`(function () { var e = document.querySelector('[data-id="szS"]'); e.style.width = "100px"; e.style.height = "100px"; return new Promise(function (r) { setTimeout(r, 120); }); })()`);
+                assert.deepStrictEqual(await rel('szS', 'bg'), [5, 30, 90, 40], '100 × 100: scale 0.5, centred vertically');
+            });
+            await ok('Stretch: scaled on each axis', async () => {
+                assert.deepStrictEqual(await rel('szX', 'bg'), [20, 20, 360, 160]);
+                assert.deepStrictEqual(await rel('szX', 'tag'), [300, 20, 80, 40]);
+            });
             assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
             return true;
         }, { ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 });

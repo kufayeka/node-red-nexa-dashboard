@@ -420,6 +420,7 @@
     H_CONSTRAINTS: () => H_CONSTRAINTS,
     ITEMS_DEFAULT: () => ITEMS_DEFAULT,
     LAYOUT_MODES: () => LAYOUT_MODES,
+    TEMPLATE_CONTENT_MODES: () => TEMPLATE_CONTENT_MODES,
     TEMPLATE_LIVE_DEFAULT: () => TEMPLATE_LIVE_DEFAULT,
     V_CONSTRAINTS: () => V_CONSTRAINTS,
     ZOOM_DEFAULT: () => ZOOM_DEFAULT,
@@ -435,6 +436,7 @@
     flowAxis: () => flowAxis,
     frameCss: () => frameCss,
     frameHugs: () => frameHugs,
+    guessConstraints: () => guessConstraints,
     hasAutoLayout: () => hasAutoLayout,
     hasConstraints: () => hasConstraints,
     innerSize: () => innerSize,
@@ -443,6 +445,7 @@
     makeFrame: () => makeFrame,
     resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
+    templateContentFit: () => templateContentFit,
     templateLiveOf: () => templateLiveOf,
     tracksCss: () => tracksCss,
     zoomOf: () => zoomOf
@@ -481,9 +484,34 @@
     items: null
   };
   var ITEMS_DEFAULT = { padX: 0, padY: 0, alignX: "center", alignY: "center" };
-  var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" };
+  var TEMPLATE_LIVE_DEFAULT = { w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" };
+  var TEMPLATE_CONTENT_MODES = ["constraints", "scale", "stretch"];
   function templateLiveOf(template) {
-    return Object.assign({}, TEMPLATE_LIVE_DEFAULT, template && template.live || {});
+    var live = Object.assign({}, TEMPLATE_LIVE_DEFAULT, template && template.live || {});
+    if (TEMPLATE_CONTENT_MODES.indexOf(live.content) === -1) live.content = "constraints";
+    return live;
+  }
+  function templateContentFit(template, bw, bh) {
+    var mode = templateLiveOf(template).content;
+    if (mode === "constraints") return null;
+    var tw = Number(template && template.width) || 1, th = Number(template && template.height) || 1;
+    var sx = bw / tw, sy = bh / th;
+    if (!(sx > 0) || !(sy > 0)) return { transform: "", left: 0, top: 0 };
+    if (mode === "stretch") return { transform: "scale(" + sx + "," + sy + ")", left: 0, top: 0 };
+    var s = Math.min(sx, sy);
+    return { transform: "scale(" + s + ")", left: (bw - tw * s) / 2, top: (bh - th * s) / 2 };
+  }
+  function guessConstraints(node, pw, ph) {
+    function axis(pos, size, total, a, b, both) {
+      var near = pos, far = total - pos - size;
+      if (size >= total * 0.35) return both;
+      if (Math.abs(near - far) <= total * 0.06) return "center";
+      return far < near ? b : a;
+    }
+    return {
+      h: axis(num(node.x), num(node.w), pw, "left", "right", "leftRight"),
+      v: axis(num(node.y), num(node.h), ph, "top", "bottom", "topBottom")
+    };
   }
   var DEFAULT_STYLE = { fill: "", stroke: "", strokeWidth: 0, radius: 0, clip: false, scroll: "none", scrollbar: "auto" };
   var SCROLL_AXES = { vertical: ["hidden", "auto"], horizontal: ["auto", "hidden"], both: ["auto", "auto"] };
@@ -2765,15 +2793,21 @@
       window.$(el).text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
     }
   }
-  function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode) {
+  function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode, designSize) {
     if (innerComp.visibility === "remove") return;
     var css2 = nodeCss(innerComp, parentNode || null);
+    if (designSize) {
+      var box2 = layout_exports.boxCss(innerComp, parentNode || null, { constraints: true, parentSize: designSize });
+      ["left", "top", "right", "bottom", "width", "height"].forEach(function(k) {
+        css2[k] = box2[k];
+      });
+    }
     css2["pointer-events"] = "none";
     css2.display = innerComp.visibility === "hide" ? "none" : css2.display || "";
     var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css(css2).appendTo(parentEl);
     if (tree_exports.isContainer(innerComp)) {
       tree_exports.kids(innerComp).forEach(function(child) {
-        renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp);
+        renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp, designSize);
       });
       return;
     }
@@ -2795,19 +2829,28 @@
     }
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
-    var scaleX = template.width ? comp.w / template.width : 1;
-    var scaleY = template.height ? comp.h / template.height : 1;
-    var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).css({
+    var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
+    layoutTemplateInner(inner, template, comp);
+    var byConstraints = !layout_exports.templateContentFit(template, 1, 1);
+    var designSize = byConstraints ? { w: template.width, h: template.height } : null;
+    (template.components || []).forEach(function(innerComp) {
+      renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState, null, designSize);
+    });
+  }
+  function layoutTemplateInner(inner, template, comp) {
+    var fit = layout_exports.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height);
+    if (!fit) {
+      inner.css({ position: "absolute", left: "0", top: "0", width: "100%", height: "100%", transform: "", "transform-origin": "0 0" });
+      return;
+    }
+    inner.css({
       position: "absolute",
-      left: "0",
-      top: "0",
+      left: fit.left + "px",
+      top: fit.top + "px",
       width: template.width + "px",
       height: template.height + "px",
       "transform-origin": "0 0",
-      transform: "scale(" + scaleX + "," + scaleY + ")"
-    }).appendTo(el);
-    (template.components || []).forEach(function(innerComp) {
-      renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState);
+      transform: fit.transform
     });
   }
   function renderComponent(comp, parentEl, parentNode, scope) {
@@ -3172,11 +3215,7 @@
     el.css(css2);
     if (comp.type === "@template") {
       var template = findTemplate(comp.templateId);
-      if (template) {
-        var scaleX = template.width ? comp.w / template.width : 1;
-        var scaleY = template.height ? comp.h / template.height : 1;
-        el.find(".nexa-template-instance-inner").css("transform", "scale(" + scaleX + "," + scaleY + ")");
-      }
+      if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner").first(), template, comp);
     }
     var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     if (screen && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen, comp.id).some(layout_exports.hasAutoLayout))) {
@@ -32095,14 +32134,14 @@
   }
   function renderTemplateLiveSection(template) {
     var $2 = window.$;
-    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" }, template.live || {});
+    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" }, template.live || {});
     var box2 = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
     $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box2);
-    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> \u2014 e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box2);
+    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide). The host places it: alignment, padding, gap. An instance placed on a screen is also a box you can resize.").appendTo(box2);
     function save() {
       var out = {};
       Object.keys(live).forEach(function(k) {
-        if (live[k] !== "" && live[k] !== "fixed") out[k] = live[k];
+        if (live[k] !== "" && live[k] !== "fixed" && !(k === "content" && live[k] === "constraints")) out[k] = live[k];
       });
       if (Object.keys(out).length) template.live = out;
       else delete template.live;
@@ -32138,6 +32177,44 @@
     limit("maxW", "Max width (px)");
     limit("minH", "Min height (px)");
     limit("maxH", "Max height (px)");
+    var content2 = $2("<div>").css({ "margin-top": "10px" }).appendTo(box2);
+    $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text("When its box is another size").appendTo(content2);
+    var csel = $2("<select>", { "class": "nexa-template-content" }).css({ width: "100%" }).appendTo(content2);
+    [["constraints", "Follow constraints (like a frame)"], ["scale", "Scale to fit (keep proportions)"], ["stretch", "Stretch (distorts)"]].forEach(function(o) {
+      $2("<option>", { value: o[0] }).text(o[1]).appendTo(csel);
+    });
+    csel.val(live.content);
+    var chelp = $2("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px", "line-height": "1.45" }).appendTo(content2);
+    function contentHelp() {
+      chelp.html(live.content === "scale" ? "The whole design gets bigger or smaller, centred in the box \u2014 like an image: nothing moves, text scales too." : live.content === "stretch" ? "Scaled to the box on each axis: text and shapes are squeezed. Rarely what you want." : "Each element follows its <b>constraints</b> (select it inside the template): Left &amp; Right stretches with the width, Right stays at the right edge, Scale keeps its share. An auto layout frame as the background fills and lays out its content.");
+    }
+    contentHelp();
+    csel.on("change", function() {
+      live.content = csel.val();
+      contentHelp();
+      auto.toggle(live.content === "constraints");
+      save();
+    });
+    var auto = $2("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-template-autoconstraints", title: "Sets each element's constraints from where it sits: wide ones Left & Right, the ones near the right edge Right, centred ones Center\u2026 A start: adjust them after." }).css({ "margin-top": "6px" }).html('<i class="fa fa-magic"></i> Auto constraints').appendTo(content2).toggle(live.content === "constraints").on("click", function() {
+      if (!window.confirm("Set the constraints of every element of " + (template.name || "this template") + " from where it sits? (Undo with Ctrl+Z.)")) return;
+      var before = treeSnapshot(template);
+      var count = autoConstrain(template.components, { w: template.width, h: template.height });
+      pushTreeChange(template, before);
+      markDirty();
+      renderActiveScreen();
+      window.RED.notify(count + " element(s) of " + (template.name || "the template") + " follow their place now. Select one to see / change its constraints.", { type: "success", timeout: 3e3 });
+    });
+  }
+  function autoConstrain(nodes, size) {
+    var count = 0;
+    (nodes || []).forEach(function(n) {
+      var c = layout_exports.guessConstraints(n, size.w, size.h);
+      if (c.h === "left" && c.v === "top") delete n.constraints;
+      else n.constraints = c;
+      count++;
+      if (n.type === "@frame" && !layout_exports.hasAutoLayout(n) && n.children && n.children.length) count += autoConstrain(n.children, { w: n.w, h: n.h });
+    });
+    return count;
   }
   function renderTemplateParamsSection() {
     if (!state.templateFormEl) return;

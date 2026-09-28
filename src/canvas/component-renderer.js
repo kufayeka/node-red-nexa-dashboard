@@ -586,15 +586,21 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
 // keeps data-id lookups unique across multiple instances of the same
 // template (see the runtime's identical flattening approach for why this
 // matters once these need to be individually targetable).
-function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode) {
+// `designSize`: inside a template instance laid out by constraints — the template's
+// design size, what each node's constraints are against (like the live page)
+function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode, designSize) {
     if (innerComp.visibility === "remove") return;
     var css = nodeCss(innerComp, parentNode || null);
+    if (designSize) {
+        var box = Layout.boxCss(innerComp, parentNode || null, { constraints: true, parentSize: designSize });
+        ["left", "top", "right", "bottom", "width", "height"].forEach(function (k) { css[k] = box[k]; });
+    }
     css["pointer-events"] = "none";
     css.display = innerComp.visibility === "hide" ? "none" : (css.display || "");
     var el = window.$("<div>", { "data-id": namespacedId, "class": "nexa-component nexa-component-preview" }).css(css).appendTo(parentEl);
     if (Tree.isContainer(innerComp)) {
         Tree.kids(innerComp).forEach(function (child) {
-            renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp);
+            renderComponentPreview(el, child, namespacedId + "::" + child.id, visitedTemplateIds, paramState, innerComp, designSize);
         });
         return;
     }
@@ -620,16 +626,31 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
     }
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
-    var scaleX = template.width ? (comp.w / template.width) : 1;
-    var scaleY = template.height ? (comp.h / template.height) : 1;
-    var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).css({
-        position: "absolute", left: "0", top: "0",
-        width: template.width + "px", height: template.height + "px",
-        "transform-origin": "0 0",
-        transform: "scale(" + scaleX + "," + scaleY + ")"
-    }).appendTo(el);
+    var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
+    layoutTemplateInner(inner, template, comp);
+    // laid out by constraints: each node against the design size (the live page does the same)
+    var byConstraints = !Layout.templateContentFit(template, 1, 1);
+    var designSize = byConstraints ? { w: template.width, h: template.height } : null;
     (template.components || []).forEach(function (innerComp) {
-        renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState);
+        renderComponentPreview(inner, innerComp, namespace + "::" + innerComp.id, innerVisited, paramState, null, designSize);
+    });
+}
+
+/**
+ * The layer a template instance's design is drawn in, for the instance's box (comp.w ×
+ * comp.h): the box itself (constraints), or the design size scaled into it (scale /
+ * stretch) — the template's "When its box is another size" (Layout.templateLiveOf).
+ */
+export function layoutTemplateInner(inner, template, comp) {
+    var fit = Layout.templateContentFit(template, Number(comp.w) || template.width, Number(comp.h) || template.height);
+    if (!fit) {
+        inner.css({ position: "absolute", left: "0", top: "0", width: "100%", height: "100%", transform: "", "transform-origin": "0 0" });
+        return;
+    }
+    inner.css({
+        position: "absolute", left: fit.left + "px", top: fit.top + "px",
+        width: template.width + "px", height: template.height + "px",
+        "transform-origin": "0 0", transform: fit.transform
     });
 }
 

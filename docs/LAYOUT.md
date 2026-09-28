@@ -178,10 +178,28 @@ constraints = {
 
 - **Per axis**, Width and Height are each one of:
   - **Fixed**: the template's design size;
-  - **Fill**: the space its host gives it. What is inside then follows its **constraints**, like a screen in Fill mode. For example, give a card's background Left & Right + Top & Bottom.
+  - **Fill**: the space its host gives it. What is inside then does what "When its box is another size" says (below).
 - **Min / max** width and height are optional.
 - **The host only places it**: alignment, padding and gap. A carousel's slide is a cell: Slides → padding ↔ ↕ and the alignment of a fixed-size template in it.
 - A Populate's older "each copy fills the width" still makes the width fill.
+- **An instance placed on a screen is a box** like any node: resize it, or let its auto layout parent fill it.
+
+**When its box is another size** (filling, or a resized instance), the template's content does one of three things. The editor's canvas and the live page do the same:
+
+| Setting | What happens |
+|---|---|
+| **Follow constraints** (the default) | Like a frame: each element follows its constraints against the design size. Left & Right stretches with the width, Right keeps to the right edge, Scale keeps its share. An auto layout frame as the background lays its content out. |
+| **Scale to fit** | The whole design gets bigger or smaller, proportions kept, centred, like an image. Text scales too. It follows a box that resizes on the page. |
+| **Stretch** | Scaled to the box on each axis: text and shapes are squeezed. |
+
+**Auto constraints** (Templates → On the live page) sets every element's constraints from where it sits, as a start to adjust:
+
+- over a third of the width (height) → Left & Right (Top & Bottom);
+- about centred → Center;
+- nearer the far edge → Right (Bottom);
+- else Left (Top).
+
+It goes into frames without an auto layout too. Undo with Ctrl+Z.
 
 **When scrolling** (live page):
 

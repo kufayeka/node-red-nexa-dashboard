@@ -1,5 +1,6 @@
 // --- Reusable Screen Templates: the "Templates" sidebar tab -------------
-import { state, genId, markDirty, findTemplate, makeTemplate, Tree } from "../state.js";
+import { state, genId, markDirty, findTemplate, makeTemplate, Tree, Layout } from "../state.js";
+import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
@@ -256,14 +257,14 @@ export function renderTemplateForm() {
 // gives it (then what is inside follows its constraints, like a screen in Fill mode).
 function renderTemplateLiveSection(template) {
     var $ = window.$;
-    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "" }, template.live || {});
+    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" }, template.live || {});
     var box = $("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
     $("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box);
     $("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" })
-        .html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide); what is inside follows its <b>constraints</b> — e.g. the background Left &amp; Right, Top &amp; Bottom. The host places it: alignment, padding, gap.").appendTo(box);
+        .html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide). The host places it: alignment, padding, gap. An instance placed on a screen is also a box you can resize.").appendTo(box);
     function save() {
         var out = {};
-        Object.keys(live).forEach(function (k) { if (live[k] !== "" && live[k] !== "fixed") out[k] = live[k]; });
+        Object.keys(live).forEach(function (k) { if (live[k] !== "" && live[k] !== "fixed" && !(k === "content" && live[k] === "constraints")) out[k] = live[k]; });
         if (Object.keys(out).length) template.live = out; else delete template.live;
         markDirty();
         renderActiveScreen();
@@ -288,6 +289,46 @@ function renderTemplateLiveSection(template) {
     limit("maxW", "Max width (px)");
     limit("minH", "Min height (px)");
     limit("maxH", "Max height (px)");
+
+    // what its content does in a box of another size (filling, or a resized instance)
+    var content = $("<div>").css({ "margin-top": "10px" }).appendTo(box);
+    $("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text("When its box is another size").appendTo(content);
+    var csel = $("<select>", { "class": "nexa-template-content" }).css({ width: "100%" }).appendTo(content);
+    [["constraints", "Follow constraints (like a frame)"], ["scale", "Scale to fit (keep proportions)"], ["stretch", "Stretch (distorts)"]]
+        .forEach(function (o) { $("<option>", { value: o[0] }).text(o[1]).appendTo(csel); });
+    csel.val(live.content);
+    var chelp = $("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px", "line-height": "1.45" }).appendTo(content);
+    function contentHelp() {
+        chelp.html(live.content === "scale" ? "The whole design gets bigger or smaller, centred in the box — like an image: nothing moves, text scales too."
+            : live.content === "stretch" ? "Scaled to the box on each axis: text and shapes are squeezed. Rarely what you want."
+            : "Each element follows its <b>constraints</b> (select it inside the template): Left &amp; Right stretches with the width, Right stays at the right edge, Scale keeps its share. An auto layout frame as the background fills and lays out its content.");
+    }
+    contentHelp();
+    csel.on("change", function () { live.content = csel.val(); contentHelp(); auto.toggle(live.content === "constraints"); save(); });
+    var auto = $("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-template-autoconstraints", title: "Sets each element's constraints from where it sits: wide ones Left & Right, the ones near the right edge Right, centred ones Center… A start: adjust them after." })
+        .css({ "margin-top": "6px" }).html('<i class="fa fa-magic"></i> Auto constraints').appendTo(content).toggle(live.content === "constraints")
+        .on("click", function () {
+            if (!window.confirm("Set the constraints of every element of " + (template.name || "this template") + " from where it sits? (Undo with Ctrl+Z.)")) return;
+            var before = treeSnapshot(template);
+            var count = autoConstrain(template.components, { w: template.width, h: template.height });
+            pushTreeChange(template, before);
+            markDirty();
+            renderActiveScreen();
+            window.RED.notify(count + " element(s) of " + (template.name || "the template") + " follow their place now. Select one to see / change its constraints.", { type: "success", timeout: 3000 });
+        });
+}
+
+// Constraints from where each node sits (Layout.guessConstraints), into frames that do
+// not lay out their children themselves; returns how many were set.
+function autoConstrain(nodes, size) {
+    var count = 0;
+    (nodes || []).forEach(function (n) {
+        var c = Layout.guessConstraints(n, size.w, size.h);
+        if (c.h === "left" && c.v === "top") delete n.constraints; else n.constraints = c;
+        count++;
+        if (n.type === "@frame" && !Layout.hasAutoLayout(n) && n.children && n.children.length) count += autoConstrain(n.children, { w: n.w, h: n.h });
+    });
+    return count;
 }
 
 function renderTemplateParamsSection() {
