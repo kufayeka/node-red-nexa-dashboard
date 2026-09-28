@@ -65,6 +65,7 @@ function getLogicNodeMeta(type) {
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
+    if (type === "teleport") return { color: "#e8d6f0", icon: "fa-share", portOut: true, portIn: true };
     if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
@@ -452,6 +453,16 @@ export function renderEventsPanel() {
     });
     chip(state.eventsPane, "Close the top overlay", function () { return { type: "overlay-close", overlay: "", valueSource: "payload" }; }, "", "overlay-close");
     if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties → Overlay → Show as.").appendTo(state.eventsPane);
+
+    // teleport: a node drawn in a target / on the page, or back home (the ones set to teleport, then any)
+    sectionHeader(state.eventsPane, "Teleport");
+    var teleporting = screen ? Tree.allNodes(screen).filter(function (n) { return typeof n.teleport === "string" && n.teleport; }) : [];
+    teleporting.forEach(function (n) {
+        var nm = (n.name || n.type.replace(/^@/, "")) + " #" + n.id.slice(-4);
+        chip(state.eventsPane, "Teleport " + nm + " → " + (n.teleport === "@page" ? "page" : n.teleport), function () { return { type: "teleport", node: n.id, to: n.teleport, toSource: "static" }; }, n.id, "teleport");
+        chip(state.eventsPane, "Send " + nm + " home", function () { return { type: "teleport", node: n.id, to: "", toSource: "static" }; }, n.id, "teleport");
+    });
+    chip(state.eventsPane, "Teleport a node (choose)", function () { return { type: "teleport", node: "", to: "@page", toSource: "static" }; }, "", "teleport");
 
     // every frame: a Layout node to wire a Populate into (selecting the frame on the canvas highlights it)
     var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];

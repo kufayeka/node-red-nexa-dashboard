@@ -59,6 +59,8 @@ export const LOGIC_NODE_KINDS = {
     // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
     "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
     "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
+    // a node drawn in a teleport target / on the page, or back home
+    "teleport": { label: "Teleport", hasInput: true, hasOutput: true, color: "#8e44ad" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT

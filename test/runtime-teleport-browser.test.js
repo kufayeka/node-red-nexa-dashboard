@@ -46,6 +46,25 @@ async function main() {
                 await emit('ctl', 'fill', [{ id: 2 }]);
                 assert.deepStrictEqual((await kids('hdr')).slice(3), ['list#2::badge'], 'the badge of the removed copy is gone');
             });
+            await ok('"When a Logic Teleport node runs": it stays home; Teleport sends it, Home brings it back to its place', async () => {
+                assert.strictEqual(await parentOf('lazy'), 'card');
+                const before = await rect('lazy');
+                await emit('ctl', 'go');
+                assert.strictEqual(await parentOf('lazy'), 'hdr');
+                assert.strictEqual((await kids('hdr')).pop(), 'lazy', 'after what is already there');
+                await emit('ctl', 'home');
+                assert.strictEqual(await parentOf('lazy'), 'card');
+                assert.deepStrictEqual(await rect('lazy'), before, 'exactly where it was');
+            });
+            await ok('Teleport any node (no teleport of its own), where to from msg.payload; "home" back', async () => {
+                await emit('ctl', 'to', '@page');
+                assert.strictEqual(await parentOf('res'), 'nexa-runtime-artboard');
+                await emit('ctl', 'to', 'actions');
+                assert.strictEqual(await parentOf('res'), 'hdr');
+                await emit('ctl', 'to', 'home');
+                assert.strictEqual(await parentOf('res'), 'nexa-runtime-artboard');
+                assert.deepStrictEqual((await rect('res')).slice(0, 2), [20, 580]);
+            });
             await ok('a dialog teleported to the page opens over the page, not in its card', async () => {
                 await emit('ctl', 'dialog');
                 assert.deepStrictEqual(await rect('cdlg'), [400, 250, 200, 100], 'centred in the 1000 × 600 page');

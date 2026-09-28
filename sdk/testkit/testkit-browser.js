@@ -6,6 +6,7 @@
 //   NexaTest.ack("f", true | false, message)   resolve / reject the oldest pending write
 //   NexaTest.wc("f")                     the component's element
 //   NexaTest.settle()                    wait for Lit updates
+//   NexaTest.setMode("dark")             the theme's colour mode ({token:…} props, NexaSDK.theme)
 //   NexaTest.inspector("acme-gauge", props, host?) -> { box, props, sets, update, destroy }
 // { design: true } mounts in editor mode (not interactive, previews).
 (function () {
@@ -59,8 +60,13 @@
             }
             // a tag of a registered provider (not e.g. {asset:name}, which the component reads itself)
             function isTagRef(v) { var t = sdk().parseTag(v); return !!(t && t.known); }
+            // a theme token ({token:colors.fg}): its value in the current mode (a whole one keeps its type)
+            function token(path) { return sdk().theme ? sdk().theme.token(path) : undefined; }
             function resolve(v, tagKey) {
                 if (typeof v !== "string") return v;
+                var tk = /^\{token:([^{}]+)\}$/.exec(v.trim());
+                if (tk) { var tv = token(tk[1]); return tv === undefined ? v : tv; }
+                if (v.indexOf("{token:") !== -1) v = v.replace(/\{token:([^{}]+)\}/g, function (m, path) { var x = token(path); return x === undefined ? m : String(x); });
                 if (isTagRef(v)) return item.tags[tagKey] !== undefined ? item.tags[tagKey] : "???";
                 var whole = /^\{([^{}:]+)\}$/.exec(v.trim());
                 if (whole) { var hit = lookup(whole[1]); return hit === undefined ? v : hit; }
@@ -80,6 +86,12 @@
         /** A variable / template parameter for every mounted component: {name} and {name.member}. */
         setVariable: function (name, value) {
             T.vars[name] = value;
+            Object.keys(T.items).forEach(T.render);
+            return true;
+        },
+        /** The colour mode ("light" / "dark"): components redraw, {token:…} props resolve in it. */
+        setMode: function (mode) {
+            sdk().setTheme(null, mode);
             Object.keys(T.items).forEach(T.render);
             return true;
         },

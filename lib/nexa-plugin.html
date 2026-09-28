@@ -1769,6 +1769,8 @@
     // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
     "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
     "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
+    // a node drawn in a teleport target / on the page, or back home
+    "teleport": { label: "Teleport", hasInput: true, hasOutput: true, color: "#8e44ad" },
     "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
@@ -2889,18 +2891,18 @@
   function removeComponents(ids) {
     var screen = getActiveScreen();
     if (!screen) return;
-    var targets = ids.filter(function(id2) {
+    var targets2 = ids.filter(function(id2) {
       return tree_exports.find(screen, id2) && !isNodeLocked(id2);
     });
-    targets = targets.filter(function(id2) {
-      return !targets.some(function(other) {
+    targets2 = targets2.filter(function(id2) {
+      return !targets2.some(function(other) {
         return other !== id2 && tree_exports.isAncestor(screen, other, id2);
       });
     });
-    if (!targets.length) return;
+    if (!targets2.length) return;
     var before = treeSnapshot(screen);
     var parents = {};
-    targets.forEach(function(id2) {
+    targets2.forEach(function(id2) {
       var p = tree_exports.parentOf(screen, id2);
       if (p) parents[p.id] = true;
       tree_exports.remove(screen, id2);
@@ -27382,6 +27384,7 @@
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
+    if (type === "teleport") return { color: "#e8d6f0", icon: "fa-share", portOut: true, portIn: true };
     if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
     if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
     if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
@@ -27807,6 +27810,22 @@
       return { type: "overlay-close", overlay: "", valueSource: "payload" };
     }, "", "overlay-close");
     if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties \u2192 Overlay \u2192 Show as.").appendTo(state.eventsPane);
+    sectionHeader(state.eventsPane, "Teleport");
+    var teleporting = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return typeof n.teleport === "string" && n.teleport;
+    }) : [];
+    teleporting.forEach(function(n) {
+      var nm = (n.name || n.type.replace(/^@/, "")) + " #" + n.id.slice(-4);
+      chip(state.eventsPane, "Teleport " + nm + " \u2192 " + (n.teleport === "@page" ? "page" : n.teleport), function() {
+        return { type: "teleport", node: n.id, to: n.teleport, toSource: "static" };
+      }, n.id, "teleport");
+      chip(state.eventsPane, "Send " + nm + " home", function() {
+        return { type: "teleport", node: n.id, to: "", toSource: "static" };
+      }, n.id, "teleport");
+    });
+    chip(state.eventsPane, "Teleport a node (choose)", function() {
+      return { type: "teleport", node: "", to: "@page", toSource: "static" };
+    }, "", "teleport");
     var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return n.type === "@frame";
     }) : [];
@@ -29046,26 +29065,33 @@
       outputs: [],
       props: {
         teleport: prop("teleport", "enum", "Teleport to", { options, style: "combobox", free: true, placeholder: "a target's name" }),
+        teleportOn: prop("teleportOn", "enum", "When", { options: [{ value: "load", label: "When the page opens" }, { value: "logic", label: "When a Logic Teleport node runs" }] }),
         slot: prop("slot", "string", "This frame is a teleport target named", { placeholder: "e.g. header-actions" })
       },
       inspector: function(o) {
         var bind = o.bind, p = o.p;
         return html`<nx-section heading="Teleport" persist-key="nexa-teleport">
                 <nx-combobox ${bind("teleport")} .free="${true}"></nx-combobox>
-                ${p.teleport ? html`<div class="nx-help">Drawn ${p.teleport === "@page" ? "on the page itself, at its X / Y" : 'inside the frame named "' + p.teleport + '" (its layout places it)'} on the live page. Its Logic, params and variables stay those of where it is here.</div>` : nothing}
+                ${p.teleport ? html`<nx-select ${bind("teleportOn")}></nx-select>
+                    <div class="nx-help">${p.teleportOn === "logic" ? "It stays here until a Logic Teleport node sends it (Events \u2192 Teleport); another one sends it home." : "Drawn there as soon as the page opens."} ${p.teleport === "@page" ? "On the page itself, at its X / Y." : 'Inside the frame named "' + p.teleport + '" (its layout places it).'} Its Logic, params and variables stay those of where it is here.</div>` : html`<div class="nx-help">Or move any node with a Logic Teleport node (Events → Teleport), when you want.</div>`}
                 ${isFrame ? html`<nx-text ${bind("slot")}></nx-text>
                     <div class="nx-help">What is teleported to this name (from this screen, a template, a Populate's copies) is drawn in this frame.</div>` : nothing}
             </nx-section>`;
       }
     };
     var view = function(n) {
-      return { teleport: n.teleport || "", slot: n.slot || "" };
+      return { teleport: n.teleport || "", teleportOn: n.teleportOn || "load", slot: n.slot || "" };
     };
     mountLive(container, meta2, "nexa-teleport", function() {
       return view(node);
     }, function(key, v) {
       commit(node, function() {
         var t2 = String(v || "").trim();
+        if (key === "teleportOn") {
+          if (t2 === "logic") node.teleportOn = "logic";
+          else delete node.teleportOn;
+          return;
+        }
         if (t2) node[key] = t2;
         else delete node[key];
       }, true);
@@ -30744,6 +30770,95 @@
     });
   }
 
+  // src/dialogs/teleport-dialog.js
+  function nodeName(n) {
+    return (n.name || n.type.replace(/^@/, "")) + " #" + n.id.slice(-4);
+  }
+  function targets() {
+    var names = {};
+    function walk2(list) {
+      (list || []).forEach(function(n) {
+        if (typeof n.slot === "string" && n.slot.trim()) names[n.slot.trim()] = true;
+        walk2(n.children);
+      });
+    }
+    (state.screens || []).concat(state.templates || []).forEach(function(s) {
+      walk2(s.components);
+    });
+    return Object.keys(names).sort();
+  }
+  function teleportNodeLabel(node) {
+    var screen = getActiveScreen();
+    var n = node.node && screen ? tree_exports.find(screen, node.node) : null;
+    var who = n ? nodeName(n) : node.node ? "(missing node)" : "?";
+    if (node.toSource === "payload") return "Teleport " + who + " \u2192 msg.payload";
+    return node.to ? "Teleport " + who + " \u2192 " + (node.to === "@page" ? "page" : node.to) : "Send " + who + " home";
+  }
+  function openTeleportNodeEditor(node) {
+    var screen = getActiveScreen();
+    var all = screen ? tree_exports.allNodes(screen) : [];
+    var d = { node: node.node || "", to: node.to === void 0 ? "@page" : node.to, toSource: node.toSource || "static" };
+    window.RED.tray.show({
+      id: "nexa-logic-teleport-editor",
+      title: "Configure Teleport Node",
+      width: 440,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        { text: "Save", "class": "primary", click: function() {
+          node.node = d.node;
+          node.to = d.to;
+          node.toSource = d.toSource;
+          markDirty();
+          renderLogicCanvas();
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var $2 = window.$;
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        $2("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text('Draws a node somewhere else on the live page: inside a frame named as a teleport target (Properties \u2192 Teleport), or on the page itself (above every frame, out of any clip). "Home" puts it back where it is in the tree. Its Logic, params and variables stay as they are. The message goes on.').appendTo(body);
+        var label = function(t2) {
+          return $2("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "10px 0 4px" }).text(t2).appendTo(body);
+        };
+        label("The node");
+        var sel = $2("<select>").css({ width: "100%" }).appendTo(body);
+        if (!all.length) $2("<option>", { value: "" }).text("(nothing on this surface)").appendTo(sel);
+        all.forEach(function(n) {
+          $2("<option>", { value: n.id }).text(nodeName(n) + (n.teleport ? "  \u21E2 " + n.teleport : "")).appendTo(sel);
+        });
+        sel.val(d.node);
+        d.node = sel.val() || "";
+        sel.on("change", function() {
+          d.node = sel.val();
+        });
+        label("Where to");
+        var src = $2("<select>").css({ width: "100%" }).appendTo(body);
+        [["static", "A place chosen here"], ["payload", "msg.payload (a target's name, @page, or home)"]].forEach(function(o) {
+          $2("<option>", { value: o[0] }).text(o[1]).appendTo(src);
+        });
+        src.val(d.toSource);
+        var to = $2("<select>").css({ width: "100%", "margin-top": "6px" }).appendTo(body);
+        $2("<option>", { value: "" }).text("Home (where it is in the tree)").appendTo(to);
+        $2("<option>", { value: "@page" }).text("The page (above every frame)").appendTo(to);
+        targets().forEach(function(t2) {
+          $2("<option>", { value: t2 }).text("Target: " + t2).appendTo(to);
+        });
+        if (d.to && d.to !== "@page" && targets().indexOf(d.to) === -1) $2("<option>", { value: d.to }).text("Target: " + d.to + " (not on any surface)").appendTo(to);
+        to.val(d.to);
+        to.toggle(d.toSource !== "payload");
+        src.on("change", function() {
+          d.toSource = src.val();
+          to.toggle(d.toSource !== "payload");
+        });
+        to.on("change", function() {
+          d.to = to.val();
+        });
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -30784,6 +30899,7 @@
       var lf = node.container && lScreen ? tree_exports.find(lScreen, node.container) : null;
       return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
     }
+    if (node.type === "teleport") return teleportNodeLabel(node);
     if (node.type === "overlay-open" || node.type === "overlay-close") {
       var oScreen = getActiveScreen();
       var of = node.overlay && oScreen ? tree_exports.find(oScreen, node.overlay) : null;
@@ -31005,6 +31121,12 @@
         openLayoutNodeEditor(node);
       });
     }
+    if (node.type === "teleport") {
+      box2.attr("title", "Double-click to choose the node and where it goes").on("dblclick", function(e) {
+        e.stopPropagation();
+        openTeleportNodeEditor(node);
+      });
+    }
     if (node.type === "overlay-open" || node.type === "overlay-close") {
       box2.attr("title", node.type === "overlay-open" ? "Double-click to choose the dialog / drawer. Its output fires when it closes (msg.payload = the result)." : "Double-click to choose what it closes and its result").on("dblclick", function(e) {
         e.stopPropagation();
@@ -31167,7 +31289,7 @@
       set[id2] = true;
     });
     state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
-      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay];
+      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay] || n.type === "teleport" && n.node && set[n.node];
     }).map(function(n) {
       return n.id;
     });

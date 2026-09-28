@@ -34,6 +34,8 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, or
     // a small clipped card: what it teleports leaves it
     { id: "card", type: "@frame", name: "Card", x: 100, y: 100, w: 200, h: 100, style: { clip: true }, children: [
       label("pop", 300, 300, 100, 50, "popped", { teleport: "@page" }),
+      // teleported only when a Logic Teleport node runs
+      label("lazy", 10, 70, 60, 20, "lazy", { teleport: "actions", teleportOn: "logic" }),
       { id: "inst", type: "@template", templateId: "T", x: 0, y: 0, w: 200, h: 60, paramValues: { p: "hello" } },
       { id: "cdlg", type: "@frame", name: "CardDialog", x: 0, y: 0, w: 200, h: 100, teleport: "@page", overlay: { kind: "dialog", animation: "none", duration: 0 }, children: [] }
     ] },
@@ -41,8 +43,11 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 600, treeVersion: 1, or
   ],
   logic: { nodes: [
     { id: "e1", type: "ui-event", compId: "ctl", event: "fill" }, { id: "p1", type: "populate", container: "list", template: "ROW", itemParam: "item", key: "id", mode: "replace", valueSource: "payload" },
-    { id: "e2", type: "ui-event", compId: "ctl", event: "dialog" }, { id: "o2", type: "overlay-open", overlay: "cdlg" }
-  ], wires: [W("e1", "p1"), W("e2", "o2")] } };
+    { id: "e2", type: "ui-event", compId: "ctl", event: "dialog" }, { id: "o2", type: "overlay-open", overlay: "cdlg" },
+    { id: "e3", type: "ui-event", compId: "ctl", event: "go" }, { id: "t3", type: "teleport", node: "lazy", to: "actions", toSource: "static" },
+    { id: "e4", type: "ui-event", compId: "ctl", event: "home" }, { id: "t4", type: "teleport", node: "lazy", to: "", toSource: "static" },
+    { id: "e5", type: "ui-event", compId: "ctl", event: "to" }, { id: "t5", type: "teleport", node: "res", toSource: "payload" }
+  ], wires: [W("e1", "p1"), W("e2", "o2"), W("e3", "t3"), W("e4", "t4"), W("e5", "t5")] } };
 </script>
 <script src="/lib/nexa-model-client.js"></script>
 <script src="/lib/nexa-runtime-client.js"></script>

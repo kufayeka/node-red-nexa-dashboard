@@ -491,22 +491,25 @@ export function renderTeleportInspector(container, node) {
         id: "@teleport", stateList: [], inputs: [], outputs: [],
         props: {
             teleport: prop("teleport", "enum", "Teleport to", { options: options, style: "combobox", free: true, placeholder: "a target's name" }),
+            teleportOn: prop("teleportOn", "enum", "When", { options: [{ value: "load", label: "When the page opens" }, { value: "logic", label: "When a Logic Teleport node runs" }] }),
             slot: prop("slot", "string", "This frame is a teleport target named", { placeholder: "e.g. header-actions" })
         },
         inspector: function (o) {
             var bind = o.bind, p = o.p;
             return html`<nx-section heading="Teleport" persist-key="nexa-teleport">
                 <nx-combobox ${bind("teleport")} .free="${true}"></nx-combobox>
-                ${p.teleport ? html`<div class="nx-help">Drawn ${p.teleport === "@page" ? "on the page itself, at its X / Y" : "inside the frame named \"" + p.teleport + "\" (its layout places it)"} on the live page. Its Logic, params and variables stay those of where it is here.</div>` : nothing}
+                ${p.teleport ? html`<nx-select ${bind("teleportOn")}></nx-select>
+                    <div class="nx-help">${p.teleportOn === "logic" ? "It stays here until a Logic Teleport node sends it (Events → Teleport); another one sends it home." : "Drawn there as soon as the page opens."} ${p.teleport === "@page" ? "On the page itself, at its X / Y." : "Inside the frame named \"" + p.teleport + "\" (its layout places it)."} Its Logic, params and variables stay those of where it is here.</div>` : html`<div class="nx-help">Or move any node with a Logic Teleport node (Events → Teleport), when you want.</div>`}
                 ${isFrame ? html`<nx-text ${bind("slot")}></nx-text>
                     <div class="nx-help">What is teleported to this name (from this screen, a template, a Populate's copies) is drawn in this frame.</div>` : nothing}
             </nx-section>`;
         }
     };
-    var view = function (n) { return { teleport: n.teleport || "", slot: n.slot || "" }; };
+    var view = function (n) { return { teleport: n.teleport || "", teleportOn: n.teleportOn || "load", slot: n.slot || "" }; };
     mountLive(container, meta, "nexa-teleport", function () { return view(node); }, function (key, v) {
         commit(node, function () {
             var t = String(v || "").trim();
+            if (key === "teleportOn") { if (t === "logic") node.teleportOn = "logic"; else delete node.teleportOn; return; }
             if (t) node[key] = t; else delete node[key];
         }, true);
     });

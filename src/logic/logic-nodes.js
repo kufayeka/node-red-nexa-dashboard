@@ -17,6 +17,7 @@ import { openTemplateOutputNodeEditor } from "../dialogs/template-output-dialog.
 import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.js";
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 import { openOverlayNodeEditor, overlayLabel } from "../dialogs/overlay-dialog.js";
+import { openTeleportNodeEditor, teleportNodeLabel } from "../dialogs/teleport-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -55,6 +56,7 @@ export function logicNodeLabel(node) {
         var lf = node.container && lScreen ? Tree.find(lScreen, node.container) : null;
         return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
     }
+    if (node.type === "teleport") return teleportNodeLabel(node);
     if (node.type === "overlay-open" || node.type === "overlay-close") {
         var oScreen = getActiveScreen();
         var of = node.overlay && oScreen ? Tree.find(oScreen, node.overlay) : null;
@@ -253,6 +255,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function (e) {
             e.stopPropagation();
             openLayoutNodeEditor(node);
+        });
+    }
+    if (node.type === "teleport") {
+        box.attr("title", "Double-click to choose the node and where it goes").on("dblclick", function (e) {
+            e.stopPropagation();
+            openTeleportNodeEditor(node);
         });
     }
     if (node.type === "overlay-open" || node.type === "overlay-close") {

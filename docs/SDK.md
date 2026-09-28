@@ -523,6 +523,7 @@ withHarness({
     await js('NexaTest.setTag("g", "42")');
     // bound to a variable / template parameter or the message instead of a tag:
     await js('NexaTest.setVariable("param1", { speed: 12 })');       // {param1.speed}, for every mounted component
+    await js('NexaTest.setMode("dark")');                             // the theme's colour mode: {token:…} props, NexaSDK.theme
     await js('NexaTest.setMessage("g", { payload: { v: 7 } })');      // {msg.payload.v}, for one
     await js('NexaTest.settle()');
     const text = await js('NexaTest.wc("g").renderRoot.textContent');

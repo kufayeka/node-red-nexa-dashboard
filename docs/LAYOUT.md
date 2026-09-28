@@ -290,6 +290,19 @@ It shows where the page opens it, over its backdrop.
 - **a target's name**: a frame named with "This frame is a teleport target named …". It is drawn inside that frame, which places it by its layout: a row puts it in the row.
 - **The page**: drawn on the page itself at its X / Y, above every frame. It is out of any frame's clip.
 
+**When** (Properties → Teleport → When):
+
+- **When the page opens**: it is drawn there from the start.
+- **When a Logic Teleport node runs**: it stays where it is until a **Teleport** node sends it.
+
+**The Teleport node** (Events → Teleport) moves any node, set to teleport or not:
+
+- to a target, to the page, or **home** (back exactly where it is in the tree);
+- where to is fixed, or taken from `msg.payload` (a target's name, `@page`, or `home`);
+- the message goes on.
+
+For example, a Settings panel teleports into the header while an admin is logged in, and goes home after.
+
 **Only where it is drawn changes.** Its place in the tree stays, so its Logic, its template's params, the variables around it and its bindings work as before. For example:
 
 - a card in a Populate list teleports its "cart" badge into the header (one per copy, gone with its copy);
@@ -303,7 +316,7 @@ It shows where the page opens it, over its backdrop.
 - Hiding the node's parent (Hierarchy, Layer Control) does not hide what it teleported; hide the node itself.
 - On the canvas a teleported node stays where it is in the tree, marked ⇢ with its target; a target is marked ⇠ with its name.
 
-**The data**: `node.teleport = "<name>" | "@page"`, `frame.slot = "<name>"`. Tests: `test/runtime-teleport-browser.test.js`.
+**The data**: `node.teleport = "<name>" | "@page"`, `node.teleportOn = "logic"` (absent: when the page opens), `frame.slot = "<name>"`; the Logic node `{ type: "teleport", node, to, toSource }`. Tests: `test/runtime-teleport-browser.test.js`.
 
 ## 4c. Breakpoints (desktop-first)
 

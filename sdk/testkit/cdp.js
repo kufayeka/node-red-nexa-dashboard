@@ -54,7 +54,10 @@ async function withPage(file, fn, opts) {
         const settle = () => js("new Promise(function (r) { setTimeout(function () { r(true); }, 60); })");
         const type = async (text) => { await send("Input.insertText", { text }); await settle(); };
         const key = async (k, modifiers) => {
-            const codes = { Enter: [13, "Enter", "\r"], Escape: [27, "Escape", ""], Tab: [9, "Tab", ""], Backspace: [8, "Backspace", ""], ArrowDown: [40, "ArrowDown", ""] };
+            const codes = { Enter: [13, "Enter", "\r"], Escape: [27, "Escape", ""], Tab: [9, "Tab", ""], Backspace: [8, "Backspace", ""], Delete: [46, "Delete", ""],
+                ArrowDown: [40, "ArrowDown", ""], ArrowUp: [38, "ArrowUp", ""], ArrowLeft: [37, "ArrowLeft", ""], ArrowRight: [39, "ArrowRight", ""],
+                Home: [36, "Home", ""], End: [35, "End", ""], PageUp: [33, "PageUp", ""], PageDown: [34, "PageDown", ""], " ": [32, "Space", " "] };
+            if (!codes[k]) throw new Error("[testkit] key(): no code for \"" + k + "\"; known: " + Object.keys(codes).join(", "));
             const [vk, code, txt] = codes[k];
             await send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, text: txt || undefined, modifiers: modifiers || 0 });
             await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: modifiers || 0 });

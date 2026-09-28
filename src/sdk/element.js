@@ -24,6 +24,7 @@ import { buildStylesheet, defaultValues } from "./schema.js";
 import { parseTag, getTagProvider, isWriteTarget } from "./tags.js";
 import F from "./format.js";
 import { theme as themeApi } from "./theme.js";
+import { resolveTokenProps } from "../model/theme.js";
 
 export function isUnknown(v) {
     return v === undefined || v === null || v === "???";
@@ -246,8 +247,8 @@ export class NexaElement extends LitElement {
     connectedCallback() {
         super.connectedCallback();
         var self = this;
-        // a new theme / mode: a view reading this.token() draws again
-        this.onDestroy(themeApi.onChange(function () { self.requestUpdate(); }));
+        // a new theme / mode: {token:…} props in the new mode, a view reading this.token() draws again
+        this.onDestroy(themeApi.onChange(function () { self._applyProps(); }));
         if (typeof ResizeObserver === "function") {
             var ro = new ResizeObserver(function (entries) {
                 var r = entries[0] && entries[0].contentRect;
@@ -300,7 +301,8 @@ export class NexaElement extends LitElement {
         var p = meta ? defaultValues(meta) : {};
         var src = this._resolved;
         Object.keys(src).forEach(function (k) { if (src[k] !== undefined) p[k] = src[k]; });
-        this.p = p;
+        // a theme token the host did not resolve (a default, a prop set by the view): its value in the current mode
+        this.p = resolveTokenProps(p, themeApi.current(), themeApi.mode());
         if (meta) this._updateInputs();
         this.propsChanged();
         this.requestUpdate();
