@@ -441,6 +441,10 @@ theme.token("colors.primary.solid");  theme.cssVar("colors.bg");  theme.mode(); 
 
 In a view: `this.token(path)` / `this.tokenVar(path)`; the view redraws when the theme or the mode changes. Prefer `var(--nexa-…)` in CSS.
 
+## 11b-1. Popups above the page: `this.lift(on)`
+
+Each component is drawn in its own box, and a box that comes later on the page paints over an earlier one. A popup inside a component (a select's menu, a tooltip) would be hidden under the components below it. Call `this.lift(true)` while it is open: the component's box, and every frame around it, is raised above the rest. Call `this.lift(false)` when it closes (it also runs when the component goes away). Nexa UI's Select and Combobox call it from zag's `onOpenChange`.
+
 ## 11b-2. Slots: a component that holds other components
 
 A component can hold other components, the way a Tabs holds a panel per tab. It declares **slots**. The editor gives each slot a frame of the page (a **slot frame**), and the user drops components into it on the canvas. The component only decides where each slot is drawn and whether it shows.
@@ -469,6 +473,7 @@ defineComponent({
 - A slot frame is a normal frame: auto layout, padding, fill, variables. In Properties you see its layout and look; the component sets its position and size. It can't be moved, resized or taken out of its component. A double click on the component selects the slot frame.
 - If a slot goes away (a tab is removed or its value renamed), its frame is **kept** (`slotUnused`) and not drawn. Its content comes back if the slot comes back.
 - Deleting the component turns what its slots held into orphans (Hierarchy → Unplaced).
+- **On the live page**, a plugin's modules usually register *after* the page was drawn. What a component's slots hold is mounted at that moment, and everything the first mount does is done for it too: its tags subscribed, its teleports, its templates' param-input, its Logic's onload / onrender (`beginLateMount` / `endLateMount` in `lib/nexa-runtime-client.js`). Without this, a tag-bound component in a Tabs panel showed `???` forever.
 - The data: the component node has `slots: true`, and its `children` are the slot frames (`@frame`, `inSlot: "<name>"`, `slotLabel`). On the live page each slot frame is a light-DOM child of the component's element with `slot="<name>"`. Tests: `test/model-slots.test.js`, `test/runtime-slots-browser.test.js`.
 
 ## 11c. zag.js (accessible widgets)

@@ -139,6 +139,21 @@ export class NexaElement extends LitElement {
     /** Hook: the editor wants slot `name` seen (something in it was picked): e.g. a Tabs switches to it. */
     revealSlot(name) {}
 
+    /**
+     * A popup of this component (a select's menu, a tooltip) must stay above the components
+     * drawn after it: while `on`, its node's box — and every frame around it — is raised
+     * (each is a stacking context of its own). lift(false) puts them back.
+     */
+    lift(on) {
+        var list = this._lifted || (this._lifted = []);
+        if (!on) { list.splice(0).forEach(function (x) { x.el.style.zIndex = x.z; }); return; }
+        if (list.length) return;
+        for (var el = this.parentElement; el && el.id !== "nexa-runtime-artboard"; el = el.parentElement) {
+            if (el.classList && el.classList.contains("nexa-artboard")) break;
+            if (el.hasAttribute && el.hasAttribute("data-id")) { list.push({ el: el, z: el.style.zIndex }); el.style.zIndex = "100000"; }
+        }
+    }
+
     /** Tell the editor which slot is shown now (a tab clicked on the canvas): kept while it redraws. */
     slotShown(name) {
         if (!this.isEditor) return;
@@ -300,6 +315,7 @@ export class NexaElement extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        this.lift(false);
         var list = this._cleanups.splice(0);
         list.forEach(function (fn) { try { fn(); } catch (e) { /* keep cleaning */ } });
         Object.keys(this._inputTimers).forEach(function (k) { clearTimeout(this._inputTimers[k]); }, this);

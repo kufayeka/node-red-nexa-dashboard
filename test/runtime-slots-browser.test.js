@@ -56,6 +56,8 @@ async function main() {
                 await js('window.__registerLate(); 1'); await wait(50);
                 assert.deepStrictEqual([await shown('xa'), await shown('xb')], [false, true], 'its "b" is shown');
                 assert.deepStrictEqual(await rect('lb2'), [600, 140, 300, 160]);
+                // what it holds is subscribed too (else a bound value stays "???")
+                assert.ok((await js('window.__nexaRuntime.subscribedTags()')).indexOf('G::E::D::Late') !== -1, 'its tag is asked for');
             });
             await ok('no errors', async () => {
                 assert.deepStrictEqual(logs.filter((l) => !/dev mode/.test(l)), []);
