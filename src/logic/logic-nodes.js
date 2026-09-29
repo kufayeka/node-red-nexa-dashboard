@@ -18,6 +18,8 @@ import { openSparkplugWriteNodeEditor } from "../dialogs/sparkplug-write-dialog.
 import { openSparkplugWriteMultiNodeEditor } from "../dialogs/sparkplug-write-multi-dialog.js";
 import { openOverlayNodeEditor, overlayLabel } from "../dialogs/overlay-dialog.js";
 import { openTeleportNodeEditor, teleportNodeLabel } from "../dialogs/teleport-dialog.js";
+import { openDelayNodeEditor } from "../dialogs/delay-dialog.js";
+import { openNavigateNodeEditor } from "../dialogs/navigate-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -42,6 +44,19 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "open-url") {
         return "Open URL" + (node.url ? (" (" + node.url + ")") : "");
+    }
+    if (node.type === "delay") {
+        return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")";
+    }
+    if (node.type === "navigate") {
+        if (node.mode === "history") {
+            return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
+        }
+        if (node.mode === "url") {
+            return "Goto Route" + (node.url ? (" (" + node.url + ")") : "");
+        }
+        var s = (state.screens || []).find(function (x) { return x.id === node.screenId; });
+        return "Goto Screen (" + (s ? s.name : (node.screenId || "?")) + ")";
     }
     if (node.type === "sparkplug-write") {
         var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -237,6 +252,18 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openOpenUrlNodeEditor(node);
+        });
+    }
+    if (node.type === "delay") {
+        box.attr("title", "Double-click to configure delay").on("dblclick", function (e) {
+            e.stopPropagation();
+            openDelayNodeEditor(node);
+        });
+    }
+    if (node.type === "navigate") {
+        box.attr("title", "Double-click to configure navigation").on("dblclick", function (e) {
+            e.stopPropagation();
+            openNavigateNodeEditor(node);
         });
     }
     if (node.type === "layer-control") {

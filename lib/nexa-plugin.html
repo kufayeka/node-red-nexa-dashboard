@@ -2069,7 +2069,11 @@
     // continue the wire once the write is actually published; see
     // lib/nexa-runtime-client.js's runLogicGraph.
     "sparkplug-write": { hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" }
+    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
+    // timing / delay node: pauses execution for delay ms/s before continuing
+    "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
+    // SPA navigation: transition to a named screen, path, or history action without page reload
+    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" }
   };
   var state = {
     screens: [],
@@ -28140,6 +28144,12 @@
     if (type === "open-url") {
       return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
     }
+    if (type === "delay") {
+      return { color: "#fdf0c2", icon: "fa-hourglass-half", portOut: true, portIn: true };
+    }
+    if (type === "navigate") {
+      return { color: "#a6bbcf", icon: "fa-compass", portOut: true, portIn: true };
+    }
     if (type === "ui-update" || type === "set-template-param") {
       return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
     }
@@ -28485,6 +28495,12 @@
     chip(state.eventsPane, "Open URL", function() {
       return { type: "open-url", url: "", mode: "replace", newTab: false };
     }, "", "open-url");
+    chip(state.eventsPane, "Goto Screen (SPA)", function() {
+      return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
+    }, "", "navigate");
+    chip(state.eventsPane, "Delay", function() {
+      return { type: "delay", delay: 500, unit: "ms" };
+    }, "", "delay");
     chip(state.eventsPane, "Layer Control", function() {
       return { type: "layer-control", states: [] };
     }, "", "layer-control");
@@ -31909,6 +31925,127 @@
     });
   }
 
+  // src/dialogs/delay-dialog.js
+  function openDelayNodeEditor(node) {
+    var delayInput, unitSelect;
+    window.RED.tray.show({
+      id: "nexa-logic-delay-editor",
+      title: "Configure Delay Node",
+      width: 400,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = parseInt(delayInput.val(), 10);
+            node.delay = isNaN(val) || val < 0 ? 500 : val;
+            node.unit = unitSelect.val() || "ms";
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Pauses message execution for the specified duration before forwarding to the next node.").appendTo(body);
+        var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
+        var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Delay Time").appendTo(delayCol);
+        delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" }).val(node.delay != null ? node.delay : 500).appendTo(delayCol);
+        var unitCol = window.$("<div>").css({ flex: "0 0 120px" }).appendTo(row);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Unit").appendTo(unitCol);
+        unitSelect = window.$("<select>").css({ width: "100%" }).appendTo(unitCol);
+        [
+          ["ms", "Milliseconds (ms)"],
+          ["s", "Seconds (s)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.unit || "ms") === opt[0]).appendTo(unitSelect);
+        });
+      }
+    });
+  }
+
+  // src/dialogs/navigate-dialog.js
+  function openNavigateNodeEditor(node) {
+    var modeSelect, screenSelect, urlInput, historySelect, forwardPayloadCheck;
+    window.RED.tray.show({
+      id: "nexa-logic-navigate-editor",
+      title: "Configure Goto Screen (SPA)",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.mode = modeSelect.val();
+            node.screenId = screenSelect.val();
+            node.url = urlInput.val();
+            node.historyAction = historySelect.val();
+            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Navigates to another screen seamlessly in SPA mode, preserving active WebSocket & Sparkplug connections.").appendTo(body);
+        var modeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Navigation Mode").appendTo(modeRow);
+        modeSelect = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
+        [
+          ["screen", "Named Screen (from Project)"],
+          ["url", "Dynamic Route / Path (Expression / Payload)"],
+          ["history", "Browser History (Back / Forward)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "screen") === opt[0]).appendTo(modeSelect);
+        });
+        var screenRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Target Screen").appendTo(screenRow);
+        screenSelect = window.$("<select>").css({ width: "100%" }).appendTo(screenRow);
+        var screens = state.screens || [];
+        if (!screens.length) {
+          window.$("<option>", { value: "" }).text("(No screens available)").appendTo(screenSelect);
+        } else {
+          screens.forEach(function(s) {
+            window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+          });
+        }
+        var urlRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Template / Sub-path").appendTo(urlRow);
+        urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(urlRow);
+        var historyRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("History Action").appendTo(historyRow);
+        historySelect = window.$("<select>").css({ width: "100%" }).appendTo(historyRow);
+        [
+          ["back", "Back (-1)"],
+          ["forward", "Forward (+1)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.historyAction || "back") === opt[0]).appendTo(historySelect);
+        });
+        function updateVisibility() {
+          var m = modeSelect.val();
+          screenRow.toggle(m === "screen");
+          urlRow.toggle(m === "url");
+          historyRow.toggle(m === "history");
+        }
+        modeSelect.on("change", updateVisibility);
+        updateVisibility();
+        var payloadRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "8px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        payloadRow.append("Forward current msg.payload into destination screen's On Load");
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -31935,6 +32072,21 @@
     }
     if (node.type === "open-url") {
       return "Open URL" + (node.url ? " (" + node.url + ")" : "");
+    }
+    if (node.type === "delay") {
+      return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")";
+    }
+    if (node.type === "navigate") {
+      if (node.mode === "history") {
+        return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
+      }
+      if (node.mode === "url") {
+        return "Goto Route" + (node.url ? " (" + node.url + ")" : "");
+      }
+      var s = (state.screens || []).find(function(x) {
+        return x.id === node.screenId;
+      });
+      return "Goto Screen (" + (s ? s.name : node.screenId || "?") + ")";
     }
     if (node.type === "sparkplug-write") {
       var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -32151,6 +32303,18 @@
       box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openOpenUrlNodeEditor(node);
+      });
+    }
+    if (node.type === "delay") {
+      box2.attr("title", "Double-click to configure delay").on("dblclick", function(e) {
+        e.stopPropagation();
+        openDelayNodeEditor(node);
+      });
+    }
+    if (node.type === "navigate") {
+      box2.attr("title", "Double-click to configure navigation").on("dblclick", function(e) {
+        e.stopPropagation();
+        openNavigateNodeEditor(node);
       });
     }
     if (node.type === "layer-control") {

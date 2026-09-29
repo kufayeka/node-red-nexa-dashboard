@@ -69,7 +69,11 @@ export const LOGIC_NODE_KINDS = {
     // continue the wire once the write is actually published; see
     // lib/nexa-runtime-client.js's runLogicGraph.
     "sparkplug-write": { hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" }
+    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
+    // timing / delay node: pauses execution for delay ms/s before continuing
+    "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
+    // SPA navigation: transition to a named screen, path, or history action without page reload
+    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" }
 };
 
 export const state = {

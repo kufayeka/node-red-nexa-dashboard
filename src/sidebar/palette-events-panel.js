@@ -49,6 +49,12 @@ function getLogicNodeMeta(type) {
     if (type === "open-url") {
         return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
     }
+    if (type === "delay") {
+        return { color: "#fdf0c2", icon: "fa-hourglass-half", portOut: true, portIn: true };
+    }
+    if (type === "navigate") {
+        return { color: "#a6bbcf", icon: "fa-compass", portOut: true, portIn: true };
+    }
     if (type === "ui-update" || type === "set-template-param") {
         return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
     }
@@ -386,6 +392,8 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; }, "", "inject");
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
+    chip(state.eventsPane, "Goto Screen (SPA)", function () { return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true }; }, "", "navigate");
+    chip(state.eventsPane, "Delay", function () { return { type: "delay", delay: 500, unit: "ms" }; }, "", "delay");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
 
     // one chip per declared variable (screen / group / frame), plus a blank one
