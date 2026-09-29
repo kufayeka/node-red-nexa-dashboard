@@ -71,6 +71,9 @@ Every prop of a component can be bound; a plugin can opt a prop out with
   the message (the list follows the component's bindings, it isn't fixed).
   For such a component, nothing is guessed from `msg.payload` and those props
   are never overwritten.
+- **Run a component's action.** The Update Component node has *What it does*. Choose **Update its properties** (the default) or **Run: <action>** for any action the component declares, such as the Iframe's Reload / Open URL / Send a message.
+  - The action's parameters come from `msg.payload`. When it has none, the node's own *parameters* field (JSON or text) is used.
+  - `msg.action = "<name>"` from a Function also runs an action.
 - **One value, many components:** use a variable. The flow does
   **Set Variable** once, and every component binds `{name}`.
 

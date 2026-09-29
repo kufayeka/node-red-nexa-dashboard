@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>actions</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Update Component -> Run: <action> (test/runtime-actions-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:400px;height:300px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {}; window.__calls = [];
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = "btn"; } });
+// a component with actions, the way defineComponent builds one
+NEXA.registerComponent("player", { render: function (el) { el.textContent = "player"; },
+  invoke: function (el, name, params) { window.__calls.push([el.getAttribute("data-id"), name, params]); } });
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 300, treeVersion: 1, orphans: [],
+  components: [{ id: "ctl", type: "btn", x: 0, y: 0, w: 10, h: 10, props: {} }, { id: "P", type: "player", x: 20, y: 20, w: 100, h: 50, props: {} }],
+  logic: { nodes: [
+    { id: "e1", type: "ui-event", compId: "ctl", event: "reload" }, { id: "u1", type: "ui-update", compId: "P", action: "reload" },
+    { id: "e2", type: "ui-event", compId: "ctl", event: "open" }, { id: "u2", type: "ui-update", compId: "P", action: "navigate", actionParams: { url: "/a" } },
+    { id: "e3", type: "ui-event", compId: "ctl", event: "byMsg" }, { id: "f3", type: "function", code: "msg.action = 'postMessage'; return msg;" }, { id: "u3", type: "ui-update", compId: "P" }
+  ], wires: [W("e1", "u1"), W("e2", "u2"), W("e3", "f3"), W("f3", "u3")] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

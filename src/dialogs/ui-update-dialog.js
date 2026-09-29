@@ -5,6 +5,9 @@ export function openUiUpdateNodeEditor(node) {
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
     var fieldEls = {};
+    // an SDK component's declared actions (reload, open a URL…): the node can run one
+    var actions = (typeDef && typeDef.nexa && typeDef.nexa.actionList) || [];
+    var actionSel = null, paramsInput = null;
     window.RED.tray.show({
         id: "nexa-logic-uiupdate-editor",
         title: "Configure Update Node",
@@ -29,6 +32,14 @@ export function openUiUpdateNodeEditor(node) {
                         }
                     });
                     node.config = config;
+                    var act = actionSel ? actionSel.val() : "";
+                    if (act) {
+                        node.action = act;
+                        var rawParams = paramsInput ? String(paramsInput.val() || "").trim() : "";
+                        if (rawParams) {
+                            try { node.actionParams = JSON.parse(rawParams); } catch (e) { node.actionParams = rawParams; }
+                        } else delete node.actionParams;
+                    } else { delete node.action; delete node.actionParams; }
                     markDirty();
                     window.RED.tray.close();
                 }
@@ -40,6 +51,32 @@ export function openUiUpdateNodeEditor(node) {
                 window.$("<div>").text("This component no longer exists.").appendTo(body);
                 return;
             }
+            // What it does: update properties, or run one of the component's actions
+            var propsBox = body;
+            if (actions.length) {
+                var arow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+                window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("What it does").appendTo(arow);
+                actionSel = window.$("<select>").css({ width: "100%" }).appendTo(arow);
+                window.$("<option>", { value: "" }).text("Update its properties").appendTo(actionSel);
+                actions.forEach(function (a) { window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel); });
+                actionSel.val(node.action || "");
+                var pbox = window.$("<div>").css({ "margin-top": "8px" }).appendTo(arow);
+                window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Its parameters (JSON or text), when msg.payload has none").appendTo(pbox);
+                paramsInput = window.$("<input>", { type: "text", placeholder: "e.g. {\"url\": \"https://…\"}" }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" })
+                    .val(node.actionParams === undefined ? "" : (typeof node.actionParams === "string" ? node.actionParams : JSON.stringify(node.actionParams))).appendTo(pbox);
+                var phelp = window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).appendTo(pbox);
+                propsBox = window.$("<div>").appendTo(body);
+                var sync = function () {
+                    var a = actions.filter(function (x) { return x.name === actionSel.val(); })[0];
+                    pbox.toggle(!!a);
+                    propsBox.toggle(!a);
+                    var ps = a && a.params ? Object.keys(a.params) : [];
+                    phelp.text(a ? (ps.length ? "msg.payload = { " + ps.map(function (k) { return k + (a.params[k].label ? " (" + a.params[k].label + ")" : ""); }).join(", ") + " }" : "No parameters.") + " msg.action = another action's name also works." : "");
+                };
+                actionSel.on("change", sync);
+                sync();
+            }
+            body = propsBox;
             window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
                 .text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.")
                 .appendTo(body);
@@ -134,3 +171,6 @@ export function openUiUpdateNodeEditor(node) {
         }
     });
 }
+
+// Reachable from the browser console and the tests.
+if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { openUiUpdateNodeEditor: openUiUpdateNodeEditor });
