@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>place</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Where nodes are placed on a deployed page (test/runtime-place-browser.test.js). -->
+<div id="nexa-runtime-artboard" style="width:1000px;height:1500px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+function label(id, x, y, w, h, extra) { return Object.assign({ id: id, type: "label", x: x, y: y, w: w, h: h, props: { text: id } }, extra || {}); }
+window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 1500, treeVersion: 1, orphans: [],
+  components: [
+    // a frame that scrolls, its content taller than it; docked children stay at its edges
+    { id: "S", type: "@frame", x: 20, y: 20, w: 300, h: 200, style: { clip: true, scroll: "vertical" }, children: [
+      label("tall", 0, 0, 280, 800),
+      label("tr", 0, 0, 60, 20, { place: "dock", dock: { x: "end", y: "start" }, margin: { t: 8, r: 8, b: 0, l: 0 } }),
+      label("foot", 0, 0, 100, 30, { place: "dock", dock: { x: "center", y: "end", stretch: true }, margin: { t: 0, r: 10, b: 0, l: 10 } }),
+      label("mid", 0, 0, 40, 20, { place: "dock", dock: { x: "center", y: "center" } })
+    ] },
+    // a clipped card: what is placed on the screen leaves it
+    { id: "card", type: "@frame", x: 400, y: 20, w: 100, h: 60, style: { clip: true }, children: [label("pop", 600, 300, 80, 40, { place: "screen" })] },
+    // overlapping, the first above by its layer
+    { id: "F", type: "@frame", x: 20, y: 300, w: 300, h: 200, children: [label("a", 10, 10, 100, 100, { z: 5 }), label("b", 50, 50, 100, 100)] },
+    // a column: margin is the space around a child
+    { id: "C", type: "@frame", x: 400, y: 300, w: 300, h: 300, layout: { mode: "vertical", gap: 0 }, children: [
+      label("c1", 0, 0, 100, 20), label("c2", 0, 0, 100, 20, { margin: { t: 10, r: 0, b: 0, l: 24 } }), label("c3", 0, 0, 100, 20, { padding: { t: 3, r: 3, b: 3, l: 3 } })] },
+    // docked to the screen: at the bottom of the window while the page scrolls
+    label("toast", 0, 0, 200, 40, { place: "dock", dock: { x: "end", y: "end" }, margin: { t: 0, r: 20, b: 20, l: 0 } })
+  ],
+  logic: { nodes: [], wires: [] } };
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>

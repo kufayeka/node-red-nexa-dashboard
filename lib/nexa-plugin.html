@@ -128,6 +128,7 @@
     kids: () => kids,
     locate: () => locate,
     move: () => move,
+    onScreen: () => onScreen,
     parentOf: () => parentOf,
     parentSize: () => parentSize,
     placeOrphan: () => placeOrphan,
@@ -374,12 +375,19 @@
     if (!loc) return null;
     var n = loc.node;
     var x = n.x || 0, y = n.y || 0;
-    ancestors(surface, id2).forEach(function(a) {
-      var b = borderOf(a);
-      x += (a.x || 0) + b;
-      y += (a.y || 0) + b;
-    });
+    if (!onScreen(n)) {
+      var chain = ancestors(surface, id2).reverse();
+      for (var i2 = 0; i2 < chain.length; i2++) {
+        var a = chain[i2], b = borderOf(a);
+        x += (a.x || 0) + b;
+        y += (a.y || 0) + b;
+        if (onScreen(a)) break;
+      }
+    }
     return { x, y, w: n.w || 0, h: n.h || 0 };
+  }
+  function onScreen(node) {
+    return !!node && node.place === "screen" && !(node.type === "@frame" && node.inSlot) && !(node.overlay && node.overlay.kind);
   }
   function parentSize(surface, id2) {
     var p = parentOf(surface, id2);
@@ -516,6 +524,7 @@
     LAYOUT_MODES: () => LAYOUT_MODES,
     OVERLAY_DEFAULT: () => OVERLAY_DEFAULT,
     OVERLAY_KINDS: () => OVERLAY_KINDS,
+    PLACES: () => PLACES,
     TEMPLATE_CONTENT_MODES: () => TEMPLATE_CONTENT_MODES,
     TEMPLATE_LIVE_DEFAULT: () => TEMPLATE_LIVE_DEFAULT,
     V_CONSTRAINTS: () => V_CONSTRAINTS,
@@ -529,6 +538,7 @@
     childSizing: () => childSizing,
     constraintCss: () => constraintCss,
     constraintsOf: () => constraintsOf,
+    dockOf: () => dockOf,
     flowAxis: () => flowAxis,
     frameCss: () => frameCss,
     frameHugs: () => frameHugs,
@@ -540,14 +550,19 @@
     isInFlow: () => isInFlow,
     layoutOf: () => layoutOf,
     makeFrame: () => makeFrame,
+    marginOf: () => marginOf,
     overlayBox: () => overlayBox,
     overlayOf: () => overlayOf,
+    paddingOf: () => paddingOf,
+    placeOf: () => placeOf,
     resizeWithConstraints: () => resizeWithConstraints,
     styleOf: () => styleOf,
+    takesPadding: () => takesPadding,
     templateContentFit: () => templateContentFit,
     templateContentOf: () => templateContentOf,
     templateLiveOf: () => templateLiveOf,
     tracksCss: () => tracksCss,
+    zOf: () => zOf,
     zoomOf: () => zoomOf
   });
 
@@ -1057,7 +1072,76 @@
     return !!(node && node.type === "@frame" && typeof node.inSlot === "string" && node.inSlot !== "");
   }
   function isInFlow(child, parent) {
-    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
+    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child) && !placedOut(child);
+  }
+  var PLACES = ["flow", "free", "screen", "dock"];
+  function placedOut(node) {
+    return !!node && (node.place === "screen" || node.place === "dock") && !inSlot(node);
+  }
+  function placeOf(node, parent) {
+    if (!node) return "free";
+    if (placedOut(node) && !overlayOf(node)) return node.place;
+    if (hasAutoLayout(parent) && !(node.layoutChild && node.layoutChild.absolute) && !overlayOf(node) && !inSlot(node)) return "flow";
+    return "free";
+  }
+  function dockOf(node) {
+    var d = node && node.dock || {};
+    var v = function(s, def) {
+      return s === "start" || s === "center" || s === "end" ? s : def;
+    };
+    return { x: v(d.x, "start"), y: v(d.y, "start"), stretch: !!d.stretch };
+  }
+  function sides(v) {
+    if (v === void 0 || v === null || v === "") return { t: 0, r: 0, b: 0, l: 0 };
+    if (typeof v === "number") return { t: v, r: v, b: v, l: v };
+    return { t: num(v.t), r: num(v.r), b: num(v.b), l: num(v.l) };
+  }
+  function marginOf(node) {
+    return sides(node && node.margin);
+  }
+  function paddingOf(node) {
+    return sides(node && node.padding);
+  }
+  function takesPadding(node) {
+    return !!node && ["@frame", "@group", "@template"].indexOf(node.type) === -1;
+  }
+  function zOf(node) {
+    var z = Number(node && node.z);
+    return isFinite(z) ? Math.round(z) : 0;
+  }
+  function pxSides(s) {
+    return s.t + "px " + s.r + "px " + s.b + "px " + s.l + "px";
+  }
+  function hasSides(s) {
+    return !!(s.t || s.r || s.b || s.l);
+  }
+  function dockCss(node, css2) {
+    var d = dockOf(node), m = marginOf(node);
+    var w = num(node.w), h = num(node.h);
+    css2.position = "absolute";
+    css2.margin = "0px";
+    css2.left = css2.right = css2.top = css2.bottom = "";
+    var stretchX = d.stretch && d.x === "center" && d.y !== "center";
+    var stretchY = d.stretch && d.y === "center" && d.x !== "center";
+    if (stretchX) {
+      css2.left = m.l + "px";
+      css2.right = m.r + "px";
+      css2.width = "auto";
+    } else if (d.x === "start") css2.left = m.l + "px";
+    else if (d.x === "end") {
+      css2.left = "auto";
+      css2.right = m.r + "px";
+    } else css2.left = "calc(50% - " + w / 2 + "px + " + (m.l - m.r) / 2 + "px)";
+    if (stretchY) {
+      css2.top = m.t + "px";
+      css2.bottom = m.b + "px";
+      css2.height = "auto";
+    } else if (d.y === "start") css2.top = m.t + "px";
+    else if (d.y === "end") {
+      css2.top = "auto";
+      css2.bottom = m.b + "px";
+    } else css2.top = "calc(50% - " + h / 2 + "px + " + (m.t - m.b) / 2 + "px)";
+    return css2;
   }
   function childSizing(child, axis) {
     var lc = child && child.layoutChild || {};
@@ -1188,6 +1272,7 @@
     return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
   }
   function hasConstraints(node, parent) {
+    if (node && placeOf(node, parent) === "dock") return false;
     return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
   }
   function innerSize(frame) {
@@ -1284,6 +1369,11 @@
     }
     if (frameHugs(node, "w")) css2.width = "max-content";
     if (frameHugs(node, "h")) css2.height = "max-content";
+    var mg = marginOf(node), pd = paddingOf(node), place = placeOf(node, parent);
+    css2.margin = place === "flow" && hasSides(mg) ? pxSides(mg) : "";
+    if (takesPadding(node)) css2.padding = hasSides(pd) ? pxSides(pd) : "";
+    if (zOf(node)) css2["z-index"] = String(zOf(node));
+    if (place === "dock") return dockCss(node, css2);
     if (!isInFlow(node, parent)) return css2;
     var mode = layoutOf(parent).mode;
     var sw = childSizing(node, "w"), sh = childSizing(node, "h");
@@ -1295,7 +1385,7 @@
     if (node.scrollBehavior === "sticky") {
       css2.position = "sticky";
       css2[flowAxis(parent) === "horizontal" ? "left" : "top"] = "0px";
-      css2["z-index"] = "2";
+      css2["z-index"] = zOf(node) ? String(zOf(node)) : "2";
     }
     if (mode === "carousel") {
       var c = layoutOf(parent).carousel, alongX = c.direction !== "vertical";
@@ -1599,9 +1689,13 @@
     "minH",
     "maxH",
     "scrollBehavior",
-    "overlay"
+    "overlay",
+    "z",
+    "margin",
+    "padding",
+    "dock"
   ];
-  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true };
+  var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true, dock: true };
   function clone4(v) {
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
@@ -2414,7 +2508,7 @@
         }
         return;
       }
-      var inFlow = layout_exports.isInFlow(node, parent);
+      var inFlow = layout_exports.isInFlow(node, parent) || layout_exports.placeOf(node, parent) === "dock";
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
       if (!inFlow && !hugW && !hugH) return;
       if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
@@ -2547,6 +2641,10 @@
     if (ids.some(function(id2) {
       var h = homeFrameOf(screen, id2);
       return (h ? h.id : null) !== homeId;
+    })) return null;
+    if (ids.some(function(id2) {
+      var n = tree_exports.find(screen, id2);
+      return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "dock";
     })) return null;
     var target = frameAt(screen, p.x, p.y, ids);
     var targetId = target ? target.id : null;
@@ -3376,6 +3474,13 @@
   }
   function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode, designSize) {
     if (innerComp.visibility === "remove") return;
+    if (tree_exports.onScreen(innerComp)) {
+      for (var sf = parentEl.get(0); sf; sf = sf.parentElement) if (sf.__nexaSurface) {
+        parentEl = window.$(sf);
+        break;
+      }
+      parentNode = null;
+    }
     var css2 = nodeCss(innerComp, parentNode || null);
     if (designSize) {
       var box2 = layout_exports.boxCss(innerComp, parentNode || null, { constraints: true, parentSize: designSize });
@@ -3411,6 +3516,7 @@
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
+    if (inner.get(0)) inner.get(0).__nexaSurface = true;
     layoutTemplateInner(inner, template, comp);
     if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
     var byConstraints = !layout_exports.templateContentFit(template, 1, 1, comp);
@@ -3506,10 +3612,12 @@
     if (comp.slotUnused) return;
     var interactable = isNodeInteractable(comp.id);
     var container = tree_exports.isContainer(comp) && !slotHost;
-    var css2 = nodeCss(comp, parentNode);
+    var placing = layout_exports.placeOf(comp, parentNode);
+    if (placing === "screen") parentEl = state.artboardEl;
+    var css2 = nodeCss(comp, placing === "screen" ? null : parentNode);
     if (layout_exports.inSlot(comp) && interactable) css2["pointer-events"] = "auto";
     if (overlay) css2["z-index"] = "41";
-    css2.cursor = isNodeLocked(comp.id) || !interactable || inFlow ? "default" : "move";
+    css2.cursor = isNodeLocked(comp.id) || !interactable || inFlow || placing === "dock" ? "default" : "move";
     css2["user-select"] = "none";
     if (!(layout_exports.inSlot(comp) && interactable)) css2["pointer-events"] = interactable ? "" : "none";
     css2.display = isNodeVisible(comp.id) ? css2.display || "" : "none";
@@ -3576,12 +3684,12 @@
       showHover(pickSelectionTarget(comp.id, e.originalEvent || e));
     });
     if (isNodeLocked(comp.id)) return;
-    if (layout_exports.inSlot(comp)) return;
+    if (layout_exports.inSlot(comp) || placing === "dock") return;
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
       var parent = tree_exports.parentOf(screen, c.id);
-      var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      var origin = parent && !tree_exports.onScreen(c) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
       return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function(c, start, dx, dy) {
@@ -3714,6 +3822,8 @@
         markDirty();
       }
     });
+    var dom = typeof el.get === "function" ? el.get(0) : null;
+    if (css2.position && dom && dom.style && dom.style.position !== css2.position) dom.style.position = css2.position;
   }
   function placeNewNode(screen, node, artboardX, artboardY) {
     node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
@@ -29136,7 +29246,6 @@
         var p = o.p, bind = o.bind;
         return html`
                 <nx-section heading="In ${parent.name || "frame"} (auto layout)" persist-key="nexa-layout-child">
-                    <nx-checkbox ${bind("absolute")}></nx-checkbox>
                     ${p.absolute ? nothing : html`
                         <nx-row><nx-segmented ${bind("childW")}></nx-segmented><nx-segmented ${bind("childH")}></nx-segmented></nx-row>
                         ${grid ? html`
@@ -29161,6 +29270,154 @@
         }, key === "absolute");
       },
       { node, parent, view: childView, write: writeChild }
+    );
+    return true;
+  }
+  var PLACE_OPTIONS = {
+    flow: { value: "flow", label: "In the layout", icon: "fa fa-bars" },
+    free: { value: "free", label: "Free", icon: "fa fa-arrows" },
+    screen: { value: "screen", label: "On the screen", icon: "fa fa-desktop" },
+    dock: { value: "dock", label: "Docked", icon: "fa fa-thumb-tack" }
+  };
+  var POSITION_META = {
+    id: "@position",
+    stateList: [],
+    inputs: [],
+    outputs: [],
+    props: {
+      place: prop("place", "enum", "Position", { options: [], help: "In the layout: its frame's auto layout places it. Free: its own X / Y in its parent. On the screen: its X / Y are the screen's (out of a clipped card); its Logic and variables stay those of its place. Docked: at an edge or a corner of its parent, and it stays there while that scrolls." }),
+      dockAt: prop("dockAt", "align", "Docked at"),
+      dockStretch: prop("dockStretch", "boolean", "Stretch along the edge (a header, a side bar)"),
+      margin: prop("margin", "spacing", "Margin", { min: -500, help: "In a layout: the space around it. Docked: its distance from the edges." }),
+      padding: prop("padding", "spacing", "Padding", { help: "The space inside its box, around what it draws." }),
+      z: prop("z", "number", "Layer (Z)", { min: -999, max: 999, step: 1, help: "Higher = on top of its siblings. The same Z: the Hierarchy's order (top of the list = on top)." })
+    }
+  };
+  function positionView(node, parent) {
+    var d = layout_exports.dockOf(node);
+    return {
+      place: layout_exports.placeOf(node, parent),
+      dockAt: { x: d.x, y: d.y },
+      dockStretch: d.stretch,
+      margin: layout_exports.marginOf(node),
+      padding: layout_exports.paddingOf(node),
+      z: layout_exports.zOf(node)
+    };
+  }
+  function writePosition(node, key, v) {
+    var sides2 = function(s) {
+      return s && (s.t || s.r || s.b || s.l) ? { t: Number(s.t) || 0, r: Number(s.r) || 0, b: Number(s.b) || 0, l: Number(s.l) || 0 } : null;
+    };
+    if (key === "margin" || key === "padding") {
+      var sv = sides2(v);
+      if (sv) node[key] = sv;
+      else delete node[key];
+      return;
+    }
+    if (key === "z") {
+      if (Math.round(Number(v)) || 0) node.z = Math.round(Number(v));
+      else delete node.z;
+      return;
+    }
+    if (key === "dockAt") {
+      node.dock = Object.assign({}, node.dock || {}, { x: v.x, y: v.y });
+      return;
+    }
+    if (key === "dockStretch") {
+      node.dock = Object.assign({}, node.dock || {}, { stretch: !!v });
+      if (!v) delete node.dock.stretch;
+    }
+  }
+  function changePlace(screen, node, parent, v) {
+    var abs = tree_exports.absBox(screen, node.id);
+    var lc = Object.assign({}, node.layoutChild || {});
+    delete lc.absolute;
+    delete node.place;
+    if (v === "free" && layout_exports.hasAutoLayout(parent)) lc.absolute = true;
+    if (v === "screen" || v === "dock") node.place = v;
+    if (Object.keys(lc).length) node.layoutChild = lc;
+    else delete node.layoutChild;
+    if (v === "screen") {
+      node.x = Math.round(abs.x);
+      node.y = Math.round(abs.y);
+    } else if (v === "free") {
+      var o = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      node.x = Math.round(abs.x - o.x);
+      node.y = Math.round(abs.y - o.y);
+    } else if (v === "dock" && !node.dock) {
+      var ps = parent ? layout_exports.innerSize(parent) : { w: screen.width, h: screen.height };
+      var o2 = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      var cx = abs.x - o2.x + abs.w / 2, cy = abs.y - o2.y + abs.h / 2;
+      var third = function(c, size) {
+        return c < size / 3 ? "start" : c > size * 2 / 3 ? "end" : "center";
+      };
+      node.dock = { x: third(cx, ps.w), y: third(cy, ps.h) };
+      if (node.dock.x === "center" && node.dock.y === "center") node.dock.y = "start";
+    }
+  }
+  function renderPositionInspector(container, node, parent) {
+    if (!window.NexaKit || !lit() || layout_exports.inSlot(node) || layout_exports.overlayOf(node)) return false;
+    var html = lit().html, nothing = lit().nothing;
+    var screen = getActiveScreen();
+    var options = [];
+    if (layout_exports.hasAutoLayout(parent)) options.push(PLACE_OPTIONS.flow);
+    options.push(PLACE_OPTIONS.free);
+    if (parent) options.push(PLACE_OPTIONS.screen);
+    options.push(PLACE_OPTIONS.dock);
+    var meta2 = Object.assign({}, POSITION_META, {
+      props: Object.assign({}, POSITION_META.props, { place: Object.assign({}, POSITION_META.props.place, { options }) }),
+      inspector: function(o) {
+        var p = o.p, bind = o.bind;
+        var edge = p.place === "dock" && p.dockAt.x === "center" !== (p.dockAt.y === "center");
+        var arrange = function(to) {
+          var sibs = (parent ? tree_exports.kids(parent) : screen.components).filter(function(s) {
+            return s !== node;
+          }).map(layout_exports.zOf);
+          var z = to === "front" ? Math.max.apply(null, sibs.concat([0])) + 1 : Math.min.apply(null, sibs.concat([0])) - 1;
+          commit(node, function() {
+            writePosition(node, "z", z);
+          }, true);
+        };
+        return html`<nx-section heading="Position" persist-key="nexa-position">
+                <nx-segmented ${bind("place")}></nx-segmented>
+                ${p.place === "dock" ? html`
+                    <nx-row><nx-align ${bind("dockAt")}></nx-align>
+                        <div>${edge ? html`<nx-checkbox ${bind("dockStretch")}></nx-checkbox>` : html`<div class="nx-help">Stretch: choose an edge (top, bottom, left or right).</div>`}</div></nx-row>
+                    <div class="nx-help">It stays at this ${p.dockAt.x === "center" || p.dockAt.y === "center" ? "edge" : "corner"} of ${parent ? parent.name || "its frame" : "the screen"} while ${parent ? "it" : "the page"} scrolls; Margin = its distance from the edges.</div>` : nothing}
+                ${p.place === "flow" || p.place === "dock" ? html`<nx-spacing ${bind("margin")}></nx-spacing>` : nothing}
+                ${layout_exports.takesPadding(node) ? html`<nx-spacing ${bind("padding")}></nx-spacing>` : nothing}
+                <nx-row><nx-number ${bind("z")}></nx-number>
+                    <div style="display:flex;gap:4px;align-items:flex-end">
+                        <button type="button" class="nx-btn" title="On top of its siblings" @click="${() => arrange("front")}"><i class="fa fa-level-up"></i> Front</button>
+                        <button type="button" class="nx-btn" title="Below its siblings" @click="${() => arrange("back")}"><i class="fa fa-level-down"></i> Back</button>
+                    </div></nx-row>
+            </nx-section>`;
+      }
+    });
+    mountLive(
+      container,
+      meta2,
+      "nexa-position",
+      function() {
+        return positionView(node, parent);
+      },
+      function(key, v) {
+        if (key === "place") {
+          if (v === layout_exports.placeOf(node, parent)) return;
+          commit(node, function() {
+            changePlace(screen, node, parent, v);
+          }, true);
+          return;
+        }
+        commit(node, function() {
+          writePosition(node, key, v);
+        }, key === "dockAt" || key === "dockStretch");
+      },
+      { node, parent, view: function(n) {
+        return positionView(n, parent);
+      }, write: writePosition, canVary: function(key) {
+        return key !== "place";
+      } }
     );
     return true;
   }
@@ -29501,8 +29758,9 @@
     var host = function() {
       return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
     };
-    if (layout_exports.hasAutoLayout(parent)) renderLayoutChildInspector(host(), comp, parent);
-    if (layout_exports.hasConstraints(comp, parent)) renderConstraintsInspector(host(), comp, parent);
+    renderPositionInspector(host(), comp, parent);
+    if (layout_exports.hasAutoLayout(parent) && layout_exports.placeOf(comp, parent) === "flow") renderLayoutChildInspector(host(), comp, parent);
+    if (layout_exports.hasConstraints(comp, parent) && layout_exports.placeOf(comp, parent) !== "dock") renderConstraintsInspector(host(), comp, parent);
   }
   function previewText(code2, emptyLabel) {
     if (!code2) return emptyLabel;

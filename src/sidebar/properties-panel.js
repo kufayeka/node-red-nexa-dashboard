@@ -9,7 +9,7 @@ import { openLitComponentCodeEditor, openCssCodeEditor } from "../dialogs/lit-co
 import { renderEventsPanel } from "./palette-events-panel.js";
 import { listKnownSparkplugBindings, parseSparkplugBindingPath } from "../canvas/sparkplug-live.js";
 import { renderKitInspector } from "./kit-inspector.js";
-import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector, renderInstanceInspector, renderTeleportInspector } from "./frame-inspector.js";
+import { renderFrameInspector, renderLayoutChildInspector, renderConstraintsInspector, renderInstanceInspector, renderTeleportInspector, renderPositionInspector } from "./frame-inspector.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
 import { activeBreakpointId, breakpointList, overriddenKeys, resetOverride, isDesign, rangeOf } from "../canvas/breakpoints-ui.js";
 
@@ -20,8 +20,10 @@ function renderLayoutChildSection(comp) {
     if (!screen) return;
     var parent = Tree.parentOf(screen, comp.id);
     var host = function () { return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane); };
-    if (Layout.hasAutoLayout(parent)) renderLayoutChildInspector(host(), comp, parent);
-    if (Layout.hasConstraints(comp, parent)) renderConstraintsInspector(host(), comp, parent);
+    // where it is placed (layout / free / on the screen / docked), margin, padding, layer
+    renderPositionInspector(host(), comp, parent);
+    if (Layout.hasAutoLayout(parent) && Layout.placeOf(comp, parent) === "flow") renderLayoutChildInspector(host(), comp, parent);
+    if (Layout.hasConstraints(comp, parent) && Layout.placeOf(comp, parent) !== "dock") renderConstraintsInspector(host(), comp, parent);
 }
 
 function previewText(code, emptyLabel) {

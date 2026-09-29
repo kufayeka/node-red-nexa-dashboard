@@ -259,9 +259,22 @@ export function absBox(surface, id) {
     if (!loc) return null;
     var n = loc.node;
     var x = n.x || 0, y = n.y || 0;
-    // a child is positioned inside its frame's border (CSS: from the padding edge)
-    ancestors(surface, id).forEach(function (a) { var b = borderOf(a); x += (a.x || 0) + b; y += (a.y || 0) + b; });
+    // a child is positioned inside its frame's border (CSS: from the padding edge);
+    // a node placed "on the screen" has the screen's coordinates (what it holds, its own)
+    if (!onScreen(n)) {
+        var chain = ancestors(surface, id).reverse(); // nearest first
+        for (var i = 0; i < chain.length; i++) {
+            var a = chain[i], b = borderOf(a);
+            x += (a.x || 0) + b; y += (a.y || 0) + b;
+            if (onScreen(a)) break;
+        }
+    }
     return { x: x, y: y, w: n.w || 0, h: n.h || 0 };
+}
+
+/** Placed "on the screen" (Layout.placeOf): its x / y are the surface's. */
+export function onScreen(node) {
+    return !!node && node.place === "screen" && !(node.type === "@frame" && node.inSlot) && !(node.overlay && node.overlay.kind);
 }
 
 /** The parent's box size (the surface for a top-level node) — the space a node moves in. */

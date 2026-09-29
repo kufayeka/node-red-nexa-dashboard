@@ -318,6 +318,39 @@ For example, a Settings panel teleports into the header while an admin is logged
 
 **The data**: `node.teleport = "<name>" | "@page"`, `node.teleportOn = "logic"` (absent: when the page opens), `frame.slot = "<name>"`; the Logic node `{ type: "teleport", node, to, toSource }`. Tests: `test/runtime-teleport-browser.test.js`.
 
+## 4g. Position, margin, padding and layer
+
+Every node (a component, a frame, a group, a template instance) has a **Position** section in Properties.
+
+**Where it is placed** (`Layout.placeOf`):
+
+| Position | What it does |
+| --- | --- |
+| **In the layout** | Its frame's auto layout places it. Only offered inside an auto layout; there it's the default. |
+| **Free** | Its own X / Y inside its parent, like in a frame without auto layout. Inside an auto layout this is `layoutChild.absolute`. |
+| **On the screen** | Its X / Y are the **screen's**, wherever it sits in the tree. It leaves a clipped card and is drawn on the screen itself. Its Logic, variables and params stay those of its place in the tree. Inside a template, "the screen" is the template. |
+| **Docked** | It sits at an edge or a corner of its parent, picked on a 3×3 pad like Alignment. **It stays there while the parent scrolls.** Docked to the screen, it stays in the window while the page scrolls (a toast, a footer). *Stretch along the edge* makes a top / bottom dock full width and a left / right dock full height (a header, a side bar). |
+
+- **Margin** (`node.margin {t,r,b,l}`):
+  - in a layout, the space around the node;
+  - docked, its distance from the edges.
+
+  A free node has no margin: its X / Y say where it is.
+- **Padding** (`node.padding`): the space inside a component's box, around what it draws. A frame has its layout's padding instead.
+- Both use the spacing field. The button next to it switches between one value, horizontal / vertical, and each side.
+- **Layer (Z)** (`node.z`): higher is on top of its siblings. With equal Z, the Hierarchy's order decides (top of the list = on top). **Front / Back** set a Z one past every sibling's.
+  - Use Z when a node must stay in its place in an auto layout (the order sets its position) but be drawn above the others.
+- Z, margin, padding and the dock may differ per breakpoint 📱. The position itself doesn't.
+
+**How it works:**
+- It is plain CSS from `Layout.boxCss`, for both the editor and the live page.
+- A docked node is anchored with `left` / `right` / `top` / `bottom` (the centre by `calc`, no transform).
+- On the live page it is drawn in a **dock layer** over what is in view of its parent (`dockLayerOf` in the runtime). For a frame that is its visible box wherever it is scrolled to; for the screen it is the screen's part of the window. The layer takes no pointer; the docked node does.
+- An "On the screen" node is mounted on the artboard (or its template's surface). `Tree.absBox` uses its own X / Y.
+- In the editor a docked node isn't dragged (its dock places it; its box is read back). Frames don't capture an on-screen or docked node when it's dragged.
+
+Tests: `test/model-place.test.js`, `test/runtime-place-browser.test.js`.
+
 ## 4f. Components with slots (Tabs…)
 
 Some components hold other components: a Tabs has one panel per tab. Each panel is a **slot frame**, an ordinary frame made and kept in step by the editor (`Tree.syncSlots`).

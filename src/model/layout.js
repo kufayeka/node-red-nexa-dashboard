@@ -242,7 +242,68 @@ export function inSlot(node) {
 
 export function isInFlow(child, parent) {
     // an overlay is on top of its scope, never in its flow
-    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child);
+    return hasAutoLayout(parent) && !(child && child.layoutChild && child.layoutChild.absolute) && !overlayOf(child) && !placedOut(child);
+}
+
+// ---- where a node is placed ------------------------------------------------------------
+// "flow"   its parent's auto layout places it (the default there)
+// "free"   free in its parent: its own x / y (the default in a frame without auto layout,
+//          and on the screen; in an auto layout: layoutChild.absolute)
+// "screen" its x / y are the SCREEN's, wherever it is in the tree (out of a clipped card);
+//          its Logic, variables and params stay those of its place in the tree
+// "dock"   docked to an edge or a corner of its parent (node.dock, the 3x3 pad), off by its
+//          margin; on the live page it stays there while the parent scrolls
+export var PLACES = ["flow", "free", "screen", "dock"];
+function placedOut(node) { return !!node && (node.place === "screen" || node.place === "dock") && !inSlot(node); }
+
+export function placeOf(node, parent) {
+    if (!node) return "free";
+    if (placedOut(node) && !overlayOf(node)) return node.place;
+    if (hasAutoLayout(parent) && !(node.layoutChild && node.layoutChild.absolute) && !overlayOf(node) && !inSlot(node)) return "flow";
+    return "free";
+}
+
+/** A docked node's corner / edge: { x, y: "start" | "center" | "end", stretch } (stretch: along its edge). */
+export function dockOf(node) {
+    var d = (node && node.dock) || {};
+    var v = function (s, def) { return s === "start" || s === "center" || s === "end" ? s : def; };
+    return { x: v(d.x, "start"), y: v(d.y, "start"), stretch: !!d.stretch };
+}
+
+function sides(v) {
+    if (v === undefined || v === null || v === "") return { t: 0, r: 0, b: 0, l: 0 };
+    if (typeof v === "number") return { t: v, r: v, b: v, l: v };
+    return { t: num(v.t), r: num(v.r), b: num(v.b), l: num(v.l) };
+}
+/** Space around a node: { t, r, b, l } px (0 when unset). */
+export function marginOf(node) { return sides(node && node.margin); }
+/** Space inside a component's box, around what it draws: { t, r, b, l } px. Frames: layout.padding. */
+export function paddingOf(node) { return sides(node && node.padding); }
+/** Whether a node takes node.padding (a component; a frame has its layout's, a group / template none). */
+export function takesPadding(node) { return !!node && ["@frame", "@group", "@template"].indexOf(node.type) === -1; }
+/** Its stacking order among its siblings (higher = on top; 0 / unset = the Hierarchy order). */
+export function zOf(node) { var z = Number(node && node.z); return isFinite(z) ? Math.round(z) : 0; }
+function pxSides(s) { return s.t + "px " + s.r + "px " + s.b + "px " + s.l + "px"; }
+function hasSides(s) { return !!(s.t || s.r || s.b || s.l); }
+
+/** The CSS of a docked node: anchored to its parent's box (the live page: its visible box). */
+function dockCss(node, css) {
+    var d = dockOf(node), m = marginOf(node);
+    var w = num(node.w), h = num(node.h);
+    css.position = "absolute";
+    css.margin = "0px";
+    css.left = css.right = css.top = css.bottom = "";
+    var stretchX = d.stretch && d.x === "center" && d.y !== "center";
+    var stretchY = d.stretch && d.y === "center" && d.x !== "center";
+    if (stretchX) { css.left = m.l + "px"; css.right = m.r + "px"; css.width = "auto"; }
+    else if (d.x === "start") css.left = m.l + "px";
+    else if (d.x === "end") { css.left = "auto"; css.right = m.r + "px"; }
+    else css.left = "calc(50% - " + (w / 2) + "px + " + ((m.l - m.r) / 2) + "px)";
+    if (stretchY) { css.top = m.t + "px"; css.bottom = m.b + "px"; css.height = "auto"; }
+    else if (d.y === "start") css.top = m.t + "px";
+    else if (d.y === "end") { css.top = "auto"; css.bottom = m.b + "px"; }
+    else css.top = "calc(50% - " + (h / 2) + "px + " + ((m.t - m.b) / 2) + "px)";
+    return css;
 }
 
 /** A child's sizing on one axis ("w" | "h") inside an auto layout. */
@@ -397,6 +458,7 @@ export function constraintsOf(node) {
 
 /** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
 export function hasConstraints(node, parent) {
+    if (node && placeOf(node, parent) === "dock") return false;
     return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
 }
 
@@ -486,6 +548,14 @@ export function boxCss(node, parent, opts) {
     // a frame that hugs its content has no fixed size on that axis
     if (frameHugs(node, "w")) css.width = "max-content";
     if (frameHugs(node, "h")) css.height = "max-content";
+    // margin (space around it), padding (a component's space inside), its layer (z)
+    // (margin: in a layout the space around it, docked its distance from the edges; a free
+    // node's own x / y say where it is)
+    var mg = marginOf(node), pd = paddingOf(node), place = placeOf(node, parent);
+    css.margin = place === "flow" && hasSides(mg) ? pxSides(mg) : "";
+    if (takesPadding(node)) css.padding = hasSides(pd) ? pxSides(pd) : "";
+    if (zOf(node)) css["z-index"] = String(zOf(node));
+    if (place === "dock") return dockCss(node, css);
     if (!isInFlow(node, parent)) return css;
 
     var mode = layoutOf(parent).mode;
@@ -499,7 +569,7 @@ export function boxCss(node, parent, opts) {
     if (node.scrollBehavior === "sticky") {
         css.position = "sticky";
         css[flowAxis(parent) === "horizontal" ? "left" : "top"] = "0px";
-        css["z-index"] = "2";
+        css["z-index"] = zOf(node) ? String(zOf(node)) : "2";
     }
     if (mode === "carousel") {
         // a slide: perView of them fill the track; the other axis is the track's

@@ -412,7 +412,6 @@ export function renderLayoutChildInspector(container, node, parent) {
             var p = o.p, bind = o.bind;
             return html`
                 <nx-section heading="In ${parent.name || "frame"} (auto layout)" persist-key="nexa-layout-child">
-                    <nx-checkbox ${bind("absolute")}></nx-checkbox>
                     ${p.absolute ? nothing : html`
                         <nx-row><nx-segmented ${bind("childW")}></nx-segmented><nx-segmented ${bind("childH")}></nx-segmented></nx-row>
                         ${grid ? html`
@@ -428,6 +427,113 @@ export function renderLayoutChildInspector(container, node, parent) {
     mountLive(container, meta, "nexa-layout-child", function () { return childView(node); },
         function (key, v) { commit(node, function () { writeChild(node, key, v); }, key === "absolute"); },
         { node: node, parent: parent, view: childView, write: writeChild });
+    return true;
+}
+
+// ---- Position: where a node is placed in its parent, its margin / padding, its layer --------
+var PLACE_OPTIONS = {
+    flow: { value: "flow", label: "In the layout", icon: "fa fa-bars" },
+    free: { value: "free", label: "Free", icon: "fa fa-arrows" },
+    screen: { value: "screen", label: "On the screen", icon: "fa fa-desktop" },
+    dock: { value: "dock", label: "Docked", icon: "fa fa-thumb-tack" }
+};
+var POSITION_META = {
+    id: "@position",
+    stateList: [], inputs: [], outputs: [],
+    props: {
+        place: prop("place", "enum", "Position", { options: [], help: "In the layout: its frame's auto layout places it. Free: its own X / Y in its parent. On the screen: its X / Y are the screen's (out of a clipped card); its Logic and variables stay those of its place. Docked: at an edge or a corner of its parent, and it stays there while that scrolls." }),
+        dockAt: prop("dockAt", "align", "Docked at"),
+        dockStretch: prop("dockStretch", "boolean", "Stretch along the edge (a header, a side bar)"),
+        margin: prop("margin", "spacing", "Margin", { min: -500, help: "In a layout: the space around it. Docked: its distance from the edges." }),
+        padding: prop("padding", "spacing", "Padding", { help: "The space inside its box, around what it draws." }),
+        z: prop("z", "number", "Layer (Z)", { min: -999, max: 999, step: 1, help: "Higher = on top of its siblings. The same Z: the Hierarchy's order (top of the list = on top)." })
+    }
+};
+
+function positionView(node, parent) {
+    var d = Layout.dockOf(node);
+    return { place: Layout.placeOf(node, parent), dockAt: { x: d.x, y: d.y }, dockStretch: d.stretch,
+        margin: Layout.marginOf(node), padding: Layout.paddingOf(node), z: Layout.zOf(node) };
+}
+
+function writePosition(node, key, v) {
+    var sides = function (s) { return s && (s.t || s.r || s.b || s.l) ? { t: Number(s.t) || 0, r: Number(s.r) || 0, b: Number(s.b) || 0, l: Number(s.l) || 0 } : null; };
+    if (key === "margin" || key === "padding") { var sv = sides(v); if (sv) node[key] = sv; else delete node[key]; return; }
+    if (key === "z") { if (Math.round(Number(v)) || 0) node.z = Math.round(Number(v)); else delete node.z; return; }
+    if (key === "dockAt") { node.dock = Object.assign({}, node.dock || {}, { x: v.x, y: v.y }); return; }
+    if (key === "dockStretch") { node.dock = Object.assign({}, node.dock || {}, { stretch: !!v }); if (!v) delete node.dock.stretch; }
+}
+
+// A new place, keeping the node where it is on screen (its x / y are in another space now)
+function changePlace(screen, node, parent, v) {
+    var abs = Tree.absBox(screen, node.id);
+    var lc = Object.assign({}, node.layoutChild || {});
+    delete lc.absolute;
+    delete node.place;
+    if (v === "free" && Layout.hasAutoLayout(parent)) lc.absolute = true;
+    if (v === "screen" || v === "dock") node.place = v;
+    if (Object.keys(lc).length) node.layoutChild = lc; else delete node.layoutChild;
+    if (v === "screen") { node.x = Math.round(abs.x); node.y = Math.round(abs.y); }
+    else if (v === "free") {
+        var o = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        node.x = Math.round(abs.x - o.x); node.y = Math.round(abs.y - o.y);
+    } else if (v === "dock" && !node.dock) {
+        // docked where it is closest
+        var ps = parent ? Layout.innerSize(parent) : { w: screen.width, h: screen.height };
+        var o2 = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        var cx = abs.x - o2.x + abs.w / 2, cy = abs.y - o2.y + abs.h / 2;
+        var third = function (c, size) { return c < size / 3 ? "start" : c > size * 2 / 3 ? "end" : "center"; };
+        node.dock = { x: third(cx, ps.w), y: third(cy, ps.h) };
+        if (node.dock.x === "center" && node.dock.y === "center") node.dock.y = "start";
+    }
+}
+
+export function renderPositionInspector(container, node, parent) {
+    if (!window.NexaKit || !lit() || Layout.inSlot(node) || Layout.overlayOf(node)) return false;
+    var html = lit().html, nothing = lit().nothing;
+    var screen = getActiveScreen();
+    var options = [];
+    if (Layout.hasAutoLayout(parent)) options.push(PLACE_OPTIONS.flow);
+    options.push(PLACE_OPTIONS.free);
+    if (parent) options.push(PLACE_OPTIONS.screen);
+    options.push(PLACE_OPTIONS.dock);
+    var meta = Object.assign({}, POSITION_META, {
+        props: Object.assign({}, POSITION_META.props, { place: Object.assign({}, POSITION_META.props.place, { options: options }) }),
+        inspector: function (o) {
+            var p = o.p, bind = o.bind;
+            var edge = p.place === "dock" && ((p.dockAt.x === "center") !== (p.dockAt.y === "center"));
+            var arrange = function (to) {
+                // on top of (below) every sibling: a Z one past theirs
+                var sibs = (parent ? Tree.kids(parent) : screen.components).filter(function (s) { return s !== node; }).map(Layout.zOf);
+                var z = to === "front" ? Math.max.apply(null, sibs.concat([0])) + 1 : Math.min.apply(null, sibs.concat([0])) - 1;
+                commit(node, function () { writePosition(node, "z", z); }, true); // the panel shows the new Z
+            };
+            return html`<nx-section heading="Position" persist-key="nexa-position">
+                <nx-segmented ${bind("place")}></nx-segmented>
+                ${p.place === "dock" ? html`
+                    <nx-row><nx-align ${bind("dockAt")}></nx-align>
+                        <div>${edge ? html`<nx-checkbox ${bind("dockStretch")}></nx-checkbox>` : html`<div class="nx-help">Stretch: choose an edge (top, bottom, left or right).</div>`}</div></nx-row>
+                    <div class="nx-help">It stays at this ${p.dockAt.x === "center" || p.dockAt.y === "center" ? "edge" : "corner"} of ${parent ? (parent.name || "its frame") : "the screen"} while ${parent ? "it" : "the page"} scrolls; Margin = its distance from the edges.</div>` : nothing}
+                ${p.place === "flow" || p.place === "dock" ? html`<nx-spacing ${bind("margin")}></nx-spacing>` : nothing}
+                ${Layout.takesPadding(node) ? html`<nx-spacing ${bind("padding")}></nx-spacing>` : nothing}
+                <nx-row><nx-number ${bind("z")}></nx-number>
+                    <div style="display:flex;gap:4px;align-items:flex-end">
+                        <button type="button" class="nx-btn" title="On top of its siblings" @click="${() => arrange("front")}"><i class="fa fa-level-up"></i> Front</button>
+                        <button type="button" class="nx-btn" title="Below its siblings" @click="${() => arrange("back")}"><i class="fa fa-level-down"></i> Back</button>
+                    </div></nx-row>
+            </nx-section>`;
+        }
+    });
+    mountLive(container, meta, "nexa-position", function () { return positionView(node, parent); },
+        function (key, v) {
+            if (key === "place") {
+                if (v === Layout.placeOf(node, parent)) return;
+                commit(node, function () { changePlace(screen, node, parent, v); }, true);
+                return;
+            }
+            commit(node, function () { writePosition(node, key, v); }, key === "dockAt" || key === "dockStretch");
+        },
+        { node: node, parent: parent, view: function (n) { return positionView(n, parent); }, write: writePosition, canVary: function (key) { return key !== "place"; } });
     return true;
 }
 

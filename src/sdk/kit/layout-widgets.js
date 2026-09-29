@@ -1,6 +1,7 @@
 // --- Layout widgets: the frame / auto layout inspector ---------------------------
 //   <nx-align>    the 3×3 alignment pad; value { x, y }, each "start" | "center" | "end"
-//   <nx-spacing>  four sides (padding); value { t, r, b, l }; one number for all
+//   <nx-spacing>  four sides (padding / margin); value { t, r, b, l }; one number for all,
+//                 horizontal + vertical, or each side (the button cycles)
 //                 sides until "each side" is switched on
 import { html } from "lit";
 import { KitElement } from "./base.js";
@@ -40,25 +41,40 @@ export class NxSpacing extends KitElement {
 
     _set(side, raw) {
         var s = this._sides();
-        var val = Math.max(this.min || 0, n(raw));
+        var min = this.min === undefined || this.min === null ? 0 : this.min;
+        var val = Math.max(min, n(raw));
         if (side === "all") s = { t: val, r: val, b: val, l: val };
+        else if (side === "h") { s.l = val; s.r = val; }
+        else if (side === "v") { s.t = val; s.b = val; }
         else s[side] = val;
         this.change(s);
     }
 
-    render() {
+    /** "all" (one number), "hv" (horizontal + vertical) or "each" (four sides). */
+    get mode() {
+        if (this._each === "all" || this._each === "hv" || this._each === "each") return this._each;
+        if (this._each === true) return "each";
+        if (this._each === false) return "all";
         var s = this._sides();
-        var uniform = s.t === s.r && s.r === s.b && s.b === s.l;
-        var each = this._each === null ? !uniform : this._each;
-        var input = (side, value, title) => html`<input class="nx-control nx-spacing-input" type="number" .value="${String(value)}" min="${this.min || 0}"
+        if (s.t === s.r && s.r === s.b && s.b === s.l) return "all";
+        return s.t === s.b && s.l === s.r ? "hv" : "each";
+    }
+
+    render() {
+        var s = this._sides(), mode = this.mode;
+        var min = this.min === undefined || this.min === null ? 0 : this.min;
+        var input = (side, value, title) => html`<input class="nx-control nx-spacing-input" type="number" .value="${String(value)}" min="${min}"
             title="${title}" aria-label="${title}" data-side="${side}" ?disabled="${this.disabled || this.readonly}"
             @change="${(e) => { e.stopPropagation(); this._set(side, e.target.value); }}" @input="${(e) => e.stopPropagation()}">`;
-        return this.frame(html`<div class="nx-spacing" id="${this.controlId}">
-            ${each
+        var next = { all: "hv", hv: "each", each: "all" }[mode];
+        var title = { all: "All sides — click: horizontal / vertical", hv: "Horizontal / vertical — click: each side", each: "Each side — click: one value for all" }[mode];
+        return this.frame(html`<div class="nx-spacing" id="${this.controlId}" data-mode="${mode}">
+            ${mode === "each"
                 ? html`${input("t", s.t, "Top")}${input("r", s.r, "Right")}${input("b", s.b, "Bottom")}${input("l", s.l, "Left")}`
+                : mode === "hv" ? html`${input("h", s.l, "Horizontal (left and right)")}${input("v", s.t, "Vertical (top and bottom)")}`
                 : input("all", s.t, "All sides")}
-            <button type="button" class="nx-icon-btn ${each ? "nx-on" : ""}" title="${each ? "One value for all sides" : "Each side"}"
-                @click="${() => { this._each = !each; }}"><i class="fa fa-expand"></i></button>
+            <button type="button" class="nx-icon-btn ${mode !== "all" ? "nx-on" : ""}" title="${title}"
+                @click="${() => { this._each = next; }}"><i class="fa ${mode === "hv" ? "fa-arrows" : "fa-expand"}"></i></button>
         </div>`);
     }
 }

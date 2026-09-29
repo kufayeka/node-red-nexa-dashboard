@@ -622,6 +622,10 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
 // design size, what each node's constraints are against (like the live page)
 function renderComponentPreview(parentEl, innerComp, namespacedId, visitedTemplateIds, paramState, parentNode, designSize) {
     if (innerComp.visibility === "remove") return;
+    if (Tree.onScreen(innerComp)) {
+        for (var sf = parentEl.get(0); sf; sf = sf.parentElement) if (sf.__nexaSurface) { parentEl = window.$(sf); break; }
+        parentNode = null;
+    }
     var css = nodeCss(innerComp, parentNode || null);
     if (designSize) {
         var box = Layout.boxCss(innerComp, parentNode || null, { constraints: true, parentSize: designSize });
@@ -659,6 +663,7 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
+    if (inner.get(0)) inner.get(0).__nexaSurface = true; // "on the screen" inside it = on the template
     layoutTemplateInner(inner, template, comp);
     // its box is always visible (like a frame's), a name tag on hover
     if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
@@ -757,11 +762,14 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     if (comp.slotUnused) return;
     var interactable = isNodeInteractable(comp.id);
     var container = Tree.isContainer(comp) && !slotHost;
-    var css = nodeCss(comp, parentNode);
+    // "on the screen": drawn on the artboard, at the screen's x / y (out of its parent's clip)
+    var placing = Layout.placeOf(comp, parentNode);
+    if (placing === "screen") parentEl = state.artboardEl;
+    var css = nodeCss(comp, placing === "screen" ? null : parentNode);
     // in a slot: under the component's element, which takes no pointer in the editor
     if (Layout.inSlot(comp) && interactable) css["pointer-events"] = "auto";
     if (overlay) css["z-index"] = "41";
-    css.cursor = (isNodeLocked(comp.id) || !interactable || inFlow) ? "default" : "move";
+    css.cursor = (isNodeLocked(comp.id) || !interactable || inFlow || placing === "dock") ? "default" : "move";
     css["user-select"] = "none";
     if (!(Layout.inSlot(comp) && interactable)) css["pointer-events"] = interactable ? "" : "none";
     css.display = isNodeVisible(comp.id) ? (css.display || "") : "none";
@@ -841,8 +849,8 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     });
 
     if (isNodeLocked(comp.id)) return;
-    // a slot frame stays where its component puts it
-    if (Layout.inSlot(comp)) return;
+    // a slot frame stays where its component puts it; a docked node where its dock says
+    if (Layout.inSlot(comp) || placing === "dock") return;
     // Dragging moves the SELECTED nodes — when the pointer is on a child of a
     // selected group, the group moves and the child stays put inside it.
     // Frames capture (Figma): let go over another frame and the nodes go into
@@ -855,7 +863,7 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     // dragged out, it leaves the frame on drop).
     var clampOf = function (c) {
         var parent = Tree.parentOf(screen, c.id);
-        var origin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        var origin = parent && !Tree.onScreen(c) ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
         return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
     };
     var place = function (c, start, dx, dy) {
@@ -969,6 +977,10 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
             markDirty();
         }
     });
+    // jQuery UI makes an element it can't see "position: relative" (a node in a slot not
+    // drawn yet has no computed style) — which would shift a free node by its x / y
+    var dom = typeof el.get === "function" ? el.get(0) : null;
+    if (css.position && dom && dom.style && dom.style.position !== css.position) dom.style.position = css.position;
 }
 
 // A new node lands on the root (on top). `node` is complete but for x / y.

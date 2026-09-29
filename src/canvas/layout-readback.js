@@ -43,7 +43,8 @@ export function readbackLayout(screen) {
             }
             return;
         }
-        var inFlow = Layout.isInFlow(node, parent);
+        // docked: its dock places it (like a layout): its box read back the same way
+        var inFlow = Layout.isInFlow(node, parent) || Layout.placeOf(node, parent) === "dock";
         var hugW = Layout.frameHugs(node, "w"), hugH = Layout.frameHugs(node, "h");
         if (!inFlow && !hugW && !hugH) return;
         // hidden (display: none, itself or an ancestor): it measures 0 x 0 —

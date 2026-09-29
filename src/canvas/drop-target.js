@@ -122,6 +122,8 @@ export function planDrop(screen, ids, p) {
     var home = homeFrameOf(screen, ids[0]);
     var homeId = home ? home.id : null;
     if (ids.some(function (id) { var h = homeFrameOf(screen, id); return (h ? h.id : null) !== homeId; })) return null;
+    // placed on the screen or docked: dragging moves it, frames don't take it
+    if (ids.some(function (id) { var n = Tree.find(screen, id); return Tree.onScreen(n) || Layout.placeOf(n, Tree.parentOf(screen, id)) === "dock"; })) return null;
     var target = frameAt(screen, p.x, p.y, ids);
     var targetId = target ? target.id : null;
     return {
