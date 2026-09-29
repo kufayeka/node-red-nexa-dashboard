@@ -459,6 +459,7 @@ export function constraintsOf(node) {
 /** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
 export function hasConstraints(node, parent) {
     if (node && placeOf(node, parent) === "dock") return false;
+    if (parent && parent.zoom && parent.zoom.enabled) return false;
     return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
 }
 
@@ -466,15 +467,17 @@ export function hasConstraints(node, parent) {
 export function innerSize(frame) {
     var s = styleOf(frame);
     var bw = num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) : 0;
-    return { w: num(frame.w) - 2 * bw, h: num(frame.h) - 2 * bw };
+    var w = num(frame && (frame.w != null ? frame.w : frame.width), 0);
+    var h = num(frame && (frame.h != null ? frame.h : frame.height), 0);
+    return { w: w ? w - 2 * bw : 0, h: h ? h - 2 * bw : 0 };
 }
 
 function axisCss(mode, pos, size, parentSize, startProp, endProp, sizeProp) {
     var css = {};
     var end = parentSize - pos - size;
     css[startProp] = pos + "px"; css[endProp] = ""; css[sizeProp] = size + "px";
-    if (mode === "right" || mode === "bottom") { css[startProp] = "auto"; css[endProp] = end + "px"; }
-    else if (mode === "leftRight" || mode === "topBottom") { css[endProp] = end + "px"; css[sizeProp] = "auto"; }
+    if (mode === "right" || mode === "bottom") { css[startProp] = "auto"; css[endProp] = Math.max(0, end) + "px"; }
+    else if (mode === "leftRight" || mode === "topBottom") { css[endProp] = Math.max(0, end) + "px"; css[sizeProp] = "auto"; }
     else if (mode === "center") css[startProp] = "calc(50% + " + (pos - parentSize / 2) + "px)";
     else if (mode === "scale" && parentSize > 0) {
         css[startProp] = (pos / parentSize * 100) + "%";
@@ -484,8 +487,8 @@ function axisCss(mode, pos, size, parentSize, startProp, endProp, sizeProp) {
 }
 
 /** The CSS that keeps a node to its parent's edges (parentSize: the parent's inner size at design time). */
-export function constraintCss(node, parentSize) {
-    var c = constraintsOf(node);
+export function constraintCss(node, parentSize, explicitConstraints) {
+    var c = explicitConstraints || constraintsOf(node);
     var h = axisCss(c.h, num(node.x), num(node.w), parentSize.w, "left", "right", "width");
     var v = axisCss(c.v, num(node.y), num(node.h), parentSize.h, "top", "bottom", "height");
     return Object.assign(h, v);
@@ -506,6 +509,26 @@ export function resizeWithConstraints(box, constraints, oldP, newP) {
     var h = axisResize(c.h, box.x, box.w, oldP.w, newP.w);
     var v = axisResize(c.v, box.y, box.h, oldP.h, newP.h);
     return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
+}
+
+/**
+ * Infers edge anchoring for nodes without explicit constraints.
+ * If closer to the far edge than the near edge (and the axis is not scrollable),
+ * anchors to the right / bottom edge so it stays in the corner on responsive screens.
+ */
+export function inferNodeConstraints(node, parent, ps) {
+    if (node && node.constraints && (node.constraints.h || node.constraints.v)) {
+        return constraintsOf(node);
+    }
+    if (!ps || ps.w <= 0 || ps.h <= 0) return constraintsOf(node);
+    if (parent && parent.zoom && parent.zoom.enabled) return constraintsOf(node);
+    var pStyle = (parent && styleOf(parent)) || {};
+    var pScroll = pStyle.scroll || "none";
+    var nearX = num(node.x), farX = ps.w - nearX - num(node.w);
+    var nearY = num(node.y), farY = ps.h - nearY - num(node.h);
+    var h = (pScroll !== "horizontal" && pScroll !== "both" && farX >= 0 && farX < nearX) ? "right" : "left";
+    var v = (pScroll !== "vertical" && pScroll !== "both" && farY >= 0 && farY < nearY) ? "bottom" : "top";
+    return { h: h, v: v };
 }
 
 /**
@@ -542,8 +565,8 @@ export function boxCss(node, parent, opts) {
     };
     if (opts && opts.constraints && hasConstraints(node, parent)) {
         var ps = parent ? innerSize(parent) : opts.parentSize;
-        var c = constraintsOf(node);
-        if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css, constraintCss(node, ps));
+        var c = inferNodeConstraints(node, parent, ps);
+        if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css, constraintCss(node, ps, c));
     }
     // a frame that hugs its content has no fixed size on that axis
     if (frameHugs(node, "w")) css.width = "max-content";

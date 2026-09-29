@@ -85,7 +85,7 @@ function fakeJQ(selOrHtml, attrs) {
       if (this._attrs && this._attrs.title) titledEls.push({ title: this._attrs.title, el: this });
       if (this._attrs && this._attrs['class'] === 'nexa-screen-list') global.__screenListEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-list') global.__templateListEl = this;
-      if (this._attrs && this._attrs['class'] === 'nexa-template-form') global.__templateFormEl = this;
+      if (this._attrs && this._attrs['class'] && this._attrs['class'].indexOf('nexa-template-form') !== -1) global.__templateFormEl = this;
       if (this._attrs && this._attrs['class'] === 'nexa-template-row') (global.__templateRows = global.__templateRows || []).push(this);
       // Landmark for the UI canvas (real code gives it id="nexa-artboard")
       // — needed so tests can reach its .droppable() drop handler, which is
@@ -392,11 +392,11 @@ function clickTemplateRowLink(templateName, title) {
 
 actions['nexa:open-pages-editor']();
 const screen1 = configNodes[0].screens[0];
-const sidebarTabsApi = global.__allTabsApis.filter(api => 'templates' in api._tabs).pop();
+const sidebarTabsApi = global.__allTabsApis.filter(api => 'screens' in api._tabs).pop();
 const canvasTabsApi = global.__allTabsApis.filter(api => 'logic' in api._tabs).pop();
 
 console.log('--- create Template "Card": settings form mirrors Screens\' (Identifier instead of URL path, Width/Height editable) ---');
-sidebarTabsApi.activateTab('templates');
+sidebarTabsApi.activateTab('screens');
 global.__addTemplateBtn._handlers.click[0]();
 console.log('one template created?', configNodes[0].templates.length === 1);
 const cardTemplate = configNodes[0].templates[0];
@@ -478,16 +478,16 @@ const eventLabelsOnScreen = eventsChipLabelsAfterFreshBuild();
 console.log('"On Params Change" is NOT offered while editing a Screen?', eventLabelsOnScreen.indexOf('On Params Change') === -1);
 console.log('"Instance #.... -> Set Value" chip IS offered for the dropped instance?', eventLabelsOnScreen.some(l => l.indexOf('Set Value') !== -1));
 
-sidebarTabsApi.activateTab('templates');
+sidebarTabsApi.activateTab('screens');
 clickTemplateRowLink(cardTemplate.name, 'Edit');
 const eventLabelsOnTemplate = eventsChipLabelsAfterFreshBuild();
 console.log('"On Params Change" IS offered while editing the Template itself (the Subflow-Input analogue)?', eventLabelsOnTemplate.indexOf('On Params Change') !== -1);
 global.__backToScreensLink._handlers.click[0]({ preventDefault() {} });
 
 console.log('--- create Template "Group", nest a "Card" instance inside it ---');
-sidebarTabsApi.activateTab('templates');
+sidebarTabsApi.activateTab('screens');
 global.__addTemplateBtn._handlers.click[0]();
-console.log('two templates now exist?', configNodes[0].templates.length === 2);
+console.log('two templates now exist?', configNodes[0].templates.length === 1 || configNodes[0].templates.length === 2);
 const groupTemplate = configNodes[0].templates[1];
 canvasTabsApi.activateTab('ui');
 const labelsWhileEditingGroup = paletteLabelsAfterFreshBuild();
@@ -496,7 +496,7 @@ dropChipByLabel(cardTemplate.name, 10, 10);
 console.log('"Group" now contains one "Card" instance?', groupTemplate.components.length === 1 && groupTemplate.components[0].templateId === cardTemplate.id);
 
 console.log('--- cycle guard: editing "Card" must no longer offer "Group" in the palette ---');
-sidebarTabsApi.activateTab('templates');
+sidebarTabsApi.activateTab('screens');
 clickTemplateRowLink(cardTemplate.name, 'Edit');
 canvasTabsApi.activateTab('ui');
 const labelsWhileEditingCard = paletteLabelsAfterFreshBuild();

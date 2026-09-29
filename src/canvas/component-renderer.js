@@ -859,12 +859,58 @@ export function renderComponent(comp, parentEl, parentNode, scope) {
     // they follow the pointer as a ghost and land where the line / frame shows.
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
     var flowMode = false, plan = null, grab = {};
-    // A node stays on the screen (frames don't trap their children any more:
-    // dragged out, it leaves the frame on drop).
+    // Posisi free: jika berada di dalam container, absolute dibatasi di dalam container itu saja.
+    // Jika di screen (root level), bebas ditaruh di mana saja dengan batas canvas.
     var clampOf = function (c) {
+        if (Tree.onScreen(c)) {
+            var sw = screen.width || 1280;
+            var sh = screen.height || 800;
+            var scw = c.w || 0;
+            var sch = c.h || 0;
+            return {
+                minX: 0,
+                minY: 0,
+                maxX: Math.max(0, sw - scw),
+                maxY: Math.max(0, sh - sch)
+            };
+        }
         var parent = Tree.parentOf(screen, c.id);
-        var origin = parent && !Tree.onScreen(c) ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-        return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
+        var container = parent;
+        while (container && container.type === "@group") {
+            container = Tree.parentOf(screen, container.id);
+        }
+        if (container) {
+            var pw = container.w != null ? container.w : (container.width || screen.width);
+            var ph = container.h != null ? container.h : (container.height || screen.height);
+            if (container.type === "@frame" && typeof Layout.innerSize === "function") {
+                var isz = Layout.innerSize(container);
+                pw = isz.w;
+                ph = isz.h;
+            }
+            var cw = c.w || 0;
+            var ch = c.h || 0;
+            var origin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+            var contOrigin = Tree.contentOrigin(screen, container.id);
+            var relX = origin.x - contOrigin.x;
+            var relY = origin.y - contOrigin.y;
+            return {
+                minX: -relX,
+                minY: -relY,
+                maxX: Math.max(-relX, pw - relX - cw),
+                maxY: Math.max(-relY, ph - relY - ch)
+            };
+        }
+        var sw = screen.width || 1280;
+        var sh = screen.height || 800;
+        var scw = c.w || 0;
+        var sch = c.h || 0;
+        var rootOrigin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        return {
+            minX: -rootOrigin.x,
+            minY: -rootOrigin.y,
+            maxX: Math.max(-rootOrigin.x, sw - rootOrigin.x - scw),
+            maxY: Math.max(-rootOrigin.y, sh - rootOrigin.y - sch)
+        };
     };
     var place = function (c, start, dx, dy) {
         var nx = start.x + dx, ny = start.y + dy;

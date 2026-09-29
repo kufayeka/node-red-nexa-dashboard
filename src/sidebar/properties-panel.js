@@ -375,7 +375,35 @@ export function renderPropertiesPanel() {
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row);
         var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
         input.on("change", function () {
-            comp[field] = parseFloat(input.val()) || 0;
+            var val = parseFloat(input.val()) || 0;
+            if (field === "x" || field === "y") {
+                var screen = getActiveScreen();
+                var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+                var container = parent;
+                while (container && container.type === "@group") {
+                    container = Tree.parentOf(screen, container.id);
+                }
+                var maxBound, minBound = 0;
+                var compSize = field === "x" ? (comp.w || 0) : (comp.h || 0);
+                if (container && !Tree.onScreen(comp)) {
+                    var isz = (container.type === "@frame" && typeof Layout.innerSize === "function") ? Layout.innerSize(container) : null;
+                    var dim = isz ? (field === "x" ? isz.w : isz.h) : (field === "x" ? (container.w || 0) : (container.h || 0));
+                    var origin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+                    var contOrigin = Tree.contentOrigin(screen, container.id);
+                    var rel = field === "x" ? (origin.x - contOrigin.x) : (origin.y - contOrigin.y);
+                    minBound = -rel;
+                    maxBound = Math.max(minBound, dim - rel - compSize);
+                } else {
+                    var screenDim = screen ? (field === "x" ? screen.width : screen.height) : (field === "x" ? 1280 : 800);
+                    var rootOrigin = (parent && !Tree.onScreen(comp)) ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+                    var rootRel = field === "x" ? rootOrigin.x : rootOrigin.y;
+                    minBound = -rootRel;
+                    maxBound = Math.max(minBound, screenDim - rootRel - compSize);
+                }
+                val = Math.max(minBound, Math.min(val, maxBound));
+                input.val(val);
+            }
+            comp[field] = val;
             afterGeometryEdit(comp);
             markDirty();
         });
@@ -483,7 +511,33 @@ function renderContainerProperties(comp) {
         window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(pair[1]).appendTo(row);
         var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[pair[0]]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
         input.on("change", function () {
-            comp[pair[0]] = parseFloat(input.val()) || 0;
+            var val = parseFloat(input.val()) || 0;
+            var fld = pair[0];
+            var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+            var container = parent;
+            while (container && container.type === "@group") {
+                container = Tree.parentOf(screen, container.id);
+            }
+            var maxBound, minBound = 0;
+            var compSize = fld === "x" ? (comp.w || 0) : (comp.h || 0);
+            if (container && !Tree.onScreen(comp)) {
+                var isz = (container.type === "@frame" && typeof Layout.innerSize === "function") ? Layout.innerSize(container) : null;
+                var dim = isz ? (fld === "x" ? isz.w : isz.h) : (fld === "x" ? (container.w || 0) : (container.h || 0));
+                var origin = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+                var contOrigin = Tree.contentOrigin(screen, container.id);
+                var rel = fld === "x" ? (origin.x - contOrigin.x) : (origin.y - contOrigin.y);
+                minBound = -rel;
+                maxBound = Math.max(minBound, dim - rel - compSize);
+            } else {
+                var screenDim = screen ? (fld === "x" ? screen.width : screen.height) : (fld === "x" ? 1280 : 800);
+                var rootOrigin = (parent && !Tree.onScreen(comp)) ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+                var rootRel = fld === "x" ? rootOrigin.x : rootOrigin.y;
+                minBound = -rootRel;
+                maxBound = Math.max(minBound, screenDim - rootRel - compSize);
+            }
+            val = Math.max(minBound, Math.min(val, maxBound));
+            input.val(val);
+            comp[fld] = val;
             afterGeometryEdit(comp);
             markDirty();
         });

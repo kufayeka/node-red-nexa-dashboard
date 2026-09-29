@@ -5,6 +5,8 @@
             name: { value: "Nexa Project" },
             screens: { value: [] },
             templates: { value: [] },
+            folders: { value: [] },
+            flows: { value: [] },
             variables: { value: [] },   // app variables: shared by every screen (docs/STATE.md)
             types: { value: [] },       // types (UDT): classes for data (docs/TYPES.md)
             breakpoints: { value: [] }, // the app's breakpoints (xs … 3xl); empty = the defaults (docs/LAYOUT.md)
@@ -17,7 +19,8 @@
         oneditprepare: function () {
             var count = (this.screens || []).length;
             var templateCount = (this.templates || []).length;
-            $("#node-config-input-info").text(count + " screen(s), " + templateCount + " template(s). Edit via menu → Pages (Nexa Dashboard), not here.");
+            var flowCount = (this.flows || []).length;
+            $("#node-config-input-info").text(count + " screen(s), " + templateCount + " template(s), " + flowCount + " flow(s). Edit via menu → Pages (Nexa Dashboard), not here.");
         }
     });
 </script>

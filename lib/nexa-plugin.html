@@ -103,6 +103,62 @@
   }
   initNexaRegistry();
 
+  // src/state.js
+  var state_exports = {};
+  __export(state_exports, {
+    LOGIC_CANVAS_H: () => LOGIC_CANVAS_H,
+    LOGIC_CANVAS_W: () => LOGIC_CANVAS_W,
+    LOGIC_GRID_SIZE: () => LOGIC_GRID_SIZE,
+    LOGIC_NODE_H: () => LOGIC_NODE_H,
+    LOGIC_NODE_KINDS: () => LOGIC_NODE_KINDS,
+    LOGIC_NODE_W: () => LOGIC_NODE_W,
+    Layout: () => layout_exports,
+    SVG_NS: () => SVG_NS,
+    Scope: () => scope_exports,
+    Theme: () => theme_exports,
+    Tree: () => tree_exports,
+    Types: () => types_exports,
+    ZOOM_MAX: () => ZOOM_MAX,
+    ZOOM_MIN: () => ZOOM_MIN,
+    ZOOM_STEP: () => ZOOM_STEP,
+    appScope: () => appScope,
+    cloneLogic: () => cloneLogic,
+    cloneSurfaceComponents: () => cloneSurfaceComponents,
+    convertScreenToTemplate: () => convertScreenToTemplate,
+    convertTemplateToScreen: () => convertTemplateToScreen,
+    deleteFlow: () => deleteFlow,
+    deleteFolder: () => deleteFolder,
+    duplicateFlow: () => duplicateFlow,
+    duplicateScreen: () => duplicateScreen,
+    duplicateTemplate: () => duplicateTemplate,
+    ensureScreensLoaded: () => ensureScreensLoaded,
+    findComponent: () => findComponent,
+    findFlow: () => findFlow,
+    findFolder: () => findFolder,
+    findLogicNode: () => findLogicNode,
+    findSurfaceById: () => findSurfaceById,
+    findTemplate: () => findTemplate,
+    findTemplateByIdOrName: () => findTemplateByIdOrName,
+    genId: () => genId,
+    getActiveScreen: () => getActiveScreen,
+    getApp: () => getApp,
+    getOrCreateProjectConfigNode: () => getOrCreateProjectConfigNode,
+    isNodeInteractable: () => isNodeInteractable,
+    isNodeLocked: () => isNodeLocked,
+    isNodeVisible: () => isNodeVisible,
+    makeFlow: () => makeFlow,
+    makeFolder: () => makeFolder,
+    makeScreen: () => makeScreen,
+    makeTemplate: () => makeTemplate,
+    markDirty: () => markDirty,
+    nodeVisibility: () => nodeVisibility,
+    shouldRenderNode: () => shouldRenderNode,
+    snap: () => snap,
+    snapLogic: () => snapLogic,
+    state: () => state,
+    templateContains: () => templateContains
+  });
+
   // src/model/tree.js
   var tree_exports = {};
   __export(tree_exports, {
@@ -546,6 +602,7 @@
     hasAutoLayout: () => hasAutoLayout,
     hasConstraints: () => hasConstraints,
     inSlot: () => inSlot,
+    inferNodeConstraints: () => inferNodeConstraints,
     innerSize: () => innerSize,
     isInFlow: () => isInFlow,
     layoutOf: () => layoutOf,
@@ -1273,12 +1330,15 @@
   }
   function hasConstraints(node, parent) {
     if (node && placeOf(node, parent) === "dock") return false;
+    if (parent && parent.zoom && parent.zoom.enabled) return false;
     return !inSlot(node) && (!parent || parent.type === "@frame") && !isInFlow(node, parent) && !overlayOf(node);
   }
   function innerSize(frame) {
     var s = styleOf(frame);
     var bw = num(s.strokeWidth) > 0 && s.stroke ? num(s.strokeWidth) : 0;
-    return { w: num(frame.w) - 2 * bw, h: num(frame.h) - 2 * bw };
+    var w = num(frame && (frame.w != null ? frame.w : frame.width), 0);
+    var h = num(frame && (frame.h != null ? frame.h : frame.height), 0);
+    return { w: w ? w - 2 * bw : 0, h: h ? h - 2 * bw : 0 };
   }
   function axisCss(mode, pos, size, parentSize2, startProp, endProp, sizeProp) {
     var css2 = {};
@@ -1288,9 +1348,9 @@
     css2[sizeProp] = size + "px";
     if (mode === "right" || mode === "bottom") {
       css2[startProp] = "auto";
-      css2[endProp] = end + "px";
+      css2[endProp] = Math.max(0, end) + "px";
     } else if (mode === "leftRight" || mode === "topBottom") {
-      css2[endProp] = end + "px";
+      css2[endProp] = Math.max(0, end) + "px";
       css2[sizeProp] = "auto";
     } else if (mode === "center") css2[startProp] = "calc(50% + " + (pos - parentSize2 / 2) + "px)";
     else if (mode === "scale" && parentSize2 > 0) {
@@ -1299,8 +1359,8 @@
     }
     return css2;
   }
-  function constraintCss(node, parentSize2) {
-    var c = constraintsOf(node);
+  function constraintCss(node, parentSize2, explicitConstraints) {
+    var c = explicitConstraints || constraintsOf(node);
     var h = axisCss(c.h, num(node.x), num(node.w), parentSize2.w, "left", "right", "width");
     var v = axisCss(c.v, num(node.y), num(node.h), parentSize2.h, "top", "bottom", "height");
     return Object.assign(h, v);
@@ -1318,6 +1378,20 @@
     var h = axisResize(c.h, box2.x, box2.w, oldP.w, newP.w);
     var v = axisResize(c.v, box2.y, box2.h, oldP.h, newP.h);
     return { x: Math.round(h[0]), y: Math.round(v[0]), w: Math.round(h[1]), h: Math.round(v[1]) };
+  }
+  function inferNodeConstraints(node, parent, ps) {
+    if (node && node.constraints && (node.constraints.h || node.constraints.v)) {
+      return constraintsOf(node);
+    }
+    if (!ps || ps.w <= 0 || ps.h <= 0) return constraintsOf(node);
+    if (parent && parent.zoom && parent.zoom.enabled) return constraintsOf(node);
+    var pStyle = parent && styleOf(parent) || {};
+    var pScroll = pStyle.scroll || "none";
+    var nearX = num(node.x), farX = ps.w - nearX - num(node.w);
+    var nearY = num(node.y), farY = ps.h - nearY - num(node.h);
+    var h = pScroll !== "horizontal" && pScroll !== "both" && farX >= 0 && farX < nearX ? "right" : "left";
+    var v = pScroll !== "vertical" && pScroll !== "both" && farY >= 0 && farY < nearY ? "bottom" : "top";
+    return { h, v };
   }
   function boxCss(node, parent, opts) {
     if (inSlot(node)) {
@@ -1364,8 +1438,8 @@
     };
     if (opts && opts.constraints && hasConstraints(node, parent)) {
       var ps = parent ? innerSize(parent) : opts.parentSize;
-      var c = constraintsOf(node);
-      if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css2, constraintCss(node, ps));
+      var c = inferNodeConstraints(node, parent, ps);
+      if (ps && (c.h !== "left" || c.v !== "top")) Object.assign(css2, constraintCss(node, ps, c));
     }
     if (frameHugs(node, "w")) css2.width = "max-content";
     if (frameHugs(node, "h")) css2.height = "max-content";
@@ -2003,11 +2077,20 @@
     screensLoaded: false,
     screenCounter: 0,
     projectConfigNode: null,
+    // Folders/Groups for organizing screens, templates, and flows
+    folders: [],
+    folderCounter: 0,
     // Reusable Screen Templates (see plan "Phase 3"). `editingMode` gates
     // getActiveScreen() (see below) so every existing caller — the whole
     // canvas/Logic-canvas/palette/properties/layers machinery — becomes
     // template-aware for free, with zero call-site changes.
     templates: [],
+    templateCounter: 0,
+    activeTemplateId: null,
+    // Screen Flows: multi-app flows with endpoint routing & logic wiring
+    flows: [],
+    flowCounter: 0,
+    activeFlowId: null,
     assetsPane: null,
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
@@ -2017,13 +2100,13 @@
     // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
     themePreview: null,
     themePane: null,
-    templateCounter: 0,
     editingMode: "screen",
-    // "screen" | "template"
-    activeTemplateId: null,
+    // "screen" | "template" | "flow"
     selectedIds: [],
     logicSelectedIds: [],
     activeCanvasTab: "ui",
+    canvasTabs: null,
+    canvasTabsUl: null,
     zoomLevel: 1,
     logicZoomLevel: 1,
     undoStack: [],
@@ -2068,6 +2151,9 @@
     if (state.editingMode === "template") {
       return findTemplate(state.activeTemplateId);
     }
+    if (state.editingMode === "flow") {
+      return findFlow(state.activeFlowId);
+    }
     return state.screens.find(function(s) {
       return s.id === state.activeScreenId;
     });
@@ -2085,7 +2171,259 @@
   function findSurfaceById(id2) {
     return state.screens.find(function(s) {
       return s.id === id2;
-    }) || findTemplate(id2);
+    }) || findTemplate(id2) || findFlow(id2);
+  }
+  function makeFolder(opts) {
+    state.folderCounter++;
+    return {
+      id: genId(),
+      name: opts && opts.name || "Group " + state.folderCounter,
+      parentId: opts && opts.parentId || null,
+      category: opts && opts.category || "screen",
+      type: "folder"
+    };
+  }
+  function findFolder(id2) {
+    return state.folders.find(function(f) {
+      return f.id === id2;
+    });
+  }
+  function deleteFolder(id2) {
+    var folder = findFolder(id2);
+    if (!folder) return;
+    var parentId = folder.parentId || null;
+    state.folders.forEach(function(f) {
+      if (f.parentId === id2) f.parentId = parentId;
+    });
+    state.screens.forEach(function(s) {
+      if (s.parentId === id2) s.parentId = parentId;
+    });
+    state.templates.forEach(function(t2) {
+      if (t2.parentId === id2) t2.parentId = parentId;
+    });
+    state.flows.forEach(function(fl) {
+      if (fl.parentId === id2) fl.parentId = parentId;
+    });
+    state.folders = state.folders.filter(function(f) {
+      return f.id !== id2;
+    });
+  }
+  function makeFlow(opts) {
+    state.flowCounter++;
+    return {
+      id: genId(),
+      name: opts && opts.name || "Flow " + state.flowCounter,
+      endpoint: opts && opts.endpoint || "/flow" + state.flowCounter,
+      parentId: opts && opts.parentId || null,
+      type: "flow",
+      components: [],
+      orphans: [],
+      variables: opts && opts.variables || [],
+      logic: opts && opts.logic ? cloneLogic(opts.logic) : { nodes: [], wires: [] }
+    };
+  }
+  function findFlow(id2) {
+    return state.flows.find(function(fl) {
+      return fl.id === id2;
+    });
+  }
+  function deleteFlow(id2) {
+    var wasActive = id2 === state.activeFlowId;
+    state.flows = state.flows.filter(function(fl) {
+      return fl.id !== id2;
+    });
+    if (wasActive) {
+      state.activeFlowId = state.flows.length ? state.flows[0].id : null;
+      if (!state.activeFlowId && state.editingMode === "flow") {
+        state.editingMode = "screen";
+      }
+    }
+  }
+  function cloneSurfaceComponents(components, compIdMap) {
+    compIdMap = compIdMap || {};
+    function renew(n) {
+      var copy = JSON.parse(JSON.stringify(n));
+      var oldId = n.id;
+      var newId = genId();
+      compIdMap[oldId] = newId;
+      copy.id = newId;
+      if (copy.children && Array.isArray(copy.children)) {
+        copy.children = copy.children.map(renew);
+      }
+      return copy;
+    }
+    return (components || []).map(renew);
+  }
+  function cloneLogic(logic, compIdMap) {
+    if (!logic || !Array.isArray(logic.nodes)) return { nodes: [], wires: [] };
+    var idMap = {};
+    var clonedNodes = (logic.nodes || []).map(function(n) {
+      var copy = JSON.parse(JSON.stringify(n));
+      var newId = genId();
+      idMap[n.id] = newId;
+      copy.id = newId;
+      if (compIdMap) {
+        if (copy.compId && compIdMap[copy.compId]) copy.compId = compIdMap[copy.compId];
+        if (copy.componentId && compIdMap[copy.componentId]) copy.componentId = compIdMap[copy.componentId];
+        if (copy.targetId && compIdMap[copy.targetId]) copy.targetId = compIdMap[copy.targetId];
+        if (copy.container && compIdMap[copy.container]) copy.container = compIdMap[copy.container];
+        if (copy.overlay && compIdMap[copy.overlay]) copy.overlay = compIdMap[copy.overlay];
+        if (copy.node && compIdMap[copy.node]) copy.node = compIdMap[copy.node];
+        if (typeof copy.tag === "string" && copy.tag.indexOf("comp:") === 0) {
+          var parts = copy.tag.split(":");
+          if (parts[1] && compIdMap[parts[1]]) {
+            parts[1] = compIdMap[parts[1]];
+            copy.tag = parts.join(":");
+          }
+        }
+      }
+      return copy;
+    });
+    var clonedWires = [];
+    (logic.wires || []).forEach(function(w) {
+      var newFrom = idMap[w.from];
+      var newTo = idMap[w.to];
+      if (newFrom && newTo) {
+        var copyW = JSON.parse(JSON.stringify(w));
+        copyW.from = newFrom;
+        copyW.to = newTo;
+        clonedWires.push(copyW);
+      }
+    });
+    return { nodes: clonedNodes, wires: clonedWires };
+  }
+  function duplicateScreen(id2) {
+    var orig = state.screens.find(function(s) {
+      return s.id === id2;
+    });
+    if (!orig) return null;
+    state.screenCounter++;
+    var compIdMap = {};
+    var newScreen = {
+      id: genId(),
+      name: orig.name + " (Copy)",
+      path: orig.path + "-copy",
+      parentId: orig.parentId || null,
+      width: orig.width,
+      height: orig.height,
+      gridSize: orig.gridSize,
+      snap: orig.snap !== false,
+      treeVersion: orig.treeVersion || TREE_VERSION,
+      disabled: !!orig.disabled,
+      displayMode: orig.displayMode,
+      variables: JSON.parse(JSON.stringify(orig.variables || [])),
+      components: cloneSurfaceComponents(orig.components, compIdMap),
+      orphans: cloneSurfaceComponents(orig.orphans, compIdMap),
+      logic: cloneLogic(orig.logic, compIdMap)
+    };
+    var idx = state.screens.indexOf(orig);
+    state.screens.splice(idx + 1, 0, newScreen);
+    return newScreen;
+  }
+  function duplicateTemplate(id2) {
+    var orig = findTemplate(id2);
+    if (!orig) return null;
+    state.templateCounter++;
+    var compIdMap = {};
+    var newTemplate = {
+      id: genId(),
+      name: orig.name + " (Copy)",
+      identifier: orig.identifier ? orig.identifier + "-copy" : "",
+      parentId: orig.parentId || null,
+      width: orig.width,
+      height: orig.height,
+      gridSize: orig.gridSize,
+      snap: orig.snap !== false,
+      treeVersion: orig.treeVersion || TREE_VERSION,
+      params: JSON.parse(JSON.stringify(orig.params || [])),
+      variables: JSON.parse(JSON.stringify(orig.variables || [])),
+      components: cloneSurfaceComponents(orig.components, compIdMap),
+      orphans: cloneSurfaceComponents(orig.orphans, compIdMap),
+      logic: cloneLogic(orig.logic, compIdMap)
+    };
+    var idx = state.templates.indexOf(orig);
+    state.templates.splice(idx + 1, 0, newTemplate);
+    return newTemplate;
+  }
+  function duplicateFlow(id2) {
+    var orig = findFlow(id2);
+    if (!orig) return null;
+    state.flowCounter++;
+    var newFlow = {
+      id: genId(),
+      name: orig.name + " (Copy)",
+      endpoint: orig.endpoint + "-copy",
+      parentId: orig.parentId || null,
+      type: "flow",
+      components: [],
+      orphans: [],
+      variables: JSON.parse(JSON.stringify(orig.variables || [])),
+      logic: cloneLogic(orig.logic)
+    };
+    var idx = state.flows.indexOf(orig);
+    state.flows.splice(idx + 1, 0, newFlow);
+    return newFlow;
+  }
+  function convertScreenToTemplate(id2) {
+    var screen = state.screens.find(function(s) {
+      return s.id === id2;
+    });
+    if (!screen) return null;
+    if (state.screens.length <= 1) {
+      var replacement = makeScreen({ name: "Screen " + (state.screenCounter + 1) });
+      state.screens.push(replacement);
+      if (state.activeScreenId === id2) state.activeScreenId = replacement.id;
+    }
+    state.screens = state.screens.filter(function(s) {
+      return s.id !== id2;
+    });
+    state.templateCounter++;
+    var template = {
+      id: screen.id,
+      name: screen.name,
+      identifier: (screen.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+      parentId: screen.parentId || null,
+      width: screen.width,
+      height: screen.height,
+      gridSize: screen.gridSize,
+      snap: screen.snap !== false,
+      treeVersion: screen.treeVersion || TREE_VERSION,
+      params: [],
+      variables: screen.variables || [],
+      components: screen.components || [],
+      orphans: screen.orphans || [],
+      logic: screen.logic || { nodes: [], wires: [] }
+    };
+    state.templates.push(template);
+    return template;
+  }
+  function convertTemplateToScreen(id2) {
+    var template = findTemplate(id2);
+    if (!template) return null;
+    state.templates = state.templates.filter(function(t2) {
+      return t2.id !== id2;
+    });
+    state.screenCounter++;
+    var slug2 = (template.identifier || template.name || "screen").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    var screen = {
+      id: template.id,
+      name: template.name,
+      path: "/" + slug2,
+      parentId: template.parentId || null,
+      width: template.width,
+      height: template.height,
+      gridSize: template.gridSize,
+      snap: template.snap !== false,
+      treeVersion: template.treeVersion || TREE_VERSION,
+      disabled: false,
+      displayMode: "fixed",
+      variables: template.variables || [],
+      components: template.components || [],
+      orphans: template.orphans || [],
+      logic: template.logic || { nodes: [], wires: [] }
+    };
+    state.screens.push(screen);
+    return screen;
   }
   function makeSurfaceBase(opts) {
     return {
@@ -2105,6 +2443,7 @@
     var screen = makeSurfaceBase(opts);
     screen.name = opts && opts.name || "Screen " + state.screenCounter;
     screen.path = opts && opts.path || "/screen" + state.screenCounter;
+    screen.parentId = opts && opts.parentId || null;
     return screen;
   }
   function makeTemplate(opts) {
@@ -2113,6 +2452,7 @@
     template.name = opts && opts.name || "Template " + state.templateCounter;
     template.identifier = opts && opts.identifier || "";
     template.params = opts && opts.params || [];
+    template.parentId = opts && opts.parentId || null;
     return template;
   }
   function templateContains(candidateId, targetId, seen) {
@@ -2141,6 +2481,8 @@
     if (state.projectConfigNode) {
       state.projectConfigNode.screens = state.screens;
       state.projectConfigNode.templates = state.templates;
+      state.projectConfigNode.folders = state.folders;
+      state.projectConfigNode.flows = state.flows;
     }
     if (typeof state.onBreakpointDirty === "function") state.onBreakpointDirty();
     if (typeof RED !== "undefined" && RED.nodes && RED.nodes.dirty) {
@@ -2196,10 +2538,31 @@
       backfillSurface(t2);
       if (!t2.params) t2.params = [];
       if (t2.identifier === void 0) t2.identifier = "";
+      if (t2.parentId === void 0) t2.parentId = null;
     });
     state.templateCounter = templateData.length;
     state.templates = templateData;
     if (state.projectConfigNode) state.projectConfigNode.templates = state.templates;
+    var folderData = state.projectConfigNode && state.projectConfigNode.folders || [];
+    folderData.forEach(function(f) {
+      if (f.parentId === void 0) f.parentId = null;
+      f.type = "folder";
+    });
+    state.folderCounter = folderData.length;
+    state.folders = folderData;
+    if (state.projectConfigNode) state.projectConfigNode.folders = state.folders;
+    var flowData = state.projectConfigNode && state.projectConfigNode.flows || [];
+    flowData.forEach(function(f) {
+      if (!f.logic) f.logic = { nodes: [], wires: [] };
+      if (!f.components) f.components = [];
+      if (!f.variables) f.variables = [];
+      if (f.parentId === void 0) f.parentId = null;
+      f.type = "flow";
+    });
+    state.flowCounter = flowData.length;
+    state.flows = flowData;
+    if (state.projectConfigNode) state.projectConfigNode.flows = state.flows;
+    if (state.flows.length && !state.activeFlowId) state.activeFlowId = state.flows[0].id;
     state.screensLoaded = true;
     if (cb) cb();
   }
@@ -2234,6 +2597,25 @@
     }
     return screen && screen.logic && (screen.logic.nodes || []).find(function(n) {
       return n.id === id2;
+    });
+  }
+  if (typeof window !== "undefined") {
+    window.__nexaEditorApi = window.__nexaEditorApi || {};
+    Object.assign(window.__nexaEditorApi, {
+      makeFolder,
+      findFolder,
+      deleteFolder,
+      makeFlow,
+      findFlow,
+      deleteFlow,
+      cloneLogic,
+      duplicateScreen,
+      duplicateTemplate,
+      duplicateFlow,
+      convertScreenToTemplate,
+      convertTemplateToScreen,
+      getActiveScreen,
+      markDirty
     });
   }
 
@@ -2645,6 +3027,11 @@
     if (ids.some(function(id2) {
       var n = tree_exports.find(screen, id2);
       return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "dock";
+    })) return null;
+    if (ids.some(function(id2) {
+      var n = tree_exports.find(screen, id2);
+      var h = homeFrameOf(screen, id2);
+      return h && layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "free";
     })) return null;
     var target = frameAt(screen, p.x, p.y, ids);
     var targetId = target ? target.id : null;
@@ -3688,9 +4075,55 @@
     var dragStart = null, dragStartPage = null, starts = null, before = null, movers = null;
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
+      if (tree_exports.onScreen(c)) {
+        var sw = screen.width || 1280;
+        var sh = screen.height || 800;
+        var scw = c.w || 0;
+        var sch = c.h || 0;
+        return {
+          minX: 0,
+          minY: 0,
+          maxX: Math.max(0, sw - scw),
+          maxY: Math.max(0, sh - sch)
+        };
+      }
       var parent = tree_exports.parentOf(screen, c.id);
-      var origin = parent && !tree_exports.onScreen(c) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-      return { minX: -origin.x, minY: -origin.y, maxX: screen.width - origin.x - c.w, maxY: screen.height - origin.y - c.h };
+      var container2 = parent;
+      while (container2 && container2.type === "@group") {
+        container2 = tree_exports.parentOf(screen, container2.id);
+      }
+      if (container2) {
+        var pw = container2.w != null ? container2.w : container2.width || screen.width;
+        var ph = container2.h != null ? container2.h : container2.height || screen.height;
+        if (container2.type === "@frame" && typeof layout_exports.innerSize === "function") {
+          var isz = layout_exports.innerSize(container2);
+          pw = isz.w;
+          ph = isz.h;
+        }
+        var cw = c.w || 0;
+        var ch = c.h || 0;
+        var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        var contOrigin = tree_exports.contentOrigin(screen, container2.id);
+        var relX = origin.x - contOrigin.x;
+        var relY = origin.y - contOrigin.y;
+        return {
+          minX: -relX,
+          minY: -relY,
+          maxX: Math.max(-relX, pw - relX - cw),
+          maxY: Math.max(-relY, ph - relY - ch)
+        };
+      }
+      var sw = screen.width || 1280;
+      var sh = screen.height || 800;
+      var scw = c.w || 0;
+      var sch = c.h || 0;
+      var rootOrigin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      return {
+        minX: -rootOrigin.x,
+        minY: -rootOrigin.y,
+        maxX: Math.max(-rootOrigin.x, sw - rootOrigin.x - scw),
+        maxY: Math.max(-rootOrigin.y, sh - rootOrigin.y - sch)
+      };
     };
     var place = function(c, start, dx, dy) {
       var nx = start.x + dx, ny = start.y + dy;
@@ -4067,10 +4500,36 @@
           nw = snap(nw, screen.gridSize);
           nh = snap(nh, screen.gridSize);
         }
+        var parent2 = screen ? tree_exports.parentOf(screen, comp.id) : null;
+        var container = parent2;
+        while (container && container.type === "@group") {
+          container = tree_exports.parentOf(screen, container.id);
+        }
+        var maxW, maxH;
+        if (container && !tree_exports.onScreen(comp)) {
+          var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
+          maxW = isz ? isz.w : container.w != null ? container.w : container.width || (screen ? screen.width : 1280);
+          maxH = isz ? isz.h : container.h != null ? container.h : container.height || (screen ? screen.height : 800);
+        } else {
+          maxW = screen ? screen.width : 1280;
+          maxH = screen ? screen.height : 800;
+        }
+        if (handleName.indexOf("w") !== -1 && nx < 0) {
+          nw = Math.max(minSize, nw + nx);
+          nx = 0;
+        }
+        if (handleName.indexOf("n") !== -1 && ny < 0) {
+          nh = Math.max(minSize, nh + ny);
+          ny = 0;
+        }
+        nx = Math.max(0, Math.min(nx, Math.max(0, maxW - minSize)));
+        ny = Math.max(0, Math.min(ny, Math.max(0, maxH - minSize)));
+        nw = Math.max(minSize, Math.min(nw, maxW - nx));
+        nh = Math.max(minSize, Math.min(nh, maxH - ny));
         comp.x = nx;
         comp.y = ny;
-        comp.w = Math.max(minSize, nw);
-        comp.h = Math.max(minSize, nh);
+        comp.w = nw;
+        comp.h = nh;
         updateComponentBox(comp);
         if (origKids) {
           Object.keys(origKids).forEach(function(id2) {
@@ -29338,12 +29797,26 @@
     if (Object.keys(lc).length) node.layoutChild = lc;
     else delete node.layoutChild;
     if (v === "screen") {
-      node.x = Math.round(abs.x);
-      node.y = Math.round(abs.y);
+      node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen.width - (node.w || 0))));
+      node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen.height - (node.h || 0))));
     } else if (v === "free") {
       var o = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-      node.x = Math.round(abs.x - o.x);
-      node.y = Math.round(abs.y - o.y);
+      var nx = Math.round(abs.x - o.x);
+      var ny = Math.round(abs.y - o.y);
+      if (parent) {
+        var pw = parent.w != null ? parent.w : parent.width || screen.width;
+        var ph = parent.h != null ? parent.h : parent.height || screen.height;
+        if (parent.type === "@frame" && typeof layout_exports.innerSize === "function") {
+          var isz = layout_exports.innerSize(parent);
+          pw = isz.w;
+          ph = isz.h;
+        }
+        node.x = Math.max(0, Math.min(nx, Math.max(0, pw - (node.w || 0))));
+        node.y = Math.max(0, Math.min(ny, Math.max(0, ph - (node.h || 0))));
+      } else {
+        node.x = Math.max(0, Math.min(nx, Math.max(0, screen.width - (node.w || 0))));
+        node.y = Math.max(0, Math.min(ny, Math.max(0, screen.height - (node.h || 0))));
+      }
     } else if (v === "dock" && !node.dock) {
       var ps = parent ? layout_exports.innerSize(parent) : { w: screen.width, h: screen.height };
       var o2 = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
@@ -29588,7 +30061,8 @@
       }
     });
     var constraintView = function(n) {
-      return Object.assign({}, layout_exports.constraintsOf(n), { scrollBehavior: n.scrollBehavior || "scrolls" });
+      var c = n && n.constraints && (n.constraints.h || n.constraints.v) ? layout_exports.constraintsOf(n) : parent ? layout_exports.guessConstraints(n, parent.w || 1280, parent.h || 800) : layout_exports.guessConstraints(n, 1280, 800);
+      return Object.assign({}, c, { scrollBehavior: n.scrollBehavior || "scrolls" });
     };
     var writeConstraint = function(n, key, v) {
       if (key === "scrollBehavior") {
@@ -29596,10 +30070,11 @@
         else n.scrollBehavior = v;
         return;
       }
-      var c = Object.assign({}, layout_exports.constraintsOf(n));
+      var current2 = constraintView(n);
+      var c = Object.assign({}, current2);
       c[key] = v;
-      if (c.h === "left" && c.v === "top") delete n.constraints;
-      else n.constraints = c;
+      delete c.scrollBehavior;
+      n.constraints = c;
     };
     mountLive(
       container,
@@ -30014,7 +30489,35 @@
       window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(label).appendTo(row2);
       var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[field]).prop("disabled", isNodeLocked(comp.id)).appendTo(row2);
       input.on("change", function() {
-        comp[field] = parseFloat(input.val()) || 0;
+        var val = parseFloat(input.val()) || 0;
+        if (field === "x" || field === "y") {
+          var screen = getActiveScreen();
+          var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+          var container = parent;
+          while (container && container.type === "@group") {
+            container = tree_exports.parentOf(screen, container.id);
+          }
+          var maxBound, minBound = 0;
+          var compSize = field === "x" ? comp.w || 0 : comp.h || 0;
+          if (container && !tree_exports.onScreen(comp)) {
+            var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
+            var dim = isz ? field === "x" ? isz.w : isz.h : field === "x" ? container.w || 0 : container.h || 0;
+            var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+            var contOrigin = tree_exports.contentOrigin(screen, container.id);
+            var rel = field === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
+            minBound = -rel;
+            maxBound = Math.max(minBound, dim - rel - compSize);
+          } else {
+            var screenDim = screen ? field === "x" ? screen.width : screen.height : field === "x" ? 1280 : 800;
+            var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+            var rootRel = field === "x" ? rootOrigin.x : rootOrigin.y;
+            minBound = -rootRel;
+            maxBound = Math.max(minBound, screenDim - rootRel - compSize);
+          }
+          val = Math.max(minBound, Math.min(val, maxBound));
+          input.val(val);
+        }
+        comp[field] = val;
         afterGeometryEdit(comp);
         markDirty();
       });
@@ -30114,7 +30617,33 @@
       window.$("<label>").css({ display: "block", "font-size": "11px", "margin-bottom": "2px", color: "#888" }).text(pair2[1]).appendTo(row);
       var input = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(comp[pair2[0]]).prop("disabled", isNodeLocked(comp.id)).appendTo(row);
       input.on("change", function() {
-        comp[pair2[0]] = parseFloat(input.val()) || 0;
+        var val = parseFloat(input.val()) || 0;
+        var fld = pair2[0];
+        var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+        var container = parent;
+        while (container && container.type === "@group") {
+          container = tree_exports.parentOf(screen, container.id);
+        }
+        var maxBound, minBound = 0;
+        var compSize = fld === "x" ? comp.w || 0 : comp.h || 0;
+        if (container && !tree_exports.onScreen(comp)) {
+          var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
+          var dim = isz ? fld === "x" ? isz.w : isz.h : fld === "x" ? container.w || 0 : container.h || 0;
+          var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+          var contOrigin = tree_exports.contentOrigin(screen, container.id);
+          var rel = fld === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
+          minBound = -rel;
+          maxBound = Math.max(minBound, dim - rel - compSize);
+        } else {
+          var screenDim = screen ? fld === "x" ? screen.width : screen.height : fld === "x" ? 1280 : 800;
+          var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+          var rootRel = fld === "x" ? rootOrigin.x : rootOrigin.y;
+          minBound = -rootRel;
+          maxBound = Math.max(minBound, screenDim - rootRel - compSize);
+        }
+        val = Math.max(minBound, Math.min(val, maxBound));
+        input.val(val);
+        comp[fld] = val;
         afterGeometryEdit(comp);
         markDirty();
       });
@@ -32857,6 +33386,7 @@
     });
     applyLogicZoomTransform();
     var logicZoom = buildLogicZoomToolbar(dock).hide();
+    state.canvasTabsUl = canvasTabsUl;
     var canvasTabs = window.RED.tabs.create({
       element: canvasTabsUl,
       onchange: function(tab) {
@@ -32878,9 +33408,47 @@
         }
       }
     });
+    state.canvasTabs = canvasTabs;
     canvasTabs.addTab({ id: "ui", label: "UI" });
     canvasTabs.addTab({ id: "logic", label: "Logic" });
+    updateCanvasTabsVisibility();
     window.$(document).on("keydown.nexa", onKeyDown);
+  }
+  function updateCanvasTabsVisibility() {
+    if (!state.canvasTabsUl) return;
+    var isFlow = state.editingMode === "flow";
+    if (state.canvasTabs) {
+      if (typeof state.canvasTabs.hideTab === "function" && typeof state.canvasTabs.showTab === "function") {
+        if (isFlow) {
+          state.canvasTabs.hideTab("ui");
+        } else {
+          state.canvasTabs.showTab("ui");
+        }
+      }
+    }
+    var $find = typeof state.canvasTabsUl.find === "function" ? state.canvasTabsUl.find("li") : null;
+    var $uiTab = null;
+    if ($find && typeof $find.filter === "function") {
+      $uiTab = $find.filter(function() {
+        var txt = window.$(this).text().trim().toLowerCase();
+        return txt === "ui" || window.$(this).attr("aria-controls") === "ui";
+      });
+    } else if (state.canvasTabsUl._children) {
+      var match = (state.canvasTabsUl._children || []).find(function(c) {
+        var txt = (c.text && typeof c.text === "function" ? c.text() : c._text || "").trim().toLowerCase();
+        var ctrl = (c.attr && typeof c.attr === "function" ? c.attr("aria-controls") : c._attrs && c._attrs["aria-controls"]) || "";
+        return txt === "ui" || ctrl === "ui";
+      });
+      if (match) $uiTab = window.$(match);
+    }
+    if (isFlow) {
+      if ($uiTab && typeof $uiTab.hide === "function") $uiTab.hide();
+      if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+        state.canvasTabs.activateTab("logic");
+      }
+    } else {
+      if ($uiTab && typeof $uiTab.show === "function") $uiTab.show();
+    }
   }
   function registerPagesEditorAction() {
     window.RED.actions.add("nexa:open-pages-editor", function() {
@@ -33219,6 +33787,393 @@
   }
 
   // src/sidebar/screens-panel.js
+  var screens_panel_exports = {};
+  __export(screens_panel_exports, {
+    addFlowFromSidebar: () => addFlowFromSidebar,
+    addGroupFromSidebar: () => addGroupFromSidebar,
+    addScreenFromSidebar: () => addScreenFromSidebar,
+    addTemplateFromScreensPanel: () => addTemplateFromScreensPanel,
+    buildScreensFlowsTreeNodes: () => buildScreensFlowsTreeNodes,
+    openScreenInBrowser: () => openScreenInBrowser,
+    refreshLogicCanvasIfActive: () => refreshLogicCanvasIfActive,
+    removeScreen: () => removeScreen,
+    renderScreenForm: () => renderScreenForm,
+    renderScreenList: () => renderScreenList,
+    selectFlowFromScreensPanel: () => selectFlowFromScreensPanel,
+    selectFolderFromScreensPanel: () => selectFolderFromScreensPanel,
+    selectScreenFromSidebar: () => selectScreenFromSidebar,
+    selectTemplateFromScreensPanel: () => selectTemplateFromScreensPanel
+  });
+
+  // src/sidebar/templates-panel.js
+  function refreshComponentsPaletteIfVisible() {
+    if (state.componentsPane && state.componentsPane.is(":visible")) {
+      buildPalette(state.componentsPane);
+    }
+  }
+  var editBarEl = null;
+  function templateUsageCount(id2) {
+    var count = 0;
+    function scan(list) {
+      (list || []).forEach(function(surface) {
+        tree_exports.allNodes(surface, { orphans: true }).forEach(function(c) {
+          if (c.type === "@template" && c.templateId === id2) count++;
+        });
+      });
+    }
+    scan(state.screens);
+    scan(state.templates);
+    return count;
+  }
+  function renderTemplateList() {
+    if (!state.templateListEl) return;
+    state.templateListEl.empty();
+    state.templateListEl.css({
+      width: "100%",
+      display: "flex",
+      "flex-direction": "column",
+      gap: "6px",
+      "box-sizing": "border-box"
+    });
+    state.templates.forEach(function(t2) {
+      var isActive = state.editingMode === "template" && state.activeTemplateId === t2.id;
+      var usages = templateUsageCount(t2.id);
+      var row = window.$("<div>", { "class": "nexa-template-row" }).css({
+        padding: "8px 10px",
+        "border-radius": "5px",
+        display: "flex",
+        "flex-wrap": "wrap",
+        "align-items": "center",
+        cursor: "pointer",
+        background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
+        border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
+        "font-size": "12px",
+        "user-select": "none",
+        gap: "4px",
+        transition: "all 0.15s ease"
+      }).appendTo(state.templateListEl);
+      window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
+      window.$("<span>", {
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
+      }).text(t2.name).on("click", function() {
+        editTemplate(t2.id);
+      }).appendTo(row);
+      if (t2.identifier) {
+        window.$("<span>", {
+          style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; flex: 0 0 auto;"
+        }).text("{" + t2.identifier + "}").appendTo(row);
+      }
+      window.$("<div>", {
+        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0;"
+      }).html('<i class="fa fa-cubes" style="font-size: 10px; color: #94a3b8;"></i> <span>' + usages + " " + (usages === 1 ? "usage" : "usages") + "</span>").appendTo(row);
+      window.$("<a>", {
+        href: "#",
+        title: "Edit",
+        class: "red-ui-button red-ui-button-small",
+        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #334155; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
+      }).html('<i class="fa fa-pencil"></i> Edit').on("click", function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        editTemplate(t2.id);
+      }).appendTo(row);
+      window.$("<a>", {
+        href: "#",
+        title: "Delete",
+        class: "red-ui-button red-ui-button-small",
+        style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
+      }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        var currentUsages = templateUsageCount(t2.id);
+        if (currentUsages > 0) {
+          if (window.RED && window.RED.notify) {
+            window.RED.notify("This template is used by " + currentUsages + " instance(s) \u2014 remove them first.", { type: "warning", timeout: 3e3 });
+          }
+          return;
+        }
+        state.templates = state.templates.filter(function(x) {
+          return x.id !== t2.id;
+        });
+        if (state.activeTemplateId === t2.id) exitTemplateEditing();
+        markDirty();
+        renderTemplateList();
+      }).appendTo(row);
+      row.on("click", function() {
+        editTemplate(t2.id);
+      });
+    });
+    if (!state.templates.length) {
+      window.$("<div>", { style: "padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 11px;" }).text("No templates yet.").appendTo(state.templateListEl);
+    }
+  }
+  function editTemplate(id2) {
+    state.editingMode = "template";
+    state.activeTemplateId = id2;
+    state.selectedIds = [];
+    state.logicSelectedIds = [];
+    renderTemplateList();
+    renderTemplateForm();
+    refreshComponentsPaletteIfVisible();
+    if (state.trayContent) {
+      renderActiveScreen();
+      refreshLogicCanvasIfActive();
+      showEditBar();
+    } else if (window.RED && window.RED.actions) {
+      window.RED.actions.invoke("nexa:open-pages-editor");
+    }
+  }
+  function exitTemplateEditing() {
+    state.editingMode = "screen";
+    state.activeTemplateId = null;
+    state.selectedIds = [];
+    state.logicSelectedIds = [];
+    renderTemplateList();
+    renderTemplateForm();
+    if (typeof renderScreenList === "function") renderScreenList();
+    if (typeof renderScreenForm === "function") renderScreenForm();
+    refreshComponentsPaletteIfVisible();
+    if (state.trayContent) {
+      renderActiveScreen();
+      refreshLogicCanvasIfActive();
+      hideEditBar();
+    }
+  }
+  function showEditBar() {
+    if (!state.trayContent) return;
+    var template = findTemplate(state.activeTemplateId);
+    if (!editBarEl || !editBarEl.parent().length) {
+      editBarEl = window.$("<div>", { "class": "nexa-template-edit-bar" }).css({
+        flex: "0 0 auto",
+        padding: "6px 12px",
+        background: "#fff3e0",
+        "border-bottom": "1px solid #ffcc80",
+        "font-size": "12px",
+        display: "flex",
+        "align-items": "center",
+        gap: "8px"
+      }).prependTo(state.trayContent);
+      window.$("<span>", { "class": "nexa-template-edit-label" }).appendTo(editBarEl);
+      window.$("<a>", { href: "#" }).text("\u2190 Back to Screens").css({ "margin-left": "auto" }).on("click", function(e) {
+        e.preventDefault();
+        exitTemplateEditing();
+      }).appendTo(editBarEl);
+    }
+    editBarEl.find(".nexa-template-edit-label").text("Editing Template: " + (template ? template.name : "?"));
+    editBarEl.show();
+  }
+  function hideEditBar() {
+    if (editBarEl) editBarEl.hide();
+  }
+  function renderTemplateForm(targetEl) {
+    var formEl = targetEl || state.templateFormEl;
+    if (!formEl) return;
+    formEl.empty();
+    if (state.editingMode !== "template") {
+      window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-clone" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select or add a template on the left to edit its properties.').appendTo(formEl);
+      return;
+    }
+    var template = findTemplate(state.activeTemplateId);
+    if (!template) return;
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "13px",
+      "margin-bottom": "14px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px"
+    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(formEl);
+    function row(label, field, value, type) {
+      var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
+      var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
+      input.on("change", function() {
+        var v = type === "number" ? parseInt(input.val(), 10) || 0 : input.val();
+        template[field] = v;
+        if (field === "name") {
+          renderTemplateList();
+          if (typeof window.__refreshScreensFlowsTree === "function") window.__refreshScreensFlowsTree();
+        }
+        markDirty();
+        renderActiveScreen();
+      });
+      return input;
+    }
+    row("Name", "name", template.name);
+    row("Identifier", "identifier", template.identifier);
+    row("Width (px)", "width", template.width, "number");
+    row("Height (px)", "height", template.height, "number");
+    row("Grid size (px)", "gridSize", template.gridSize, "number");
+    var snapRow = window.$("<div>").css({ "margin-top": "6px", "margin-bottom": "12px" }).appendTo(formEl);
+    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap !== false).css({ "margin-right": "6px" });
+    snapInput.on("change", function() {
+      template.snap = snapInput.is(":checked");
+      markDirty();
+    });
+    window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
+    renderTemplateLiveSection(template, formEl);
+    renderTemplateParamsSection(formEl);
+    formEl.find(".nexa-template-vars-section").remove();
+    var tmpl = findTemplate(state.activeTemplateId);
+    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(formEl), tmpl, "template");
+  }
+  function renderTemplateLiveSection(template, formEl) {
+    var $2 = window.$;
+    formEl = formEl || state.templateFormEl;
+    if (!formEl) return;
+    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" }, template.live || {});
+    var box2 = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(formEl);
+    $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box2);
+    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide). The host places it: alignment, padding, gap. An instance placed on a screen is also a box you can resize.").appendTo(box2);
+    function save() {
+      var out = {};
+      Object.keys(live).forEach(function(k) {
+        if (live[k] !== "" && live[k] !== "fixed" && !(k === "content" && live[k] === "constraints")) out[k] = live[k];
+      });
+      if (Object.keys(out).length) template.live = out;
+      else delete template.live;
+      markDirty();
+      renderActiveScreen();
+    }
+    var grid = $2("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box2);
+    function sizing(axis, label) {
+      var cell = $2("<div>").appendTo(grid);
+      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+      var sel = $2("<select>").css({ width: "100%" }).appendTo(cell);
+      [["fixed", "Fixed"], ["fill", "Fill"]].forEach(function(o) {
+        $2("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+      });
+      sel.val(live[axis]).on("change", function() {
+        live[axis] = sel.val();
+        save();
+      });
+    }
+    sizing("w", "Width");
+    sizing("h", "Height");
+    function limit(key, label) {
+      var cell = $2("<div>").appendTo(grid);
+      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
+      var input = $2("<input>", { type: "number", min: 0, placeholder: "none" }).css({ width: "100%", "box-sizing": "border-box" }).val(live[key]).appendTo(cell);
+      input.on("change", function() {
+        var v = input.val().trim();
+        live[key] = v === "" ? "" : Math.max(0, Number(v) || 0);
+        save();
+      });
+    }
+    limit("minW", "Min width (px)");
+    limit("maxW", "Max width (px)");
+    limit("minH", "Min height (px)");
+    limit("maxH", "Max height (px)");
+    var content2 = $2("<div>").css({ "margin-top": "10px" }).appendTo(box2);
+    $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text("When its box is another size").appendTo(content2);
+    var csel = $2("<select>", { "class": "nexa-template-content" }).css({ width: "100%" }).appendTo(content2);
+    [["constraints", "Follow constraints (like a frame)"], ["scale", "Scale to fit (keep proportions)"], ["stretch", "Stretch (distorts)"]].forEach(function(o) {
+      $2("<option>", { value: o[0] }).text(o[1]).appendTo(csel);
+    });
+    csel.val(live.content);
+    var chelp = $2("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px", "line-height": "1.45" }).appendTo(content2);
+    function contentHelp() {
+      chelp.html(live.content === "scale" ? "The whole design gets bigger or smaller, centred in the box \u2014 like an image: nothing moves, text scales too." : live.content === "stretch" ? "Scaled to the box on each axis: text and shapes are squeezed. Rarely what you want." : "Each element follows its <b>constraints</b> (select it inside the template): Left &amp; Right stretches with the width, Right stays at the right edge, Scale keeps its share. An auto layout frame as the background fills and lays out its content.");
+    }
+    contentHelp();
+    csel.on("change", function() {
+      live.content = csel.val();
+      contentHelp();
+      auto.toggle(live.content === "constraints");
+      save();
+    });
+    var auto = $2("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-template-autoconstraints", title: "Sets each element's constraints from where it sits: wide ones Left & Right, the ones near the right edge Right, centred ones Center\u2026 A start: adjust them after." }).css({ "margin-top": "6px" }).html('<i class="fa fa-magic"></i> Auto constraints').appendTo(content2).toggle(live.content === "constraints").on("click", function() {
+      if (!window.confirm("Set the constraints of every element of " + (template.name || "this template") + " from where it sits? (Undo with Ctrl+Z.)")) return;
+      var before = treeSnapshot(template);
+      var count = autoConstrain(template.components, { w: template.width, h: template.height });
+      pushTreeChange(template, before);
+      markDirty();
+      renderActiveScreen();
+      window.RED.notify(count + " element(s) of " + (template.name || "the template") + " follow their place now. Select one to see / change its constraints.", { type: "success", timeout: 3e3 });
+    });
+  }
+  function autoConstrain(nodes, size) {
+    var count = 0;
+    (nodes || []).forEach(function(n) {
+      var c = layout_exports.guessConstraints(n, size.w, size.h);
+      if (c.h === "left" && c.v === "top") delete n.constraints;
+      else n.constraints = c;
+      count++;
+      if (n.type === "@frame" && !layout_exports.hasAutoLayout(n) && n.children && n.children.length) count += autoConstrain(n.children, { w: n.w, h: n.h });
+    });
+    return count;
+  }
+  function renderTemplateParamsSection(formEl) {
+    formEl = formEl || state.templateFormEl;
+    if (!formEl) return;
+    formEl.find(".nexa-template-params-section").remove();
+    var template = findTemplate(state.activeTemplateId);
+    if (!template) return;
+    var section = window.$("<div>", { "class": "nexa-template-params-section" }).css({
+      "margin-top": "14px",
+      "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)",
+      "padding-top": "10px"
+    }).appendTo(formEl);
+    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "flex", "align-items": "center", gap: "6px", color: "var(--red-ui-primary-text-color, #333)" }).html('<i class="fa fa-list" style="color: #2196f3;"></i> Parameters').appendTo(section);
+    window.$("<div>").css({ color: "var(--red-ui-secondary-text-color, #888)", "font-size": "11px", "margin-bottom": "8px" }).text(`Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the "On Params Change" node on this template's own Logic canvas.`).appendTo(section);
+    template.params = template.params || [];
+    var paramList = buildEditableListWidget(section, {
+      minHeight: "260px",
+      removable: true,
+      sortable: true,
+      addItem: function(container, i2, opt) {
+        var p = opt || {};
+        if (!p.id) p.id = genId();
+        if (!p.name) p.name = "param" + (template.params.length + 1);
+        if (!p.label) p.label = p.name;
+        if (p.type === void 0) p.type = "string";
+        if (p.defaultValue === void 0) p.defaultValue = "";
+        if (template.params.indexOf(p) === -1) {
+          template.params.push(p);
+          markDirty();
+        }
+        var row = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "6px", padding: "4px 0" }).appendTo(container);
+        var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text", "class": "node-input-param-name", placeholder: "e.g. speed" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
+        nameInput.on("change", function() {
+          var newName = nameInput.val().trim();
+          p.name = newName;
+          markDirty();
+        });
+        var labelRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-font"></i> Label').appendTo(labelRow);
+        var labelInput = window.$("<input>", { type: "text", "class": "node-input-param-label", placeholder: "e.g. Motor Speed" }).css({ flex: "1" }).val(p.label).appendTo(labelRow);
+        labelInput.on("change", function() {
+          p.label = labelInput.val();
+          markDirty();
+        });
+        var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
+        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
+        var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
+        buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
+          p.defaultValue = parsedVal;
+          p.type = detType;
+          markDirty();
+        });
+      },
+      removeItem: function(opt) {
+        var idx = template.params.indexOf(opt);
+        if (idx !== -1) {
+          template.params.splice(idx, 1);
+          markDirty();
+        }
+      }
+    });
+    template.params.forEach(function(p) {
+      paramList.editableList("addItem", p);
+    });
+  }
+
+  // src/sidebar/screens-panel.js
   function refreshLogicCanvasIfActive() {
     if (state.activeCanvasTab === "logic") renderLogicCanvas();
   }
@@ -33239,22 +34194,474 @@
       cb(null);
     });
   }
+  function openScreenInBrowser(screen) {
+    var tab = window.open("", "_blank");
+    fetchScreenWorkerPort(function(port) {
+      var cleanPath = (screen.path || "").replace(/^\/+/, "");
+      var hostname = window.location.hostname || "localhost";
+      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
+      if (tab) tab.location.href = fullUrl;
+    });
+  }
+  function isFolderDescendant(ancestorId, testId) {
+    var cur2 = findFolder(testId);
+    var seen = {};
+    while (cur2 && cur2.parentId) {
+      if (cur2.parentId === ancestorId) return true;
+      if (seen[cur2.parentId]) break;
+      seen[cur2.parentId] = true;
+      cur2 = findFolder(cur2.parentId);
+    }
+    return false;
+  }
+  function buildScreensFlowsTreeNodes() {
+    var folderNodes = {};
+    state.folders.forEach(function(f) {
+      folderNodes[f.id] = {
+        id: f.id,
+        label: f.name,
+        icon: "fa fa-folder-o",
+        container: true,
+        type: "folder",
+        children: [],
+        actions: [
+          { id: "add-screen-in", icon: "fa fa-plus", title: "Add item in group" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete group" }
+        ]
+      };
+    });
+    var screensSection = {
+      id: "section:screens",
+      label: "Screens",
+      icon: "fa fa-desktop",
+      container: true,
+      type: "section",
+      badge: String(state.screens.length),
+      actions: [
+        { id: "add-screen", icon: "fa fa-plus", title: "Add Screen" },
+        { id: "add-group-screen", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    var templatesSection = {
+      id: "section:templates",
+      label: "Templates",
+      icon: "fa fa-clone",
+      container: true,
+      type: "section",
+      badge: String(state.templates.length),
+      actions: [
+        { id: "add-template", icon: "fa fa-plus", title: "Add Template" },
+        { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    var flowsSection = {
+      id: "section:flows",
+      label: "Flows",
+      icon: "fa fa-code-fork",
+      container: true,
+      type: "section",
+      badge: String(state.flows.length),
+      actions: [
+        { id: "add-flow", icon: "fa fa-plus", title: "Add Flow" },
+        { id: "add-group-flow", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    function placeInScreen(itemNode, parentId) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else {
+        screensSection.children.push(itemNode);
+      }
+    }
+    function placeInTemplate(itemNode, parentId) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else {
+        templatesSection.children.push(itemNode);
+      }
+    }
+    function placeInFlow(itemNode, parentId) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else {
+        flowsSection.children.push(itemNode);
+      }
+    }
+    state.screens.forEach(function(s) {
+      var node = {
+        id: s.id,
+        label: s.name,
+        title: s.name + " (" + (s.path || "/screen") + ")",
+        icon: "fa fa-desktop",
+        badge: "screen",
+        type: "screen",
+        muted: !!s.disabled,
+        actions: [
+          { id: "open", icon: "fa fa-external-link", title: "Open in new tab" },
+          { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
+          { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
+        ]
+      };
+      if (state.screens.length > 1) {
+        node.actions.push({ id: "delete", icon: "fa fa-trash-o", title: "Delete screen" });
+      }
+      placeInScreen(node, s.parentId);
+    });
+    state.templates.forEach(function(t2) {
+      var node = {
+        id: t2.id,
+        label: t2.name,
+        title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
+        icon: "fa fa-clone",
+        badge: "template",
+        type: "template",
+        actions: [
+          { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
+          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
+        ]
+      };
+      placeInTemplate(node, t2.parentId);
+    });
+    state.flows.forEach(function(fl) {
+      var node = {
+        id: fl.id,
+        label: fl.name,
+        title: fl.name + " (" + (fl.endpoint || "/flow") + ")",
+        icon: "fa fa-code-fork",
+        badge: "flow",
+        type: "flow",
+        actions: [
+          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
+        ]
+      };
+      placeInFlow(node, fl.parentId);
+    });
+    state.folders.forEach(function(f) {
+      var node = folderNodes[f.id];
+      if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant(f.id, f.parentId)) {
+        folderNodes[f.parentId].children.push(node);
+      } else if (f.parentId === "section:templates" || f.category === "template") {
+        templatesSection.children.unshift(node);
+      } else if (f.parentId === "section:flows" || f.category === "flow") {
+        flowsSection.children.unshift(node);
+      } else if (f.parentId === "section:screens" || f.category === "screen") {
+        screensSection.children.unshift(node);
+      } else {
+        var hasTemplates = state.templates.some(function(t2) {
+          return t2.parentId === f.id;
+        });
+        var hasFlows = state.flows.some(function(fl) {
+          return fl.parentId === f.id;
+        });
+        if (hasTemplates) {
+          f.category = "template";
+          templatesSection.children.unshift(node);
+        } else if (hasFlows) {
+          f.category = "flow";
+          flowsSection.children.unshift(node);
+        } else {
+          f.category = "screen";
+          screensSection.children.unshift(node);
+        }
+      }
+    });
+    Object.keys(folderNodes).forEach(function(fid) {
+      folderNodes[fid].badge = String(folderNodes[fid].children.length);
+    });
+    screensSection.badge = String(state.screens.length);
+    templatesSection.badge = String(state.templates.length);
+    flowsSection.badge = String(state.flows.length);
+    return [screensSection, templatesSection, flowsSection];
+  }
+  function onScreensFlowsSelect(e) {
+    var id2 = e.detail.id;
+    if (id2 === "section:screens" || id2 === "section:templates" || id2 === "section:flows") {
+      if (id2 === "section:screens" && state.editingMode !== "screen" && state.screens.length) {
+        selectScreenFromSidebar(state.activeScreenId || state.screens[0].id);
+      } else if (id2 === "section:templates" && state.editingMode !== "template" && state.templates.length) {
+        selectTemplateFromScreensPanel(state.activeTemplateId || state.templates[0].id);
+      } else if (id2 === "section:flows" && state.editingMode !== "flow" && state.flows.length) {
+        selectFlowFromScreensPanel(state.activeFlowId || state.flows[0].id);
+      }
+      return;
+    }
+    var screen = state.screens.find(function(s) {
+      return s.id === id2;
+    });
+    if (screen) {
+      selectScreenFromSidebar(id2);
+      return;
+    }
+    var template = findTemplate(id2);
+    if (template) {
+      selectTemplateFromScreensPanel(id2);
+      return;
+    }
+    var flow = findFlow(id2);
+    if (flow) {
+      selectFlowFromScreensPanel(id2);
+      return;
+    }
+    var folder = findFolder(id2);
+    if (folder) {
+      selectFolderFromScreensPanel(id2);
+      return;
+    }
+  }
+  function onScreensFlowsAction(e) {
+    var id2 = e.detail.id;
+    var action = e.detail.action;
+    if (action === "add-screen") {
+      addScreenFromSidebar({ parentId: null });
+      return;
+    }
+    if (action === "add-template") {
+      addTemplateFromScreensPanel({ parentId: null });
+      return;
+    }
+    if (action === "add-flow") {
+      addFlowFromSidebar({ parentId: null });
+      return;
+    }
+    if (action === "add-group-screen") {
+      addGroupFromSidebar({ category: "screen", parentId: null });
+      return;
+    }
+    if (action === "add-group-template") {
+      addGroupFromSidebar({ category: "template", parentId: null });
+      return;
+    }
+    if (action === "add-group-flow") {
+      addGroupFromSidebar({ category: "flow", parentId: null });
+      return;
+    }
+    if (action === "open") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) openScreenInBrowser(s);
+    } else if (action === "convert") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        var t2 = convertScreenToTemplate(s.id);
+        markDirty();
+        selectTemplateFromScreensPanel(t2.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        var sc = convertTemplateToScreen(tmpl.id);
+        markDirty();
+        selectScreenFromSidebar(sc.id);
+        return;
+      }
+    } else if (action === "duplicate") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        var copy = duplicateScreen(s.id);
+        markDirty();
+        selectScreenFromSidebar(copy.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        var copyT = duplicateTemplate(tmpl.id);
+        markDirty();
+        selectTemplateFromScreensPanel(copyT.id);
+        return;
+      }
+      var fl = findFlow(id2);
+      if (fl) {
+        var copyFl = duplicateFlow(fl.id);
+        markDirty();
+        selectFlowFromScreensPanel(copyFl.id);
+        return;
+      }
+    } else if (action === "delete") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        removeScreen(s.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        state.templates = state.templates.filter(function(x) {
+          return x.id !== tmpl.id;
+        });
+        if (state.activeTemplateId === tmpl.id) {
+          state.activeTemplateId = state.templates.length ? state.templates[0].id : null;
+          if (!state.activeTemplateId) state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+      var fl = findFlow(id2);
+      if (fl) {
+        deleteFlow(fl.id);
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+      var f = findFolder(id2);
+      if (f) {
+        deleteFolder(f.id);
+        if (state.selectedFolderId === f.id) state.selectedFolderId = null;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    } else if (action === "add-screen-in") {
+      var f = findFolder(id2);
+      if (f && f.category === "template") {
+        addTemplateFromScreensPanel({ parentId: id2 });
+      } else if (f && f.category === "flow") {
+        addFlowFromSidebar({ parentId: id2 });
+      } else {
+        addScreenFromSidebar({ parentId: id2 });
+      }
+    } else if (action === "add-group-in") {
+      var f = findFolder(id2);
+      addGroupFromSidebar({ parentId: id2, category: f ? f.category : "screen" });
+    }
+  }
+  function onScreensFlowsRename(e) {
+    var id2 = e.detail.id;
+    var name2 = e.detail.name;
+    var item = state.screens.find(function(s) {
+      return s.id === id2;
+    }) || findTemplate(id2) || findFlow(id2) || findFolder(id2);
+    if (item && name2 && item.name !== name2) {
+      item.name = name2;
+      markDirty();
+      renderScreenList();
+      renderScreenForm();
+      if (state.editingMode === "screen" && state.activeScreenId === id2) renderActiveScreen();
+      if (state.editingMode === "template" && state.activeTemplateId === id2) renderActiveScreen();
+    }
+  }
+  function onScreensFlowsMove(e) {
+    var d = e.detail;
+    var item = state.screens.find(function(s) {
+      return s.id === d.id;
+    }) || findTemplate(d.id) || findFlow(d.id) || findFolder(d.id);
+    if (!item) return;
+    if (d.position === "inside") {
+      if (d.targetId === "section:screens") {
+        if (item.type === "template") {
+          var sc = convertTemplateToScreen(item.id);
+          sc.parentId = null;
+          markDirty();
+          selectScreenFromSidebar(sc.id);
+          return;
+        } else if (item.type === "screen") {
+          item.parentId = null;
+        } else if (item.type === "folder") {
+          item.parentId = null;
+          item.category = "screen";
+        }
+      } else if (d.targetId === "section:templates") {
+        if (item.type === "screen") {
+          var tmpl = convertScreenToTemplate(item.id);
+          tmpl.parentId = null;
+          markDirty();
+          selectTemplateFromScreensPanel(tmpl.id);
+          return;
+        } else if (item.type === "template") {
+          item.parentId = null;
+        } else if (item.type === "folder") {
+          item.parentId = null;
+          item.category = "template";
+        }
+      } else if (d.targetId === "section:flows") {
+        if (item.type === "flow") {
+          item.parentId = null;
+        } else if (item.type === "folder") {
+          item.parentId = null;
+          item.category = "flow";
+        }
+      } else {
+        var targetFolder = findFolder(d.targetId);
+        if (targetFolder) {
+          if (item.type === "folder" && (item.id === targetFolder.id || isFolderDescendant(item.id, targetFolder.id))) {
+            return;
+          }
+          item.parentId = targetFolder.id;
+          if (item.type === "folder") {
+            item.category = targetFolder.category || item.category;
+          }
+        }
+      }
+    } else {
+      if (d.targetId === "section:screens" || d.targetId === "section:templates" || d.targetId === "section:flows") {
+        return;
+      }
+      var target = state.screens.find(function(s) {
+        return s.id === d.targetId;
+      }) || findTemplate(d.targetId) || findFlow(d.targetId) || findFolder(d.targetId);
+      if (target) {
+        item.parentId = target.parentId || null;
+        if (target.type === "template" && item.type === "screen") {
+          var tmpl2 = convertScreenToTemplate(item.id);
+          tmpl2.parentId = target.parentId || null;
+          markDirty();
+          selectTemplateFromScreensPanel(tmpl2.id);
+          return;
+        } else if (target.type === "screen" && item.type === "template") {
+          var sc2 = convertTemplateToScreen(item.id);
+          sc2.parentId = target.parentId || null;
+          markDirty();
+          selectScreenFromSidebar(sc2.id);
+          return;
+        }
+      }
+    }
+    markDirty();
+    renderScreenList();
+  }
   function renderScreenList() {
     if (!state.screenListEl) return;
     state.screenListEl.empty();
-    state.screenListEl.css({
-      width: "100%",
-      display: "flex",
-      "flex-direction": "column",
-      gap: "6px",
-      "box-sizing": "border-box"
-    });
+    var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || window.customElements && window.customElements.get("nx-tree"));
+    if (hasNexaKit) {
+      var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
+        width: "100%",
+        "box-sizing": "border-box"
+      }).appendTo(state.screenListEl);
+      var treeEl2 = document.createElement("nx-tree");
+      treeEl2.setAttribute("empty-text", "No items yet \u2014 click + Add Screen, Template or Flow");
+      treeEl2.setAttribute("persist-key", "screens-flows:tree");
+      treeEl2.addEventListener("nx-tree-select", onScreensFlowsSelect);
+      treeEl2.addEventListener("nx-tree-move", onScreensFlowsMove);
+      treeEl2.addEventListener("nx-tree-action", onScreensFlowsAction);
+      treeEl2.addEventListener("nx-tree-rename", onScreensFlowsRename);
+      treeHost.get(0).appendChild(treeEl2);
+      var nodes = buildScreensFlowsTreeNodes();
+      treeEl2.nodes = nodes;
+      var activeId = state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      treeEl2.selected = activeId ? [activeId] : [];
+      state.screensFlowsTreeEl = treeEl2;
+    }
     state.screens.forEach(function(screen) {
-      var isActive = screen.id === state.activeScreenId && state.editingMode !== "template";
+      var isActive = screen.id === state.activeScreenId && state.editingMode === "screen";
       var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
         padding: "8px 10px",
         "border-radius": "5px",
-        display: "flex",
+        display: hasNexaKit ? "none" : "flex",
         "flex-wrap": "wrap",
         "align-items": "center",
         cursor: "pointer",
@@ -33295,13 +34702,7 @@
       }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
-        var tab = window.open("", "_blank");
-        fetchScreenWorkerPort(function(port) {
-          var cleanPath = (screen.path || "").replace(/^\/+/, "");
-          var hostname = window.location.hostname || "localhost";
-          var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
-          if (tab) tab.location.href = fullUrl;
-        });
+        openScreenInBrowser(screen);
       }).appendTo(row);
       if (state.screens.length > 1) {
         window.$("<a>", {
@@ -33319,16 +34720,116 @@
         selectScreenFromSidebar(screen.id);
       });
     });
-    if (!state.screens.length) {
-      window.$("<div>", { style: "padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 11px;" }).text("No screens yet.").appendTo(state.screenListEl);
+  }
+  function renderFlowForm(flow) {
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "13px",
+      "margin-bottom": "14px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px"
+    }).html('<i class="fa fa-code-fork" style="color: #6366f1;"></i> Flow Properties').appendTo(state.screenFormEl);
+    function row(label, field, value, type) {
+      var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
+      var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
+      input.on("change", function() {
+        flow[field] = input.val();
+        if (field === "name") renderScreenList();
+        markDirty();
+      });
+      return input;
     }
+    row("Flow Name", "name", flow.name);
+    row("Starting Endpoint", "endpoint", flow.endpoint);
+    window.$("<div>").css({
+      "margin-top": "12px",
+      padding: "10px 12px",
+      background: "#f0fdf4",
+      border: "1px solid #bbf7d0",
+      "border-radius": "6px",
+      "font-size": "11px",
+      color: "#166534",
+      "line-height": "1.5"
+    }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow</strong><br>A Flow defines how user navigation, auth checks, splash timeouts, and multi-step logic branch between screens.<br><br>Flows do not have a separate UI artboard. All routing and behavior is wired in the <strong>Logic</strong> tab.').appendTo(state.screenFormEl);
+    var btnRow = window.$("<div>").css({ "margin-top": "14px" }).appendTo(state.screenFormEl);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).html('<i class="fa fa-code-fork"></i> Open Flow Logic Canvas').css({ width: "100%", height: "30px", "font-size": "12px", display: "inline-flex", "align-items": "center", "justify-content": "center", gap: "6px" }).on("click", function() {
+      if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+        state.canvasTabs.activateTab("logic");
+      }
+    }).appendTo(btnRow);
+  }
+  function renderFolderForm(folder) {
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "13px",
+      "margin-bottom": "14px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px"
+    }).html('<i class="fa fa-folder-open-o" style="color: #f59e0b;"></i> Group Properties').appendTo(state.screenFormEl);
+    var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Group Name").appendTo(r);
+    var input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(folder.name).appendTo(r);
+    input.on("change", function() {
+      folder.name = input.val();
+      renderScreenList();
+      markDirty();
+    });
+    var pRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Parent Group").appendTo(pRow);
+    var pSel = window.$("<select>").css({ width: "100%" }).appendTo(pRow);
+    window.$("<option>", { value: "" }).text("(Root level)").appendTo(pSel);
+    state.folders.forEach(function(f) {
+      if (f.id !== folder.id && !isFolderDescendant(folder.id, f.id)) {
+        window.$("<option>", { value: f.id }).text(f.name).appendTo(pSel);
+      }
+    });
+    pSel.val(folder.parentId || "");
+    pSel.on("change", function() {
+      folder.parentId = pSel.val() || null;
+      renderScreenList();
+      markDirty();
+    });
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", "margin-top": "12px", display: "inline-flex", "align-items": "center", gap: "4px" }).html('<i class="fa fa-trash"></i> Delete Group').on("click", function() {
+      deleteFolder(folder.id);
+      state.selectedFolderId = null;
+      markDirty();
+      renderScreenList();
+      renderScreenForm();
+    }).appendTo(state.screenFormEl);
   }
   function renderScreenForm() {
     if (!state.screenFormEl) return;
-    var screen = getActiveScreen();
     state.screenFormEl.empty();
-    if (!screen || state.editingMode === "template") {
-      window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-desktop" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select a screen from the list on the left to edit its properties.').appendTo(state.screenFormEl);
+    if (state.selectedFolderId) {
+      var folder = findFolder(state.selectedFolderId);
+      if (folder) {
+        renderFolderForm(folder);
+        return;
+      }
+    }
+    if (state.editingMode === "flow") {
+      var flow = findFlow(state.activeFlowId);
+      if (flow) {
+        renderFlowForm(flow);
+        return;
+      }
+    }
+    if (state.editingMode === "template") {
+      renderTemplateForm(state.screenFormEl);
+      return;
+    }
+    var screen = getActiveScreen();
+    if (!screen || state.editingMode !== "screen") {
+      window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-desktop" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select a screen, template, or flow from the tree on the left.').appendTo(state.screenFormEl);
       return;
     }
     var header = window.$("<div>").css({
@@ -33462,22 +34963,93 @@
   function selectScreenFromSidebar(id2) {
     state.editingMode = "screen";
     state.activeTemplateId = null;
+    state.selectedFolderId = null;
     state.activeScreenId = id2;
+    updateCanvasTabsVisibility();
     renderScreenList();
     renderScreenForm();
     renderActiveScreen();
     refreshLogicCanvasIfActive();
+    hideEditBar();
   }
-  function addScreenFromSidebar() {
+  function selectTemplateFromScreensPanel(id2) {
+    state.editingMode = "template";
+    state.activeTemplateId = id2;
+    state.selectedFolderId = null;
+    updateCanvasTabsVisibility();
+    renderScreenList();
+    renderScreenForm();
+    renderActiveScreen();
+    refreshLogicCanvasIfActive();
+    showEditBar();
+  }
+  function selectFlowFromScreensPanel(id2) {
+    state.editingMode = "flow";
+    state.activeFlowId = id2;
+    state.selectedFolderId = null;
+    updateCanvasTabsVisibility();
+    renderScreenList();
+    renderScreenForm();
+    refreshLogicCanvasIfActive();
+    hideEditBar();
+  }
+  function selectFolderFromScreensPanel(id2) {
+    state.selectedFolderId = id2;
+    renderScreenList();
+    renderScreenForm();
+  }
+  function addScreenFromSidebar(opts) {
     state.editingMode = "screen";
     state.activeTemplateId = null;
-    var screen = makeScreen({});
+    state.selectedFolderId = null;
+    var screen = makeScreen(opts || {});
     state.screens.push(screen);
     state.activeScreenId = screen.id;
+    updateCanvasTabsVisibility();
     renderScreenList();
     renderScreenForm();
     renderActiveScreen();
     refreshLogicCanvasIfActive();
+    hideEditBar();
+    markDirty();
+  }
+  function addTemplateFromScreensPanel(opts) {
+    state.editingMode = "template";
+    state.selectedFolderId = null;
+    var template = makeTemplate(opts || {});
+    state.templates.push(template);
+    state.activeTemplateId = template.id;
+    updateCanvasTabsVisibility();
+    renderScreenList();
+    renderScreenForm();
+    renderActiveScreen();
+    refreshLogicCanvasIfActive();
+    showEditBar();
+    markDirty();
+  }
+  function addFlowFromSidebar(opts) {
+    state.editingMode = "flow";
+    state.selectedFolderId = null;
+    var flow = makeFlow(opts || {});
+    state.flows.push(flow);
+    state.activeFlowId = flow.id;
+    updateCanvasTabsVisibility();
+    renderScreenList();
+    renderScreenForm();
+    refreshLogicCanvasIfActive();
+    hideEditBar();
+    markDirty();
+  }
+  function addGroupFromSidebar(opts) {
+    var folder = makeFolder(opts || {});
+    if (opts && opts.category) folder.category = opts.category;
+    else if (!folder.category) {
+      folder.category = state.editingMode === "flow" ? "flow" : state.editingMode === "template" ? "template" : "screen";
+    }
+    state.folders.push(folder);
+    state.selectedFolderId = folder.id;
+    renderScreenList();
+    renderScreenForm();
     markDirty();
   }
   function removeScreen(id2) {
@@ -33495,370 +35067,22 @@
     }
     markDirty();
   }
-
-  // src/sidebar/templates-panel.js
-  function refreshComponentsPaletteIfVisible() {
-    if (state.componentsPane && state.componentsPane.is(":visible")) {
-      buildPalette(state.componentsPane);
-    }
-  }
-  var editBarEl = null;
-  function templateUsageCount(id2) {
-    var count = 0;
-    function scan(list) {
-      (list || []).forEach(function(surface) {
-        tree_exports.allNodes(surface, { orphans: true }).forEach(function(c) {
-          if (c.type === "@template" && c.templateId === id2) count++;
-        });
-      });
-    }
-    scan(state.screens);
-    scan(state.templates);
-    return count;
-  }
-  function renderTemplateList() {
-    if (!state.templateListEl) return;
-    state.templateListEl.empty();
-    state.templateListEl.css({
-      width: "100%",
-      display: "flex",
-      "flex-direction": "column",
-      gap: "6px",
-      "box-sizing": "border-box"
-    });
-    state.templates.forEach(function(t2) {
-      var isActive = state.editingMode === "template" && state.activeTemplateId === t2.id;
-      var usages = templateUsageCount(t2.id);
-      var row = window.$("<div>", { "class": "nexa-template-row" }).css({
-        padding: "8px 10px",
-        "border-radius": "5px",
-        display: "flex",
-        "flex-wrap": "wrap",
-        "align-items": "center",
-        cursor: "pointer",
-        background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
-        border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
-        "font-size": "12px",
-        "user-select": "none",
-        gap: "4px",
-        transition: "all 0.15s ease"
-      }).appendTo(state.templateListEl);
-      window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
-      window.$("<span>", {
-        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
-      }).text(t2.name).on("click", function() {
-        editTemplate(t2.id);
-      }).appendTo(row);
-      if (t2.identifier) {
-        window.$("<span>", {
-          style: "font-size: 10px; color: #64748b; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; flex: 0 0 auto;"
-        }).text("{" + t2.identifier + "}").appendTo(row);
-      }
-      window.$("<div>", {
-        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0;"
-      }).html('<i class="fa fa-cubes" style="font-size: 10px; color: #94a3b8;"></i> <span>' + usages + " " + (usages === 1 ? "usage" : "usages") + "</span>").appendTo(row);
-      window.$("<a>", {
-        href: "#",
-        title: "Edit",
-        class: "red-ui-button red-ui-button-small",
-        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #334155; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
-      }).html('<i class="fa fa-pencil"></i> Edit').on("click", function(e) {
-        if (e && e.preventDefault) e.preventDefault();
-        if (e && e.stopPropagation) e.stopPropagation();
-        editTemplate(t2.id);
-      }).appendTo(row);
-      window.$("<a>", {
-        href: "#",
-        title: "Delete",
-        class: "red-ui-button red-ui-button-small",
-        style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
-      }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
-        if (e && e.preventDefault) e.preventDefault();
-        if (e && e.stopPropagation) e.stopPropagation();
-        var currentUsages = templateUsageCount(t2.id);
-        if (currentUsages > 0) {
-          if (window.RED && window.RED.notify) {
-            window.RED.notify("This template is used by " + currentUsages + " instance(s) \u2014 remove them first.", { type: "warning", timeout: 3e3 });
-          }
-          return;
-        }
-        state.templates = state.templates.filter(function(x) {
-          return x.id !== t2.id;
-        });
-        if (state.activeTemplateId === t2.id) exitTemplateEditing();
-        markDirty();
-        renderTemplateList();
-      }).appendTo(row);
-      row.on("click", function() {
-        editTemplate(t2.id);
-      });
-    });
-    if (!state.templates.length) {
-      window.$("<div>", { style: "padding: 16px 8px; text-align: center; color: #94a3b8; font-size: 11px;" }).text("No templates yet.").appendTo(state.templateListEl);
-    }
-  }
-  function addTemplateFromSidebar() {
-    var template = makeTemplate({});
-    state.templates.push(template);
-    markDirty();
-    renderTemplateList();
-    editTemplate(template.id);
-  }
-  function editTemplate(id2) {
-    state.editingMode = "template";
-    state.activeTemplateId = id2;
-    state.selectedIds = [];
-    state.logicSelectedIds = [];
-    renderTemplateList();
-    renderTemplateForm();
-    refreshComponentsPaletteIfVisible();
-    if (state.trayContent) {
-      renderActiveScreen();
-      refreshLogicCanvasIfActive();
-      showEditBar();
-    } else if (window.RED && window.RED.actions) {
-      window.RED.actions.invoke("nexa:open-pages-editor");
-    }
-  }
-  function exitTemplateEditing() {
-    state.editingMode = "screen";
-    state.activeTemplateId = null;
-    state.selectedIds = [];
-    state.logicSelectedIds = [];
-    renderTemplateList();
-    renderTemplateForm();
-    refreshComponentsPaletteIfVisible();
-    if (state.trayContent) {
-      renderActiveScreen();
-      refreshLogicCanvasIfActive();
-      hideEditBar();
-    }
-  }
-  function showEditBar() {
-    if (!state.trayContent) return;
-    var template = findTemplate(state.activeTemplateId);
-    if (!editBarEl || !editBarEl.parent().length) {
-      editBarEl = window.$("<div>", { "class": "nexa-template-edit-bar" }).css({
-        flex: "0 0 auto",
-        padding: "6px 12px",
-        background: "#fff3e0",
-        "border-bottom": "1px solid #ffcc80",
-        "font-size": "12px",
-        display: "flex",
-        "align-items": "center",
-        gap: "8px"
-      }).prependTo(state.trayContent);
-      window.$("<span>", { "class": "nexa-template-edit-label" }).appendTo(editBarEl);
-      window.$("<a>", { href: "#" }).text("\u2190 Back to Screens").css({ "margin-left": "auto" }).on("click", function(e) {
-        e.preventDefault();
-        exitTemplateEditing();
-      }).appendTo(editBarEl);
-    }
-    editBarEl.find(".nexa-template-edit-label").text("Editing Template: " + (template ? template.name : "?"));
-    editBarEl.show();
-  }
-  function hideEditBar() {
-    if (editBarEl) editBarEl.hide();
-  }
-  function renderTemplateForm() {
-    if (!state.templateFormEl) return;
-    state.templateFormEl.empty();
-    if (state.editingMode !== "template") {
-      window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-clone" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select or add a template on the left to edit its properties.').appendTo(state.templateFormEl);
-      return;
-    }
-    var template = findTemplate(state.activeTemplateId);
-    if (!template) return;
-    var header = window.$("<div>").css({
-      "font-weight": "bold",
-      "font-size": "13px",
-      "margin-bottom": "14px",
-      "padding-bottom": "8px",
-      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-      color: "var(--red-ui-primary-text-color, #1e293b)",
-      display: "flex",
-      "align-items": "center",
-      gap: "6px"
-    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(state.templateFormEl);
-    function row(label, field, value, type) {
-      var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.templateFormEl);
-      window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
-      var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
-      input.on("change", function() {
-        var v = type === "number" ? parseInt(input.val(), 10) || 0 : input.val();
-        template[field] = v;
-        if (field === "name") renderTemplateList();
-        markDirty();
-        renderActiveScreen();
-      });
-      return input;
-    }
-    row("Name", "name", template.name);
-    row("Identifier", "identifier", template.identifier);
-    row("Width (px)", "width", template.width, "number");
-    row("Height (px)", "height", template.height, "number");
-    row("Grid size (px)", "gridSize", template.gridSize, "number");
-    var snapRow = window.$("<div>").css({ "margin-top": "6px", "margin-bottom": "12px" }).appendTo(state.templateFormEl);
-    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap !== false).css({ "margin-right": "6px" });
-    snapInput.on("change", function() {
-      template.snap = snapInput.is(":checked");
-      markDirty();
-    });
-    window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
-    renderTemplateLiveSection(template);
-    renderTemplateParamsSection();
-    state.templateFormEl.find(".nexa-template-vars-section").remove();
-    var tmpl = findTemplate(state.activeTemplateId);
-    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
-  }
-  function renderTemplateLiveSection(template) {
-    var $2 = window.$;
-    var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" }, template.live || {});
-    var box2 = $2("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
-    $2("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box2);
-    $2("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" }).html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide). The host places it: alignment, padding, gap. An instance placed on a screen is also a box you can resize.").appendTo(box2);
-    function save() {
-      var out = {};
-      Object.keys(live).forEach(function(k) {
-        if (live[k] !== "" && live[k] !== "fixed" && !(k === "content" && live[k] === "constraints")) out[k] = live[k];
-      });
-      if (Object.keys(out).length) template.live = out;
-      else delete template.live;
-      markDirty();
-      renderActiveScreen();
-    }
-    var grid = $2("<div>").css({ display: "grid", "grid-template-columns": "1fr 1fr", gap: "8px" }).appendTo(box2);
-    function sizing(axis, label) {
-      var cell = $2("<div>").appendTo(grid);
-      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
-      var sel = $2("<select>").css({ width: "100%" }).appendTo(cell);
-      [["fixed", "Fixed"], ["fill", "Fill"]].forEach(function(o) {
-        $2("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
-      });
-      sel.val(live[axis]).on("change", function() {
-        live[axis] = sel.val();
-        save();
-      });
-    }
-    sizing("w", "Width");
-    sizing("h", "Height");
-    function limit(key, label) {
-      var cell = $2("<div>").appendTo(grid);
-      $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text(label).appendTo(cell);
-      var input = $2("<input>", { type: "number", min: 0, placeholder: "none" }).css({ width: "100%", "box-sizing": "border-box" }).val(live[key]).appendTo(cell);
-      input.on("change", function() {
-        var v = input.val().trim();
-        live[key] = v === "" ? "" : Math.max(0, Number(v) || 0);
-        save();
-      });
-    }
-    limit("minW", "Min width (px)");
-    limit("maxW", "Max width (px)");
-    limit("minH", "Min height (px)");
-    limit("maxH", "Max height (px)");
-    var content2 = $2("<div>").css({ "margin-top": "10px" }).appendTo(box2);
-    $2("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px" }).text("When its box is another size").appendTo(content2);
-    var csel = $2("<select>", { "class": "nexa-template-content" }).css({ width: "100%" }).appendTo(content2);
-    [["constraints", "Follow constraints (like a frame)"], ["scale", "Scale to fit (keep proportions)"], ["stretch", "Stretch (distorts)"]].forEach(function(o) {
-      $2("<option>", { value: o[0] }).text(o[1]).appendTo(csel);
-    });
-    csel.val(live.content);
-    var chelp = $2("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px", "line-height": "1.45" }).appendTo(content2);
-    function contentHelp() {
-      chelp.html(live.content === "scale" ? "The whole design gets bigger or smaller, centred in the box \u2014 like an image: nothing moves, text scales too." : live.content === "stretch" ? "Scaled to the box on each axis: text and shapes are squeezed. Rarely what you want." : "Each element follows its <b>constraints</b> (select it inside the template): Left &amp; Right stretches with the width, Right stays at the right edge, Scale keeps its share. An auto layout frame as the background fills and lays out its content.");
-    }
-    contentHelp();
-    csel.on("change", function() {
-      live.content = csel.val();
-      contentHelp();
-      auto.toggle(live.content === "constraints");
-      save();
-    });
-    var auto = $2("<button>", { type: "button", "class": "red-ui-button red-ui-button-small nexa-template-autoconstraints", title: "Sets each element's constraints from where it sits: wide ones Left & Right, the ones near the right edge Right, centred ones Center\u2026 A start: adjust them after." }).css({ "margin-top": "6px" }).html('<i class="fa fa-magic"></i> Auto constraints').appendTo(content2).toggle(live.content === "constraints").on("click", function() {
-      if (!window.confirm("Set the constraints of every element of " + (template.name || "this template") + " from where it sits? (Undo with Ctrl+Z.)")) return;
-      var before = treeSnapshot(template);
-      var count = autoConstrain(template.components, { w: template.width, h: template.height });
-      pushTreeChange(template, before);
-      markDirty();
-      renderActiveScreen();
-      window.RED.notify(count + " element(s) of " + (template.name || "the template") + " follow their place now. Select one to see / change its constraints.", { type: "success", timeout: 3e3 });
-    });
-  }
-  function autoConstrain(nodes, size) {
-    var count = 0;
-    (nodes || []).forEach(function(n) {
-      var c = layout_exports.guessConstraints(n, size.w, size.h);
-      if (c.h === "left" && c.v === "top") delete n.constraints;
-      else n.constraints = c;
-      count++;
-      if (n.type === "@frame" && !layout_exports.hasAutoLayout(n) && n.children && n.children.length) count += autoConstrain(n.children, { w: n.w, h: n.h });
-    });
-    return count;
-  }
-  function renderTemplateParamsSection() {
-    if (!state.templateFormEl) return;
-    state.templateFormEl.find(".nexa-template-params-section").remove();
-    var template = findTemplate(state.activeTemplateId);
-    if (!template) return;
-    var section = window.$("<div>", { "class": "nexa-template-params-section" }).css({
-      "margin-top": "14px",
-      "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)",
-      "padding-top": "10px"
-    }).appendTo(state.templateFormEl);
-    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "flex", "align-items": "center", gap: "6px", color: "var(--red-ui-primary-text-color, #333)" }).html('<i class="fa fa-list" style="color: #2196f3;"></i> Parameters').appendTo(section);
-    window.$("<div>").css({ color: "var(--red-ui-secondary-text-color, #888)", "font-size": "11px", "margin-bottom": "8px" }).text(`Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the "On Params Change" node on this template's own Logic canvas.`).appendTo(section);
-    template.params = template.params || [];
-    var paramList = buildEditableListWidget(section, {
-      minHeight: "260px",
-      removable: true,
-      sortable: true,
-      addItem: function(container, i2, opt) {
-        var p = opt || {};
-        if (!p.id) p.id = genId();
-        if (!p.name) p.name = "param" + (template.params.length + 1);
-        if (!p.label) p.label = p.name;
-        if (p.type === void 0) p.type = "string";
-        if (p.defaultValue === void 0) p.defaultValue = "";
-        if (template.params.indexOf(p) === -1) {
-          template.params.push(p);
-          markDirty();
-        }
-        var row = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "6px", padding: "4px 0" }).appendTo(container);
-        var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
-        var nameInput = window.$("<input>", { type: "text", "class": "node-input-param-name", placeholder: "e.g. speed" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
-        nameInput.on("change", function() {
-          var newName = nameInput.val().trim();
-          p.name = newName;
-          markDirty();
-        });
-        var labelRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-font"></i> Label').appendTo(labelRow);
-        var labelInput = window.$("<input>", { type: "text", "class": "node-input-param-label", placeholder: "e.g. Motor Speed" }).css({ flex: "1" }).val(p.label).appendTo(labelRow);
-        labelInput.on("change", function() {
-          p.label = labelInput.val();
-          markDirty();
-        });
-        var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
-        var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
-        buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
-          p.defaultValue = parsedVal;
-          p.type = detType;
-          markDirty();
-        });
-      },
-      removeItem: function(opt) {
-        var idx = template.params.indexOf(opt);
-        if (idx !== -1) {
-          template.params.splice(idx, 1);
-          markDirty();
-        }
-      }
-    });
-    template.params.forEach(function(p) {
-      paramList.editableList("addItem", p);
+  if (typeof window !== "undefined") {
+    window.__refreshScreensFlowsTree = function() {
+      renderScreenList();
+    };
+    window.__nexaEditorApi = window.__nexaEditorApi || {};
+    Object.assign(window.__nexaEditorApi, {
+      buildScreensFlowsTreeNodes,
+      selectScreenFromSidebar,
+      selectTemplateFromScreensPanel,
+      selectFlowFromScreensPanel,
+      selectFolderFromScreensPanel,
+      addScreenFromSidebar,
+      addTemplateFromScreensPanel,
+      addFlowFromSidebar,
+      addGroupFromSidebar,
+      removeScreen
     });
   }
 
@@ -35331,14 +36555,13 @@
     state.assetsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.themePane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
     var screenLeftCol = window.$("<div>").css({
-      flex: "0 0 240px",
-      width: "240px",
-      "min-width": "200px",
-      "max-width": "300px",
+      flex: "0 0 280px",
+      width: "280px",
+      "min-width": "220px",
+      "max-width": "360px",
       display: "flex",
       "flex-direction": "column",
       height: "100%",
@@ -35348,15 +36571,31 @@
     }).appendTo(screensSplit);
     var screenToolbar = window.$("<div>").css({
       display: "flex",
-      "align-items": "center",
-      "justify-content": "space-between",
+      "flex-direction": "column",
+      gap: "6px",
       padding: "8px 10px",
       "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
       background: "var(--red-ui-tertiary-background, #f8fafc)",
       "flex-shrink": "0"
     }).appendTo(screenLeftCol);
-    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-desktop'></i> Screens</span>").appendTo(screenToolbar);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" }).text("+ Add Screen").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" }).on("click", addScreenFromSidebar).appendTo(screenToolbar);
+    var screenTitleRow = window.$("<div>").css({
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "space-between",
+      width: "100%"
+    }).appendTo(screenToolbar);
+    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-sitemap'></i> Screens & Flows</span>").appendTo(screenTitleRow);
+    var screenBtnGroup = window.$("<div>").css({
+      display: "flex",
+      "align-items": "center",
+      "flex-wrap": "wrap",
+      gap: "4px",
+      width: "100%"
+    }).appendTo(screenToolbar);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" }).text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" }).text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" }).text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" }).text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
     var screenRightCol = window.$("<div>").css({
@@ -35369,44 +36608,9 @@
       "box-sizing": "border-box",
       background: "var(--red-ui-primary-background, #fff)"
     }).appendTo(screensSplit);
-    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form" }).appendTo(screenRightCol);
-    var templatesSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(state.templatesPane);
-    var templateLeftCol = window.$("<div>").css({
-      flex: "0 0 240px",
-      width: "240px",
-      "min-width": "200px",
-      "max-width": "300px",
-      display: "flex",
-      "flex-direction": "column",
-      height: "100%",
-      "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
-      background: "var(--red-ui-secondary-background, #fafafa)",
-      "box-sizing": "border-box"
-    }).appendTo(templatesSplit);
-    var templateToolbar = window.$("<div>").css({
-      display: "flex",
-      "align-items": "center",
-      "justify-content": "space-between",
-      padding: "8px 10px",
-      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
-      background: "var(--red-ui-tertiary-background, #f8fafc)",
-      "flex-shrink": "0"
-    }).appendTo(templateLeftCol);
-    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-clone'></i> Templates</span>").appendTo(templateToolbar);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" }).text("+ Add Template").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" }).on("click", addTemplateFromSidebar).appendTo(templateToolbar);
-    var templateListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(templateLeftCol);
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).appendTo(templateListWrap);
-    var templateRightCol = window.$("<div>").css({
-      flex: "1 1 auto",
-      display: "flex",
-      "flex-direction": "column",
-      height: "100%",
-      "overflow-y": "auto",
-      padding: "12px 16px",
-      "box-sizing": "border-box",
-      background: "var(--red-ui-primary-background, #fff)"
-    }).appendTo(templatesSplit);
-    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).appendTo(templateRightCol);
+    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
+    state.templateFormEl = state.screenFormEl;
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ display: "none" }).appendTo(screensSplit);
     state.sidebarTabs = window.RED.tabs.create({
       element: ul,
       // many tabs: they keep a readable width and scroll sideways (instead of squeezing)
@@ -35418,23 +36622,16 @@
         state.propertiesPane.toggle(tab.id === "properties");
         state.hierarchyPane.toggle(tab.id === "hierarchy");
         state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
-        state.templatesPane.toggle(tab.id === "templates");
         state.typesPane.toggle(tab.id === "types");
         state.assetsPane.toggle(tab.id === "assets");
         state.breakpointsPane.toggle(tab.id === "breakpoints");
         state.themePane.toggle(tab.id === "theme");
         state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
-          if (state.editingMode === "template") exitTemplateEditing();
           ensureScreensLoaded(function() {
             renderScreenList();
             renderScreenForm();
-          });
-        }
-        if (tab.id === "templates") {
-          ensureScreensLoaded(function() {
             renderTemplateList();
-            renderTemplateForm();
           });
         }
         if (tab.id === "components") buildPalette(state.componentsPane);
@@ -35449,8 +36646,7 @@
       }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
-    state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
-    state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
+    state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
@@ -35477,6 +36673,9 @@
   }
 
   // src/index.js
+  if (typeof window !== "undefined") {
+    window.__nexaEditorApi = Object.assign({}, state_exports, screens_panel_exports);
+  }
   function widenSidebar(share) {
     var $2 = window.$, sb = $2 && $2("#red-ui-sidebar");
     if (!sb || !sb.length) return;

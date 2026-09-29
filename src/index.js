@@ -5,6 +5,12 @@ import { renderLogicCanvas } from "./logic/logic-nodes.js";
 import { registerPagesEditorAction } from "./editor-tray.js";
 import { buildSidebarContent } from "./sidebar/sidebar-content.js";
 import { loadAssets } from "./assets-client.js";
+import * as NexaState from "./state.js";
+import * as NexaScreens from "./sidebar/screens-panel.js";
+
+if (typeof window !== "undefined") {
+    window.__nexaEditorApi = Object.assign({}, NexaState, NexaScreens);
+}
 
 // The Node-RED sidebar, at least `share` of the window (up to its 800 px): no dragging it
 // wider each time the Nexa tab is opened. Narrower is left as the user made it wider.

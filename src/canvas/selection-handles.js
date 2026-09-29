@@ -137,8 +137,34 @@ export function wireResizeHandle(handle, comp, handleName) {
                 nw = snap(nw, screen.gridSize);
                 nh = snap(nh, screen.gridSize);
             }
+            var parent = screen ? Tree.parentOf(screen, comp.id) : null;
+            var container = parent;
+            while (container && container.type === "@group") {
+                container = Tree.parentOf(screen, container.id);
+            }
+            var maxW, maxH;
+            if (container && !Tree.onScreen(comp)) {
+                var isz = (container.type === "@frame" && typeof Layout.innerSize === "function") ? Layout.innerSize(container) : null;
+                maxW = isz ? isz.w : (container.w != null ? container.w : (container.width || (screen ? screen.width : 1280)));
+                maxH = isz ? isz.h : (container.h != null ? container.h : (container.height || (screen ? screen.height : 800)));
+            } else {
+                maxW = screen ? screen.width : 1280;
+                maxH = screen ? screen.height : 800;
+            }
+            if (handleName.indexOf("w") !== -1 && nx < 0) {
+                nw = Math.max(minSize, nw + nx);
+                nx = 0;
+            }
+            if (handleName.indexOf("n") !== -1 && ny < 0) {
+                nh = Math.max(minSize, nh + ny);
+                ny = 0;
+            }
+            nx = Math.max(0, Math.min(nx, Math.max(0, maxW - minSize)));
+            ny = Math.max(0, Math.min(ny, Math.max(0, maxH - minSize)));
+            nw = Math.max(minSize, Math.min(nw, maxW - nx));
+            nh = Math.max(minSize, Math.min(nh, maxH - ny));
             comp.x = nx; comp.y = ny;
-            comp.w = Math.max(minSize, nw); comp.h = Math.max(minSize, nh);
+            comp.w = nw; comp.h = nh;
             updateComponentBox(comp);
             // a frame's children keep to its edges (constraints)
             if (origKids) {

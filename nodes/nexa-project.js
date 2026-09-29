@@ -18,6 +18,8 @@ module.exports = function (RED) {
     RED.nodes.createNode(this, config);
     this.screens = Array.isArray(config.screens) ? config.screens : [];
     this.templates = Array.isArray(config.templates) ? config.templates : [];
+    this.folders = Array.isArray(config.folders) ? config.folders : [];
+    this.flows = Array.isArray(config.flows) ? config.flows : [];
     this.variables = Array.isArray(config.variables) ? config.variables : [];
     this.types = Array.isArray(config.types) ? config.types : [];
     this.breakpoints = Array.isArray(config.breakpoints) ? config.breakpoints : [];

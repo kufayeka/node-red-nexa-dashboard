@@ -15,7 +15,7 @@ keep to their frame's edges, and variables flow down the tree.
 ## 1. The node tree
 
 ```ts
-interface Surface {                 // a Screen or a ProjectTemplate
+interface Surface {                 // a Screen, a ProjectTemplate, or a ScreenFlow (see docs/FLOWS.md)
   components: Node[];               // the root's children, bottom of the stack first
   orphans: Node[];                  // taken out of the tree, not deleted (Hierarchy → "Unplaced")
   variables?: Variable[];           // §5

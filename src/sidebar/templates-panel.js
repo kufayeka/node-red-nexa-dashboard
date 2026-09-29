@@ -2,7 +2,7 @@
 import { state, genId, markDirty, findTemplate, makeTemplate, Tree, Layout } from "../state.js";
 import { pushTreeChange, treeSnapshot } from "../history.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
-import { refreshLogicCanvasIfActive } from "./screens-panel.js";
+import { refreshLogicCanvasIfActive, renderScreenList, renderScreenForm } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
 import { normalizeParamType, buildTypedInputWidget, buildEditableListWidget } from "../param-types.js";
 import { renderVariablesInspector } from "./variables-inspector.js";
@@ -163,6 +163,8 @@ export function exitTemplateEditing() {
     state.logicSelectedIds = [];
     renderTemplateList();
     renderTemplateForm();
+    if (typeof renderScreenList === "function") renderScreenList();
+    if (typeof renderScreenForm === "function") renderScreenForm();
     refreshComponentsPaletteIfVisible();
     if (state.trayContent) {
         renderActiveScreen();
@@ -171,7 +173,7 @@ export function exitTemplateEditing() {
     }
 }
 
-function showEditBar() {
+export function showEditBar() {
     if (!state.trayContent) return;
     var template = findTemplate(state.activeTemplateId);
     if (!editBarEl || !editBarEl.parent().length) {
@@ -188,17 +190,18 @@ function showEditBar() {
     editBarEl.show();
 }
 
-function hideEditBar() {
+export function hideEditBar() {
     if (editBarEl) editBarEl.hide();
 }
 
-export function renderTemplateForm() {
-    if (!state.templateFormEl) return;
-    state.templateFormEl.empty();
+export function renderTemplateForm(targetEl) {
+    var formEl = targetEl || state.templateFormEl;
+    if (!formEl) return;
+    formEl.empty();
     if (state.editingMode !== "template") {
         window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" })
             .html('<i class="fa fa-clone" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select or add a template on the left to edit its properties.')
-            .appendTo(state.templateFormEl);
+            .appendTo(formEl);
         return;
     }
     var template = findTemplate(state.activeTemplateId);
@@ -214,16 +217,19 @@ export function renderTemplateForm() {
         display: "flex",
         "align-items": "center",
         gap: "6px"
-    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(state.templateFormEl);
+    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(formEl);
 
     function row(label, field, value, type) {
-        var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.templateFormEl);
+        var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
         var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
         input.on("change", function () {
             var v = type === "number" ? (parseInt(input.val(), 10) || 0) : input.val();
             template[field] = v;
-            if (field === "name") renderTemplateList();
+            if (field === "name") {
+                renderTemplateList();
+                if (typeof window.__refreshScreensFlowsTree === "function") window.__refreshScreensFlowsTree();
+            }
             markDirty();
             renderActiveScreen();
         });
@@ -236,7 +242,7 @@ export function renderTemplateForm() {
     row("Height (px)", "height", template.height, "number");
     row("Grid size (px)", "gridSize", template.gridSize, "number");
 
-    var snapRow = window.$("<div>").css({ "margin-top": "6px", "margin-bottom": "12px" }).appendTo(state.templateFormEl);
+    var snapRow = window.$("<div>").css({ "margin-top": "6px", "margin-bottom": "12px" }).appendTo(formEl);
     var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", template.snap !== false).css({ "margin-right": "6px" });
     snapInput.on("change", function () {
         template.snap = snapInput.is(":checked");
@@ -244,21 +250,23 @@ export function renderTemplateForm() {
     });
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
-    renderTemplateLiveSection(template);
-    renderTemplateParamsSection();
+    renderTemplateLiveSection(template, formEl);
+    renderTemplateParamsSection(formEl);
     // the same Variables block as a screen's (types / UDT included): each instance gets its own
-    state.templateFormEl.find(".nexa-template-vars-section").remove();
+    formEl.find(".nexa-template-vars-section").remove();
     var tmpl = findTemplate(state.activeTemplateId);
-    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(state.templateFormEl), tmpl, "template");
+    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(formEl), tmpl, "template");
 }
 
 // On the live page: how big this template is where it is used (a list row, a grid cell, a
 // carousel slide, a Populate's copies) — per axis its design size, or filling what its host
 // gives it (then what is inside follows its constraints, like a screen in Fill mode).
-function renderTemplateLiveSection(template) {
+function renderTemplateLiveSection(template, formEl) {
     var $ = window.$;
+    formEl = formEl || state.templateFormEl;
+    if (!formEl) return;
     var live = Object.assign({ w: "fixed", h: "fixed", minW: "", maxW: "", minH: "", maxH: "", content: "constraints" }, template.live || {});
-    var box = $("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(state.templateFormEl);
+    var box = $("<div>", { "class": "nexa-template-live" }).css({ "margin": "4px 0 14px", padding: "10px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)", "border-radius": "6px" }).appendTo(formEl);
     $("<div>").css({ "font-size": "11px", "font-weight": "700", "text-transform": "uppercase", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "6px" }).text("On the live page").appendTo(box);
     $("<div>").css({ "font-size": "11px", color: "#888", "margin-bottom": "8px", "line-height": "1.45" })
         .html("<b>Fixed</b>: its design size. <b>Fill</b>: the space its host gives it (a list row, a grid cell, a slide). The host places it: alignment, padding, gap. An instance placed on a screen is also a box you can resize.").appendTo(box);
@@ -331,15 +339,16 @@ function autoConstrain(nodes, size) {
     return count;
 }
 
-function renderTemplateParamsSection() {
-    if (!state.templateFormEl) return;
-    state.templateFormEl.find(".nexa-template-params-section").remove();
+function renderTemplateParamsSection(formEl) {
+    formEl = formEl || state.templateFormEl;
+    if (!formEl) return;
+    formEl.find(".nexa-template-params-section").remove();
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
 
     var section = window.$("<div>", { "class": "nexa-template-params-section" }).css({
         "margin-top": "14px", "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)", "padding-top": "10px"
-    }).appendTo(state.templateFormEl);
+    }).appendTo(formEl);
 
     window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "flex", "align-items": "center", gap: "6px", color: "var(--red-ui-primary-text-color, #333)" })
         .html('<i class="fa fa-list" style="color: #2196f3;"></i> Parameters')

@@ -3,8 +3,11 @@ import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { buildPalette, renderEventsPanel } from "./palette-events-panel.js";
 import { renderPropertiesPanel } from "./properties-panel.js";
 import { renderHierarchyPanel } from "./hierarchy-panel.js";
-import { renderScreenList, renderScreenForm, addScreenFromSidebar } from "./screens-panel.js";
-import { renderTemplateList, renderTemplateForm, addTemplateFromSidebar, exitTemplateEditing } from "./templates-panel.js";
+import {
+    renderScreenList, renderScreenForm, addScreenFromSidebar,
+    addTemplateFromScreensPanel, addFlowFromSidebar, addGroupFromSidebar
+} from "./screens-panel.js";
+import { renderTemplateList } from "./templates-panel.js";
 import { renderSparkplugPanel } from "./sparkplug-panel.js";
 import { renderTypesPanel } from "./types-panel.js";
 import { renderAssetsPanel } from "./assets-panel.js";
@@ -45,30 +48,50 @@ export function buildSidebarContent() {
     state.assetsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.themePane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
-    state.templatesPane = window.$("<div>", { "class": "nexa-templates-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     // Same flex/column reasoning as componentsPane/eventsPane above (see
     // that comment) — the metric rows dragged out of this pane go through
     // the identical jQuery UI draggable path, so the same margin:auto
     // pitfall applies here too.
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
 
-    // --- Screens Tab: 2-Column Layout (List on Left, Properties on Right) ---
+    // --- Screens, Templates & Flows Tab: 2-Column Layout (List/Tree on Left, Properties/Form on Right) ---
     var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
     var screenLeftCol = window.$("<div>").css({
-        flex: "0 0 240px", width: "240px", "min-width": "200px", "max-width": "300px",
+        flex: "0 0 280px", width: "280px", "min-width": "220px", "max-width": "360px",
         display: "flex", "flex-direction": "column", height: "100%",
         "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
         background: "var(--red-ui-secondary-background, #fafafa)", "box-sizing": "border-box"
     }).appendTo(screensSplit);
     var screenToolbar = window.$("<div>").css({
-        display: "flex", "align-items": "center", "justify-content": "space-between",
+        display: "flex", "flex-direction": "column", gap: "6px",
         padding: "8px 10px", "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
         background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0"
     }).appendTo(screenLeftCol);
-    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-desktop'></i> Screens</span>").appendTo(screenToolbar);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" })
-        .text("+ Add Screen").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
-        .on("click", addScreenFromSidebar).appendTo(screenToolbar);
+
+    var screenTitleRow = window.$("<div>").css({
+        display: "flex", "align-items": "center", "justify-content": "space-between", width: "100%"
+    }).appendTo(screenToolbar);
+    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-sitemap'></i> Screens & Flows</span>").appendTo(screenTitleRow);
+
+    var screenBtnGroup = window.$("<div>").css({
+        display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "4px", width: "100%"
+    }).appendTo(screenToolbar);
+
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" })
+        .text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+        .on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
+
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" })
+        .text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+        .on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
+
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" })
+        .text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+        .on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
+
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" })
+        .text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+        .on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
 
@@ -77,34 +100,9 @@ export function buildSidebarContent() {
         "overflow-y": "auto", padding: "12px 16px", "box-sizing": "border-box",
         background: "var(--red-ui-primary-background, #fff)"
     }).appendTo(screensSplit);
-    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form" }).appendTo(screenRightCol);
-
-    // --- Templates Tab: 2-Column Layout (List on Left, Properties & Params on Right) ---
-    var templatesSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(state.templatesPane);
-    var templateLeftCol = window.$("<div>").css({
-        flex: "0 0 240px", width: "240px", "min-width": "200px", "max-width": "300px",
-        display: "flex", "flex-direction": "column", height: "100%",
-        "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
-        background: "var(--red-ui-secondary-background, #fafafa)", "box-sizing": "border-box"
-    }).appendTo(templatesSplit);
-    var templateToolbar = window.$("<div>").css({
-        display: "flex", "align-items": "center", "justify-content": "space-between",
-        padding: "8px 10px", "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
-        background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0"
-    }).appendTo(templateLeftCol);
-    window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-clone'></i> Templates</span>").appendTo(templateToolbar);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small" })
-        .text("+ Add Template").css({ "font-size": "11px", padding: "2px 8px", height: "24px", "line-height": "20px" })
-        .on("click", addTemplateFromSidebar).appendTo(templateToolbar);
-    var templateListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(templateLeftCol);
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).appendTo(templateListWrap);
-
-    var templateRightCol = window.$("<div>").css({
-        flex: "1 1 auto", display: "flex", "flex-direction": "column", height: "100%",
-        "overflow-y": "auto", padding: "12px 16px", "box-sizing": "border-box",
-        background: "var(--red-ui-primary-background, #fff)"
-    }).appendTo(templatesSplit);
-    state.templateFormEl = window.$("<div>", { "class": "nexa-template-form" }).appendTo(templateRightCol);
+    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
+    state.templateFormEl = state.screenFormEl;
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ display: "none" }).appendTo(screensSplit);
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
@@ -124,27 +122,17 @@ export function buildSidebarContent() {
             state.propertiesPane.toggle(tab.id === "properties");
             state.hierarchyPane.toggle(tab.id === "hierarchy");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
-            state.templatesPane.toggle(tab.id === "templates");
             state.typesPane.toggle(tab.id === "types");
             state.assetsPane.toggle(tab.id === "assets");
             state.breakpointsPane.toggle(tab.id === "breakpoints");
             state.themePane.toggle(tab.id === "theme");
             state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
             if (tab.id === "screens") {
-                // The Screens form (name/URL path/width/height/grid/snap) is
-                // screen-shaped, not template-shaped (no `path` on a
-                // template) — same "picking a screen means work on this
-                // screen" rule already applied to selectScreenFromSidebar/
-                // addScreenFromSidebar, just triggered from the sidebar tab
-                // itself this time.
-                if (state.editingMode === "template") exitTemplateEditing();
                 ensureScreensLoaded(function () {
                     renderScreenList();
                     renderScreenForm();
+                    renderTemplateList();
                 });
-            }
-            if (tab.id === "templates") {
-                ensureScreensLoaded(function () { renderTemplateList(); renderTemplateForm(); });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
             if (tab.id === "properties") renderPropertiesPanel();
@@ -158,8 +146,7 @@ export function buildSidebarContent() {
         }
     });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
-    state.sidebarTabs.addTab({ id: "screens", label: "Screens" });
-    state.sidebarTabs.addTab({ id: "templates", label: "Templates" });
+    state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });

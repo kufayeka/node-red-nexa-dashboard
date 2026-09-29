@@ -79,11 +79,23 @@ export const state = {
     screenCounter: 0,
     projectConfigNode: null,
 
+    // Folders/Groups for organizing screens, templates, and flows
+    folders: [],
+    folderCounter: 0,
+
     // Reusable Screen Templates (see plan "Phase 3"). `editingMode` gates
     // getActiveScreen() (see below) so every existing caller — the whole
     // canvas/Logic-canvas/palette/properties/layers machinery — becomes
     // template-aware for free, with zero call-site changes.
     templates: [],
+    templateCounter: 0,
+    activeTemplateId: null,
+
+    // Screen Flows: multi-app flows with endpoint routing & logic wiring
+    flows: [],
+    flowCounter: 0,
+    activeFlowId: null,
+
     assetsPane: null,
     breakpointsPane: null,
     // dialogs / drawers shown on the canvas (editor only, not saved): id -> true
@@ -92,13 +104,13 @@ export const state = {
     // the colour mode the canvas previews ("light" / "dark"; null = the theme's default)
     themePreview: null,
     themePane: null,
-    templateCounter: 0,
-    editingMode: "screen", // "screen" | "template"
-    activeTemplateId: null,
+    editingMode: "screen", // "screen" | "template" | "flow"
 
     selectedIds: [],
     logicSelectedIds: [],
     activeCanvasTab: "ui",
+    canvasTabs: null,
+    canvasTabsUl: null,
 
     zoomLevel: 1,
     logicZoomLevel: 1,
@@ -158,6 +170,9 @@ export function getActiveScreen() {
     if (state.editingMode === "template") {
         return findTemplate(state.activeTemplateId);
     }
+    if (state.editingMode === "flow") {
+        return findFlow(state.activeFlowId);
+    }
     return state.screens.find(function (s) { return s.id === state.activeScreenId; });
 }
 
@@ -174,11 +189,254 @@ export function findTemplateByIdOrName(idOrName) {
         state.templates.find(function (t) { return t.name === idOrName || t.identifier === idOrName; });
 }
 
-// Templates and screens share globally-unique ids (genId()), so a history
+// Templates, screens, and flows share globally-unique ids (genId()), so a history
 // event's screenId can be looked up here without any change to the event
 // shape itself.
 export function findSurfaceById(id) {
-    return state.screens.find(function (s) { return s.id === id; }) || findTemplate(id);
+    return state.screens.find(function (s) { return s.id === id; }) ||
+        findTemplate(id) ||
+        findFlow(id);
+}
+
+export function makeFolder(opts) {
+    state.folderCounter++;
+    return {
+        id: genId(),
+        name: (opts && opts.name) || ("Group " + state.folderCounter),
+        parentId: (opts && opts.parentId) || null,
+        category: (opts && opts.category) || "screen",
+        type: "folder"
+    };
+}
+
+export function findFolder(id) {
+    return state.folders.find(function (f) { return f.id === id; });
+}
+
+export function deleteFolder(id) {
+    var folder = findFolder(id);
+    if (!folder) return;
+    var parentId = folder.parentId || null;
+    state.folders.forEach(function (f) { if (f.parentId === id) f.parentId = parentId; });
+    state.screens.forEach(function (s) { if (s.parentId === id) s.parentId = parentId; });
+    state.templates.forEach(function (t) { if (t.parentId === id) t.parentId = parentId; });
+    state.flows.forEach(function (fl) { if (fl.parentId === id) fl.parentId = parentId; });
+    state.folders = state.folders.filter(function (f) { return f.id !== id; });
+}
+
+export function makeFlow(opts) {
+    state.flowCounter++;
+    return {
+        id: genId(),
+        name: (opts && opts.name) || ("Flow " + state.flowCounter),
+        endpoint: (opts && opts.endpoint) || ("/flow" + state.flowCounter),
+        parentId: (opts && opts.parentId) || null,
+        type: "flow",
+        components: [],
+        orphans: [],
+        variables: (opts && opts.variables) || [],
+        logic: (opts && opts.logic) ? cloneLogic(opts.logic) : { nodes: [], wires: [] }
+    };
+}
+
+export function findFlow(id) {
+    return state.flows.find(function (fl) { return fl.id === id; });
+}
+
+export function deleteFlow(id) {
+    var wasActive = id === state.activeFlowId;
+    state.flows = state.flows.filter(function (fl) { return fl.id !== id; });
+    if (wasActive) {
+        state.activeFlowId = state.flows.length ? state.flows[0].id : null;
+        if (!state.activeFlowId && state.editingMode === "flow") {
+            state.editingMode = "screen";
+        }
+    }
+}
+
+export function cloneSurfaceComponents(components, compIdMap) {
+    compIdMap = compIdMap || {};
+    function renew(n) {
+        var copy = JSON.parse(JSON.stringify(n));
+        var oldId = n.id;
+        var newId = genId();
+        compIdMap[oldId] = newId;
+        copy.id = newId;
+        if (copy.children && Array.isArray(copy.children)) {
+            copy.children = copy.children.map(renew);
+        }
+        return copy;
+    }
+    return (components || []).map(renew);
+}
+
+export function cloneLogic(logic, compIdMap) {
+    if (!logic || !Array.isArray(logic.nodes)) return { nodes: [], wires: [] };
+    var idMap = {};
+    var clonedNodes = (logic.nodes || []).map(function (n) {
+        var copy = JSON.parse(JSON.stringify(n));
+        var newId = genId();
+        idMap[n.id] = newId;
+        copy.id = newId;
+        if (compIdMap) {
+            if (copy.compId && compIdMap[copy.compId]) copy.compId = compIdMap[copy.compId];
+            if (copy.componentId && compIdMap[copy.componentId]) copy.componentId = compIdMap[copy.componentId];
+            if (copy.targetId && compIdMap[copy.targetId]) copy.targetId = compIdMap[copy.targetId];
+            if (copy.container && compIdMap[copy.container]) copy.container = compIdMap[copy.container];
+            if (copy.overlay && compIdMap[copy.overlay]) copy.overlay = compIdMap[copy.overlay];
+            if (copy.node && compIdMap[copy.node]) copy.node = compIdMap[copy.node];
+            if (typeof copy.tag === "string" && copy.tag.indexOf("comp:") === 0) {
+                var parts = copy.tag.split(":");
+                if (parts[1] && compIdMap[parts[1]]) {
+                    parts[1] = compIdMap[parts[1]];
+                    copy.tag = parts.join(":");
+                }
+            }
+        }
+        return copy;
+    });
+    var clonedWires = [];
+    (logic.wires || []).forEach(function (w) {
+        var newFrom = idMap[w.from];
+        var newTo = idMap[w.to];
+        if (newFrom && newTo) {
+            var copyW = JSON.parse(JSON.stringify(w));
+            copyW.from = newFrom;
+            copyW.to = newTo;
+            clonedWires.push(copyW);
+        }
+    });
+    return { nodes: clonedNodes, wires: clonedWires };
+}
+
+export function duplicateScreen(id) {
+    var orig = state.screens.find(function (s) { return s.id === id; });
+    if (!orig) return null;
+    state.screenCounter++;
+    var compIdMap = {};
+    var newScreen = {
+        id: genId(),
+        name: orig.name + " (Copy)",
+        path: orig.path + "-copy",
+        parentId: orig.parentId || null,
+        width: orig.width,
+        height: orig.height,
+        gridSize: orig.gridSize,
+        snap: orig.snap !== false,
+        treeVersion: orig.treeVersion || TREE_VERSION,
+        disabled: !!orig.disabled,
+        displayMode: orig.displayMode,
+        variables: JSON.parse(JSON.stringify(orig.variables || [])),
+        components: cloneSurfaceComponents(orig.components, compIdMap),
+        orphans: cloneSurfaceComponents(orig.orphans, compIdMap),
+        logic: cloneLogic(orig.logic, compIdMap)
+    };
+    var idx = state.screens.indexOf(orig);
+    state.screens.splice(idx + 1, 0, newScreen);
+    return newScreen;
+}
+
+export function duplicateTemplate(id) {
+    var orig = findTemplate(id);
+    if (!orig) return null;
+    state.templateCounter++;
+    var compIdMap = {};
+    var newTemplate = {
+        id: genId(),
+        name: orig.name + " (Copy)",
+        identifier: orig.identifier ? (orig.identifier + "-copy") : "",
+        parentId: orig.parentId || null,
+        width: orig.width,
+        height: orig.height,
+        gridSize: orig.gridSize,
+        snap: orig.snap !== false,
+        treeVersion: orig.treeVersion || TREE_VERSION,
+        params: JSON.parse(JSON.stringify(orig.params || [])),
+        variables: JSON.parse(JSON.stringify(orig.variables || [])),
+        components: cloneSurfaceComponents(orig.components, compIdMap),
+        orphans: cloneSurfaceComponents(orig.orphans, compIdMap),
+        logic: cloneLogic(orig.logic, compIdMap)
+    };
+    var idx = state.templates.indexOf(orig);
+    state.templates.splice(idx + 1, 0, newTemplate);
+    return newTemplate;
+}
+
+export function duplicateFlow(id) {
+    var orig = findFlow(id);
+    if (!orig) return null;
+    state.flowCounter++;
+    var newFlow = {
+        id: genId(),
+        name: orig.name + " (Copy)",
+        endpoint: orig.endpoint + "-copy",
+        parentId: orig.parentId || null,
+        type: "flow",
+        components: [],
+        orphans: [],
+        variables: JSON.parse(JSON.stringify(orig.variables || [])),
+        logic: cloneLogic(orig.logic)
+    };
+    var idx = state.flows.indexOf(orig);
+    state.flows.splice(idx + 1, 0, newFlow);
+    return newFlow;
+}
+
+export function convertScreenToTemplate(id) {
+    var screen = state.screens.find(function (s) { return s.id === id; });
+    if (!screen) return null;
+    if (state.screens.length <= 1) {
+        var replacement = makeScreen({ name: "Screen " + (state.screenCounter + 1) });
+        state.screens.push(replacement);
+        if (state.activeScreenId === id) state.activeScreenId = replacement.id;
+    }
+    state.screens = state.screens.filter(function (s) { return s.id !== id; });
+    state.templateCounter++;
+    var template = {
+        id: screen.id,
+        name: screen.name,
+        identifier: (screen.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+        parentId: screen.parentId || null,
+        width: screen.width,
+        height: screen.height,
+        gridSize: screen.gridSize,
+        snap: screen.snap !== false,
+        treeVersion: screen.treeVersion || TREE_VERSION,
+        params: [],
+        variables: screen.variables || [],
+        components: screen.components || [],
+        orphans: screen.orphans || [],
+        logic: screen.logic || { nodes: [], wires: [] }
+    };
+    state.templates.push(template);
+    return template;
+}
+
+export function convertTemplateToScreen(id) {
+    var template = findTemplate(id);
+    if (!template) return null;
+    state.templates = state.templates.filter(function (t) { return t.id !== id; });
+    state.screenCounter++;
+    var slug = (template.identifier || template.name || "screen").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    var screen = {
+        id: template.id,
+        name: template.name,
+        path: "/" + slug,
+        parentId: template.parentId || null,
+        width: template.width,
+        height: template.height,
+        gridSize: template.gridSize,
+        snap: template.snap !== false,
+        treeVersion: template.treeVersion || TREE_VERSION,
+        disabled: false,
+        displayMode: "fixed",
+        variables: template.variables || [],
+        components: template.components || [],
+        orphans: template.orphans || [],
+        logic: template.logic || { nodes: [], wires: [] }
+    };
+    state.screens.push(screen);
+    return screen;
 }
 
 // A surface's `components` is the root of its node tree (see model/tree.js);
@@ -202,6 +460,7 @@ export function makeScreen(opts) {
     var screen = makeSurfaceBase(opts);
     screen.name = (opts && opts.name) || ("Screen " + state.screenCounter);
     screen.path = (opts && opts.path) || ("/screen" + state.screenCounter);
+    screen.parentId = (opts && opts.parentId) || null;
     return screen;
 }
 
@@ -212,17 +471,9 @@ export function makeTemplate(opts) {
     state.templateCounter++;
     var template = makeSurfaceBase(opts);
     template.name = (opts && opts.name) || ("Template " + state.templateCounter);
-    // Plain, user-editable reference/display field — mirrors the ROLE
-    // screen.path plays on a Screen, but purely for the user's own
-    // reference (not a routing key, and not the internal join key: every
-    // "@template" instance still references the template by `template.id`,
-    // exactly like a component still references its layer by `layer.id`
-    // even though the layer's own `name` is freely renamable).
     template.identifier = (opts && opts.identifier) || "";
-    // Flat param declarations: {id, name, label, type, defaultValue} — see
-    // "Phase 3 revision" in the plan. `name` doubles as the {name}
-    // interpolation key and the msg key on the param-input node's output.
     template.params = (opts && opts.params) || [];
+    template.parentId = (opts && opts.parentId) || null;
     return template;
 }
 
@@ -262,6 +513,8 @@ export function markDirty() {
     if (state.projectConfigNode) {
         state.projectConfigNode.screens = state.screens;
         state.projectConfigNode.templates = state.templates;
+        state.projectConfigNode.folders = state.folders;
+        state.projectConfigNode.flows = state.flows;
     }
     // editing a breakpoint: the change becomes its override; the project keeps the design
     if (typeof state.onBreakpointDirty === "function") state.onBreakpointDirty();
@@ -324,10 +577,33 @@ export function ensureScreensLoaded(cb) {
         backfillSurface(t);
         if (!t.params) t.params = [];
         if (t.identifier === undefined) t.identifier = "";
+        if (t.parentId === undefined) t.parentId = null;
     });
     state.templateCounter = templateData.length;
     state.templates = templateData;
     if (state.projectConfigNode) state.projectConfigNode.templates = state.templates;
+
+    var folderData = (state.projectConfigNode && state.projectConfigNode.folders) || [];
+    folderData.forEach(function (f) {
+        if (f.parentId === undefined) f.parentId = null;
+        f.type = "folder";
+    });
+    state.folderCounter = folderData.length;
+    state.folders = folderData;
+    if (state.projectConfigNode) state.projectConfigNode.folders = state.folders;
+
+    var flowData = (state.projectConfigNode && state.projectConfigNode.flows) || [];
+    flowData.forEach(function (f) {
+        if (!f.logic) f.logic = { nodes: [], wires: [] };
+        if (!f.components) f.components = [];
+        if (!f.variables) f.variables = [];
+        if (f.parentId === undefined) f.parentId = null;
+        f.type = "flow";
+    });
+    state.flowCounter = flowData.length;
+    state.flows = flowData;
+    if (state.projectConfigNode) state.projectConfigNode.flows = state.flows;
+    if (state.flows.length && !state.activeFlowId) state.activeFlowId = state.flows[0].id;
 
     state.screensLoaded = true;
     if (cb) cb();
@@ -377,5 +653,25 @@ export function findLogicNode(screenOrId, maybeId) {
         id = screenOrId;
     }
     return screen && screen.logic && (screen.logic.nodes || []).find(function (n) { return n.id === id; });
+}
+
+if (typeof window !== "undefined") {
+    window.__nexaEditorApi = window.__nexaEditorApi || {};
+    Object.assign(window.__nexaEditorApi, {
+        makeFolder: makeFolder,
+        findFolder: findFolder,
+        deleteFolder: deleteFolder,
+        makeFlow: makeFlow,
+        findFlow: findFlow,
+        deleteFlow: deleteFlow,
+        cloneLogic: cloneLogic,
+        duplicateScreen: duplicateScreen,
+        duplicateTemplate: duplicateTemplate,
+        duplicateFlow: duplicateFlow,
+        convertScreenToTemplate: convertScreenToTemplate,
+        convertTemplateToScreen: convertTemplateToScreen,
+        getActiveScreen: getActiveScreen,
+        markDirty: markDirty
+    });
 }
 

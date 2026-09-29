@@ -473,10 +473,26 @@ function changePlace(screen, node, parent, v) {
     if (v === "free" && Layout.hasAutoLayout(parent)) lc.absolute = true;
     if (v === "screen" || v === "dock") node.place = v;
     if (Object.keys(lc).length) node.layoutChild = lc; else delete node.layoutChild;
-    if (v === "screen") { node.x = Math.round(abs.x); node.y = Math.round(abs.y); }
-    else if (v === "free") {
+    if (v === "screen") {
+        node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen.width - (node.w || 0))));
+        node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen.height - (node.h || 0))));
+    } else if (v === "free") {
         var o = parent ? Tree.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-        node.x = Math.round(abs.x - o.x); node.y = Math.round(abs.y - o.y);
+        var nx = Math.round(abs.x - o.x);
+        var ny = Math.round(abs.y - o.y);
+        if (parent) {
+            var pw = parent.w != null ? parent.w : (parent.width || screen.width);
+            var ph = parent.h != null ? parent.h : (parent.height || screen.height);
+            if (parent.type === "@frame" && typeof Layout.innerSize === "function") {
+                var isz = Layout.innerSize(parent);
+                pw = isz.w; ph = isz.h;
+            }
+            node.x = Math.max(0, Math.min(nx, Math.max(0, pw - (node.w || 0))));
+            node.y = Math.max(0, Math.min(ny, Math.max(0, ph - (node.h || 0))));
+        } else {
+            node.x = Math.max(0, Math.min(nx, Math.max(0, screen.width - (node.w || 0))));
+            node.y = Math.max(0, Math.min(ny, Math.max(0, screen.height - (node.h || 0))));
+        }
     } else if (v === "dock" && !node.dock) {
         // docked where it is closest
         var ps = parent ? Layout.innerSize(parent) : { w: screen.width, h: screen.height };
@@ -659,12 +675,19 @@ export function renderConstraintsInspector(container, node, parent) {
             </nx-section>`;
         }
     });
-    var constraintView = function (n) { return Object.assign({}, Layout.constraintsOf(n), { scrollBehavior: n.scrollBehavior || "scrolls" }); };
+    var constraintView = function (n) {
+        var c = (n && n.constraints && (n.constraints.h || n.constraints.v))
+            ? Layout.constraintsOf(n)
+            : (parent ? Layout.guessConstraints(n, parent.w || 1280, parent.h || 800) : Layout.guessConstraints(n, 1280, 800));
+        return Object.assign({}, c, { scrollBehavior: n.scrollBehavior || "scrolls" });
+    };
     var writeConstraint = function (n, key, v) {
         if (key === "scrollBehavior") { if (v === "scrolls") delete n.scrollBehavior; else n.scrollBehavior = v; return; }
-        var c = Object.assign({}, Layout.constraintsOf(n));
+        var current = constraintView(n);
+        var c = Object.assign({}, current);
         c[key] = v;
-        if (c.h === "left" && c.v === "top") delete n.constraints; else n.constraints = c;
+        delete c.scrollBehavior;
+        n.constraints = c;
     };
     mountLive(container, meta, "nexa-constraints", function () { return constraintView(node); },
         function (key, v) { commit(node, function () { writeConstraint(node, key, v); }); },

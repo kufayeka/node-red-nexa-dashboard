@@ -303,6 +303,7 @@ export function buildCanvasArea(trayBody, chrome) {
     applyLogicZoomTransform();
     var logicZoom = buildLogicZoomToolbar(dock).hide();
 
+    state.canvasTabsUl = canvasTabsUl;
     var canvasTabs = window.RED.tabs.create({
         element: canvasTabsUl,
         onchange: function (tab) {
@@ -326,10 +327,49 @@ export function buildCanvasArea(trayBody, chrome) {
             }
         }
     });
+    state.canvasTabs = canvasTabs;
     canvasTabs.addTab({ id: "ui", label: "UI" });
     canvasTabs.addTab({ id: "logic", label: "Logic" });
+    updateCanvasTabsVisibility();
 
     window.$(document).on("keydown.nexa", onKeyDown);
+}
+
+export function updateCanvasTabsVisibility() {
+    if (!state.canvasTabsUl) return;
+    var isFlow = state.editingMode === "flow";
+    if (state.canvasTabs) {
+        if (typeof state.canvasTabs.hideTab === "function" && typeof state.canvasTabs.showTab === "function") {
+            if (isFlow) {
+                state.canvasTabs.hideTab("ui");
+            } else {
+                state.canvasTabs.showTab("ui");
+            }
+        }
+    }
+    var $find = typeof state.canvasTabsUl.find === "function" ? state.canvasTabsUl.find("li") : null;
+    var $uiTab = null;
+    if ($find && typeof $find.filter === "function") {
+        $uiTab = $find.filter(function () {
+            var txt = window.$(this).text().trim().toLowerCase();
+            return txt === "ui" || window.$(this).attr("aria-controls") === "ui";
+        });
+    } else if (state.canvasTabsUl._children) {
+        var match = (state.canvasTabsUl._children || []).find(function (c) {
+            var txt = (c.text && typeof c.text === "function" ? c.text() : (c._text || "")).trim().toLowerCase();
+            var ctrl = (c.attr && typeof c.attr === "function" ? c.attr("aria-controls") : (c._attrs && c._attrs["aria-controls"])) || "";
+            return txt === "ui" || ctrl === "ui";
+        });
+        if (match) $uiTab = window.$(match);
+    }
+    if (isFlow) {
+        if ($uiTab && typeof $uiTab.hide === "function") $uiTab.hide();
+        if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+            state.canvasTabs.activateTab("logic");
+        }
+    } else {
+        if ($uiTab && typeof $uiTab.show === "function") $uiTab.show();
+    }
 }
 
 export function registerPagesEditorAction() {
