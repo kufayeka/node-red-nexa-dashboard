@@ -601,6 +601,12 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
     }
     var typeDef = window.NEXA.getComponent(comp.type);
     if (typeDef && typeof typeDef.render === "function") {
+        if (el.__nexaPendingTimer) {
+            clearTimeout(el.__nexaPendingTimer);
+            el.__nexaPendingTimer = null;
+        }
+        if (el.removeAttribute) el.removeAttribute("data-nexa-unknown");
+        else if (window.$(el).removeAttr) window.$(el).removeAttr("data-nexa-unknown");
         migrateComponentProps(comp, typeDef);
         try {
             typeDef.render(el, interpolateProps(comp.props || {}, paramState), ctx);
@@ -608,7 +614,15 @@ function renderComponentContent(el, comp, ctx, namespace, visitedTemplateIds, pa
             window.$(el).text("(render error: " + e.message + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
         }
     } else {
-        window.$(el).text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
+        var $el = window.$(el);
+        $el.attr("data-nexa-unknown", comp.type);
+        if (el.__nexaPendingTimer) clearTimeout(el.__nexaPendingTimer);
+        // Delay showing error text so late-registering component plugins do not cause an ugly flash
+        el.__nexaPendingTimer = setTimeout(function () {
+            if ($el.attr("data-nexa-unknown") === comp.type && (!window.NEXA || !window.NEXA.getComponent(comp.type))) {
+                $el.text("(unknown component: " + comp.type + ")").css({ color: "#a00", "font-size": "11px", background: "#fee", padding: "4px" });
+            }
+        }, 500);
     }
 }
 

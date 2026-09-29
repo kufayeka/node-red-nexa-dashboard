@@ -122,7 +122,7 @@ Duplicating an asset produces a clean, independent copy:
 
 ## 5. Screen Flows (Logic-Only App Routing)
 
-Screen Flows allow developers to design application navigation and state machines (e.g. Splash $\rightarrow$ Auth Guard $\rightarrow$ Role Switch $\rightarrow$ Menu $\rightarrow$ Detail) with data passing between screens.
+Screen Flows allow developers to design application navigation, lifecycle pipelines, and state machines with data passing between screens.
 
 - **No UI Canvas**: Screen flows are purely flow and logic-driven.
 - **Tab Visibility Switching (`updateCanvasTabsVisibility`)**:
@@ -137,12 +137,89 @@ Screen Flows allow developers to design application navigation and state machine
 
 ---
 
-## 6. Testing & Handover
+## 6. P2 Specification: Frontend Routing Pipeline
 
-- **Dedicated Test**: `test/test-p0-p1-screens-flows.js` (12 sections testing data model, folder nesting, flow creation, cloning, exchangeability, tabs switching, Optix hierarchy, free position clamping, and nx-tree event dispatching).
+P2 translates modern frontend routing paradigms (Next.js App Router, Remix Loaders, Vue Router Guards) into a visual, transparent, and composable Node-RED flow architecture.
+
+```text
+[ 1. Route Trigger ]
+  - Path: /devices/:id
+  - Params, Query, Cookies
+  - Device info: Mobile/Desktop, Res
+          │
+          ▼
+[ 2. Scratch Middleware ] ────(Fail: 401)────► [ Goto Screen: Login ]
+  - HTTP Request (verify token)
+  - Function (decode / validate)
+  - Switch (branching)
+          │ (Authorized)
+          ▼
+[ 3. Data Loader & Sparkplug ]
+  - Fetch REST data / read PLC tags
+          │
+          ▼
+[ 4. Delay Node (e.g. 300ms) ]  <── Smooth UX, no abrupt screen flashes
+          │
+          ▼
+[ 5. Goto Screen / Navigate ]
+  - Named Screen: DeviceDetail
+  - Pass loaded context payload
+```
+
+### 6.1 Route Trigger Node (Clean Ingress & Device Context)
+Acts as the entrypoint for web client routing without "magic" black-box assumptions. Emits a rich context `msg`:
+
+- **Path & Dynamic Matching**:
+  - Pattern: `/devices/:id`, `/analytics/:timeframe`, or exact sub-paths.
+  - Generates `msg.params` (e.g. `{ id: "42" }`).
+  - Generates `msg.path` (e.g. `"/devices/42"`).
+  - Generates `msg.query` (e.g. `{ tab: "overview", filter: "active" }`).
+- **Selective Cookie Extractor**:
+  - Configure target cookie keys (e.g. `token`, `session_id`, or `*` for all cookies).
+  - Emitted onto `msg.cookies` without requiring client boilerplate.
+- **Device & Client Context (`msg.device`)**:
+  - `msg.device.type`: `"mobile"` | `"tablet"` | `"desktop"` (synchronized with Nexa's Tailwind breakpoint bands).
+  - `msg.device.screen`: `{ width: number, height: number, orientation: "portrait" | "landscape" }`.
+  - `msg.device.userAgent`: Browser user agent string.
+  - `msg.device.ip`: Client IP address / network origin.
+
+### 6.2 Composable Middleware & Data Loaders (Zero-Magic Scratch Logic)
+Rather than introducing rigid, opaque "Guard" nodes, developers compose standard, transparent logic nodes:
+- **`Function` Node**: Custom validation scripts, JWT payload inspection, business rules.
+- **`HTTP Request` Node**: Call remote auth servers, microservices, or REST endpoints.
+- **`Switch` Node**: Multi-way branching based on status codes, role flags, or device types.
+- **`Sparkplug / Storage / Cookie` Nodes**: Check live PLC tags or local storage keys before granting screen access.
+
+### 6.3 Delay Node (Smooth Transition & Throttle Control)
+Available across **Screens**, **Templates**, and **Screen Flows**:
+- **Purpose**: Prevent jarring, instantaneous UI cuts, add debouncing/throttles, or pace sequential automation steps.
+- **Configuration**:
+  - Duration: milliseconds or seconds (e.g. `300ms`, `1.5s`).
+  - Pass-through: preserves and forwards `msg` unmodified once timer expires.
+  - Can be cancelled if an abort or new navigation arrives.
+
+### 6.4 Goto Screen / Navigate Node (First-Class Project Routing)
+First-class palette node for Screens, Templates, and Screen Flows:
+- **Target Selection**:
+  1. **Named Screen (Dropdown)**: Pick directly from existing project screens (`Home`, `DeviceDetail`, `Alarms`). Ensures zero broken links or typos.
+  2. **Dynamic Route (Interpolation)**: Supports path templates (e.g. `/devices/{msg.params.id}` or from `msg.target`).
+  3. **History Navigation**:
+     - `Push`: Standard navigation, adds to browser history.
+     - `Replace`: Replaces current route (ideal for auth redirects to prevent back-looping).
+     - `Back (-1)`: Navigate back in history.
+     - `Forward (+1)`: Navigate forward in history.
+- **Payload & Param Handover**:
+  - Forwards `msg.payload` directly into the destination screen's `On Load` lifecycle, eliminating temporary global variable clutter.
+
+---
+
+## 7. Testing & Verification
+
+- **P0/P1 Test**: `test/test-p0-p1-screens-flows.js` (Hierarchy, Folders, Duplication, Conversion, Reparenting).
+- **P2 Test Suite**: `test/test-p2-routing-pipeline.js` (Route Trigger context, Device metadata, Delay node timing, Goto Screen navigation).
 - **Run Tests**:
   ```bash
   node build.js
   node test/test-p0-p1-screens-flows.js
-  node test/run-all.js
+  node test/mock-templates-editor.js dist/nexa-editor.bundle.js
   ```
