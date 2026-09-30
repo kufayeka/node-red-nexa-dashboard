@@ -60,7 +60,9 @@ export function logicNodeLabel(node) {
         return "Goto Screen (" + (s ? s.name : (node.screenId || "?")) + ")";
     }
     if (node.type === "route-trigger") {
-        return "Route (" + (node.path || "/") + ")";
+        var activeFl = getActiveScreen();
+        var ep = (activeFl && activeFl.endpoint) || node.path || "/";
+        return "Route Trigger (" + ep + ")";
     }
     if (node.type === "sparkplug-write") {
         var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -170,6 +172,18 @@ export function logicNodeWidth(node) {
 export function addLogicNode(nodeData, x, y) {
     var screen = getActiveScreen();
     if (!screen) return;
+    if (nodeData.type === "route-trigger") {
+        if (state.editingMode !== "flow") {
+            if (window.RED && window.RED.notify) window.RED.notify("Route Trigger can only be used in a Screen Flow.", "warning");
+            return;
+        }
+        var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function (n) { return n.type === "route-trigger"; });
+        if (hasTrigger) {
+            if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Trigger node is allowed per flow.", "warning");
+            return;
+        }
+        nodeData.path = screen.endpoint || "/";
+    }
     var node = { id: genId(), x: x, y: y };
     for (var k in nodeData) node[k] = nodeData[k];
     screen.logic.nodes.push(node);

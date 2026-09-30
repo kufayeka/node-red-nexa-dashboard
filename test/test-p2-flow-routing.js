@@ -129,9 +129,11 @@ let capturedMsg = null;
 const flowRoute = {
   id: 'flow_device_route',
   name: 'Device Router Flow',
+  endpoint: '/device',
+  routingPolicy: 'strict',
   logic: {
     nodes: [
-      { id: 'n_route', type: 'route-trigger', path: '/device/:id', cookies: 'auth_token, user_role', includeDevice: true, x: 20, y: 20 },
+      { id: 'n_route', type: 'route-trigger', cookies: 'auth_token, user_role', includeDevice: true, x: 20, y: 20 },
       {
         id: 'n_middleware', type: 'function',
         code: 'msg.middlewarePassed = true; msg.authOk = msg.cookies.auth_token === "jwt_xyz123"; return msg;',
@@ -151,6 +153,7 @@ const flowRoute = {
 global.__NEXA_SCREEN__ = screenFallback;
 global.__NEXA_SCREENS__ = [screenFallback, screenTarget];
 global.__NEXA_FLOWS__ = [flowRoute];
+global.__NEXA_CURRENT_FLOW__ = 'flow_device_route';
 global.__NEXA_TEMPLATES__ = [];
 global.__NEXA_APP__ = { variables: [], breakpoints: [], theme: null };
 global.__NEXA_ASSETS__ = [];
@@ -175,7 +178,7 @@ const runtimeClientCode = fs.readFileSync(path.join(__dirname, '../lib/nexa-runt
 eval(runtimeClientCode);
 
 async function runTests() {
-  console.log('--- [P2 Phase 2] 1. Device Context Extraction ---');
+  console.log('--- [P2 Flow Gateway] 1. Device Context Extraction ---');
   // Desktop test (w = 1280)
   global.innerWidth = 1280;
   global.innerHeight = 800;
@@ -203,7 +206,7 @@ async function runTests() {
   assert.strictEqual(devMobile.screen.orientation, 'portrait');
   console.log('Mobile device context verified? true');
 
-  console.log('--- [P2 Phase 2] 2. Selective Cookie Extraction ---');
+  console.log('--- [P2 Flow Gateway] 2. Selective Cookie Extraction ---');
   // Only requested keys
   let cookiesSelected = global.__nexaRuntime.extractCookies('auth_token, user_role');
   assert.strictEqual(cookiesSelected.auth_token, 'jwt_xyz123');
@@ -224,18 +227,17 @@ async function runTests() {
   assert.deepStrictEqual(cookiesNone, {});
   console.log('Empty selective list returns empty object? true');
 
-  console.log('--- [P2 Phase 2] 3. Flow Route Trigger Matching & Scratch Middleware ---');
-  // Match route /device/42
-  let match = global.__nexaRuntime.findFlowForRoute('/device/42');
-  assert.ok(match, 'Flow should be found for route /device/42');
+  console.log('--- [P2 Flow Gateway] 3. Flow Route Trigger Matching & Scratch Middleware ---');
+  // Match route /device
+  let match = global.__nexaRuntime.findFlowForRoute('/device');
+  assert.ok(match, 'Flow should be found for route /device');
   assert.strictEqual(match.flow.id, 'flow_device_route');
-  assert.strictEqual(match.params.id, '42');
-  console.log('findFlowForRoute matched /device/42 with params.id = 42? true');
+  console.log('findFlowForRoute matched /device? true');
 
   // Execute the flow via matchFlowAndExecute
   global.innerWidth = 1280;
   global.innerHeight = 800;
-  let executed = global.__nexaRuntime.matchFlowAndExecute('/device/42');
+  let executed = global.__nexaRuntime.matchFlowAndExecute('/device');
   assert.strictEqual(executed, true, 'Flow should be executed');
 
   // Wait for the Delay node (30ms) in the middleware to finish and trigger Goto Screen
@@ -244,51 +246,69 @@ async function runTests() {
   // Verify that Screen Target is now mounted in artboard
   assert.strictEqual(document.title, 'Target Screen View', 'Target screen title should be set');
   assert.ok(artboard.children.length > 0, 'Target screen components should be mounted');
+  assert.strictEqual(global.location.pathname, '/nexa/device/target-view', 'URL path should be /nexa/<flow-endpoint>/<screen-path>');
   console.log('Flow scratch middleware (Function -> Delay -> Goto Screen) mounted target screen? true');
-  console.log('Target screen mounted in artboard? true');
+  console.log('Target screen URL updated to /nexa/device/target-view? true');
 
-  console.log('--- [P2 Phase 2] 4. Navigation Through Flow Gateway ---');
-  // Navigate via URL targeting flow route
-  let navResult = global.__nexaRuntime.navigateToScreen('/device/99');
+  console.log('--- [P2 Flow Gateway] 4. Navigation Through Flow Gateway ---');
+  // Navigate via URL targeting flow route /device/target-view
+  let navResult = global.__nexaRuntime.navigateToScreen('/device/target-view');
   assert.strictEqual(navResult, true);
   await new Promise(r => setTimeout(r, 60));
-  assert.strictEqual(global.__NEXA_PARAMS__.id, '99');
-  console.log('navigateToScreen("/device/99") intercepted by Flow Gateway? true');
+  assert.strictEqual(global.location.pathname, '/nexa/device/target-view');
+  console.log('navigateToScreen("/device/target-view") routed through Flow Gateway? true');
 
-  console.log('--- [P2 Phase 2] 5. Direct Screen Fallback ---');
-  // Navigate to screen path that has no flow
-  let directResult = global.__nexaRuntime.navigateToScreen('/direct-screen');
-  assert.strictEqual(directResult, true);
-  assert.strictEqual(document.title, 'Fallback Screen');
-  console.log('Direct screen navigation fallback works when no flow matches? true');
+  console.log('--- [P2 Flow Gateway] 5. Free Jump Policy ---');
+  const screen2 = {
+    id: 'screen_step2',
+    name: 'Step 2 Screen',
+    width: 1024,
+    height: 768,
+    path: '/step2',
+    components: [{ id: 'c2', type: 'text', name: 'Text 2', x: 0, y: 0, w: 100, h: 20, props: { text: 'Step 2' } }],
+    logic: { nodes: [], wires: [] }
+  };
+  global.__NEXA_SCREENS__.push(screen2);
 
-  console.log('--- [P2 Phase 2] 6. Combined Flow Endpoint & Route Trigger Matching ---');
-  const flowWithEndpoint = {
-    id: 'flow_user_custom',
-    name: 'Flow 1',
-    endpoint: '/flow1',
+  let freeFlowDownstreamExecuted = false;
+  const flowFree = {
+    id: 'flow_free_test',
+    name: 'Free Flow',
+    endpoint: '/freeflow',
+    routingPolicy: 'free',
     logic: {
       nodes: [
-        { id: 'n_trig', type: 'route-trigger', path: '/test1', x: 20, y: 20 }
+        { id: 'n_trig_free', type: 'route-trigger', x: 20, y: 20 },
+        { id: 'n_goto_step2', type: 'navigate', mode: 'screen', screenId: 'screen_step2', x: 150, y: 20 },
+        {
+          id: 'n_downstream', type: 'function',
+          code: 'freeFlowDownstreamExecuted = true; return msg;',
+          x: 300, y: 20
+        }
       ],
-      wires: []
+      wires: [
+        { from: 'n_trig_free', to: 'n_goto_step2' },
+        { from: 'n_goto_step2', to: 'n_downstream' }
+      ]
     }
   };
-  global.__NEXA_FLOWS__.push(flowWithEndpoint);
+  global.__NEXA_FLOWS__.push(flowFree);
 
-  // Should match combined path /flow1/test1
-  let matchCombined = global.__nexaRuntime.findFlowForRoute('/flow1/test1');
-  assert.ok(matchCombined, 'Flow should match combined path /flow1/test1');
-  assert.strictEqual(matchCombined.flow.id, 'flow_user_custom');
+  // Directly access /freeflow/step2 in Free Jump mode
+  let freeJumpMatch = global.__nexaRuntime.findFlowForRoute('/freeflow/step2');
+  assert.ok(freeJumpMatch, 'Free flow route should match /freeflow/step2');
+  assert.strictEqual(freeJumpMatch.targetScreen.id, 'screen_step2');
 
-  // Should match node path /test1
-  let matchNodePath = global.__nexaRuntime.findFlowForRoute('/test1');
-  assert.ok(matchNodePath, 'Flow should match trigger path /test1');
+  let freeJumpExecuted = global.__nexaRuntime.matchFlowAndExecute('/freeflow/step2');
+  assert.strictEqual(freeJumpExecuted, true);
+  assert.strictEqual(document.title, 'Step 2 Screen', 'Direct jump mounted Step 2 Screen');
+  console.log('Free Jump mode allows direct jump to /freeflow/step2? true');
 
-  // Should match flow endpoint /flow1
-  let matchEndpoint = global.__nexaRuntime.findFlowForRoute('/flow1');
-  assert.ok(matchEndpoint, 'Flow should match flow endpoint /flow1');
-  console.log('Combined flow endpoint (/flow1/test1, /flow1, /test1) matches correctly? true');
+  console.log('--- [P2 Flow Gateway] 6. Disallowing Standalone Screen Access ---');
+  // Attempt to find route for non-flow screen
+  let nonFlowMatch = global.__nexaRuntime.findFlowForRoute('/direct-screen');
+  assert.strictEqual(nonFlowMatch, null, 'Standalone screen without flow must not match any flow route');
+  console.log('Standalone screen path /direct-screen correctly blocked? true');
 
   console.log('ALL OK');
   process.exit(0);

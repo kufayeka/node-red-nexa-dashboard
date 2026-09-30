@@ -1,8 +1,11 @@
-import { markDirty } from "../state.js";
+import { markDirty, getActiveScreen } from "../state.js";
 import { renderLogicCanvas } from "../logic/logic-nodes.js";
 
 export function openRouteTriggerNodeEditor(node) {
-    var pathInput, cookiesInput, includeDeviceCheck;
+    var cookiesInput, includeDeviceCheck;
+    var flow = getActiveScreen();
+    var flowEp = (flow && flow.endpoint) || "/flow";
+
     window.RED.tray.show({
         id: "nexa-logic-route-trigger-editor",
         title: "Configure Route Trigger",
@@ -12,10 +15,7 @@ export function openRouteTriggerNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    var p = (pathInput.val() || "").trim();
-                    if (!p) p = "/";
-                    if (p.charAt(0) !== "/") p = "/" + p;
-                    node.path = p;
+                    node.path = flowEp;
                     node.cookies = (cookiesInput.val() || "").trim();
                     node.includeDevice = includeDeviceCheck.is(":checked");
                     markDirty();
@@ -30,14 +30,22 @@ export function openRouteTriggerNodeEditor(node) {
                 .text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.")
                 .appendTo(body);
 
-            // Path pattern row
-            var pathRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
-            window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
-                .text("Route Path Pattern").appendTo(pathRow);
-            pathInput = window.$("<input>", { type: "text", placeholder: "/app, /devices/:id, /dashboard" }).css({ width: "100%", "box-sizing": "border-box" })
-                .val(node.path || "/").appendTo(pathRow);
-            window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" })
-                .text("Supports parameter tokens like :id (emitted onto msg.params.id)").appendTo(pathRow);
+            // Flow Starting Endpoint Info Banner
+            var endpointBanner = window.$("<div>").css({
+                padding: "10px 12px",
+                background: "var(--red-ui-secondary-background, #f1f5f9)",
+                border: "1px solid var(--red-ui-secondary-border-color, #cbd5e1)",
+                "border-radius": "6px",
+                "margin-bottom": "14px",
+                "font-size": "12px",
+                color: "var(--red-ui-primary-text-color, #334155)"
+            }).appendTo(body);
+            window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" })
+                .html('<i class="fa fa-road" style="color: #a855f7;"></i> Flow Entrypoint: <code>' + flowEp + '</code>')
+                .appendTo(endpointBanner);
+            window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #64748b)" })
+                .text("This Route Trigger is automatically bound to the Flow's starting endpoint. Incoming visits to /nexa" + flowEp + " initiate this flow sequence.")
+                .appendTo(endpointBanner);
 
             // Selective Cookies row
             var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);

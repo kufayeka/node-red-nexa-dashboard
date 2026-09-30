@@ -104,6 +104,15 @@ export function pasteLogicClipboard() {
         };
     });
 
+    if (state.editingMode === "flow") {
+        var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function (n) { return n.type === "route-trigger"; });
+        if (hasTrigger) {
+            newNodes = newNodes.filter(function (n) { return n.type !== "route-trigger"; });
+        }
+    } else {
+        newNodes = newNodes.filter(function (n) { return n.type !== "route-trigger"; });
+    }
+
     newNodes.forEach(function (n) { screen.logic.nodes.push(n); });
     newWires.forEach(function (w) { screen.logic.wires.push(w); });
 

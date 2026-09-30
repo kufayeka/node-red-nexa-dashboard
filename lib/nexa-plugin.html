@@ -2220,6 +2220,7 @@
       id: genId(),
       name: opts && opts.name || "Flow " + state.flowCounter,
       endpoint: opts && opts.endpoint || "/flow" + state.flowCounter,
+      routingPolicy: opts && opts.routingPolicy || "strict",
       parentId: opts && opts.parentId || null,
       type: "flow",
       components: [],
@@ -2359,6 +2360,7 @@
       id: genId(),
       name: orig.name + " (Copy)",
       endpoint: orig.endpoint + "-copy",
+      routingPolicy: orig.routingPolicy || "strict",
       parentId: orig.parentId || null,
       type: "flow",
       components: [],
@@ -28465,7 +28467,9 @@
     sectionHeader(state.eventsPane, "Lifecycle");
     if (state.editingMode === "flow") {
       chip(state.eventsPane, "Route Trigger", function() {
-        return { type: "route-trigger", path: "/", cookies: "", includeDevice: true };
+        var activeFl = getActiveScreen();
+        var ep = activeFl && activeFl.endpoint || "/";
+        return { type: "route-trigger", path: ep, cookies: "", includeDevice: true };
       }, "", "route-trigger");
     }
     chip(state.eventsPane, "On Load", function() {
@@ -28480,11 +28484,6 @@
     chip(state.eventsPane, "On Breakpoint Change", function() {
       return { type: "on-variable-change", scope: "@app", name: "$breakpoint" };
     }, "", "on-variable-change");
-    if (state.editingMode !== "flow") {
-      chip(state.eventsPane, "Route Trigger", function() {
-        return { type: "route-trigger", path: "/", cookies: "", includeDevice: true };
-      }, "", "route-trigger");
-    }
     if (state.editingMode === "template") {
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
@@ -32063,7 +32062,9 @@
 
   // src/dialogs/route-trigger-dialog.js
   function openRouteTriggerNodeEditor(node) {
-    var pathInput, cookiesInput, includeDeviceCheck;
+    var cookiesInput, includeDeviceCheck;
+    var flow = getActiveScreen();
+    var flowEp = flow && flow.endpoint || "/flow";
     window.RED.tray.show({
       id: "nexa-logic-route-trigger-editor",
       title: "Configure Route Trigger",
@@ -32076,10 +32077,7 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            var p = (pathInput.val() || "").trim();
-            if (!p) p = "/";
-            if (p.charAt(0) !== "/") p = "/" + p;
-            node.path = p;
+            node.path = flowEp;
             node.cookies = (cookiesInput.val() || "").trim();
             node.includeDevice = includeDeviceCheck.is(":checked");
             markDirty();
@@ -32091,10 +32089,17 @@
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
-        var pathRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Path Pattern").appendTo(pathRow);
-        pathInput = window.$("<input>", { type: "text", placeholder: "/app, /devices/:id, /dashboard" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.path || "/").appendTo(pathRow);
-        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Supports parameter tokens like :id (emitted onto msg.params.id)").appendTo(pathRow);
+        var endpointBanner = window.$("<div>").css({
+          padding: "10px 12px",
+          background: "var(--red-ui-secondary-background, #f1f5f9)",
+          border: "1px solid var(--red-ui-secondary-border-color, #cbd5e1)",
+          "border-radius": "6px",
+          "margin-bottom": "14px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #334155)"
+        }).appendTo(body);
+        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-road" style="color: #a855f7;"></i> Flow Entrypoint: <code>' + flowEp + "</code>").appendTo(endpointBanner);
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text("This Route Trigger is automatically bound to the Flow's starting endpoint. Incoming visits to /nexa" + flowEp + " initiate this flow sequence.").appendTo(endpointBanner);
         var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
         cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
@@ -32149,7 +32154,9 @@
       return "Goto Screen (" + (s ? s.name : node.screenId || "?") + ")";
     }
     if (node.type === "route-trigger") {
-      return "Route (" + (node.path || "/") + ")";
+      var activeFl = getActiveScreen();
+      var ep = activeFl && activeFl.endpoint || node.path || "/";
+      return "Route Trigger (" + ep + ")";
     }
     if (node.type === "sparkplug-write") {
       var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -32256,6 +32263,20 @@
   function addLogicNode(nodeData, x, y) {
     var screen = getActiveScreen();
     if (!screen) return;
+    if (nodeData.type === "route-trigger") {
+      if (state.editingMode !== "flow") {
+        if (window.RED && window.RED.notify) window.RED.notify("Route Trigger can only be used in a Screen Flow.", "warning");
+        return;
+      }
+      var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function(n) {
+        return n.type === "route-trigger";
+      });
+      if (hasTrigger) {
+        if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Trigger node is allowed per flow.", "warning");
+        return;
+      }
+      nodeData.path = screen.endpoint || "/";
+    }
     var node = { id: genId(), x, y };
     for (var k in nodeData) node[k] = nodeData[k];
     screen.logic.nodes.push(node);
@@ -32649,6 +32670,20 @@
         to: idMap[w.to] || w.to
       };
     });
+    if (state.editingMode === "flow") {
+      var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function(n) {
+        return n.type === "route-trigger";
+      });
+      if (hasTrigger) {
+        newNodes = newNodes.filter(function(n) {
+          return n.type !== "route-trigger";
+        });
+      }
+    } else {
+      newNodes = newNodes.filter(function(n) {
+        return n.type !== "route-trigger";
+      });
+    }
     newNodes.forEach(function(n) {
       screen.logic.nodes.push(n);
     });
@@ -34992,6 +35027,16 @@
     }
     row("Flow Name", "name", flow.name);
     row("Starting Endpoint", "endpoint", flow.endpoint);
+    var policyRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Flow Routing Rules").appendTo(policyRow);
+    var policySelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(policyRow);
+    window.$("<option>", { value: "strict" }).text("Strict Sequential (Must enter via Route Trigger)").appendTo(policySelect);
+    window.$("<option>", { value: "free" }).text("Free Jump (Allow direct jump to any flow screen)").appendTo(policySelect);
+    policySelect.val(flow.routingPolicy || "strict");
+    policySelect.on("change", function() {
+      flow.routingPolicy = policySelect.val();
+      markDirty();
+    });
     window.$("<div>").css({
       "margin-top": "12px",
       padding: "10px 12px",
@@ -35001,7 +35046,7 @@
       "font-size": "11px",
       color: "#166534",
       "line-height": "1.5"
-    }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow</strong><br>A Flow defines how user navigation, auth checks, splash timeouts, and multi-step logic branch between screens.<br><br>Flows do not have a separate UI artboard. All routing and behavior is wired in the <strong>Logic</strong> tab.').appendTo(state.screenFormEl);
+    }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow Gateway</strong><br>Flow is the exclusive public entrypoint. Screens are rendered as internal views.<br><br>Public URL format: <code>/nexa' + (flow.endpoint || "/flow") + "/&lt;screen-path&gt;</code>.<br>Configure logic & routing in the <strong>Logic</strong> tab.").appendTo(state.screenFormEl);
     var btnRow = window.$("<div>").css({ "margin-top": "14px" }).appendTo(state.screenFormEl);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" }).html('<i class="fa fa-code-fork"></i> Open Flow Logic Canvas').css({ width: "100%", height: "30px", "font-size": "12px", display: "inline-flex", "align-items": "center", "justify-content": "center", gap: "6px" }).on("click", function() {
       if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {

@@ -599,6 +599,19 @@ function renderFlowForm(flow) {
     row("Flow Name", "name", flow.name);
     row("Starting Endpoint", "endpoint", flow.endpoint);
 
+    // Flow Routing Policy
+    var policyRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Flow Routing Rules").appendTo(policyRow);
+    var policySelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(policyRow);
+    window.$("<option>", { value: "strict" }).text("Strict Sequential (Must enter via Route Trigger)").appendTo(policySelect);
+    window.$("<option>", { value: "free" }).text("Free Jump (Allow direct jump to any flow screen)").appendTo(policySelect);
+    policySelect.val(flow.routingPolicy || "strict");
+    policySelect.on("change", function () {
+        flow.routingPolicy = policySelect.val();
+        markDirty();
+    });
+
     window.$("<div>").css({
         "margin-top": "12px",
         padding: "10px 12px",
@@ -608,7 +621,7 @@ function renderFlowForm(flow) {
         "font-size": "11px",
         color: "#166534",
         "line-height": "1.5"
-    }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow</strong><br>A Flow defines how user navigation, auth checks, splash timeouts, and multi-step logic branch between screens.<br><br>Flows do not have a separate UI artboard. All routing and behavior is wired in the <strong>Logic</strong> tab.').appendTo(state.screenFormEl);
+    }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow Gateway</strong><br>Flow is the exclusive public entrypoint. Screens are rendered as internal views.<br><br>Public URL format: <code>/nexa' + (flow.endpoint || '/flow') + '/&lt;screen-path&gt;</code>.<br>Configure logic & routing in the <strong>Logic</strong> tab.').appendTo(state.screenFormEl);
 
     var btnRow = window.$("<div>").css({ "margin-top": "14px" }).appendTo(state.screenFormEl);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary" })
