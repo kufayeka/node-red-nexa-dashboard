@@ -75,7 +75,11 @@ export const LOGIC_NODE_KINDS = {
     // SPA navigation: transition to a named screen, path, or history action without page reload
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows
-    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" }
+    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
+    // renders and serves a screen inside a flow, waiting for send-to-flow messages
+    "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
+    // sends data back from a screen to the active flow's Render Screen node
+    "send-to-flow": { label: "Send to Flow", hasInput: true, hasOutput: true, color: "#0ea5e9" }
 };
 
 export const state = {

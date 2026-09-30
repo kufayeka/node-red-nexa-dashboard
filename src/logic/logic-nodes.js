@@ -21,6 +21,8 @@ import { openTeleportNodeEditor, teleportNodeLabel } from "../dialogs/teleport-d
 import { openDelayNodeEditor } from "../dialogs/delay-dialog.js";
 import { openNavigateNodeEditor } from "../dialogs/navigate-dialog.js";
 import { openRouteTriggerNodeEditor } from "../dialogs/route-trigger-dialog.js";
+import { openRenderScreenNodeEditor } from "../dialogs/render-screen-dialog.js";
+import { openSendToFlowNodeEditor } from "../dialogs/send-to-flow-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -63,6 +65,13 @@ export function logicNodeLabel(node) {
         var activeFl = getActiveScreen();
         var ep = (activeFl && activeFl.endpoint) || node.path || "/";
         return "Route Trigger (" + ep + ")";
+    }
+    if (node.type === "render-screen") {
+        var rScreen = (state.screens || []).find(function (x) { return x.id === node.screenId; });
+        return "Render Screen (" + (rScreen ? rScreen.name : (node.screenId || "?")) + ")";
+    }
+    if (node.type === "send-to-flow") {
+        return "Send to Flow" + (node.action ? (" (" + node.action + ")") : "");
     }
     if (node.type === "sparkplug-write") {
         var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -288,6 +297,18 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure route trigger").on("dblclick", function (e) {
             e.stopPropagation();
             openRouteTriggerNodeEditor(node);
+        });
+    }
+    if (node.type === "render-screen") {
+        box.attr("title", "Double-click to choose screen to render").on("dblclick", function (e) {
+            e.stopPropagation();
+            openRenderScreenNodeEditor(node);
+        });
+    }
+    if (node.type === "send-to-flow") {
+        box.attr("title", "Double-click to configure message to flow").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSendToFlowNodeEditor(node);
         });
     }
     if (node.type === "layer-control") {

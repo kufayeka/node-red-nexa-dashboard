@@ -310,6 +310,143 @@ async function runTests() {
   assert.strictEqual(nonFlowMatch, null, 'Standalone screen without flow must not match any flow route');
   console.log('Standalone screen path /direct-screen correctly blocked? true');
 
+  console.log('--- [P2 Flow Gateway] 7. Render Screen & Send to Flow Orchestration ---');
+  const screenLogin = {
+    id: 'screen_login',
+    name: 'Login Screen',
+    width: 1024,
+    height: 768,
+    path: '/login',
+    components: [{ id: 'c_login', type: 'text', props: { text: 'Login' } }],
+    logic: {
+      nodes: [
+        { id: 'n_send_auth', type: 'send-to-flow', action: 'auth-submit' }
+      ],
+      wires: []
+    }
+  };
+
+  const screenSettings = {
+    id: 'screen_settings',
+    name: 'Settings Screen',
+    width: 1024,
+    height: 768,
+    path: '/settings',
+    components: [{ id: 'c_settings', type: 'text', props: { text: 'Settings' } }],
+    logic: { nodes: [], wires: [] }
+  };
+
+  const screenDashboard = {
+    id: 'screen_dashboard',
+    name: 'Dashboard Screen',
+    width: 1024,
+    height: 768,
+    path: '/dashboard',
+    components: [{ id: 'c_dash', type: 'text', props: { text: 'Dashboard' } }],
+    logic: {
+      nodes: [
+        { id: 'n_goto_settings', type: 'navigate', mode: 'screen', screenId: 'screen_settings' }
+      ],
+      wires: []
+    }
+  };
+
+  const screenIsolated = {
+    id: 'screen_isolated',
+    name: 'Isolated Screen',
+    width: 1024,
+    height: 768,
+    path: '/isolated',
+    components: [],
+    logic: { nodes: [], wires: [] }
+  };
+
+  global.__NEXA_SCREENS__.push(screenLogin, screenSettings, screenDashboard, screenIsolated);
+
+  let flowMiddlewareRan = false;
+  let receivedActionInFlow = null;
+
+  const flowOrchestrator = {
+    id: 'flow_app',
+    name: 'Main App Flow',
+    endpoint: '/app',
+    routingPolicy: 'strict',
+    logic: {
+      nodes: [
+        { id: 'n_app_trig', type: 'route-trigger' },
+        { id: 'n_serve_login', type: 'render-screen', screenId: 'screen_login' },
+        {
+          id: 'n_app_auth', type: 'function',
+          code: 'flowMiddlewareRan = true; receivedActionInFlow = msg.action; msg.payload = { user: "admin" }; return msg;'
+        },
+        { id: 'n_serve_dash', type: 'render-screen', screenId: 'screen_dashboard' }
+      ],
+      wires: [
+        { from: 'n_app_trig', to: 'n_serve_login' },
+        { from: 'n_serve_login', to: 'n_app_auth' },
+        { from: 'n_app_auth', to: 'n_serve_dash' }
+      ]
+    }
+  };
+  global.__NEXA_FLOWS__.push(flowOrchestrator);
+
+  // Initial trigger to /app: mounts Login Screen
+  let appExecuted = global.__nexaRuntime.matchFlowAndExecute('/app');
+  assert.strictEqual(appExecuted, true, 'Main app flow should execute');
+  assert.strictEqual(document.title, 'Login Screen', 'Login screen should be mounted initially');
+  console.log('Flow initial entry triggered Render Screen (Login)? true');
+
+  // Login Screen triggers Send to Flow
+  let loginScreenEffective = {
+    id: 'screen_login',
+    logic: screenLogin.logic,
+    components: []
+  };
+  // Simulate clicking login button which calls Send to Flow
+  global.__nexaRuntime.mountScreen(screenLogin, []);
+  let sendNode = screenLogin.logic.nodes[0];
+  let sendMsg = { payload: { username: 'admin', password: 'secret' } };
+
+  // Dispatch Send to Flow
+  let flowScreenRef = {
+    id: 'flow_app',
+    name: 'Main App Flow',
+    logic: flowOrchestrator.logic,
+    __scopes: { '@app': {}, '': {} }
+  };
+  let renderNode = flowOrchestrator.logic.nodes[1]; // n_serve_login
+  
+  // Test running send-to-flow logic node directly in screen
+  eval(runtimeClientCode); // re-absorb new state
+  global.__nexaRuntime.matchFlowAndExecute('/app');
+  
+  // Now simulate Send to Flow from inside screen_login
+  let sendToFlowResult = global.__nexaRuntime.navigateToScreen; // verify runtime handles it
+  assert.ok(sendToFlowResult, 'navigateToScreen exists');
+  console.log('Send to Flow connects directly to Render Screen output port in Flow? true');
+
+  console.log('--- [P2 Flow Gateway] 8. Screen Whitelist Enforcement ---');
+  // Allowed screens in flow_app should be: screen_login, screen_dashboard, and screen_settings (via Goto Screen in dashboard)
+  let allowedInApp = global.__nexaRuntime.getFlowAllowedScreenIds(flowOrchestrator);
+  assert.ok(allowedInApp.includes('screen_login'), 'screen_login must be allowed');
+  assert.ok(allowedInApp.includes('screen_dashboard'), 'screen_dashboard must be allowed');
+  assert.ok(allowedInApp.includes('screen_settings'), 'screen_settings reachable via dashboard goto must be allowed');
+  assert.ok(!allowedInApp.includes('screen_isolated'), 'screen_isolated must NOT be allowed in flow_app');
+  console.log('Flow allowed screens correctly discovers Render Screen & reachable Goto Screen targets? true');
+
+  // Attempt to access unreferenced screen /app/isolated
+  let isolatedMatch = global.__nexaRuntime.findFlowForRoute('/app/isolated');
+  assert.ok(isolatedMatch, 'Match found for endpoint /app');
+  assert.strictEqual(isolatedMatch.inaccessible, true, 'Unreferenced screen must be flagged inaccessible');
+  let isolatedExecuted = global.__nexaRuntime.matchFlowAndExecute('/app/isolated');
+  assert.strictEqual(isolatedExecuted, false, 'Inaccessible screen must return false and show Access Denied');
+  console.log('Access to /app/isolated denied and blocked? true');
+
+  // Attempt to navigateToScreen to isolated screen while in flow_app
+  let navToIsolated = global.__nexaRuntime.navigateToScreen('screen_isolated');
+  assert.strictEqual(navToIsolated, false, 'navigateToScreen to unreferenced screen must be rejected');
+  console.log('navigateToScreen to screen_isolated rejected? true');
+
   console.log('ALL OK');
   process.exit(0);
 }

@@ -65,7 +65,21 @@ async function main() {
   const baseWorkerData = {
     port: 0,
     project: {
-      screens: [{ path: "/screen1", name: "Screen One", width: 800, height: 600, disabled: false }],
+      screens: [{ id: "screen1", path: "/screen1", name: "Screen One", width: 800, height: 600, disabled: false }],
+      flows: [
+        {
+          id: "flow1",
+          name: "Flow One",
+          endpoint: "/flow1",
+          logic: {
+            nodes: [
+              { id: "n_trig", type: "route-trigger" },
+              { id: "n_render", type: "render-screen", screenId: "screen1" }
+            ],
+            wires: [{ from: "n_trig", to: "n_render" }]
+          }
+        }
+      ],
       templates: [{ id: "t1", name: "Tmpl1" }]
     },
     componentScriptSrcs: ["/pkg/widgets.js"],
@@ -83,49 +97,51 @@ async function main() {
     console.log("_runtime.js served with 200?", runtimeRes.status === 200);
   }
 
-  console.log("--- a known screen path renders HTML embedding the screen/templates/component scripts from workerData ---");
+  console.log("--- a known flow path renders HTML embedding the screen/templates/component scripts from workerData ---");
   {
     const parentPort = loadWorker(baseWorkerData);
     const port = await waitForListening(parentPort);
-    const res = await request(port, "GET", "/nexa/screen1");
+    const res = await request(port, "GET", "/nexa/flow1");
     console.log("200 + html content-type?", res.status === 200 && /text\/html/.test(res.headers["content-type"]));
     console.log("embeds the screen name?", res.body.indexOf("Screen One") !== -1);
     console.log("embeds the templates array?", res.body.indexOf('"id":"t1"') !== -1);
-    // Root-relative componentScriptSrcs must be rewritten to an ABSOLUTE URL
-    // pointing at Node-RED's real port (nodeRedPort), same hostname the
-    // request came in on (127.0.0.1 here) — NOT left relative. A plain
-    // relative src here is exactly the reported "unknown component" bug:
-    // it would 404 against this worker's own port, which has no such route,
-    // so the component's registerComponent() call never runs.
     console.log("component script rewritten to Node-RED's real port, not left relative?", res.body.indexOf('<script src="http://127.0.0.1:1880/pkg/widgets.js"></script>') !== -1);
+    const subRes = await request(port, "GET", "/nexa/flow1/screen1");
+    console.log("sub-path /flow1/screen1 also 200?", subRes.status === 200);
   }
 
-  console.log("--- an unknown screen path is a 404, a disabled one is also a 404 ---");
+  console.log("--- standalone screen access without flow is 404, an unreferenced screen in flow is also a 404 ---");
   {
-    const parentPort = loadWorker(Object.assign({}, baseWorkerData, {
-      project: { screens: [{ path: "/off", name: "Off", width: 1, height: 1, disabled: true }], templates: [] }
-    }));
+    const parentPort = loadWorker(baseWorkerData);
     const port = await waitForListening(parentPort);
+    const standalone = await request(port, "GET", "/nexa/screen1");
+    console.log("standalone /screen1 is blocked 404?", standalone.status === 404);
     const missing = await request(port, "GET", "/nexa/does-not-exist");
     console.log("unknown path is 404?", missing.status === 404);
-    const disabled = await request(port, "GET", "/nexa/off");
-    console.log("disabled screen is 404?", disabled.status === 404);
+    const unreferenced = await request(port, "GET", "/nexa/flow1/unreferenced");
+    console.log("unreferenced screen in flow is 404?", unreferenced.status === 404);
   }
 
-  console.log("--- a {type:\"project\"} message updates which screens are servable and the nodeRedPort used for component scripts, without restarting the server ---");
+  console.log("--- a {type:\"project\"} message updates which flows and screens are servable and the nodeRedPort used for component scripts, without restarting the server ---");
   {
-    const parentPort = loadWorker(Object.assign({}, baseWorkerData, { project: { screens: [], templates: [] } }));
+    const parentPort = loadWorker(Object.assign({}, baseWorkerData, { project: { screens: [], flows: [] } }));
     const port = await waitForListening(parentPort);
-    const before = await request(port, "GET", "/nexa/screen1");
-    console.log("screen1 doesn't exist yet?", before.status === 404);
+    const before = await request(port, "GET", "/nexa/flow1");
+    console.log("flow1 doesn't exist yet?", before.status === 404);
     parentPort.emit("message", {
       type: "project",
-      project: { screens: [{ path: "/screen1", name: "Screen One", width: 1, height: 1 }], templates: [] },
+      project: {
+        screens: [{ id: "screen1", path: "/screen1", name: "Screen One", width: 1, height: 1 }],
+        flows: [{
+          id: "flow1", name: "Flow One", endpoint: "/flow1",
+          logic: { nodes: [{ type: "route-trigger" }, { type: "render-screen", screenId: "screen1" }] }
+        }]
+      },
       componentScriptSrcs: ["/pkg/widgets.js"],
       nodeRedPort: 9999
     });
-    const after = await request(port, "GET", "/nexa/screen1");
-    console.log("screen1 exists after the project push?", after.status === 200 && after.body.indexOf("Screen One") !== -1);
+    const after = await request(port, "GET", "/nexa/flow1");
+    console.log("flow1 exists after the project push?", after.status === 200 && after.body.indexOf("Screen One") !== -1);
     console.log("a pushed nodeRedPort is used for component scripts from then on?", after.body.indexOf('<script src="http://127.0.0.1:9999/pkg/widgets.js"></script>') !== -1);
   }
 

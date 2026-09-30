@@ -37,6 +37,12 @@ function getLogicNodeMeta(type) {
     if (type === "route-trigger") {
         return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
     }
+    if (type === "render-screen") {
+        return { color: "#cde6f2", icon: "fa-desktop", portOut: true, portIn: true };
+    }
+    if (type === "send-to-flow") {
+        return { color: "#e3d3ee", icon: "fa-paper-plane", portOut: true, portIn: true };
+    }
     if (type === "function") {
         return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
     }
@@ -267,13 +273,15 @@ export function renderEventsPanel() {
     state.eventsPane.empty();
     var screen = getActiveScreen();
 
-    function chip(container, label, makeNode, compId, nodeType) {
+    function chip(container, label, makeNode, compId, nodeType, disabled, disabledReason) {
         var meta = getLogicNodeMeta(nodeType);
+        var isDisabled = Boolean(disabled);
 
         var item = window.$("<div>", {
-            "class": "nexa-palette-item",
+            "class": "nexa-palette-item" + (isDisabled ? " nexa-palette-item-disabled" : ""),
             "data-comp-id": compId || "",
-            "data-palette-type": nodeType || ""
+            "data-palette-type": nodeType || "",
+            "title": isDisabled ? (disabledReason || "This node is disabled in this mode") : ""
         }).css({
             display: "inline-flex",
             "align-items": "center",
@@ -286,20 +294,29 @@ export function renderEventsPanel() {
             border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
             background: meta.color,
             position: "relative",
-            cursor: "grab",
+            cursor: isDisabled ? "not-allowed" : "grab",
+            opacity: isDisabled ? 0.42 : 1,
+            filter: isDisabled ? "grayscale(0.6)" : "none",
             "user-select": "none",
             "box-sizing": "border-box",
-            "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-            transition: "box-shadow 0.15s, border-color 0.15s",
+            "box-shadow": isDisabled ? "none" : "0 1px 2px rgba(0,0,0,0.05)",
+            transition: "box-shadow 0.15s, border-color 0.15s, opacity 0.15s",
             overflow: "hidden"
         }).appendTo(container);
-        // state.logicArtboardEl's .droppable() (editor-tray.js) reads this
-        // back via ui.draggable.data(...) to build the actual node — a
-        // logic-node chip can't be reduced to a plain type-id string the way
-        // a component chip's data-type-id is, since e.g. an
-        // "Instance #1234 -> Set Value" chip's node also needs its own
-        // captured instanceId/paramName.
-        item.data("nexaMakeNode", makeNode);
+
+        if (isDisabled) {
+            item.attr("draggable", "false");
+            item.on("mousedown click dragstart", function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (disabledReason && window.RED && window.RED.notify) {
+                    window.RED.notify(disabledReason, { type: "warning", timeout: 2500 });
+                }
+                return false;
+            });
+        } else {
+            item.data("nexaMakeNode", makeNode);
+        }
 
         // Input Port (Node-RED palette port)
         if (meta.portIn) {
@@ -340,59 +357,76 @@ export function renderEventsPanel() {
             }).appendTo(item);
         }
 
-        item.draggable({
-            helper: "clone",
-            appendTo: "#red-ui-editor",
-            // Actual placement now happens in state.logicArtboardEl's own
-            // .droppable() (editor-tray.js) — that's also what makes
-            // revert:"invalid" meaningful: it reverts only when the drop
-            // wasn't accepted there (Logic tab not open / no canvas open),
-            // instead of always, the way it did before that droppable
-            // existed.
-            revert: "invalid",
-            zIndex: 10000,
-            // No cursorAt, and never resize ui.helper here (matching core's
-            // own palette.js draggable): the actual drag-ghost/mouse offset
-            // bug turned out to be this chip's own CSS ("align-self" comment
-            // above, and eventsPane's), not this config — jQuery UI draggable
-            // computes the click offset once, up front, from the source
-            // element's own size/margins.
-            start: function (e, ui) {
-                if (ui && ui.helper) {
-                    ui.helper.css({
-                        "z-index": 10000,
-                        opacity: 0.88,
-                        "pointer-events": "none",
-                        "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
-                    });
+        if (!isDisabled) {
+            item.draggable({
+                helper: "clone",
+                appendTo: "#red-ui-editor",
+                revert: "invalid",
+                zIndex: 10000,
+                start: function (e, ui) {
+                    if (ui && ui.helper) {
+                        ui.helper.css({
+                            "z-index": 10000,
+                            opacity: 0.88,
+                            "pointer-events": "none",
+                            "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
+                        });
+                    }
+                },
+                stop: function () {
+                    if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
+                        if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
+                    }
                 }
-            },
-            stop: function () {
-                if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
-                    if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
-                }
-            }
-        });
+            });
+        }
         return item;
     }
 
-    sectionHeader(state.eventsPane, "Lifecycle");
+    sectionHeader(state.eventsPane, "Lifecycle & Routing");
     if (state.editingMode === "flow") {
         chip(state.eventsPane, "Route Trigger", function () {
             var activeFl = getActiveScreen();
             var ep = (activeFl && activeFl.endpoint) || "/";
             return { type: "route-trigger", path: ep, cookies: "", includeDevice: true };
         }, "", "route-trigger");
-    }
-    chip(state.eventsPane, "On Load", function () { return { type: "onload" }; }, "", "onload");
-    chip(state.eventsPane, "On Render", function () { return { type: "onrender" }; }, "", "onrender");
-    chip(state.eventsPane, "On Close", function () { return { type: "onclose" }; }, "", "onclose");
-    // the window's width crossed a breakpoint: msg.payload = "desktop" | "tablet" | "phone"
-    chip(state.eventsPane, "On Breakpoint Change", function () { return { type: "on-variable-change", scope: "@app", name: "$breakpoint" }; }, "", "on-variable-change");
-    if (state.editingMode === "template") {
+
+        chip(state.eventsPane, "Render Screen", function () {
+            return { type: "render-screen", screenId: (state.screens[0] && state.screens[0].id) || "", forwardPayload: true };
+        }, "", "render-screen");
+
+        chip(state.eventsPane, "Send to Flow", function () {
+            return { type: "send-to-flow", action: "" };
+        }, "", "send-to-flow", true, "Send to Flow is only used inside Screen Logic to dispatch data back to Flow.");
+
+        chip(state.eventsPane, "Goto Screen (SPA)", function () {
+            return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
+        }, "", "navigate", true, "Goto Screen is disabled in Flow Logic. Use 'Render Screen' to serve views in a Flow.");
+    } else if (state.editingMode === "screen") {
+        chip(state.eventsPane, "On Load", function () { return { type: "onload" }; }, "", "onload");
+        chip(state.eventsPane, "On Render", function () { return { type: "onrender" }; }, "", "onrender");
+        chip(state.eventsPane, "On Close", function () { return { type: "onclose" }; }, "", "onclose");
+        // the window's width crossed a breakpoint: msg.payload = "desktop" | "tablet" | "phone"
+        chip(state.eventsPane, "On Breakpoint Change", function () { return { type: "on-variable-change", scope: "@app", name: "$breakpoint" }; }, "", "on-variable-change");
+
+        chip(state.eventsPane, "Send to Flow", function () {
+            return { type: "send-to-flow", action: "" };
+        }, "", "send-to-flow");
+
+        chip(state.eventsPane, "Goto Screen (SPA)", function () {
+            return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
+        }, "", "navigate");
+
+        chip(state.eventsPane, "Route Trigger", function () {
+            return { type: "route-trigger" };
+        }, "", "route-trigger", true, "Route Trigger is only available in Flow Logic.");
+
+        chip(state.eventsPane, "Render Screen", function () {
+            return { type: "render-screen" };
+        }, "", "render-screen", true, "Render Screen is only used in Flow Logic.");
+    } else {
         chip(state.eventsPane, "On Params Change", function () { return { type: "param-input" }; }, "", "param-input");
         sectionHeader(state.eventsPane, "Template");
-        // out to the host: the Layout node that populated this copy, or the instance's own node
         chip(state.eventsPane, "Send to Host", function () { return { type: "template-output", output: "out" }; }, "", "template-output");
     }
 
@@ -402,7 +436,6 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; }, "", "inject");
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
     chip(state.eventsPane, "Open URL", function () { return { type: "open-url", url: "", mode: "replace", newTab: false }; }, "", "open-url");
-    chip(state.eventsPane, "Goto Screen (SPA)", function () { return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true }; }, "", "navigate");
     chip(state.eventsPane, "Delay", function () { return { type: "delay", delay: 500, unit: "ms" }; }, "", "delay");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
 

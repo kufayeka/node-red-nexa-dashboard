@@ -2075,7 +2075,11 @@
     // SPA navigation: transition to a named screen, path, or history action without page reload
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows
-    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" }
+    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
+    // renders and serves a screen inside a flow, waiting for send-to-flow messages
+    "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
+    // sends data back from a screen to the active flow's Render Screen node
+    "send-to-flow": { label: "Send to Flow", hasInput: true, hasOutput: true, color: "#0ea5e9" }
   };
   var state = {
     screens: [],
@@ -28136,6 +28140,12 @@
     if (type === "route-trigger") {
       return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
     }
+    if (type === "render-screen") {
+      return { color: "#cde6f2", icon: "fa-desktop", portOut: true, portIn: true };
+    }
+    if (type === "send-to-flow") {
+      return { color: "#e3d3ee", icon: "fa-paper-plane", portOut: true, portIn: true };
+    }
     if (type === "function") {
       return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
     }
@@ -28345,12 +28355,14 @@
     if (!state.eventsPane) return;
     state.eventsPane.empty();
     var screen = getActiveScreen();
-    function chip(container, label, makeNode, compId, nodeType) {
+    function chip(container, label, makeNode, compId, nodeType, disabled, disabledReason) {
       var meta2 = getLogicNodeMeta(nodeType);
+      var isDisabled = Boolean(disabled);
       var item = window.$("<div>", {
-        "class": "nexa-palette-item",
+        "class": "nexa-palette-item" + (isDisabled ? " nexa-palette-item-disabled" : ""),
         "data-comp-id": compId || "",
-        "data-palette-type": nodeType || ""
+        "data-palette-type": nodeType || "",
+        "title": isDisabled ? disabledReason || "This node is disabled in this mode" : ""
       }).css({
         display: "inline-flex",
         "align-items": "center",
@@ -28363,14 +28375,28 @@
         border: "1px solid var(--red-ui-node-border, rgba(0, 0, 0, 0.25))",
         background: meta2.color,
         position: "relative",
-        cursor: "grab",
+        cursor: isDisabled ? "not-allowed" : "grab",
+        opacity: isDisabled ? 0.42 : 1,
+        filter: isDisabled ? "grayscale(0.6)" : "none",
         "user-select": "none",
         "box-sizing": "border-box",
-        "box-shadow": "0 1px 2px rgba(0,0,0,0.05)",
-        transition: "box-shadow 0.15s, border-color 0.15s",
+        "box-shadow": isDisabled ? "none" : "0 1px 2px rgba(0,0,0,0.05)",
+        transition: "box-shadow 0.15s, border-color 0.15s, opacity 0.15s",
         overflow: "hidden"
       }).appendTo(container);
-      item.data("nexaMakeNode", makeNode);
+      if (isDisabled) {
+        item.attr("draggable", "false");
+        item.on("mousedown click dragstart", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (disabledReason && window.RED && window.RED.notify) {
+            window.RED.notify(disabledReason, { type: "warning", timeout: 2500 });
+          }
+          return false;
+        });
+      } else {
+        item.data("nexaMakeNode", makeNode);
+      }
       if (meta2.portIn) {
         window.$("<div>", { "class": "red-ui-palette-port red-ui-palette-port-input" }).css({
           position: "absolute",
@@ -28429,62 +28455,73 @@
           "pointer-events": "none"
         }).appendTo(item);
       }
-      item.draggable({
-        helper: "clone",
-        appendTo: "#red-ui-editor",
-        // Actual placement now happens in state.logicArtboardEl's own
-        // .droppable() (editor-tray.js) — that's also what makes
-        // revert:"invalid" meaningful: it reverts only when the drop
-        // wasn't accepted there (Logic tab not open / no canvas open),
-        // instead of always, the way it did before that droppable
-        // existed.
-        revert: "invalid",
-        zIndex: 1e4,
-        // No cursorAt, and never resize ui.helper here (matching core's
-        // own palette.js draggable): the actual drag-ghost/mouse offset
-        // bug turned out to be this chip's own CSS ("align-self" comment
-        // above, and eventsPane's), not this config — jQuery UI draggable
-        // computes the click offset once, up front, from the source
-        // element's own size/margins.
-        start: function(e, ui) {
-          if (ui && ui.helper) {
-            ui.helper.css({
-              "z-index": 1e4,
-              opacity: 0.88,
-              "pointer-events": "none",
-              "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
-            });
+      if (!isDisabled) {
+        item.draggable({
+          helper: "clone",
+          appendTo: "#red-ui-editor",
+          revert: "invalid",
+          zIndex: 1e4,
+          start: function(e, ui) {
+            if (ui && ui.helper) {
+              ui.helper.css({
+                "z-index": 1e4,
+                opacity: 0.88,
+                "pointer-events": "none",
+                "box-shadow": "0 6px 16px rgba(0,0,0,0.25)"
+              });
+            }
+          },
+          stop: function() {
+            if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
+              if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
+            }
           }
-        },
-        stop: function() {
-          if (!state.logicArtboardEl || !state.logicArtboardEl.is(":visible")) {
-            if (window.RED && window.RED.notify) window.RED.notify("Open the Pages canvas and switch to the Logic tab first", { type: "warning", timeout: 2500 });
-          }
-        }
-      });
+        });
+      }
       return item;
     }
-    sectionHeader(state.eventsPane, "Lifecycle");
+    sectionHeader(state.eventsPane, "Lifecycle & Routing");
     if (state.editingMode === "flow") {
       chip(state.eventsPane, "Route Trigger", function() {
         var activeFl = getActiveScreen();
         var ep = activeFl && activeFl.endpoint || "/";
         return { type: "route-trigger", path: ep, cookies: "", includeDevice: true };
       }, "", "route-trigger");
-    }
-    chip(state.eventsPane, "On Load", function() {
-      return { type: "onload" };
-    }, "", "onload");
-    chip(state.eventsPane, "On Render", function() {
-      return { type: "onrender" };
-    }, "", "onrender");
-    chip(state.eventsPane, "On Close", function() {
-      return { type: "onclose" };
-    }, "", "onclose");
-    chip(state.eventsPane, "On Breakpoint Change", function() {
-      return { type: "on-variable-change", scope: "@app", name: "$breakpoint" };
-    }, "", "on-variable-change");
-    if (state.editingMode === "template") {
+      chip(state.eventsPane, "Render Screen", function() {
+        return { type: "render-screen", screenId: state.screens[0] && state.screens[0].id || "", forwardPayload: true };
+      }, "", "render-screen");
+      chip(state.eventsPane, "Send to Flow", function() {
+        return { type: "send-to-flow", action: "" };
+      }, "", "send-to-flow", true, "Send to Flow is only used inside Screen Logic to dispatch data back to Flow.");
+      chip(state.eventsPane, "Goto Screen (SPA)", function() {
+        return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
+      }, "", "navigate", true, "Goto Screen is disabled in Flow Logic. Use 'Render Screen' to serve views in a Flow.");
+    } else if (state.editingMode === "screen") {
+      chip(state.eventsPane, "On Load", function() {
+        return { type: "onload" };
+      }, "", "onload");
+      chip(state.eventsPane, "On Render", function() {
+        return { type: "onrender" };
+      }, "", "onrender");
+      chip(state.eventsPane, "On Close", function() {
+        return { type: "onclose" };
+      }, "", "onclose");
+      chip(state.eventsPane, "On Breakpoint Change", function() {
+        return { type: "on-variable-change", scope: "@app", name: "$breakpoint" };
+      }, "", "on-variable-change");
+      chip(state.eventsPane, "Send to Flow", function() {
+        return { type: "send-to-flow", action: "" };
+      }, "", "send-to-flow");
+      chip(state.eventsPane, "Goto Screen (SPA)", function() {
+        return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
+      }, "", "navigate");
+      chip(state.eventsPane, "Route Trigger", function() {
+        return { type: "route-trigger" };
+      }, "", "route-trigger", true, "Route Trigger is only available in Flow Logic.");
+      chip(state.eventsPane, "Render Screen", function() {
+        return { type: "render-screen" };
+      }, "", "render-screen", true, "Render Screen is only used in Flow Logic.");
+    } else {
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
       }, "", "param-input");
@@ -28509,9 +28546,6 @@
     chip(state.eventsPane, "Open URL", function() {
       return { type: "open-url", url: "", mode: "replace", newTab: false };
     }, "", "open-url");
-    chip(state.eventsPane, "Goto Screen (SPA)", function() {
-      return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
-    }, "", "navigate");
     chip(state.eventsPane, "Delay", function() {
       return { type: "delay", delay: 500, unit: "ms" };
     }, "", "delay");
@@ -32111,6 +32145,119 @@
     });
   }
 
+  // src/dialogs/render-screen-dialog.js
+  function openRenderScreenNodeEditor(node) {
+    var screenSelect, forwardPayloadCheck;
+    window.RED.tray.show({
+      id: "nexa-logic-render-screen-editor",
+      title: "Configure Render Screen",
+      width: 460,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.screenId = screenSelect.val();
+            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color, #64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).html("Serves and renders a screen view in the browser when triggered by the flow.<br>When components inside the screen call <strong>Send to Flow</strong>, this node emits the message downstream.").appendTo(body);
+        var screenRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({
+          display: "block",
+          "font-size": "11px",
+          "font-weight": "600",
+          "margin-bottom": "6px",
+          color: "var(--red-ui-secondary-text-color, #475569)"
+        }).text("Screen View to Render").appendTo(screenRow);
+        screenSelect = window.$("<select>").css({ width: "100%", padding: "6px" }).appendTo(screenRow);
+        var screens = state.screens || [];
+        if (!screens.length) {
+          window.$("<option>", { value: "" }).text("(No screens available in project)").appendTo(screenSelect);
+        } else {
+          screens.forEach(function(s) {
+            window.$("<option>", { value: s.id }).text(s.name + " (" + (s.path || "/" + s.id) + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+          });
+        }
+        var payloadRow = window.$("<label>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          "margin-top": "12px",
+          display: "flex",
+          "align-items": "center",
+          cursor: "pointer"
+        }).appendTo(body);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        payloadRow.append("Forward current msg.payload into screen's On Load lifecycle");
+      }
+    });
+  }
+
+  // src/dialogs/send-to-flow-dialog.js
+  function openSendToFlowNodeEditor(node) {
+    var actionInput;
+    window.RED.tray.show({
+      id: "nexa-logic-send-to-flow-editor",
+      title: "Configure Send to Flow",
+      width: 440,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.action = (actionInput.val() || "").trim();
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color, #64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).html("Dispatches a message from this screen back to the host <strong>Render Screen</strong> node in the active Flow logic canvas.<br>The host node emits this message out of its output port.").appendTo(body);
+        var actionRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({
+          display: "block",
+          "font-size": "11px",
+          "font-weight": "600",
+          "margin-bottom": "6px",
+          color: "var(--red-ui-secondary-text-color, #475569)"
+        }).text("Action / Event Name (Optional)").appendTo(actionRow);
+        actionInput = window.$("<input>", {
+          type: "text",
+          placeholder: "e.g. submit, cancel, next, login"
+        }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(node.action || "").appendTo(actionRow);
+        window.$("<div>").css({
+          "font-size": "11px",
+          color: "#64748b",
+          "margin-top": "4px"
+        }).text("If specified, this is attached as msg.action so the flow can switch or branch.").appendTo(actionRow);
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -32157,6 +32304,15 @@
       var activeFl = getActiveScreen();
       var ep = activeFl && activeFl.endpoint || node.path || "/";
       return "Route Trigger (" + ep + ")";
+    }
+    if (node.type === "render-screen") {
+      var rScreen = (state.screens || []).find(function(x) {
+        return x.id === node.screenId;
+      });
+      return "Render Screen (" + (rScreen ? rScreen.name : node.screenId || "?") + ")";
+    }
+    if (node.type === "send-to-flow") {
+      return "Send to Flow" + (node.action ? " (" + node.action + ")" : "");
     }
     if (node.type === "sparkplug-write") {
       var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -32405,6 +32561,18 @@
       box2.attr("title", "Double-click to configure route trigger").on("dblclick", function(e) {
         e.stopPropagation();
         openRouteTriggerNodeEditor(node);
+      });
+    }
+    if (node.type === "render-screen") {
+      box2.attr("title", "Double-click to choose screen to render").on("dblclick", function(e) {
+        e.stopPropagation();
+        openRenderScreenNodeEditor(node);
+      });
+    }
+    if (node.type === "send-to-flow") {
+      box2.attr("title", "Double-click to configure message to flow").on("dblclick", function(e) {
+        e.stopPropagation();
+        openSendToFlowNodeEditor(node);
       });
     }
     if (node.type === "layer-control") {
