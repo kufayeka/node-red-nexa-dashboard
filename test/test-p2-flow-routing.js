@@ -262,6 +262,34 @@ async function runTests() {
   assert.strictEqual(document.title, 'Fallback Screen');
   console.log('Direct screen navigation fallback works when no flow matches? true');
 
+  console.log('--- [P2 Phase 2] 6. Combined Flow Endpoint & Route Trigger Matching ---');
+  const flowWithEndpoint = {
+    id: 'flow_user_custom',
+    name: 'Flow 1',
+    endpoint: '/flow1',
+    logic: {
+      nodes: [
+        { id: 'n_trig', type: 'route-trigger', path: '/test1', x: 20, y: 20 }
+      ],
+      wires: []
+    }
+  };
+  global.__NEXA_FLOWS__.push(flowWithEndpoint);
+
+  // Should match combined path /flow1/test1
+  let matchCombined = global.__nexaRuntime.findFlowForRoute('/flow1/test1');
+  assert.ok(matchCombined, 'Flow should match combined path /flow1/test1');
+  assert.strictEqual(matchCombined.flow.id, 'flow_user_custom');
+
+  // Should match node path /test1
+  let matchNodePath = global.__nexaRuntime.findFlowForRoute('/test1');
+  assert.ok(matchNodePath, 'Flow should match trigger path /test1');
+
+  // Should match flow endpoint /flow1
+  let matchEndpoint = global.__nexaRuntime.findFlowForRoute('/flow1');
+  assert.ok(matchEndpoint, 'Flow should match flow endpoint /flow1');
+  console.log('Combined flow endpoint (/flow1/test1, /flow1, /test1) matches correctly? true');
+
   console.log('ALL OK');
   process.exit(0);
 }
