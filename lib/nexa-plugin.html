@@ -34076,7 +34076,7 @@
     state.templateListEl.empty();
     state.templateListEl.css({
       width: "100%",
-      display: "flex",
+      display: "none",
       "flex-direction": "column",
       gap: "6px",
       "box-sizing": "border-box"
@@ -36856,7 +36856,7 @@
     }).appendTo(screensSplit);
     state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
     state.templateFormEl = state.screenFormEl;
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ display: "none" }).appendTo(screensSplit);
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" });
     state.sidebarTabs = window.RED.tabs.create({
       element: ul,
       // many tabs: they keep a readable width and scroll sideways (instead of squeezing)
@@ -36877,7 +36877,6 @@
           ensureScreensLoaded(function() {
             renderScreenList();
             renderScreenForm();
-            renderTemplateList();
           });
         }
         if (tab.id === "components") buildPalette(state.componentsPane);

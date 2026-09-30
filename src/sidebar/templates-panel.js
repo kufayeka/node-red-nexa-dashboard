@@ -35,7 +35,7 @@ export function renderTemplateList() {
 
     state.templateListEl.css({
         width: "100%",
-        display: "flex",
+        display: "none",
         "flex-direction": "column",
         gap: "6px",
         "box-sizing": "border-box"

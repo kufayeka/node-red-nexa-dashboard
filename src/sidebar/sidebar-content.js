@@ -102,7 +102,7 @@ export function buildSidebarContent() {
     }).appendTo(screensSplit);
     state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
     state.templateFormEl = state.screenFormEl;
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).css({ display: "none" }).appendTo(screensSplit);
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" });
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
@@ -131,7 +131,6 @@ export function buildSidebarContent() {
                 ensureScreensLoaded(function () {
                     renderScreenList();
                     renderScreenForm();
-                    renderTemplateList();
                 });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
