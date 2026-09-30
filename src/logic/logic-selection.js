@@ -109,8 +109,12 @@ export function pasteLogicClipboard() {
         if (hasTrigger) {
             newNodes = newNodes.filter(function (n) { return n.type !== "route-trigger"; });
         }
+        var hasNotFound = (screen.logic && screen.logic.nodes || []).some(function (n) { return n.type === "route-not-found"; });
+        if (hasNotFound) {
+            newNodes = newNodes.filter(function (n) { return n.type !== "route-not-found"; });
+        }
     } else {
-        newNodes = newNodes.filter(function (n) { return n.type !== "route-trigger"; });
+        newNodes = newNodes.filter(function (n) { return n.type !== "route-trigger" && n.type !== "route-not-found"; });
     }
 
     newNodes.forEach(function (n) { screen.logic.nodes.push(n); });

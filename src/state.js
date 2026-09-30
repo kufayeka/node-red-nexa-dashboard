@@ -76,6 +76,8 @@ export const LOGIC_NODE_KINDS = {
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows
     "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
+    // fallback handler for unmatched subpaths under a flow gateway
+    "route-not-found": { label: "Route Not Found", hasInput: false, hasOutput: true, color: "#e11d48" },
     // renders and serves a screen inside a flow, waiting for send-to-flow messages
     "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
     // sends data back from a screen to the active flow's Render Screen node
@@ -236,10 +238,18 @@ export function deleteFolder(id) {
 
 export function makeFlow(opts) {
     state.flowCounter++;
+    var isFirst = state.flows.length === 0;
+    var ep = (opts && opts.endpoint) || ("/flow" + state.flowCounter);
+    if (ep.charAt(0) !== "/") ep = "/" + ep;
+    while (state.flows.some(function (f) { return f.endpoint === ep; })) {
+        state.flowCounter++;
+        ep = "/flow" + state.flowCounter;
+    }
     return {
         id: genId(),
         name: (opts && opts.name) || ("Flow " + state.flowCounter),
-        endpoint: (opts && opts.endpoint) || ("/flow" + state.flowCounter),
+        endpoint: ep,
+        isDefault: (opts && typeof opts.isDefault === "boolean") ? opts.isDefault : isFirst,
         routingPolicy: (opts && opts.routingPolicy) || "strict",
         parentId: (opts && opts.parentId) || null,
         type: "flow",
@@ -377,10 +387,18 @@ export function duplicateFlow(id) {
     var orig = findFlow(id);
     if (!orig) return null;
     state.flowCounter++;
+    var baseEp = (orig.endpoint || "/flow") + "-copy";
+    var ep = baseEp;
+    var counter = 1;
+    while (state.flows.some(function (f) { return f.endpoint === ep; })) {
+        counter++;
+        ep = baseEp + "-" + counter;
+    }
     var newFlow = {
         id: genId(),
         name: orig.name + " (Copy)",
-        endpoint: orig.endpoint + "-copy",
+        endpoint: ep,
+        isDefault: false,
         routingPolicy: orig.routingPolicy || "strict",
         parentId: orig.parentId || null,
         type: "flow",

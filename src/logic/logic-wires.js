@@ -65,6 +65,35 @@ export function findNearestInputPort(screen, excludeNodeId, localX, localY) {
     return best;
 }
 
+export function getReachableRenderScreens(startNodeId, nodes, wires) {
+    var reachable = [];
+    var visited = {};
+    var nodeMap = {};
+    (nodes || []).forEach(function (n) { if (n && n.id) nodeMap[n.id] = n; });
+
+    function dfs(currId) {
+        if (visited[currId]) return;
+        visited[currId] = true;
+        (wires || []).forEach(function (w) {
+            if (w.from === currId) {
+                var target = nodeMap[w.to];
+                if (target) {
+                    if (target.type === "render-screen") {
+                        if (reachable.indexOf(target.id) === -1) {
+                            reachable.push(target.id);
+                        }
+                    }
+                    if (target.type !== "render-screen") {
+                        dfs(target.id);
+                    }
+                }
+            }
+        });
+    }
+    dfs(startNodeId);
+    return reachable;
+}
+
 export function wireLogicOutputPort(outDot, node) {
     outDot.get(0).addEventListener("mousedown", function (e) {
         e.stopPropagation();
@@ -85,6 +114,7 @@ export function wireLogicOutputPort(outDot, node) {
             var end = hovered ? logicNodePortPoint(hovered, "input") : { x: localX, y: localY };
             tempLine.attr({ d: logicWirePath(start, end) }).css("stroke", hovered ? "#4caf50" : "#2196f3");
         }
+
         function onUp() {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
@@ -93,6 +123,26 @@ export function wireLogicOutputPort(outDot, node) {
             var screen = getActiveScreen();
             var alreadyWired = screen.logic.wires.some(function (w) { return w.from === node.id && w.to === hovered.id; });
             if (alreadyWired) return;
+
+            // Guard: Prevent Route Trigger fan-out to multiple Render Screen nodes
+            if (state.editingMode === "flow") {
+                var testWires = (screen.logic.wires || []).concat([{ from: node.id, to: hovered.id }]);
+                var triggerNodes = (screen.logic.nodes || []).filter(function (n) { return n.type === "route-trigger"; });
+                var hasFanOutConflict = false;
+                triggerNodes.forEach(function (trig) {
+                    var reachable = getReachableRenderScreens(trig.id, screen.logic.nodes, testWires);
+                    if (reachable.length > 1) {
+                        hasFanOutConflict = true;
+                    }
+                });
+                if (hasFanOutConflict) {
+                    if (window.RED && window.RED.notify) {
+                        window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes. Ambiguous entry screen: which screen should be rendered first?", "error");
+                    }
+                    return;
+                }
+            }
+
             var wire = { id: genId(), from: node.id, to: hovered.id };
             screen.logic.wires.push(wire);
             pushHistory({ t: "addLogicWire", screenId: screen.id, wire: wire });

@@ -391,6 +391,10 @@ export function renderEventsPanel() {
             return { type: "route-trigger", path: ep, cookies: "", includeDevice: true };
         }, "", "route-trigger");
 
+        chip(state.eventsPane, "Route Not Found", function () {
+            return { type: "route-not-found", cookies: "", includeDevice: true };
+        }, "", "route-not-found");
+
         chip(state.eventsPane, "Render Screen", function () {
             return { type: "render-screen", screenId: (state.screens[0] && state.screens[0].id) || "", forwardPayload: true };
         }, "", "render-screen");
@@ -420,6 +424,10 @@ export function renderEventsPanel() {
         chip(state.eventsPane, "Route Trigger", function () {
             return { type: "route-trigger" };
         }, "", "route-trigger", true, "Route Trigger is only available in Flow Logic.");
+
+        chip(state.eventsPane, "Route Not Found", function () {
+            return { type: "route-not-found" };
+        }, "", "route-not-found", true, "Route Not Found is only available in Flow Logic.");
 
         chip(state.eventsPane, "Render Screen", function () {
             return { type: "render-screen" };

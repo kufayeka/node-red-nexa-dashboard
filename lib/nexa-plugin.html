@@ -2076,6 +2076,8 @@
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows
     "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
+    // fallback handler for unmatched subpaths under a flow gateway
+    "route-not-found": { label: "Route Not Found", hasInput: false, hasOutput: true, color: "#e11d48" },
     // renders and serves a screen inside a flow, waiting for send-to-flow messages
     "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
     // sends data back from a screen to the active flow's Render Screen node
@@ -2220,10 +2222,20 @@
   }
   function makeFlow(opts) {
     state.flowCounter++;
+    var isFirst = state.flows.length === 0;
+    var ep = opts && opts.endpoint || "/flow" + state.flowCounter;
+    if (ep.charAt(0) !== "/") ep = "/" + ep;
+    while (state.flows.some(function(f) {
+      return f.endpoint === ep;
+    })) {
+      state.flowCounter++;
+      ep = "/flow" + state.flowCounter;
+    }
     return {
       id: genId(),
       name: opts && opts.name || "Flow " + state.flowCounter,
-      endpoint: opts && opts.endpoint || "/flow" + state.flowCounter,
+      endpoint: ep,
+      isDefault: opts && typeof opts.isDefault === "boolean" ? opts.isDefault : isFirst,
       routingPolicy: opts && opts.routingPolicy || "strict",
       parentId: opts && opts.parentId || null,
       type: "flow",
@@ -2360,10 +2372,20 @@
     var orig = findFlow(id2);
     if (!orig) return null;
     state.flowCounter++;
+    var baseEp = (orig.endpoint || "/flow") + "-copy";
+    var ep = baseEp;
+    var counter = 1;
+    while (state.flows.some(function(f) {
+      return f.endpoint === ep;
+    })) {
+      counter++;
+      ep = baseEp + "-" + counter;
+    }
     var newFlow = {
       id: genId(),
       name: orig.name + " (Copy)",
-      endpoint: orig.endpoint + "-copy",
+      endpoint: ep,
+      isDefault: false,
       routingPolicy: orig.routingPolicy || "strict",
       parentId: orig.parentId || null,
       type: "flow",
@@ -2377,10 +2399,10 @@
     return newFlow;
   }
   function convertScreenToTemplate(id2) {
-    var screen = state.screens.find(function(s) {
+    var screen2 = state.screens.find(function(s) {
       return s.id === id2;
     });
-    if (!screen) return null;
+    if (!screen2) return null;
     if (state.screens.length <= 1) {
       var replacement = makeScreen({ name: "Screen " + (state.screenCounter + 1) });
       state.screens.push(replacement);
@@ -2391,20 +2413,20 @@
     });
     state.templateCounter++;
     var template = {
-      id: screen.id,
-      name: screen.name,
-      identifier: (screen.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
-      parentId: screen.parentId || null,
-      width: screen.width,
-      height: screen.height,
-      gridSize: screen.gridSize,
-      snap: screen.snap !== false,
-      treeVersion: screen.treeVersion || TREE_VERSION,
+      id: screen2.id,
+      name: screen2.name,
+      identifier: (screen2.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+      parentId: screen2.parentId || null,
+      width: screen2.width,
+      height: screen2.height,
+      gridSize: screen2.gridSize,
+      snap: screen2.snap !== false,
+      treeVersion: screen2.treeVersion || TREE_VERSION,
       params: [],
-      variables: screen.variables || [],
-      components: screen.components || [],
-      orphans: screen.orphans || [],
-      logic: screen.logic || { nodes: [], wires: [] }
+      variables: screen2.variables || [],
+      components: screen2.components || [],
+      orphans: screen2.orphans || [],
+      logic: screen2.logic || { nodes: [], wires: [] }
     };
     state.templates.push(template);
     return template;
@@ -2417,7 +2439,7 @@
     });
     state.screenCounter++;
     var slug2 = (template.identifier || template.name || "screen").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    var screen = {
+    var screen2 = {
       id: template.id,
       name: template.name,
       path: "/" + slug2,
@@ -2434,8 +2456,8 @@
       orphans: template.orphans || [],
       logic: template.logic || { nodes: [], wires: [] }
     };
-    state.screens.push(screen);
-    return screen;
+    state.screens.push(screen2);
+    return screen2;
   }
   function makeSurfaceBase(opts) {
     return {
@@ -2452,11 +2474,11 @@
   }
   function makeScreen(opts) {
     state.screenCounter++;
-    var screen = makeSurfaceBase(opts);
-    screen.name = opts && opts.name || "Screen " + state.screenCounter;
-    screen.path = opts && opts.path || "/screen" + state.screenCounter;
-    screen.parentId = opts && opts.parentId || null;
-    return screen;
+    var screen2 = makeSurfaceBase(opts);
+    screen2.name = opts && opts.name || "Screen " + state.screenCounter;
+    screen2.path = opts && opts.path || "/screen" + state.screenCounter;
+    screen2.parentId = opts && opts.parentId || null;
+    return screen2;
   }
   function makeTemplate(opts) {
     state.templateCounter++;
@@ -2628,15 +2650,15 @@
     return !!(surface && effectiveLocked(surface, id2));
   }
   function findLogicNode(screenOrId, maybeId) {
-    var screen, id2;
+    var screen2, id2;
     if (maybeId !== void 0) {
-      screen = screenOrId;
+      screen2 = screenOrId;
       id2 = maybeId;
     } else {
-      screen = getActiveScreen();
+      screen2 = getActiveScreen();
       id2 = screenOrId;
     }
-    return screen && screen.logic && (screen.logic.nodes || []).find(function(n) {
+    return screen2 && screen2.logic && (screen2.logic.nodes || []).find(function(n) {
       return n.id === id2;
     });
   }
@@ -2722,8 +2744,8 @@
     state.redoStack = [];
   }
   function applyHistoryMutation(ev, direction) {
-    var screen = findSurfaceById(ev.screenId);
-    if (!screen) return;
+    var screen2 = findSurfaceById(ev.screenId);
+    if (!screen2) return;
     if (ev.t === "multi") {
       var subs = direction === "undo" ? ev.events.slice().reverse() : ev.events;
       subs.forEach(function(sub) {
@@ -2731,73 +2753,73 @@
       });
     } else if (ev.t === "tree") {
       var snap2 = JSON.parse(direction === "undo" ? ev.before : ev.after);
-      restoreTree(screen, snap2);
+      restoreTree(screen2, snap2);
     } else if (ev.t === "move") {
-      var comp = tree_exports.find(screen, ev.id);
+      var comp = tree_exports.find(screen2, ev.id);
       if (!comp) return;
       var pos = direction === "undo" ? ev.from : ev.to;
       comp.x = pos.x;
       comp.y = pos.y;
-      tree_exports.refitGroupsUp(screen, ev.id);
+      tree_exports.refitGroupsUp(screen2, ev.id);
     } else if (ev.t === "resize") {
-      var rcomp = tree_exports.find(screen, ev.id);
+      var rcomp = tree_exports.find(screen2, ev.id);
       if (!rcomp) return;
       var box2 = direction === "undo" ? ev.from : ev.to;
       rcomp.x = box2.x;
       rcomp.y = box2.y;
       rcomp.w = box2.w;
       rcomp.h = box2.h;
-      tree_exports.refitGroupsUp(screen, ev.id);
+      tree_exports.refitGroupsUp(screen2, ev.id);
     } else if (ev.t === "rotate") {
-      var tcomp = tree_exports.find(screen, ev.id);
+      var tcomp = tree_exports.find(screen2, ev.id);
       if (!tcomp) return;
       tcomp.rotation = direction === "undo" ? ev.from : ev.to;
     } else if (ev.t === "flip") {
-      var fcomp = tree_exports.find(screen, ev.id);
+      var fcomp = tree_exports.find(screen2, ev.id);
       if (!fcomp) return;
       var fstate = direction === "undo" ? ev.from : ev.to;
       fcomp.flipH = fstate.flipH;
       fcomp.flipV = fstate.flipV;
     } else if (ev.t === "props") {
-      var pcomp = tree_exports.find(screen, ev.id);
+      var pcomp = tree_exports.find(screen2, ev.id);
       if (!pcomp) return;
       pcomp.props = pcomp.props || {};
       var pv = direction === "undo" ? ev.from : ev.to;
       if (pv === void 0) delete pcomp.props[ev.key];
       else pcomp.props[ev.key] = pv !== null && typeof pv === "object" ? JSON.parse(JSON.stringify(pv)) : pv;
     } else if (ev.t === "node") {
-      var ncomp = tree_exports.find(screen, ev.id);
+      var ncomp = tree_exports.find(screen2, ev.id);
       if (!ncomp) return;
       var nv = direction === "undo" ? ev.from : ev.to;
       if (nv === void 0) delete ncomp[ev.key];
       else ncomp[ev.key] = nv !== null && typeof nv === "object" ? JSON.parse(JSON.stringify(nv)) : nv;
     } else if (ev.t === "addLogicNode") {
       if (direction === "undo") {
-        screen.logic.nodes = screen.logic.nodes.filter(function(n) {
+        screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
           return n.id !== ev.node.id;
         });
       } else {
-        screen.logic.nodes.push(ev.node);
+        screen2.logic.nodes.push(ev.node);
       }
     } else if (ev.t === "deleteLogicNode") {
       if (direction === "undo") {
-        screen.logic.nodes.push(ev.node);
+        screen2.logic.nodes.push(ev.node);
         ev.wires.forEach(function(w) {
-          screen.logic.wires.push(w);
+          screen2.logic.wires.push(w);
         });
       } else {
-        screen.logic.nodes = screen.logic.nodes.filter(function(n) {
+        screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
           return n.id !== ev.node.id;
         });
         var removedWireIds = ev.wires.map(function(w) {
           return w.id;
         });
-        screen.logic.wires = screen.logic.wires.filter(function(w) {
+        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
           return removedWireIds.indexOf(w.id) === -1;
         });
       }
     } else if (ev.t === "moveLogicNode") {
-      var lnode = screen.logic.nodes.find(function(n) {
+      var lnode = screen2.logic.nodes.find(function(n) {
         return n.id === ev.id;
       });
       if (!lnode) return;
@@ -2806,17 +2828,17 @@
       lnode.y = lpos.y;
     } else if (ev.t === "addLogicWire") {
       if (direction === "undo") {
-        screen.logic.wires = screen.logic.wires.filter(function(w) {
+        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
           return w.id !== ev.wire.id;
         });
       } else {
-        screen.logic.wires.push(ev.wire);
+        screen2.logic.wires.push(ev.wire);
       }
     } else if (ev.t === "deleteLogicWire") {
       if (direction === "undo") {
-        screen.logic.wires.push(ev.wire);
+        screen2.logic.wires.push(ev.wire);
       } else {
-        screen.logic.wires = screen.logic.wires.filter(function(w) {
+        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
           return w.id !== ev.wire.id;
         });
       }
@@ -2828,9 +2850,9 @@
   }
   function applyHistoryEvent(ev, direction) {
     applyHistoryMutation(ev, direction);
-    var screen = findSurfaceById(ev.screenId);
+    var screen2 = findSurfaceById(ev.screenId);
     var active = getActiveScreen();
-    var isActiveSurface = screen && active && screen.id === active.id;
+    var isActiveSurface = screen2 && active && screen2.id === active.id;
     if (isLogicHistoryEvent(ev)) {
       state.logicSelectedIds = [];
       if (isActiveSurface && _renderLogicCanvasFn) _renderLogicCanvasFn();
@@ -2902,12 +2924,12 @@
     var el = state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
     return el && typeof el.offsetWidth === "number" && el.isConnected ? el : null;
   }
-  function readbackLayout(screen) {
-    screen = screen || getActiveScreen();
+  function readbackLayout(screen2) {
+    screen2 = screen2 || getActiveScreen();
     var changed3 = [];
     var redraw = false;
-    if (!screen) return changed3;
-    tree_exports.walk(screen, function(node, parent) {
+    if (!screen2) return changed3;
+    tree_exports.walk(screen2, function(node, parent) {
       if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
         if (node.slotUnused) return false;
         var sel = elementOf(node.id), hel = elementOf(parent.id);
@@ -2934,7 +2956,7 @@
       var inFlow = layout_exports.isInFlow(node, parent) || layout_exports.placeOf(node, parent) === "dock";
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
       if (!inFlow && !hugW && !hugH) return;
-      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
+      if (tree_exports.effectiveVisibility(screen2, node.id) !== "show") return false;
       var el = elementOf(node.id);
       if (!el || !el.getClientRects().length) return;
       var box2 = { x: node.x, y: node.y, w: node.w, h: node.h };
@@ -2959,29 +2981,29 @@
       }
     });
     changed3.forEach(function(id2) {
-      if (tree_exports.ancestors(screen, id2).some(function(a) {
+      if (tree_exports.ancestors(screen2, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
-      tree_exports.refitGroupsUp(screen, id2);
+      tree_exports.refitGroupsUp(screen2, id2);
     });
     changed3.redraw = redraw;
     return changed3;
   }
 
   // src/canvas/drop-target.js
-  function frameAt(screen, x, y, excludeIds) {
+  function frameAt(screen2, x, y, excludeIds) {
     var excluded = {};
     (excludeIds || []).forEach(function(id2) {
       excluded[id2] = true;
     });
     var hit = null;
-    tree_exports.walk(screen, function(node) {
+    tree_exports.walk(screen2, function(node) {
       if (excluded[node.id]) return false;
-      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
+      if (tree_exports.effectiveVisibility(screen2, node.id) !== "show") return false;
       if (node.slotUnused) return false;
       if (node.type !== "@frame" || isNodeLocked(node.id)) return;
       if (tree_exports.isSlotFrame(node) && !slotShown(node.id)) return false;
-      var b = tree_exports.absBox(screen, node.id);
+      var b = tree_exports.absBox(screen2, node.id);
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) hit = node;
     });
     return hit;
@@ -2996,12 +3018,12 @@
       return (excludeIds || []).indexOf(c.id) === -1 && layout_exports.isInFlow(c, frame);
     });
   }
-  function flowInsert(screen, frame, x, y, excludeIds) {
+  function flowInsert(screen2, frame, x, y, excludeIds) {
     var l = layout_exports.layoutOf(frame);
-    var fb = tree_exports.absBox(screen, frame.id);
+    var fb = tree_exports.absBox(screen2, frame.id);
     var list = flowKids(frame, excludeIds);
     var boxes = list.map(function(c) {
-      return tree_exports.absBox(screen, c.id);
+      return tree_exports.absBox(screen2, c.id);
     });
     var horizontal = layout_exports.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || horizontal && l.wrap;
@@ -3038,53 +3060,53 @@
     }
     return { index, line };
   }
-  function reparentKeepingPlace(screen, id2, parentId, index) {
-    var loc = tree_exports.locate(screen, id2);
+  function reparentKeepingPlace(screen2, id2, parentId, index) {
+    var loc = tree_exports.locate(screen2, id2);
     if (!loc) return;
-    var abs = loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen, id2);
+    var abs = loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen2, id2);
     var oldParent = loc.parent ? loc.parent.id : null;
-    if (loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, index);
-    else tree_exports.move(screen, id2, parentId, index);
-    var node = tree_exports.find(screen, id2);
-    var p = parentId ? tree_exports.contentOrigin(screen, parentId) : { x: 0, y: 0 };
+    if (loc.orphan) tree_exports.placeOrphan(screen2, id2, parentId, index);
+    else tree_exports.move(screen2, id2, parentId, index);
+    var node = tree_exports.find(screen2, id2);
+    var p = parentId ? tree_exports.contentOrigin(screen2, parentId) : { x: 0, y: 0 };
     node.x = abs.x - p.x;
     node.y = abs.y - p.y;
-    if (parentId) tree_exports.tidyContainer(screen, parentId);
-    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen, oldParent);
+    if (parentId) tree_exports.tidyContainer(screen2, parentId);
+    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen2, oldParent);
   }
-  function homeFrameOf(screen, id2) {
-    var chain = tree_exports.ancestors(screen, id2);
+  function homeFrameOf(screen2, id2) {
+    var chain = tree_exports.ancestors(screen2, id2);
     for (var i2 = chain.length - 1; i2 >= 0; i2--) if (chain[i2].type === "@frame") return chain[i2];
     return null;
   }
-  function planDrop(screen, ids, p) {
+  function planDrop(screen2, ids, p) {
     if (!ids.length || !p) return null;
-    var home = homeFrameOf(screen, ids[0]);
+    var home = homeFrameOf(screen2, ids[0]);
     var homeId = home ? home.id : null;
     if (ids.some(function(id2) {
-      var h = homeFrameOf(screen, id2);
+      var h = homeFrameOf(screen2, id2);
       return (h ? h.id : null) !== homeId;
     })) return null;
     if (ids.some(function(id2) {
-      var n = tree_exports.find(screen, id2);
-      return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "dock";
+      var n = tree_exports.find(screen2, id2);
+      return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen2, id2)) === "dock";
     })) return null;
     if (ids.some(function(id2) {
-      var n = tree_exports.find(screen, id2);
-      var h = homeFrameOf(screen, id2);
-      return h && layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "free";
+      var n = tree_exports.find(screen2, id2);
+      var h = homeFrameOf(screen2, id2);
+      return h && layout_exports.placeOf(n, tree_exports.parentOf(screen2, id2)) === "free";
     })) return null;
-    var target = frameAt(screen, p.x, p.y, ids);
+    var target = frameAt(screen2, p.x, p.y, ids);
     var targetId = target ? target.id : null;
     return {
       targetId,
       change: targetId !== homeId,
-      flow: target && layout_exports.hasAutoLayout(target) ? flowInsert(screen, target, p.x, p.y, ids) : null
+      flow: target && layout_exports.hasAutoLayout(target) ? flowInsert(screen2, target, p.x, p.y, ids) : null
     };
   }
-  function applyDrop(screen, ids, plan, places) {
+  function applyDrop(screen2, ids, plan, places) {
     ids.forEach(function(id2, k) {
-      var loc = tree_exports.locate(screen, id2);
+      var loc = tree_exports.locate(screen2, id2);
       if (!loc) return;
       var sameList = !loc.orphan && (loc.parent ? loc.parent.id : null) === plan.targetId;
       var index = null;
@@ -3098,9 +3120,9 @@
         delete node.layoutChild.absolute;
         if (!Object.keys(node.layoutChild).length) delete node.layoutChild;
       }
-      reparentKeepingPlace(screen, id2, plan.targetId, index);
+      reparentKeepingPlace(screen2, id2, plan.targetId, index);
       if (places && places[id2] && !plan.flow) {
-        var p = plan.targetId ? tree_exports.contentOrigin(screen, plan.targetId) : { x: 0, y: 0 };
+        var p = plan.targetId ? tree_exports.contentOrigin(screen2, plan.targetId) : { x: 0, y: 0 };
         node.x = Math.round(places[id2].x - p.x);
         node.y = Math.round(places[id2].y - p.y);
       }
@@ -3117,12 +3139,12 @@
   function showDropFrame(frame) {
     if (!state.artboardEl) return;
     outlineEl = ensure(outlineEl, { border: "2px solid #0d99ff", "box-sizing": "border-box", "border-radius": "2px" });
-    var screen = getActiveScreen();
-    if (!frame || !screen) {
+    var screen2 = getActiveScreen();
+    if (!frame || !screen2) {
       outlineEl.css("display", "none");
       return;
     }
-    var b = tree_exports.absBox(screen, frame.id);
+    var b = tree_exports.absBox(screen2, frame.id);
     outlineEl.css({ display: "block", left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
   }
   function showInsertLine(line) {
@@ -3462,10 +3484,10 @@
   // src/canvas/component-renderer.js
   var nodeScopes = /* @__PURE__ */ new WeakMap();
   function editorScopeFor(comp) {
-    var screen = getActiveScreen();
-    if (!screen) return void 0;
-    var scope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
-    tree_exports.ancestors(screen, comp.id).forEach(function(a) {
+    var screen2 = getActiveScreen();
+    if (!screen2) return void 0;
+    var scope = scope_exports.surfaceScope(screen2, state.editingMode === "template", appScope());
+    tree_exports.ancestors(screen2, comp.id).forEach(function(a) {
       if (scope_exports.hasVariables(a)) scope = scope_exports.makeScope(scope, a.variables);
     });
     return scope;
@@ -3512,10 +3534,10 @@
     }
   }
   function revealSlotsOf(id2) {
-    var screen = getActiveScreen();
-    if (!screen || !state.artboardEl) return false;
+    var screen2 = getActiveScreen();
+    if (!screen2 || !state.artboardEl) return false;
     var shown = false;
-    var chain = tree_exports.ancestors(screen, id2).concat([tree_exports.find(screen, id2)]);
+    var chain = tree_exports.ancestors(screen2, id2).concat([tree_exports.find(screen2, id2)]);
     chain.forEach(function(n, i2) {
       if (!n || !tree_exports.isSlotFrame(n) || i2 === 0 || !tree_exports.isSlotHost(chain[i2 - 1])) return;
       var host = chain[i2 - 1];
@@ -3529,9 +3551,9 @@
     });
     return shown;
   }
-  function buildSparkplugBindingIndex(screen) {
+  function buildSparkplugBindingIndex(screen2) {
     var index = {};
-    tree_exports.allNodes(screen).forEach(function(comp) {
+    tree_exports.allNodes(screen2).forEach(function(comp) {
       var list = [];
       if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
         list.push(comp.sparkplugBinding);
@@ -3560,9 +3582,9 @@
     var keys = dirtySparkplugKeys;
     dirtySparkplugKeys = null;
     if (!keys) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var index = buildSparkplugBindingIndex(screen);
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    var index = buildSparkplugBindingIndex(screen2);
     var refreshedIds = {};
     Object.keys(keys).forEach(function(key) {
       (index[key] || []).forEach(function(comp) {
@@ -3594,32 +3616,32 @@
     });
   }
   function removeComponents(ids) {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var targets2 = ids.filter(function(id2) {
-      return tree_exports.find(screen, id2) && !isNodeLocked(id2);
+      return tree_exports.find(screen2, id2) && !isNodeLocked(id2);
     });
     targets2 = targets2.filter(function(id2) {
       return !targets2.some(function(other) {
-        return other !== id2 && tree_exports.isAncestor(screen, other, id2);
+        return other !== id2 && tree_exports.isAncestor(screen2, other, id2);
       });
     });
     if (!targets2.length) return;
-    var before = treeSnapshot(screen);
+    var before = treeSnapshot(screen2);
     var parents = {};
     targets2.forEach(function(id2) {
-      var p = tree_exports.parentOf(screen, id2);
+      var p = tree_exports.parentOf(screen2, id2);
       if (p) parents[p.id] = true;
-      tree_exports.remove(screen, id2);
+      tree_exports.remove(screen2, id2);
       if (state.artboardEl) state.artboardEl.find('[data-id="' + id2 + '"]').remove();
     });
     Object.keys(parents).forEach(function(pid) {
-      tree_exports.tidyContainer(screen, pid);
+      tree_exports.tidyContainer(screen2, pid);
     });
     state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen, id2) && !tree_exports.locate(screen, id2).orphan;
+      return !!tree_exports.find(screen2, id2) && !tree_exports.locate(screen2, id2).orphan;
     });
-    pushTreeChange(screen, before);
+    pushTreeChange(screen2, before);
     if (Object.keys(parents).length && state.artboardEl) {
       var keep = state.selectedIds.slice();
       _renderScreen();
@@ -3984,8 +4006,8 @@
       transform: fit.transform
     });
   }
-  function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen) {
-    var ps = parentNode ? layout_exports.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen.width, h: screen.height };
+  function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen2) {
+    var ps = parentNode ? layout_exports.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen2.width, h: screen2.height };
     var b = layout_exports.overlayBox(comp, ps.w, ps.h);
     comp.x = Math.round(b.x);
     comp.y = Math.round(b.y);
@@ -4008,8 +4030,8 @@
   }
   var hoverEl = null;
   function showHover(id2) {
-    var screen = getActiveScreen();
-    if (!state.artboardEl || !screen) return;
+    var screen2 = getActiveScreen();
+    if (!state.artboardEl || !screen2) return;
     if (!hoverEl || !hoverEl.closest("body").length || hoverEl.parent()[0] !== state.artboardEl[0]) {
       hoverEl = window.$("<div>", { "class": "nexa-hover-outline" }).css({ position: "absolute", "pointer-events": "none", "z-index": 9997, border: "1px solid #0d99ff", "box-sizing": "border-box", display: "none" }).appendTo(state.artboardEl);
       window.$("<span>", { "class": "nexa-hover-name" }).css({ position: "absolute", left: "-1px", bottom: "100%", background: "#0d99ff", color: "#fff", "font-size": "10px", padding: "1px 5px", "white-space": "nowrap", "border-radius": "2px 2px 0 0" }).appendTo(hoverEl);
@@ -4017,12 +4039,12 @@
         hideHover();
       });
     }
-    var node = id2 && tree_exports.find(screen, id2);
+    var node = id2 && tree_exports.find(screen2, id2);
     if (!node || isSelected(id2)) {
       hoverEl.hide();
       return;
     }
-    var b = tree_exports.absBox(screen, id2);
+    var b = tree_exports.absBox(screen2, id2);
     if (!b) {
       hoverEl.hide();
       return;
@@ -4035,17 +4057,17 @@
     if (hoverEl) hoverEl.hide();
   }
   function renderComponent(comp, parentEl, parentNode, scope) {
-    var screen = getActiveScreen();
-    if (!screen || !state.artboardEl) return;
+    var screen2 = getActiveScreen();
+    if (!screen2 || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
-    if (parentNode === void 0) parentNode = tree_exports.parentOf(screen, comp.id);
+    if (parentNode === void 0) parentNode = tree_exports.parentOf(screen2, comp.id);
     if (scope === void 0) scope = editorScopeFor(comp);
     var inFlow = layout_exports.isInFlow(comp, parentNode);
     if (!shouldRenderNode(comp.id)) return;
     var overlay = layout_exports.overlayOf(comp);
     if (overlay) {
       if (!state.overlayPreview[comp.id]) return;
-      placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
+      placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen2);
     }
     var hostDef = !layout_exports.inSlot(comp) && !tree_exports.CONTAINER_TYPES[comp.type] ? window.NEXA.getComponent(comp.type) : null;
     var slotHost = !!(hostDef && typeof hostDef.slotsOf === "function");
@@ -4130,8 +4152,8 @@
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
       if (tree_exports.onScreen(c)) {
-        var sw = screen.width || 1280;
-        var sh = screen.height || 800;
+        var sw = screen2.width || 1280;
+        var sh = screen2.height || 800;
         var scw = c.w || 0;
         var sch = c.h || 0;
         return {
@@ -4141,14 +4163,14 @@
           maxY: Math.max(0, sh - sch)
         };
       }
-      var parent = tree_exports.parentOf(screen, c.id);
+      var parent = tree_exports.parentOf(screen2, c.id);
       var container2 = parent;
       while (container2 && container2.type === "@group") {
-        container2 = tree_exports.parentOf(screen, container2.id);
+        container2 = tree_exports.parentOf(screen2, container2.id);
       }
       if (container2) {
-        var pw = container2.w != null ? container2.w : container2.width || screen.width;
-        var ph = container2.h != null ? container2.h : container2.height || screen.height;
+        var pw = container2.w != null ? container2.w : container2.width || screen2.width;
+        var ph = container2.h != null ? container2.h : container2.height || screen2.height;
         if (container2.type === "@frame" && typeof layout_exports.innerSize === "function") {
           var isz = layout_exports.innerSize(container2);
           pw = isz.w;
@@ -4156,8 +4178,8 @@
         }
         var cw = c.w || 0;
         var ch = c.h || 0;
-        var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-        var contOrigin = tree_exports.contentOrigin(screen, container2.id);
+        var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+        var contOrigin = tree_exports.contentOrigin(screen2, container2.id);
         var relX = origin.x - contOrigin.x;
         var relY = origin.y - contOrigin.y;
         return {
@@ -4167,11 +4189,11 @@
           maxY: Math.max(-relY, ph - relY - ch)
         };
       }
-      var sw = screen.width || 1280;
-      var sh = screen.height || 800;
+      var sw = screen2.width || 1280;
+      var sh = screen2.height || 800;
       var scw = c.w || 0;
       var sch = c.h || 0;
-      var rootOrigin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      var rootOrigin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
       return {
         minX: -rootOrigin.x,
         minY: -rootOrigin.y,
@@ -4181,17 +4203,17 @@
     };
     var place = function(c, start, dx, dy) {
       var nx = start.x + dx, ny = start.y + dy;
-      if (screen.snap) {
-        nx = snap(nx, screen.gridSize);
-        ny = snap(ny, screen.gridSize);
+      if (screen2.snap) {
+        nx = snap(nx, screen2.gridSize);
+        ny = snap(ny, screen2.gridSize);
       }
       var lim = clampOf(c);
       c.x = Math.max(lim.minX, Math.min(nx, lim.maxX));
       c.y = Math.max(lim.minY, Math.min(ny, lim.maxY));
     };
     var feedback = function(e) {
-      plan = planDrop(screen, movers, pointerOnArtboard(e));
-      showDropFrame(plan && plan.change && plan.targetId ? tree_exports.find(screen, plan.targetId) : null);
+      plan = planDrop(screen2, movers, pointerOnArtboard(e));
+      showDropFrame(plan && plan.change && plan.targetId ? tree_exports.find(screen2, plan.targetId) : null);
       showInsertLine(plan && plan.flow && (plan.change || flowMode) ? plan.flow.line : null);
     };
     el.draggable({
@@ -4200,10 +4222,10 @@
         if (!isSelected(target)) selectOnly(target);
         dragStart = { x: comp.x, y: comp.y };
         dragStartPage = { x: e.pageX, y: e.pageY };
-        before = treeSnapshot(screen);
+        before = treeSnapshot(screen2);
         movers = state.selectedIds.filter(function(id2) {
-          return tree_exports.find(screen, id2) && !isNodeLocked(id2) && !tree_exports.isSlotFrame(tree_exports.find(screen, id2)) && !state.selectedIds.some(function(o) {
-            return o !== id2 && tree_exports.isAncestor(screen, o, id2);
+          return tree_exports.find(screen2, id2) && !isNodeLocked(id2) && !tree_exports.isSlotFrame(tree_exports.find(screen2, id2)) && !state.selectedIds.some(function(o) {
+            return o !== id2 && tree_exports.isAncestor(screen2, o, id2);
           });
         });
         starts = {};
@@ -4212,12 +4234,12 @@
           starts[id2] = { x: c.x, y: c.y };
         });
         flowMode = movers.length > 0 && movers.every(function(id2) {
-          return layout_exports.isInFlow(findComponent(id2), tree_exports.parentOf(screen, id2));
+          return layout_exports.isInFlow(findComponent(id2), tree_exports.parentOf(screen2, id2));
         });
         var p0 = pointerOnArtboard(e);
         grab = {};
         movers.forEach(function(id2) {
-          var b = tree_exports.absBox(screen, id2);
+          var b = tree_exports.absBox(screen2, id2);
           grab[id2] = p0 ? { x: p0.x - b.x, y: p0.y - b.y } : { x: 0, y: 0 };
         });
         plan = null;
@@ -4254,7 +4276,7 @@
       stop: function(e) {
         clearDragFeedback();
         var p = pointerOnArtboard(e);
-        var finalPlan = planDrop(screen, movers, p) || plan;
+        var finalPlan = planDrop(screen2, movers, p) || plan;
         var reparent = finalPlan && (finalPlan.change || flowMode && finalPlan.flow);
         if (flowMode || reparent) {
           if (reparent) {
@@ -4263,14 +4285,14 @@
               places[id2] = { x: p.x - grab[id2].x, y: p.y - grab[id2].y };
             });
             try {
-              applyDrop(screen, movers, finalPlan, flowMode ? places : null);
+              applyDrop(screen2, movers, finalPlan, flowMode ? places : null);
             } catch (err) {
               if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
             }
           }
           var keepSel = movers.slice();
           _renderScreen();
-          pushTreeChange(screen, before);
+          pushTreeChange(screen2, before);
           selectMultiple(keepSel);
           markDirty();
           return;
@@ -4281,28 +4303,28 @@
         });
         if (!moved.length) return;
         var inGroup = moved.some(function(id2) {
-          return tree_exports.ancestors(screen, id2).some(function(a) {
+          return tree_exports.ancestors(screen2, id2).some(function(a) {
             return a.type === "@group";
           });
         });
         if (inGroup) {
           moved.forEach(function(id2) {
-            tree_exports.refitGroupsUp(screen, id2);
+            tree_exports.refitGroupsUp(screen2, id2);
           });
-          pushTreeChange(screen, before);
+          pushTreeChange(screen2, before);
           var keep = state.selectedIds.slice();
           _renderScreen();
           selectMultiple(keep);
         } else if (moved.length === 1) {
           var c1 = findComponent(moved[0]);
-          pushHistory({ t: "move", screenId: screen.id, id: moved[0], from: starts[moved[0]], to: { x: c1.x, y: c1.y } });
+          pushHistory({ t: "move", screenId: screen2.id, id: moved[0], from: starts[moved[0]], to: { x: c1.x, y: c1.y } });
         } else {
           pushHistory({
             t: "multi",
-            screenId: screen.id,
+            screenId: screen2.id,
             events: moved.map(function(id2) {
               var c = findComponent(id2);
-              return { t: "move", screenId: screen.id, id: id2, from: starts[id2], to: { x: c.x, y: c.y } };
+              return { t: "move", screenId: screen2.id, id: id2, from: starts[id2], to: { x: c.x, y: c.y } };
             })
           });
         }
@@ -4312,28 +4334,28 @@
     var dom = typeof el.get === "function" ? el.get(0) : null;
     if (css2.position && dom && dom.style && dom.style.position !== css2.position) dom.style.position = css2.position;
   }
-  function placeNewNode(screen, node, artboardX, artboardY) {
-    node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
-    node.y = Math.max(0, screen.snap ? snap(artboardY - node.h / 2, screen.gridSize) : artboardY - node.h / 2);
-    var before = treeSnapshot(screen);
-    var frame = frameAt(screen, artboardX, artboardY, []);
+  function placeNewNode(screen2, node, artboardX, artboardY) {
+    node.x = Math.max(0, screen2.snap ? snap(artboardX - node.w / 2, screen2.gridSize) : artboardX - node.w / 2);
+    node.y = Math.max(0, screen2.snap ? snap(artboardY - node.h / 2, screen2.gridSize) : artboardY - node.h / 2);
+    var before = treeSnapshot(screen2);
+    var frame = frameAt(screen2, artboardX, artboardY, []);
     if (frame) {
-      var fb = tree_exports.contentOrigin(screen, frame.id);
+      var fb = tree_exports.contentOrigin(screen2, frame.id);
       node.x = Math.round(artboardX - node.w / 2 - fb.x);
       node.y = Math.round(artboardY - node.h / 2 - fb.y);
-      tree_exports.insert(screen, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);
+      tree_exports.insert(screen2, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen2, frame, artboardX, artboardY, []).index : null, node);
       _renderScreen();
     } else {
-      tree_exports.insert(screen, null, null, node);
+      tree_exports.insert(screen2, null, null, node);
       renderComponent(node, null, null);
     }
     selectOnly(node.id);
-    pushTreeChange(screen, before);
+    pushTreeChange(screen2, before);
     markDirty();
   }
   function addComponentAt(type, artboardX, artboardY) {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     if (typeof type === "string" && type.indexOf("@template:") === 0) {
       var templateId = type.slice("@template:".length);
       var template = findTemplate(templateId);
@@ -4344,7 +4366,7 @@
         }
         return;
       }
-      placeNewNode(screen, {
+      placeNewNode(screen2, {
         id: genId(),
         type: "@template",
         templateId,
@@ -4371,7 +4393,7 @@
         imgProps[key] = imgDef.defaults[key].value;
       });
       imgProps.src = "{asset:" + assetName + "}";
-      placeNewNode(screen, { id: genId(), type: "kufayeka-image", w: Math.max(8, Math.round(iw * k)), h: Math.max(8, Math.round(ih * k)), rotation: 0, locked: false, props: imgProps }, artboardX, artboardY);
+      placeNewNode(screen2, { id: genId(), type: "kufayeka-image", w: Math.max(8, Math.round(iw * k)), h: Math.max(8, Math.round(ih * k)), rotation: 0, locked: false, props: imgProps }, artboardX, artboardY);
       return;
     }
     if (typeof type === "string" && type.indexOf("@frame:") === 0) {
@@ -4379,11 +4401,11 @@
       var frame = layout_exports.makeFrame(mode, mode === "vertical" ? 160 : mode === "carousel" ? 360 : 240, mode === "horizontal" ? 80 : mode === "carousel" ? 200 : 160);
       frame.id = genId();
       frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[mode] || "Frame";
-      placeNewNode(screen, frame, artboardX, artboardY);
+      placeNewNode(screen2, frame, artboardX, artboardY);
       return;
     }
     if (type === "@lit-component") {
-      placeNewNode(screen, {
+      placeNewNode(screen2, {
         id: genId(),
         type: "@lit-component",
         w: 220,
@@ -4407,12 +4429,12 @@
     Object.keys(def.defaults || {}).forEach(function(k2) {
       props[k2] = def.defaults[k2].value;
     });
-    placeNewNode(screen, { id: genId(), type, w: size.w, h: size.h, rotation: 0, locked: false, props }, artboardX, artboardY);
+    placeNewNode(screen2, { id: genId(), type, w: size.w, h: size.h, rotation: 0, locked: false, props }, artboardX, artboardY);
   }
   var SPARKPLUG_TEXT_COMPONENT_TYPE = "kufayeka-text-label";
   function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var def = window.NEXA.getComponent(SPARKPLUG_TEXT_COMPONENT_TYPE);
     if (!def) {
       if (window.RED && window.RED.notify) {
@@ -4427,7 +4449,7 @@
     });
     var bindingPath = makeSparkplugBindingPath(ref);
     props.text = bindingPath;
-    placeNewNode(screen, {
+    placeNewNode(screen2, {
       id: genId(),
       type: SPARKPLUG_TEXT_COMPONENT_TYPE,
       w: size.w,
@@ -4442,14 +4464,14 @@
 
   // src/canvas/selection-handles.js
   function boxOf(comp) {
-    var screen = getActiveScreen();
-    return screen && tree_exports.absBox(screen, comp.id) || { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+    var screen2 = getActiveScreen();
+    return screen2 && tree_exports.absBox(screen2, comp.id) || { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
   }
   function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
     if (tree_exports.isSlotFrame(comp)) return { resizable: false, rotatable: false, flippable: false, lockable: true };
-    var screen = getActiveScreen();
-    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    var screen2 = getActiveScreen();
+    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
     var caps;
     if (comp.type === "@frame" || comp.type === "@template") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
     else {
@@ -4469,24 +4491,24 @@
   function updateComponentBox(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    var screen = getActiveScreen();
-    var css2 = nodeCss(comp, screen ? tree_exports.parentOf(screen, comp.id) : null);
+    var screen2 = getActiveScreen();
+    var css2 = nodeCss(comp, screen2 ? tree_exports.parentOf(screen2, comp.id) : null);
     if (!isNodeVisible(comp.id)) css2.display = "none";
     el.css(css2);
     if (comp.type === "@template") {
       var template = findTemplate(comp.templateId);
       if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner"), template, comp);
     }
-    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
-    if (screen && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen, comp.id).some(layout_exports.hasAutoLayout))) {
-      readbackLayout(screen);
+    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+    if (screen2 && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen2, comp.id).some(layout_exports.hasAutoLayout))) {
+      readbackLayout(screen2);
     }
     syncSelectionHandles();
   }
   function syncSelectionHandles() {
     if (!state.selectionHandlesEl || state.selectedIds.length !== 1) return;
-    var screen = getActiveScreen();
-    var sel = screen && tree_exports.find(screen, state.selectedIds[0]);
+    var screen2 = getActiveScreen();
+    var sel = screen2 && tree_exports.find(screen2, state.selectedIds[0]);
     if (!sel) return;
     if (layout_exports.hasAutoLayout(sel)) {
       state.selectionHandlesEl.find(".nexa-layout-band").remove();
@@ -4505,16 +4527,16 @@
     handle.get(0).addEventListener("mousedown", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      var screen = getActiveScreen();
+      var screen2 = getActiveScreen();
       var minSize = 20;
       var start = { x: e.clientX, y: e.clientY };
       var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
       var origKids = comp.type === "@frame" ? snapshotBoxes(comp) : null;
-      var before = screen ? treeSnapshot(screen) : null;
-      var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
+      var before = screen2 ? treeSnapshot(screen2) : null;
+      var inGroup = screen2 && tree_exports.ancestors(screen2, comp.id).some(function(a) {
         return a.type === "@group";
       });
-      var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+      var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
       var layoutAware = comp.type === "@frame" || layout_exports.hasAutoLayout(parent);
       if (layoutAware) {
         var axisW = /[ew]/.test(handleName), axisH = /[ns]/.test(handleName);
@@ -4548,25 +4570,25 @@
           nh = Math.max(minSize, orig.h - dy);
           ny = orig.y + (orig.h - nh);
         }
-        if (screen && screen.snap) {
-          nx = snap(nx, screen.gridSize);
-          ny = snap(ny, screen.gridSize);
-          nw = snap(nw, screen.gridSize);
-          nh = snap(nh, screen.gridSize);
+        if (screen2 && screen2.snap) {
+          nx = snap(nx, screen2.gridSize);
+          ny = snap(ny, screen2.gridSize);
+          nw = snap(nw, screen2.gridSize);
+          nh = snap(nh, screen2.gridSize);
         }
-        var parent2 = screen ? tree_exports.parentOf(screen, comp.id) : null;
+        var parent2 = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
         var container = parent2;
         while (container && container.type === "@group") {
-          container = tree_exports.parentOf(screen, container.id);
+          container = tree_exports.parentOf(screen2, container.id);
         }
         var maxW, maxH;
         if (container && !tree_exports.onScreen(comp)) {
           var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
-          maxW = isz ? isz.w : container.w != null ? container.w : container.width || (screen ? screen.width : 1280);
-          maxH = isz ? isz.h : container.h != null ? container.h : container.height || (screen ? screen.height : 800);
+          maxW = isz ? isz.w : container.w != null ? container.w : container.width || (screen2 ? screen2.width : 1280);
+          maxH = isz ? isz.h : container.h != null ? container.h : container.height || (screen2 ? screen2.height : 800);
         } else {
-          maxW = screen ? screen.width : 1280;
-          maxH = screen ? screen.height : 800;
+          maxW = screen2 ? screen2.width : 1280;
+          maxH = screen2 ? screen2.height : 800;
         }
         if (handleName.indexOf("w") !== -1 && nx < 0) {
           nw = Math.max(minSize, nw + nx);
@@ -4587,7 +4609,7 @@
         updateComponentBox(comp);
         if (origKids) {
           Object.keys(origKids).forEach(function(id2) {
-            var n = tree_exports.find(screen, id2);
+            var n = tree_exports.find(screen2, id2);
             if (n) {
               n.x = origKids[id2].x;
               n.y = origKids[id2].y;
@@ -4596,7 +4618,7 @@
             }
           });
           constrainFrameChildren(comp, orig, origKids).forEach(function(id2) {
-            var n = tree_exports.find(screen, id2);
+            var n = tree_exports.find(screen2, id2);
             if (n) updateComponentBox(n);
           });
         }
@@ -4606,20 +4628,20 @@
         document.removeEventListener("mouseup", onUp);
         if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
           if (layoutAware) {
-            readbackLayout(screen);
-            tree_exports.refitGroupsUp(screen, comp.id);
-            pushTreeChange(screen, before);
+            readbackLayout(screen2);
+            tree_exports.refitGroupsUp(screen2, comp.id);
+            pushTreeChange(screen2, before);
             renderActiveScreen();
             selectOnly(comp.id);
           } else if (inGroup) {
-            tree_exports.refitGroupsUp(screen, comp.id);
-            pushTreeChange(screen, before);
+            tree_exports.refitGroupsUp(screen2, comp.id);
+            pushTreeChange(screen2, before);
             renderActiveScreen();
             selectOnly(comp.id);
           } else {
             pushHistory({
               t: "resize",
-              screenId: screen ? screen.id : "",
+              screenId: screen2 ? screen2.id : "",
               id: comp.id,
               from: orig,
               to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
@@ -4636,7 +4658,7 @@
     handle.get(0).addEventListener("mousedown", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      var screen = getActiveScreen();
+      var screen2 = getActiveScreen();
       var origRotation = comp.rotation || 0;
       var artboardOffset = state.artboardEl.offset();
       var b = boxOf(comp);
@@ -4654,7 +4676,7 @@
         document.removeEventListener("mousemove", onMove2);
         document.removeEventListener("mouseup", onUp);
         if (comp.rotation !== origRotation) {
-          pushHistory({ t: "rotate", screenId: screen ? screen.id : "", id: comp.id, from: origRotation, to: comp.rotation });
+          pushHistory({ t: "rotate", screenId: screen2 ? screen2.id : "", id: comp.id, from: origRotation, to: comp.rotation });
           markDirty();
         }
       }
@@ -4664,8 +4686,8 @@
   }
   function renderLayoutOverlay(comp, box2) {
     if (!layout_exports.hasAutoLayout(comp)) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var l = layout_exports.layoutOf(comp), bw = Number(layout_exports.styleOf(comp).strokeWidth) > 0 && layout_exports.styleOf(comp).stroke ? Number(layout_exports.styleOf(comp).strokeWidth) : 0;
     var band = function(x, y, w, h, cls) {
       if (w <= 0 || h <= 0) return;
@@ -4689,7 +4711,7 @@
     var kids2 = tree_exports.kids(comp).filter(function(c) {
       return layout_exports.isInFlow(c, comp);
     }).map(function(c) {
-      var b2 = tree_exports.absBox(screen, c.id);
+      var b2 = tree_exports.absBox(screen2, c.id);
       return { x: b2.x - box2.x, y: b2.y - box2.y, w: b2.w, h: b2.h };
     });
     for (var i2 = 1; i2 < kids2.length; i2++) {
@@ -28384,7 +28406,7 @@
   function renderEventsPanel() {
     if (!state.eventsPane) return;
     state.eventsPane.empty();
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     function chip(container, label, makeNode, compId, nodeType, disabled, disabledReason) {
       var meta2 = getLogicNodeMeta(nodeType);
       var isDisabled = Boolean(disabled);
@@ -28517,6 +28539,9 @@
         var ep = activeFl && activeFl.endpoint || "/";
         return { type: "route-trigger", path: ep, cookies: "", includeDevice: true };
       }, "", "route-trigger");
+      chip(state.eventsPane, "Route Not Found", function() {
+        return { type: "route-not-found", cookies: "", includeDevice: true };
+      }, "", "route-not-found");
       chip(state.eventsPane, "Render Screen", function() {
         return { type: "render-screen", screenId: state.screens[0] && state.screens[0].id || "", forwardPayload: true };
       }, "", "render-screen");
@@ -28548,6 +28573,9 @@
       chip(state.eventsPane, "Route Trigger", function() {
         return { type: "route-trigger" };
       }, "", "route-trigger", true, "Route Trigger is only available in Flow Logic.");
+      chip(state.eventsPane, "Route Not Found", function() {
+        return { type: "route-not-found" };
+      }, "", "route-not-found", true, "Route Not Found is only available in Flow Logic.");
       chip(state.eventsPane, "Render Screen", function() {
         return { type: "render-screen" };
       }, "", "render-screen", true, "Render Screen is only used in Flow Logic.");
@@ -28592,8 +28620,8 @@
     chip(state.eventsPane, "On Variable Change", function() {
       return { type: "on-variable-change", scope: "", name: "" };
     }, "", "on-variable-change");
-    if (screen) {
-      scope_exports.allDeclarations(screen, tree_exports.walk, getApp()).forEach(function(d) {
+    if (screen2) {
+      scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()).forEach(function(d) {
         if (!scope_exports.NAME_RE.test(d.variable.name || "")) return;
         var label = (d.scopeId ? d.scopeName : state.editingMode === "template" ? "template" : "screen") + "." + d.variable.name;
         chip(state.eventsPane, "Set " + label, function() {
@@ -28653,7 +28681,7 @@
       }
       return false;
     }
-    var overlays = screen ? tree_exports.allNodes(screen).filter(function(n) {
+    var overlays = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return !!layout_exports.overlayOf(n);
     }) : [];
     sectionHeader(state.eventsPane, "Overlays (dialogs, drawers)");
@@ -28677,7 +28705,7 @@
     }, "", "overlay-close");
     if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties \u2192 Overlay \u2192 Show as.").appendTo(state.eventsPane);
     sectionHeader(state.eventsPane, "Teleport");
-    var teleporting = screen ? tree_exports.allNodes(screen).filter(function(n) {
+    var teleporting = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return typeof n.teleport === "string" && n.teleport;
     }) : [];
     teleporting.forEach(function(n) {
@@ -28692,7 +28720,7 @@
     chip(state.eventsPane, "Teleport a node (choose)", function() {
       return { type: "teleport", node: "", to: "@page", toSource: "static" };
     }, "", "teleport");
-    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+    var frames = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return n.type === "@frame";
     }) : [];
     if (frames.length) {
@@ -28709,7 +28737,7 @@
         }
       });
     }
-    var eventComps = screen ? tree_exports.allNodes(screen).filter(function(n) {
+    var eventComps = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
     }) : [];
     if (eventComps.length) {
@@ -28878,26 +28906,26 @@
   function breakpointList() {
     return breakpointsOf(app()).slice().reverse();
   }
-  function designId(screen) {
-    return designBreakpoint(app(), screen || getActiveScreen());
+  function designId(screen2) {
+    return designBreakpoint(app(), screen2 || getActiveScreen());
   }
   function activeBreakpointId() {
     return session ? session.id : designId();
   }
-  function isDesign(id2, screen) {
-    return !id2 || id2 === designId(screen);
+  function isDesign(id2, screen2) {
+    return !id2 || id2 === designId(screen2);
   }
   function rangeOf2(id2) {
     return rangeOf(app(), id2);
   }
-  function previewWidth(screen) {
-    return session && screen && session.screenId === screen.id ? session.preview.w : screen ? screen.width : 0;
+  function previewWidth(screen2) {
+    return session && screen2 && session.screenId === screen2.id ? session.preview.w : screen2 ? screen2.width : 0;
   }
-  function bandPreviewWidth(screen, id2) {
-    return isDesign(id2, screen) ? screen.width : previewWidthOf(app(), id2);
+  function bandPreviewWidth(screen2, id2) {
+    return isDesign(id2, screen2) ? screen2.width : previewWidthOf(app(), id2);
   }
-  function chainFor2(screen, id2) {
-    return chainFor(app(), screen, id2);
+  function chainFor2(screen2, id2) {
+    return chainFor(app(), screen2, id2);
   }
   function each(list, parent, fn) {
     (list || []).forEach(function(n) {
@@ -28933,21 +28961,21 @@
   function tidy(n) {
     if (n.overrides && !Object.keys(n.overrides).length) delete n.overrides;
   }
-  function enterBreakpoint(screen, id2) {
+  function enterBreakpoint(screen2, id2) {
     leaveBreakpoint();
-    if (!screen || !id2 || isDesign(id2, screen) || state.editingMode === "template") return;
+    if (!screen2 || !id2 || isDesign(id2, screen2) || state.editingMode === "template") return;
     if (!breakpointsOf(app()).some(function(b) {
       return b.id === id2;
     })) return;
-    migrateOverrideKeys(screen.components);
+    migrateOverrideKeys(screen2.components);
     session = {
-      screenId: screen.id,
+      screenId: screen2.id,
       id: id2,
-      chain: chainFor2(screen, id2),
-      design: { w: screen.width, h: screen.height },
-      preview: { w: bandPreviewWidth(screen, id2), h: screen.height }
+      chain: chainFor2(screen2, id2),
+      design: { w: screen2.width, h: screen2.height },
+      preview: { w: bandPreviewWidth(screen2, id2), h: screen2.height }
     };
-    each(screen.components, null, function(n, p) {
+    each(screen2.components, null, function(n, p) {
       setBase(n, baseOf(n));
       applyOverrides(n, n.__bpBase, session.chain);
       toPreview(n, p);
@@ -28956,10 +28984,10 @@
   }
   function leaveBreakpoint() {
     if (!session) return;
-    var screen = screenOf(session.screenId);
-    if (screen) {
+    var screen2 = screenOf(session.screenId);
+    if (screen2) {
       syncBreakpoint();
-      each(screen.components, null, function(n) {
+      each(screen2.components, null, function(n) {
         if (n.__bpBase) {
           applyOverrides(n, n.__bpBase, []);
           delete n.__bpBase;
@@ -28971,10 +28999,10 @@
   }
   function syncBreakpoint() {
     if (!session) return;
-    var screen = screenOf(session.screenId);
-    if (!screen) return;
+    var screen2 = screenOf(session.screenId);
+    if (!screen2) return;
     var inheritChain = session.chain.slice(0, -1);
-    each(screen.components, null, function(n, p) {
+    each(screen2.components, null, function(n, p) {
       var live = baseOf(n);
       var d = toDesign(n, p);
       live.x = d.x;
@@ -29042,34 +29070,34 @@
     applyOverrides(node, node.__bpBase || baseOf(node), session.chain);
     toPreview(node, parent);
   }
-  function checkSession(screen) {
-    if (session && (!screen || screen.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
+  function checkSession(screen2) {
+    if (session && (!screen2 || screen2.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
   }
   function baseFor(node) {
     return node.__bpBase || baseOf(node);
   }
-  function resolvedAt(node, id2, screen) {
-    screen = screen || getActiveScreen();
-    var copy = resolveNode(node, isDesign(id2, screen) ? [] : chainFor2(screen, id2), baseFor(node));
+  function resolvedAt(node, id2, screen2) {
+    screen2 = screen2 || getActiveScreen();
+    var copy = resolveNode(node, isDesign(id2, screen2) ? [] : chainFor2(screen2, id2), baseFor(node));
     copy.children = [];
     return copy;
   }
   function editAt(node, parent, id2, fn) {
-    var screen = getActiveScreen();
-    if (!node || !screen) return;
+    var screen2 = getActiveScreen();
+    if (!node || !screen2) return;
     if (parent && !parent.type) parent = null;
-    if (isDesign(id2, screen)) {
+    if (isDesign(id2, screen2)) {
       if (!session) {
         fn(node);
         return;
       }
-      var d = resolvedAt(node, id2, screen);
+      var d = resolvedAt(node, id2, screen2);
       fn(d);
       setBase(node, baseOf(d));
     } else {
-      var chain = chainFor2(screen, id2);
+      var chain = chainFor2(screen2, id2);
       var inherited = resolveNode(node, chain.slice(0, -1), baseFor(node));
-      var current2 = resolvedAt(node, id2, screen);
+      var current2 = resolvedAt(node, id2, screen2);
       fn(current2);
       var diff = overrideDiff(inherited, current2);
       node.overrides = node.overrides || {};
@@ -29084,15 +29112,15 @@
     }
   }
   function responsiveHost(node, parent, view, write, canVary, commitFn) {
-    var screen = getActiveScreen();
-    if (!screen || state.editingMode === "template" || !node || !isOnScreen(screen, node)) return null;
+    var screen2 = getActiveScreen();
+    if (!screen2 || state.editingMode === "template" || !node || !isOnScreen(screen2, node)) return null;
     var at = {}, inh = {};
     function viewAt(id2) {
-      if (!(id2 in at)) at[id2] = view(resolvedAt(node, id2, screen));
+      if (!(id2 in at)) at[id2] = view(resolvedAt(node, id2, screen2));
       return at[id2];
     }
     function inheritedAt(id2) {
-      if (!(id2 in inh)) inh[id2] = view(resolveNode(node, chainFor2(screen, id2).slice(0, -1), baseFor(node)));
+      if (!(id2 in inh)) inh[id2] = view(resolveNode(node, chainFor2(screen2, id2).slice(0, -1), baseFor(node)));
       return inh[id2];
     }
     function forget() {
@@ -29102,7 +29130,7 @@
     return {
       begin: forget,
       list: function() {
-        var d = designId(screen);
+        var d = designId(screen2);
         return breakpointList().map(function(b) {
           return { id: b.id, name: b.name, design: b.id === d, range: rangeOf2(b.id) };
         });
@@ -29118,7 +29146,7 @@
       },
       /** Whether band `id` changes `key` (from what it inherits). */
       has: function(key, id2) {
-        if (isDesign(id2, screen)) return false;
+        if (isDesign(id2, screen2)) return false;
         return JSON.stringify(viewAt(id2)[key]) !== JSON.stringify(inheritedAt(id2)[key]);
       },
       setAt: function(key, id2, v) {
@@ -29131,7 +29159,7 @@
         forget();
       },
       clearAt: function(key, id2) {
-        if (isDesign(id2, screen)) return;
+        if (isDesign(id2, screen2)) return;
         var inherited = inheritedAt(id2)[key];
         forget();
         commitFn(function() {
@@ -29143,9 +29171,9 @@
       }
     };
   }
-  function isOnScreen(screen, node) {
+  function isOnScreen(screen2, node) {
     var found = false;
-    each(screen.components, null, function(n) {
+    each(screen2.components, null, function(n) {
       if (n === node) found = true;
     });
     return found;
@@ -29168,12 +29196,12 @@
       // what the selected node can bind to as {name}: its containers' variables,
       // the screen's (a template: its params and variables), nearest first
       listVariables: function() {
-        var screen = getActiveScreen();
+        var screen2 = getActiveScreen();
         var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
-        if (!screen || !id2) return [];
-        var list = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
+        if (!screen2 || !id2) return [];
+        var list = scope_exports.visibleVariables(screen2, tree_exports.ancestors(screen2, id2), state.editingMode === "template", tree_exports.find(screen2, id2), getApp());
         var route = { id: "$route", name: "the URL", kind: "route" };
-        ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
+        ((screen2.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
           list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
         });
         list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
@@ -29198,18 +29226,18 @@
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     comp.props = comp.props || {};
     var from = comp.props[key];
     comp.props[key] = value;
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
-    if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
+    if (screen2 && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen2.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
       last2.to = clone5(value);
       last2.at = now;
       state.redoStack = [];
-    } else if (screen) {
-      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone5(from), to: clone5(value), at: now });
+    } else if (screen2) {
+      pushHistory({ t: "props", screenId: screen2.id, id: comp.id, key, from: clone5(from), to: clone5(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -29218,10 +29246,10 @@
     if (!typeDef || !typeDef.nexa || !window.NexaKit) return false;
     ensureKitHost();
     comp.props = comp.props || {};
-    var screen = getActiveScreen();
-    var responsive = screen ? responsiveHost(
+    var screen2 = getActiveScreen();
+    var responsive = screen2 ? responsiveHost(
       comp,
-      tree_exports.parentOf(screen, comp.id),
+      tree_exports.parentOf(screen2, comp.id),
       function(n) {
         return n.props || {};
       },
@@ -29234,9 +29262,9 @@
         return key !== "__previewState" && key !== "__fallback";
       },
       function(fn) {
-        var before = treeSnapshot(screen);
+        var before = treeSnapshot(screen2);
         fn();
-        pushTreeChange(screen, before);
+        pushTreeChange(screen2, before);
         markDirty();
         refreshComponentRender(comp);
       }
@@ -29646,12 +29674,12 @@
     else delete node.layoutChild;
   }
   function commit(node, fn, rebuild) {
-    var screen = getActiveScreen();
-    if (!screen || isNodeLocked(node.id)) return;
-    var before = treeSnapshot(screen);
+    var screen2 = getActiveScreen();
+    if (!screen2 || isNodeLocked(node.id)) return;
+    var before = treeSnapshot(screen2);
     fn();
-    tree_exports.refitGroupsUp(screen, node.id);
-    pushTreeChange(screen, before);
+    tree_exports.refitGroupsUp(screen2, node.id);
+    pushTreeChange(screen2, before);
     markDirty();
     if (rebuild) {
       renderActiveScreen();
@@ -29667,8 +29695,8 @@
       Object.assign(current2, view());
       handle.update();
     };
-    var screen = getActiveScreen();
-    var responsive = r && screen ? responsiveHost(
+    var screen2 = getActiveScreen();
+    var responsive = r && screen2 ? responsiveHost(
       r.node,
       r.parent,
       r.view,
@@ -29894,8 +29922,8 @@
       if (!v) delete node.dock.stretch;
     }
   }
-  function changePlace(screen, node, parent, v) {
-    var abs = tree_exports.absBox(screen, node.id);
+  function changePlace(screen2, node, parent, v) {
+    var abs = tree_exports.absBox(screen2, node.id);
     var lc = Object.assign({}, node.layoutChild || {});
     delete lc.absolute;
     delete node.place;
@@ -29904,15 +29932,15 @@
     if (Object.keys(lc).length) node.layoutChild = lc;
     else delete node.layoutChild;
     if (v === "screen") {
-      node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen.width - (node.w || 0))));
-      node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen.height - (node.h || 0))));
+      node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen2.width - (node.w || 0))));
+      node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen2.height - (node.h || 0))));
     } else if (v === "free") {
-      var o = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      var o = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
       var nx = Math.round(abs.x - o.x);
       var ny = Math.round(abs.y - o.y);
       if (parent) {
-        var pw = parent.w != null ? parent.w : parent.width || screen.width;
-        var ph = parent.h != null ? parent.h : parent.height || screen.height;
+        var pw = parent.w != null ? parent.w : parent.width || screen2.width;
+        var ph = parent.h != null ? parent.h : parent.height || screen2.height;
         if (parent.type === "@frame" && typeof layout_exports.innerSize === "function") {
           var isz = layout_exports.innerSize(parent);
           pw = isz.w;
@@ -29921,12 +29949,12 @@
         node.x = Math.max(0, Math.min(nx, Math.max(0, pw - (node.w || 0))));
         node.y = Math.max(0, Math.min(ny, Math.max(0, ph - (node.h || 0))));
       } else {
-        node.x = Math.max(0, Math.min(nx, Math.max(0, screen.width - (node.w || 0))));
-        node.y = Math.max(0, Math.min(ny, Math.max(0, screen.height - (node.h || 0))));
+        node.x = Math.max(0, Math.min(nx, Math.max(0, screen2.width - (node.w || 0))));
+        node.y = Math.max(0, Math.min(ny, Math.max(0, screen2.height - (node.h || 0))));
       }
     } else if (v === "dock" && !node.dock) {
-      var ps = parent ? layout_exports.innerSize(parent) : { w: screen.width, h: screen.height };
-      var o2 = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+      var ps = parent ? layout_exports.innerSize(parent) : { w: screen2.width, h: screen2.height };
+      var o2 = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
       var cx = abs.x - o2.x + abs.w / 2, cy = abs.y - o2.y + abs.h / 2;
       var third = function(c, size) {
         return c < size / 3 ? "start" : c > size * 2 / 3 ? "end" : "center";
@@ -29938,7 +29966,7 @@
   function renderPositionInspector(container, node, parent) {
     if (!window.NexaKit || !lit() || layout_exports.inSlot(node) || layout_exports.overlayOf(node)) return false;
     var html = lit().html, nothing = lit().nothing;
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     var options = [];
     if (layout_exports.hasAutoLayout(parent)) options.push(PLACE_OPTIONS.flow);
     options.push(PLACE_OPTIONS.free);
@@ -29950,7 +29978,7 @@
         var p = o.p, bind = o.bind;
         var edge = p.place === "dock" && p.dockAt.x === "center" !== (p.dockAt.y === "center");
         var arrange = function(to) {
-          var sibs = (parent ? tree_exports.kids(parent) : screen.components).filter(function(s) {
+          var sibs = (parent ? tree_exports.kids(parent) : screen2.components).filter(function(s) {
             return s !== node;
           }).map(layout_exports.zOf);
           var z = to === "front" ? Math.max.apply(null, sibs.concat([0])) + 1 : Math.min.apply(null, sibs.concat([0])) - 1;
@@ -29985,7 +30013,7 @@
         if (key === "place") {
           if (v === layout_exports.placeOf(node, parent)) return;
           commit(node, function() {
-            changePlace(screen, node, parent, v);
+            changePlace(screen2, node, parent, v);
           }, true);
           return;
         }
@@ -30022,8 +30050,8 @@
   function renderInstanceInspector(container, comp, template) {
     if (!window.NexaKit || !lit() || !template) return false;
     var html = lit().html;
-    var screen = getActiveScreen();
-    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    var screen2 = getActiveScreen();
+    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
     var inFlow = layout_exports.isInFlow(comp, parent && parent.type ? parent : null);
     var meta2 = Object.assign({}, INSTANCE_META, {
       inspector: function(o) {
@@ -30321,8 +30349,8 @@
         var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
         if (next.length || isApp) owner.variables = next;
         else delete owner.variables;
-        var screen = getActiveScreen();
-        if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
+        var screen2 = getActiveScreen();
+        if (!isSurface && screen2) pushHistory({ t: "node", screenId: screen2.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
         markDirty();
         current2.variables = view().variables;
         handle.update();
@@ -30334,9 +30362,9 @@
 
   // src/sidebar/properties-panel.js
   function renderLayoutChildSection(comp) {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var parent = tree_exports.parentOf(screen, comp.id);
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    var parent = tree_exports.parentOf(screen2, comp.id);
     var host = function() {
       return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
     };
@@ -30598,25 +30626,25 @@
       input.on("change", function() {
         var val = parseFloat(input.val()) || 0;
         if (field === "x" || field === "y") {
-          var screen = getActiveScreen();
-          var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+          var screen2 = getActiveScreen();
+          var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
           var container = parent;
           while (container && container.type === "@group") {
-            container = tree_exports.parentOf(screen, container.id);
+            container = tree_exports.parentOf(screen2, container.id);
           }
           var maxBound, minBound = 0;
           var compSize = field === "x" ? comp.w || 0 : comp.h || 0;
           if (container && !tree_exports.onScreen(comp)) {
             var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
             var dim = isz ? field === "x" ? isz.w : isz.h : field === "x" ? container.w || 0 : container.h || 0;
-            var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-            var contOrigin = tree_exports.contentOrigin(screen, container.id);
+            var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+            var contOrigin = tree_exports.contentOrigin(screen2, container.id);
             var rel = field === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
             minBound = -rel;
             maxBound = Math.max(minBound, dim - rel - compSize);
           } else {
-            var screenDim = screen ? field === "x" ? screen.width : screen.height : field === "x" ? 1280 : 800;
-            var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+            var screenDim = screen2 ? field === "x" ? screen2.width : screen2.height : field === "x" ? 1280 : 800;
+            var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
             var rootRel = field === "x" ? rootOrigin.x : rootOrigin.y;
             minBound = -rootRel;
             maxBound = Math.max(minBound, screenDim - rootRel - compSize);
@@ -30662,8 +30690,8 @@
     var input = window.$("<input>", { type: "text", placeholder: comp.type }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.name || "").appendTo(row);
     input.on("change", function() {
       var next = String(input.val()).trim();
-      var screen = getActiveScreen();
-      pushHistory({ t: "node", screenId: screen.id, id: comp.id, key: "name", from: comp.name, to: next || void 0 });
+      var screen2 = getActiveScreen();
+      pushHistory({ t: "node", screenId: screen2.id, id: comp.id, key: "name", from: comp.name, to: next || void 0 });
       if (next) comp.name = next;
       else delete comp.name;
       markDirty();
@@ -30678,12 +30706,12 @@
     if (hierarchyRefresher) hierarchyRefresher();
   }
   function afterGeometryEdit(comp) {
-    var screen = getActiveScreen();
-    var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
+    var screen2 = getActiveScreen();
+    var inGroup = screen2 && tree_exports.ancestors(screen2, comp.id).some(function(a) {
       return a.type === "@group";
     });
     if (inGroup) {
-      tree_exports.refitGroupsUp(screen, comp.id);
+      tree_exports.refitGroupsUp(screen2, comp.id);
       renderActiveScreen();
       selectOnly(comp.id);
     } else {
@@ -30691,11 +30719,11 @@
     }
   }
   function renderContainerProperties(comp) {
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     var pane = state.propertiesPane;
     var isFrame = comp.type === "@frame";
     if (tree_exports.isSlotFrame(comp)) {
-      var host = screen ? tree_exports.parentOf(screen, comp.id) : null;
+      var host = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
       var hostDef = host && window.NEXA.getComponent(host.type);
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text("Slot \u201C" + (comp.slotLabel || comp.inSlot) + "\u201D of " + (host && host.name || hostDef && hostDef.label || "its component") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
       if (comp.slotUnused) window.$("<div>").css({ "font-size": "11px", color: "#b35c00", "margin-bottom": "8px" }).text("Not used now: its slot is gone (a tab removed). Its content is kept; the slot coming back shows it again.").appendTo(pane);
@@ -30726,24 +30754,24 @@
       input.on("change", function() {
         var val = parseFloat(input.val()) || 0;
         var fld = pair2[0];
-        var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+        var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
         var container = parent;
         while (container && container.type === "@group") {
-          container = tree_exports.parentOf(screen, container.id);
+          container = tree_exports.parentOf(screen2, container.id);
         }
         var maxBound, minBound = 0;
         var compSize = fld === "x" ? comp.w || 0 : comp.h || 0;
         if (container && !tree_exports.onScreen(comp)) {
           var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
           var dim = isz ? fld === "x" ? isz.w : isz.h : fld === "x" ? container.w || 0 : container.h || 0;
-          var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
-          var contOrigin = tree_exports.contentOrigin(screen, container.id);
+          var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+          var contOrigin = tree_exports.contentOrigin(screen2, container.id);
           var rel = fld === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
           minBound = -rel;
           maxBound = Math.max(minBound, dim - rel - compSize);
         } else {
-          var screenDim = screen ? fld === "x" ? screen.width : screen.height : fld === "x" ? 1280 : 800;
-          var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+          var screenDim = screen2 ? fld === "x" ? screen2.width : screen2.height : fld === "x" ? 1280 : 800;
+          var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
           var rootRel = fld === "x" ? rootOrigin.x : rootOrigin.y;
           minBound = -rootRel;
           maxBound = Math.max(minBound, screenDim - rootRel - compSize);
@@ -30756,8 +30784,8 @@
       });
     });
     window.$("<div>").css({ "font-size": "11px", color: "#888" }).text("Size " + Math.round(comp.w) + " \xD7 " + Math.round(comp.h) + " (follows the children)").appendTo(pane);
-    if (screen && tree_exports.parentOf(screen, comp.id)) {
-      window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Inside: " + (tree_exports.parentOf(screen, comp.id).name || tree_exports.parentOf(screen, comp.id).type)).appendTo(pane);
+    if (screen2 && tree_exports.parentOf(screen2, comp.id)) {
+      window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Inside: " + (tree_exports.parentOf(screen2, comp.id).name || tree_exports.parentOf(screen2, comp.id).type)).appendTo(pane);
     }
   }
 
@@ -30773,27 +30801,27 @@
     return "M " + p1.x + " " + p1.y + " C " + cp1x + " " + p1.y + " " + cp2x + " " + p2.y + " " + p2.x + " " + p2.y;
   }
   function removeLogicWire(id2) {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var wire = screen.logic.wires.find(function(w) {
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    var wire = screen2.logic.wires.find(function(w) {
       return w.id === id2;
     });
     if (!wire) return;
-    screen.logic.wires = screen.logic.wires.filter(function(w) {
+    screen2.logic.wires = screen2.logic.wires.filter(function(w) {
       return w.id !== id2;
     });
-    pushHistory({ t: "deleteLogicWire", screenId: screen.id, wire });
+    pushHistory({ t: "deleteLogicWire", screenId: screen2.id, wire });
     renderLogicWires();
     markDirty();
   }
   function renderLogicWires() {
     if (!state.logicSvgEl) return;
     state.logicSvgEl.empty();
-    var screen = getActiveScreen();
-    if (!screen) return;
-    (screen.logic.wires || []).forEach(function(w) {
-      var fromNode = findLogicNode(screen, w.from);
-      var toNode = findLogicNode(screen, w.to);
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    (screen2.logic.wires || []).forEach(function(w) {
+      var fromNode = findLogicNode(screen2, w.from);
+      var toNode = findLogicNode(screen2, w.to);
       if (!fromNode || !toNode) return;
       var p1 = logicNodePortPoint(fromNode, "output");
       var p2 = logicNodePortPoint(toNode, "input");
@@ -30817,9 +30845,9 @@
     var dx = a.x - b.x, dy = a.y - b.y;
     return dx * dx + dy * dy;
   }
-  function findNearestInputPort(screen, excludeNodeId, localX, localY) {
+  function findNearestInputPort(screen2, excludeNodeId, localX, localY) {
     var best = null, bestDist = LOGIC_PORT_HIT_RADIUS * LOGIC_PORT_HIT_RADIUS;
-    (screen.logic.nodes || []).forEach(function(n) {
+    (screen2.logic.nodes || []).forEach(function(n) {
       if (n.id === excludeNodeId) return;
       var kind = LOGIC_NODE_KINDS[n.type] || {};
       if (!kind.hasInput) return;
@@ -30830,6 +30858,35 @@
       }
     });
     return best;
+  }
+  function getReachableRenderScreens(startNodeId, nodes, wires) {
+    var reachable = [];
+    var visited = {};
+    var nodeMap = {};
+    (nodes || []).forEach(function(n) {
+      if (n && n.id) nodeMap[n.id] = n;
+    });
+    function dfs(currId) {
+      if (visited[currId]) return;
+      visited[currId] = true;
+      (wires || []).forEach(function(w) {
+        if (w.from === currId) {
+          var target = nodeMap[w.to];
+          if (target) {
+            if (target.type === "render-screen") {
+              if (reachable.indexOf(target.id) === -1) {
+                reachable.push(target.id);
+              }
+            }
+            if (target.type !== "render-screen") {
+              dfs(target.id);
+            }
+          }
+        }
+      });
+    }
+    dfs(startNodeId);
+    return reachable;
   }
   function wireLogicOutputPort(outDot, node) {
     outDot.get(0).addEventListener("mousedown", function(e) {
@@ -30845,8 +30902,8 @@
       function onMove2(ev) {
         var localX = (ev.clientX - artboardOffset.left) / state.logicZoomLevel;
         var localY = (ev.clientY - artboardOffset.top) / state.logicZoomLevel;
-        var screen = getActiveScreen();
-        hovered = findNearestInputPort(screen, node.id, localX, localY);
+        var screen2 = getActiveScreen();
+        hovered = findNearestInputPort(screen2, node.id, localX, localY);
         var end = hovered ? logicNodePortPoint(hovered, "input") : { x: localX, y: localY };
         tempLine.attr({ d: logicWirePath(start, end) }).css("stroke", hovered ? "#4caf50" : "#2196f3");
       }
@@ -30855,14 +30912,33 @@
         document.removeEventListener("mouseup", onUp);
         tempLine.remove();
         if (!hovered) return;
-        var screen = getActiveScreen();
-        var alreadyWired = screen.logic.wires.some(function(w) {
+        var screen2 = getActiveScreen();
+        var alreadyWired = screen2.logic.wires.some(function(w) {
           return w.from === node.id && w.to === hovered.id;
         });
         if (alreadyWired) return;
+        if (state.editingMode === "flow") {
+          var testWires = (screen2.logic.wires || []).concat([{ from: node.id, to: hovered.id }]);
+          var triggerNodes = (screen2.logic.nodes || []).filter(function(n) {
+            return n.type === "route-trigger";
+          });
+          var hasFanOutConflict = false;
+          triggerNodes.forEach(function(trig) {
+            var reachable = getReachableRenderScreens(trig.id, screen2.logic.nodes, testWires);
+            if (reachable.length > 1) {
+              hasFanOutConflict = true;
+            }
+          });
+          if (hasFanOutConflict) {
+            if (window.RED && window.RED.notify) {
+              window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes. Ambiguous entry screen: which screen should be rendered first?", "error");
+            }
+            return;
+          }
+        }
         var wire = { id: genId(), from: node.id, to: hovered.id };
-        screen.logic.wires.push(wire);
-        pushHistory({ t: "addLogicWire", screenId: screen.id, wire });
+        screen2.logic.wires.push(wire);
+        pushHistory({ t: "addLogicWire", screenId: screen2.id, wire });
         renderLogicWires();
         markDirty();
       }
@@ -31250,8 +31326,8 @@
   var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
   function openSetVariableNodeEditor(node) {
     var type = node.type in TITLES ? node.type : "set-variable";
-    var screen = getActiveScreen();
-    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
+    var screen2 = getActiveScreen();
+    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
     var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
     var draft = { scope: node.scope || "", name: node.name || "", op: node.op || "set", valueSource: node.valueSource || "payload", value: node.value, msgPath: node.msgPath || "payload.data", target: node.target || "payload" };
     var nameSel;
@@ -31522,8 +31598,8 @@
     return (f.name || "Frame") + " #" + f.id.slice(-4) + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children";
   }
   function openLayoutNodeEditor(node) {
-    var screen = getActiveScreen();
-    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+    var screen2 = getActiveScreen();
+    var frames = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return n.type === "@frame";
     }) : [];
     var chosen = node.container || "";
@@ -31856,8 +31932,8 @@
   }
 
   // src/dialogs/overlay-dialog.js
-  function overlaysOf(screen) {
-    return screen ? tree_exports.allNodes(screen).filter(function(n) {
+  function overlaysOf(screen2) {
+    return screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
       return !!layout_exports.overlayOf(n);
     }) : [];
   }
@@ -31866,8 +31942,8 @@
     return (n.name || (o && o.kind === "drawer" ? "Drawer" : "Dialog")) + " #" + n.id.slice(-4);
   }
   function openOverlayNodeEditor(node) {
-    var screen = getActiveScreen();
-    var list = overlaysOf(screen);
+    var screen2 = getActiveScreen();
+    var list = overlaysOf(screen2);
     var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
     var close = node.type === "overlay-close";
     window.RED.tray.show({
@@ -31932,15 +32008,15 @@
     return Object.keys(names).sort();
   }
   function teleportNodeLabel(node) {
-    var screen = getActiveScreen();
-    var n = node.node && screen ? tree_exports.find(screen, node.node) : null;
+    var screen2 = getActiveScreen();
+    var n = node.node && screen2 ? tree_exports.find(screen2, node.node) : null;
     var who = n ? nodeName(n) : node.node ? "(missing node)" : "?";
     if (node.toSource === "payload") return "Teleport " + who + " \u2192 msg.payload";
     return node.to ? "Teleport " + who + " \u2192 " + (node.to === "@page" ? "page" : node.to) : "Send " + who + " home";
   }
   function openTeleportNodeEditor(node) {
-    var screen = getActiveScreen();
-    var all = screen ? tree_exports.allNodes(screen) : [];
+    var screen2 = getActiveScreen();
+    var all = screen2 ? tree_exports.allNodes(screen2) : [];
     var d = { node: node.node || "", to: node.to === void 0 ? "@page" : node.to, toSource: node.toSource || "static" };
     window.RED.tray.show({
       id: "nexa-logic-teleport-editor",
@@ -32175,6 +32251,56 @@
     });
   }
 
+  // src/dialogs/route-not-found-dialog.js
+  function openRouteNotFoundNodeEditor(node) {
+    var cookiesInput, includeDeviceCheck;
+    var flow = getActiveScreen();
+    var flowEp = flow && flow.endpoint || "/flow";
+    window.RED.tray.show({
+      id: "nexa-logic-route-not-found-editor",
+      title: "Configure Route Not Found (404)",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.cookies = (cookiesInput.val() || "").trim();
+            node.includeDevice = includeDeviceCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Triggered when an incoming route under this Flow does not match any valid screen (404 catch-all). Emits route path, query, selective cookies, and error payload.").appendTo(body);
+        var endpointBanner = window.$("<div>").css({
+          padding: "10px 12px",
+          background: "#fff1f2",
+          border: "1px solid #fecdd3",
+          "border-radius": "6px",
+          "margin-bottom": "14px",
+          "font-size": "12px",
+          color: "#9f1239"
+        }).appendTo(body);
+        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-exclamation-triangle" style="color: #e11d48;"></i> Flow Catch-All: <code>/nexa' + flowEp + "/*</code>").appendTo(endpointBanner);
+        window.$("<div>").css({ "font-size": "11px", color: "#881337" }).text("Connect this node's output to a Render Screen (e.g. custom 404 page) or navigation logic to handle unmatched routes gracefully.").appendTo(endpointBanner);
+        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
+        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
+      }
+    });
+  }
+
   // src/dialogs/render-screen-dialog.js
   function openRenderScreenNodeEditor(node) {
     var screenSelect, forwardPayloadCheck;
@@ -32335,6 +32461,9 @@
       var ep = activeFl && activeFl.endpoint || node.path || "/";
       return "Route Trigger (" + ep + ")";
     }
+    if (node.type === "route-not-found") {
+      return "Route Not Found (404)";
+    }
     if (node.type === "render-screen") {
       var rScreen = (state.screens || []).find(function(x) {
         return x.id === node.screenId;
@@ -32447,52 +32576,65 @@
     return Math.max(LOGIC_NODE_W, needed);
   }
   function addLogicNode(nodeData, x, y) {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     if (nodeData.type === "route-trigger") {
       if (state.editingMode !== "flow") {
         if (window.RED && window.RED.notify) window.RED.notify("Route Trigger can only be used in a Screen Flow.", "warning");
         return;
       }
-      var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function(n) {
+      var hasTrigger = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
         return n.type === "route-trigger";
       });
       if (hasTrigger) {
         if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Trigger node is allowed per flow.", "warning");
         return;
       }
-      nodeData.path = screen.endpoint || "/";
+      nodeData.path = screen2.endpoint || "/";
+    }
+    if (nodeData.type === "route-not-found") {
+      if (state.editingMode !== "flow") {
+        if (window.RED && window.RED.notify) window.RED.notify("Route Not Found can only be used in a Screen Flow.", "warning");
+        return;
+      }
+      var hasNotFound = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
+        return n.type === "route-not-found";
+      });
+      if (hasNotFound) {
+        if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Not Found node is allowed per flow.", "warning");
+        return;
+      }
     }
     var node = { id: genId(), x, y };
     for (var k in nodeData) node[k] = nodeData[k];
-    screen.logic.nodes.push(node);
-    pushHistory({ t: "addLogicNode", screenId: screen.id, node });
+    screen2.logic.nodes.push(node);
+    pushHistory({ t: "addLogicNode", screenId: screen2.id, node });
     renderLogicCanvas();
     markDirty();
   }
   function removeLogicNodes(ids) {
-    var screen = getActiveScreen();
-    if (!screen || !screen.logic) return;
+    var screen2 = getActiveScreen();
+    if (!screen2 || !screen2.logic) return;
     var toRemove = ids.map(function(id2) {
-      return findLogicNode(screen, id2);
+      return findLogicNode(screen2, id2);
     }).filter(Boolean);
     if (!toRemove.length) return;
     var removeIds = toRemove.map(function(n) {
       return n.id;
     });
     var events = toRemove.map(function(node) {
-      var touchingWires = screen.logic.wires.filter(function(w) {
+      var touchingWires = screen2.logic.wires.filter(function(w) {
         return w.from === node.id || w.to === node.id;
       });
-      return { t: "deleteLogicNode", screenId: screen.id, node, wires: touchingWires };
+      return { t: "deleteLogicNode", screenId: screen2.id, node, wires: touchingWires };
     });
-    screen.logic.nodes = screen.logic.nodes.filter(function(n) {
+    screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
       return removeIds.indexOf(n.id) === -1;
     });
-    screen.logic.wires = screen.logic.wires.filter(function(w) {
+    screen2.logic.wires = screen2.logic.wires.filter(function(w) {
       return removeIds.indexOf(w.from) === -1 && removeIds.indexOf(w.to) === -1;
     });
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen2.id, events });
     state.logicSelectedIds = state.logicSelectedIds.filter(function(id2) {
       return removeIds.indexOf(id2) === -1;
     });
@@ -32591,6 +32733,34 @@
       box2.attr("title", "Double-click to configure route trigger").on("dblclick", function(e) {
         e.stopPropagation();
         openRouteTriggerNodeEditor(node);
+      });
+      if (state.editingMode === "flow" && screen && screen.logic) {
+        var reachableScreens = getReachableRenderScreens(node.id, screen.logic.nodes, screen.logic.wires);
+        if (reachableScreens.length > 1) {
+          box2.css("border", "2px solid #ef4444");
+          window.$("<div>").css({
+            position: "absolute",
+            right: "-8px",
+            top: "-8px",
+            background: "#ef4444",
+            color: "#fff",
+            "border-radius": "50%",
+            width: "18px",
+            height: "18px",
+            "font-size": "11px",
+            "font-weight": "bold",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            cursor: "help"
+          }).text("!").attr("title", "Fan-out error: Route Trigger branches to " + reachableScreens.length + " Render Screen nodes. Only 1 Render Screen allowed per route path!").appendTo(box2);
+        }
+      }
+    }
+    if (node.type === "route-not-found") {
+      box2.attr("title", "Double-click to configure route not found").on("dblclick", function(e) {
+        e.stopPropagation();
+        openRouteNotFoundNodeEditor(node);
       });
     }
     if (node.type === "render-screen") {
@@ -32775,9 +32945,9 @@
       width: LOGIC_CANVAS_W,
       height: LOGIC_CANVAS_H
     }).css({ position: "absolute", left: "0", top: "0", "pointer-events": "none" }).appendTo(state.logicArtboardEl);
-    var screen = getActiveScreen();
-    if (!screen || !screen.logic) return;
-    (screen.logic.nodes || []).forEach(renderLogicNode);
+    var screen2 = getActiveScreen();
+    if (!screen2 || !screen2.logic) return;
+    (screen2.logic.nodes || []).forEach(renderLogicNode);
     renderLogicWires();
     refreshLogicSelectionVisuals();
   }
@@ -32785,12 +32955,12 @@
   // src/logic/logic-selection.js
   var logicClipboard = null;
   function selectLogicForComponents(ids) {
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     var set = {};
     (ids || []).forEach(function(id2) {
       set[id2] = true;
     });
-    state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
+    state.logicSelectedIds = (screen2 && screen2.logic && screen2.logic.nodes || []).filter(function(n) {
       return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay] || n.type === "teleport" && n.node && set[n.node];
     }).map(function(n) {
       return n.id;
@@ -32825,13 +32995,13 @@
   }
   function copyLogicSelection(isCut) {
     if (!state.logicSelectedIds.length) return;
-    var screen = getActiveScreen();
-    if (!screen || !screen.logic) return;
-    var selectedNodes = (screen.logic.nodes || []).filter(function(n) {
+    var screen2 = getActiveScreen();
+    if (!screen2 || !screen2.logic) return;
+    var selectedNodes = (screen2.logic.nodes || []).filter(function(n) {
       return state.logicSelectedIds.indexOf(n.id) !== -1;
     });
     if (!selectedNodes.length) return;
-    var selectedWires = (screen.logic.wires || []).filter(function(w) {
+    var selectedWires = (screen2.logic.wires || []).filter(function(w) {
       return state.logicSelectedIds.indexOf(w.from) !== -1 && state.logicSelectedIds.indexOf(w.to) !== -1;
     });
     logicClipboard = {
@@ -32844,9 +33014,9 @@
   }
   function pasteLogicClipboard() {
     if (!logicClipboard || !logicClipboard.nodes.length) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    if (!screen.logic) screen.logic = { nodes: [], wires: [] };
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    if (!screen2.logic) screen2.logic = { nodes: [], wires: [] };
     var idMap = {};
     var newNodes = logicClipboard.nodes.map(function(n) {
       var copy = JSON.parse(JSON.stringify(n));
@@ -32869,7 +33039,7 @@
       };
     });
     if (state.editingMode === "flow") {
-      var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function(n) {
+      var hasTrigger = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
         return n.type === "route-trigger";
       });
       if (hasTrigger) {
@@ -32877,23 +33047,31 @@
           return n.type !== "route-trigger";
         });
       }
+      var hasNotFound = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
+        return n.type === "route-not-found";
+      });
+      if (hasNotFound) {
+        newNodes = newNodes.filter(function(n) {
+          return n.type !== "route-not-found";
+        });
+      }
     } else {
       newNodes = newNodes.filter(function(n) {
-        return n.type !== "route-trigger";
+        return n.type !== "route-trigger" && n.type !== "route-not-found";
       });
     }
     newNodes.forEach(function(n) {
-      screen.logic.nodes.push(n);
+      screen2.logic.nodes.push(n);
     });
     newWires.forEach(function(w) {
-      screen.logic.wires.push(w);
+      screen2.logic.wires.push(w);
     });
     var historyEvents = newNodes.map(function(n) {
-      return { t: "addLogicNode", screenId: screen.id, node: n };
+      return { t: "addLogicNode", screenId: screen2.id, node: n };
     }).concat(newWires.map(function(w) {
-      return { t: "addLogicWire", screenId: screen.id, wire: w };
+      return { t: "addLogicWire", screenId: screen2.id, wire: w };
     }));
-    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen.id, events: historyEvents });
+    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen2.id, events: historyEvents });
     selectLogicMultiple(newNodes.map(function(n) {
       return n.id;
     }));
@@ -32945,9 +33123,9 @@
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
       if (box2.width < 3 && box2.height < 3) return;
-      var screen = getActiveScreen();
-      if (!screen || !screen.logic) return;
-      var hits = (screen.logic.nodes || []).filter(function(n) {
+      var screen2 = getActiveScreen();
+      if (!screen2 || !screen2.logic) return;
+      var hits = (screen2.logic.nodes || []).filter(function(n) {
         return !(n.x > box2.left + box2.width || n.x + logicNodeWidth(n) < box2.left || n.y > box2.top + box2.height || n.y + LOGIC_NODE_H < box2.top);
       }).map(function(n) {
         return n.id;
@@ -33012,19 +33190,19 @@
     refreshSelectionVisuals();
   }
   function pickSelectionTarget(nodeId, e) {
-    var screen = getActiveScreen();
-    if (!screen) return nodeId;
+    var screen2 = getActiveScreen();
+    if (!screen2) return nodeId;
     if (e && (e.ctrlKey || e.metaKey)) return nodeId;
-    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
+    var chain = tree_exports.ancestors(screen2, nodeId).map(function(a) {
       return a.id;
     }).concat([nodeId]);
     for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) return chain[i2];
     var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
     if (sel) {
-      var context = tree_exports.parentOf(screen, sel.id);
+      var context = tree_exports.parentOf(screen2, sel.id);
       var contextId = context ? context.id : null;
       for (var j = 0; j < chain.length; j++) {
-        var parent = tree_exports.parentOf(screen, chain[j]);
+        var parent = tree_exports.parentOf(screen2, chain[j]);
         if ((parent ? parent.id : null) === contextId) return chain[j];
       }
     }
@@ -33039,25 +33217,25 @@
     return chain[k];
   }
   function selectParentOrChild(up) {
-    var screen = getActiveScreen();
-    if (!screen || state.selectedIds.length !== 1) return false;
+    var screen2 = getActiveScreen();
+    if (!screen2 || state.selectedIds.length !== 1) return false;
     var id2 = state.selectedIds[0];
     if (up) {
-      var parent = tree_exports.parentOf(screen, id2);
+      var parent = tree_exports.parentOf(screen2, id2);
       if (!parent || !parent.type) return false;
       selectOnly(parent.id);
       return true;
     }
-    var node = tree_exports.find(screen, id2);
+    var node = tree_exports.find(screen2, id2);
     var kids2 = node ? tree_exports.kids(node) : [];
     if (!kids2.length) return false;
     selectOnly(kids2[0].id);
     return true;
   }
   function pickDeeperTarget(nodeId) {
-    var screen = getActiveScreen();
-    if (!screen) return null;
-    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
+    var screen2 = getActiveScreen();
+    if (!screen2) return null;
+    var chain = tree_exports.ancestors(screen2, nodeId).map(function(a) {
       return a.id;
     }).concat([nodeId]);
     var at = -1;
@@ -33081,8 +33259,8 @@
     selectMultiple(ids);
   }
   function toggleFlipForSelection(axis) {
-    var screen = getActiveScreen();
-    if (!screen || !state.selectedIds.length) return;
+    var screen2 = getActiveScreen();
+    if (!screen2 || !state.selectedIds.length) return;
     var events = [];
     state.selectedIds.forEach(function(id2) {
       var c = findComponent(id2);
@@ -33096,19 +33274,19 @@
         c.flipV = !c.flipV;
       }
       var to = { flipH: !!c.flipH, flipV: !!c.flipV };
-      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
+      events.push({ t: "flip", screenId: screen2.id, id: c.id, from, to });
       updateComponentBox(c);
     });
     if (!events.length) return;
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen2.id, events });
     markDirty();
     renderPropertiesPanel();
   }
-  function nextGroupName(screen, type) {
+  function nextGroupName(screen2, type) {
     var word = type === "@frame" ? "Frame" : "Group";
     var re = new RegExp("^" + word + " (\\d+)$");
     var n = 0;
-    tree_exports.allNodes(screen, { orphans: true }).forEach(function(node) {
+    tree_exports.allNodes(screen2, { orphans: true }).forEach(function(node) {
       var m = node.type === (type || "@group") && re.exec(node.name || "");
       if (m) n = Math.max(n, Number(m[1]));
     });
@@ -33119,8 +33297,8 @@
   }
   function groupSelection(type) {
     var asFrame = type === "@frame";
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var ids = state.selectedIds.filter(function(id2) {
       return findComponent(id2) && isNodeInteractable(id2);
     });
@@ -33129,7 +33307,7 @@
       return;
     }
     var parents = ids.map(function(id2) {
-      var p = tree_exports.parentOf(screen, id2);
+      var p = tree_exports.parentOf(screen2, id2);
       return p ? p.id : null;
     });
     if (parents.some(function(p) {
@@ -33138,29 +33316,29 @@
       RED.notify("Select nodes that share one parent to group them", { type: "warning", timeout: 2500 });
       return;
     }
-    var before = treeSnapshot(screen);
-    var group = tree_exports.wrapIn(screen, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen) });
-    if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
-    pushTreeChange(screen, before);
+    var before = treeSnapshot(screen2);
+    var group = tree_exports.wrapIn(screen2, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen2, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen2) });
+    if (parents[0]) tree_exports.refitGroupsUp(screen2, group.id);
+    pushTreeChange(screen2, before);
     markDirty();
     renderActiveScreen();
     selectOnly(group.id);
   }
   function ungroupSelection() {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var containers = state.selectedIds.map(findComponent).filter(function(c) {
       return c && tree_exports.isContainer(c) && !isNodeLocked(c.id);
     });
     if (!containers.length) return;
-    var before = treeSnapshot(screen);
+    var before = treeSnapshot(screen2);
     var released = [];
     containers.forEach(function(g) {
-      released = released.concat(tree_exports.unwrap(screen, g.id).map(function(c) {
+      released = released.concat(tree_exports.unwrap(screen2, g.id).map(function(c) {
         return c.id;
       }));
     });
-    pushTreeChange(screen, before);
+    pushTreeChange(screen2, before);
     markDirty();
     renderActiveScreen();
     selectMultiple(released);
@@ -33197,14 +33375,14 @@
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
       if (box2.width < 3 && box2.height < 3) return;
-      var screen = getActiveScreen();
-      if (!screen) return;
+      var screen2 = getActiveScreen();
+      if (!screen2) return;
       var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-      var context = sel ? tree_exports.parentOf(screen, sel.id) : null;
-      var candidates = context ? tree_exports.kids(context) : screen.components;
+      var context = sel ? tree_exports.parentOf(screen2, sel.id) : null;
+      var candidates = context ? tree_exports.kids(context) : screen2.components;
       var hits = candidates.filter(function(c) {
         if (!isNodeInteractable(c.id)) return false;
-        var b = tree_exports.absBox(screen, c.id);
+        var b = tree_exports.absBox(screen2, c.id);
         return !(b.x > box2.left + box2.width || b.x + b.w < box2.left || b.y > box2.top + box2.height || b.y + b.h < box2.top);
       }).map(function(c) {
         return c.id;
@@ -33226,12 +33404,12 @@
   function renderActiveScreen(opts) {
     var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
-    checkSession(screen);
-    refreshBreakpointBar(screen);
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    checkSession(screen2);
+    refreshBreakpointBar(screen2);
     applyEditorTheme();
-    var canvasW = previewWidth(screen);
+    var canvasW = previewWidth(screen2);
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
     state.selectionHandlesEl = null;
@@ -33242,20 +33420,20 @@
     state.artboardEl.empty();
     state.artboardEl.css({
       width: canvasW + "px",
-      height: screen.height + "px",
+      height: screen2.height + "px",
       "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
-      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
+      "background-size": screen2.gridSize + "px " + screen2.gridSize + "px"
     });
     if (state.artboardEl[0] && state.artboardEl[0].style) state.artboardEl[0].style.backgroundColor = "var(--nexa-colors-bg, #fff)";
     if (state.stageEl) {
-      state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
+      state.stageEl.css({ width: canvasW + "px", height: screen2.height + "px" });
     }
     applyZoomTransform();
-    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
-    screen.components.forEach(function(node) {
+    var rootScope = scope_exports.surfaceScope(screen2, state.editingMode === "template", appScope());
+    screen2.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed3 = readbackLayout(screen);
+    var changed3 = readbackLayout(screen2);
     if (changed3.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
@@ -33269,7 +33447,7 @@
       art.__nexaSlotWatch = true;
       art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
     }
-    if (tree_exports.allNodes(screen).some(tree_exports.isSlotHost)) scheduleSlotReadback();
+    if (tree_exports.allNodes(screen2).some(tree_exports.isSlotHost)) scheduleSlotReadback();
   }
   var slotReadbackQueued = false;
   function scheduleSlotReadback() {
@@ -33280,19 +33458,19 @@
     };
     later(function() {
       slotReadbackQueued = false;
-      var screen = getActiveScreen();
-      if (!screen || !state.artboardEl) return;
-      var changed3 = readbackLayout(screen);
+      var screen2 = getActiveScreen();
+      if (!screen2 || !state.artboardEl) return;
+      var changed3 = readbackLayout(screen2);
       if (changed3.redraw) redrawCanvas();
       else if (changed3.length) refreshSelectionVisuals({ keepPanel: true });
     });
   }
   function redrawCanvas() {
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     renderActiveScreen({ keepPanel: true });
-    if (!screen) return;
+    if (!screen2) return;
     state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen, id2);
+      return !!tree_exports.find(screen2, id2);
     });
     refreshSelectionVisuals({ keepPanel: true });
   }
@@ -33300,12 +33478,12 @@
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
   function applyZoomTransform() {
     if (!state.stageEl || !state.sizerEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
     state.sizerEl.css({
-      width: screen.width * state.zoomLevel + "px",
-      height: screen.height * state.zoomLevel + "px"
+      width: screen2.width * state.zoomLevel + "px",
+      height: screen2.height * state.zoomLevel + "px"
     });
     updateZoomLabel();
     refreshSelectionVisuals({ keepPanel: true });
@@ -33341,17 +33519,17 @@
   }
   function zoomToFit() {
     if (!state.viewportEl) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var vp = state.viewportEl.get(0);
     var pad = 40;
     var availW = Math.max(vp.clientWidth - pad * 2, 10);
     var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / previewWidth(screen), availH / screen.height);
+    var fitZoom = Math.min(availW / previewWidth(screen2), availH / screen2.height);
     fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
     state.zoomLevel = fitZoom;
     applyZoomTransform();
-    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
+    var sizerW = screen2.width * state.zoomLevel, sizerH = screen2.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
   }
@@ -33397,17 +33575,17 @@
     refreshBreakpointBar(getActiveScreen());
     return bpBar;
   }
-  function refreshBreakpointBar(screen) {
+  function refreshBreakpointBar(screen2) {
     if (!bpBar) return;
     bpBar.empty();
     var template = state.editingMode === "template";
-    bpBar.toggle(!!screen && !template);
-    if (!screen || template) return;
-    var active = activeBreakpointId(), design = designId(screen);
+    bpBar.toggle(!!screen2 && !template);
+    if (!screen2 || template) return;
+    var active = activeBreakpointId(), design = designId(screen2);
     var list = breakpointList();
     list.forEach(function(b, i2) {
       var on = b.id === active, isDesign2 = b.id === design;
-      var width = bandPreviewWidth(screen, b.id);
+      var width = bandPreviewWidth(screen2, b.id);
       var icon = width < 640 ? "fa-mobile" : width < 1200 ? "fa-tablet" : "fa-desktop";
       var tip = b.name + " (" + rangeOf2(b.id) + ")" + (b.device ? " \xB7 " + b.device : "") + " \u2014 " + (isDesign2 ? "the design (the screen's width, " + width + " px)" : "shown at " + width + " px; edits here are kept for " + b.name + (i2 > list.map(function(x) {
         return x.id;
@@ -33465,11 +33643,11 @@
   var clipboardSource = null;
   function copySelection(isCut) {
     if (!state.selectedIds.length) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var roots = state.selectedIds.filter(function(id2) {
       return findComponent(id2) && !state.selectedIds.some(function(o) {
-        return o !== id2 && tree_exports.isAncestor(screen, o, id2);
+        return o !== id2 && tree_exports.isAncestor(screen2, o, id2);
       });
     });
     if (!roots.length) return;
@@ -33479,27 +33657,27 @@
   }
   function pasteClipboard() {
     if (!clipboard || !clipboard.length) return;
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var anchor = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-    var anchorLoc = anchor ? tree_exports.locate(screen, anchor.id) : null;
+    var anchorLoc = anchor ? tree_exports.locate(screen2, anchor.id) : null;
     var parent = anchorLoc && !anchorLoc.orphan ? anchorLoc.parent : null;
     var regenerateIds = clipboardSource === "copy";
-    var before = treeSnapshot(screen);
+    var before = treeSnapshot(screen2);
     var newNodes = clipboard.map(function(c) {
       var copy = regenerateIds ? tree_exports.cloneWithNewIds(c, genId) : JSON.parse(JSON.stringify(c));
       if (regenerateIds) {
         copy.x = (copy.x || 0) + 20;
         copy.y = (copy.y || 0) + 20;
       }
-      tree_exports.insert(screen, parent ? parent.id : null, null, copy);
+      tree_exports.insert(screen2, parent ? parent.id : null, null, copy);
       return copy;
     });
     if (parent && parent.type === "@group") {
       tree_exports.fitGroup(parent);
-      tree_exports.refitGroupsUp(screen, parent.id);
+      tree_exports.refitGroupsUp(screen2, parent.id);
     }
-    pushTreeChange(screen, before);
+    pushTreeChange(screen2, before);
     markDirty();
     if (parent) renderActiveScreen();
     else newNodes.forEach(function(n) {
@@ -33550,8 +33728,8 @@
   }
   function zoomLogicToFit() {
     if (!state.logicViewportEl) return;
-    var screen = getActiveScreen();
-    var nodes = screen && screen.logic && screen.logic.nodes || [];
+    var screen2 = getActiveScreen();
+    var nodes = screen2 && screen2.logic && screen2.logic.nodes || [];
     var vp = state.logicViewportEl.get(0);
     var pad = 60;
     if (!nodes.length) {
@@ -33743,7 +33921,7 @@
         if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
         var metricRef = SPARKPLUG_DROP_ON_CANVAS && ui.draggable.data("nexaSparkplugMetric");
         if (metricRef) {
-          var screen = getActiveScreen();
+          var screen2 = getActiveScreen();
           var targetComp = null;
           var hitEl = document.elementFromPoint && event.clientX !== void 0 ? document.elementFromPoint(event.clientX, event.clientY) : null;
           if (hitEl) {
@@ -33753,12 +33931,12 @@
               targetComp = findComponent(compId);
             }
           }
-          if (!targetComp && screen) {
-            var nodes = tree_exports.allNodes(screen).filter(function(n) {
+          if (!targetComp && screen2) {
+            var nodes = tree_exports.allNodes(screen2).filter(function(n) {
               return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
             });
             for (var i2 = nodes.length - 1; i2 >= 0; i2--) {
-              var b = tree_exports.absBox(screen, nodes[i2].id);
+              var b = tree_exports.absBox(screen2, nodes[i2].id);
               if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
                 targetComp = nodes[i2];
                 break;
@@ -33777,7 +33955,7 @@
             refreshComponentRender(targetComp);
             renderPropertiesPanel();
             renderEventsPanel();
-            pushHistory({ t: "edit", screenId: screen.id, compId: targetComp.id, sparkplugBinding: bindingPath });
+            pushHistory({ t: "edit", screenId: screen2.id, compId: targetComp.id, sparkplugBinding: bindingPath });
             markDirty();
             if (window.RED && window.RED.notify) {
               var typeDef = window.NEXA ? window.NEXA.getComponent(targetComp.type) : null;
@@ -34044,10 +34222,10 @@
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return def && def.icon || "fa fa-cube";
   }
-  function rows(screen, list, orphan) {
+  function rows(screen2, list, orphan) {
     return list.slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
-      var eff = orphan ? vis : tree_exports.effectiveVisibility(screen, node.id);
+      var eff = orphan ? vis : tree_exports.effectiveVisibility(screen2, node.id);
       return {
         id: node.id,
         label: labelOf(node),
@@ -34056,7 +34234,7 @@
         container: tree_exports.isContainer(node),
         badge: tree_exports.isContainer(node) ? String(tree_exports.kids(node).length) : "",
         muted: eff !== "show" || !!node.slotUnused,
-        children: tree_exports.isContainer(node) ? rows(screen, tree_exports.kids(node), orphan) : [],
+        children: tree_exports.isContainer(node) ? rows(screen2, tree_exports.kids(node), orphan) : [],
         actions: orphan ? [{ id: "delete", icon: "fa fa-trash-o", title: "Delete for good" }] : [
           { id: "visibility", icon: VIS_ICON[vis], title: VIS_TITLE[vis], on: vis !== "show" },
           { id: "lock", icon: node.locked ? "fa fa-lock" : "fa fa-unlock-alt", title: node.locked ? "Locked \u2014 click to unlock" : "Click to lock", on: !!node.locked }
@@ -34065,68 +34243,68 @@
     });
   }
   function onMove(e) {
-    var screen = getActiveScreen();
-    if (!screen) return;
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
     var d = e.detail;
-    var before = treeSnapshot(screen);
+    var before = treeSnapshot(screen2);
     try {
       if (d.targetId === UNPLACED_ID) {
-        var abs = tree_exports.locate(screen, d.id) && !tree_exports.locate(screen, d.id).orphan ? tree_exports.absBox(screen, d.id) : null;
-        var node = tree_exports.detach(screen, d.id);
+        var abs = tree_exports.locate(screen2, d.id) && !tree_exports.locate(screen2, d.id).orphan ? tree_exports.absBox(screen2, d.id) : null;
+        var node = tree_exports.detach(screen2, d.id);
         if (node) {
           if (abs) {
             node.node.x = abs.x;
             node.node.y = abs.y;
           }
-          (screen.orphans = screen.orphans || []).push(node.node);
-          if (!node.orphan) tree_exports.tidyContainer(screen, node.parentId);
+          (screen2.orphans = screen2.orphans || []).push(node.node);
+          if (!node.orphan) tree_exports.tidyContainer(screen2, node.parentId);
         }
       } else {
-        var target = tree_exports.locate(screen, d.targetId);
+        var target = tree_exports.locate(screen2, d.targetId);
         if (!target) return;
         if (target.orphan) return;
         if (d.position === "inside") {
-          reparentKeepingPlace(screen, d.id, d.targetId, null);
+          reparentKeepingPlace(screen2, d.id, d.targetId, null);
         } else {
           var parentId = target.parent ? target.parent.id : null;
           var index = target.index + (d.position === "before" ? 1 : 0);
-          reparentKeepingPlace(screen, d.id, parentId, index);
+          reparentKeepingPlace(screen2, d.id, parentId, index);
         }
       }
     } catch (err) {
       if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
       return;
     }
-    pushTreeChange(screen, before);
+    pushTreeChange(screen2, before);
     markDirty();
     renderActiveScreen();
-    if (tree_exports.find(screen, d.id) && !tree_exports.locate(screen, d.id).orphan) selectOnly(d.id);
+    if (tree_exports.find(screen2, d.id) && !tree_exports.locate(screen2, d.id).orphan) selectOnly(d.id);
     renderHierarchyPanel();
   }
   function onAction(e) {
-    var screen = getActiveScreen();
-    if (!screen) return;
-    var node = tree_exports.find(screen, e.detail.id);
+    var screen2 = getActiveScreen();
+    if (!screen2) return;
+    var node = tree_exports.find(screen2, e.detail.id);
     if (!node) return;
     if (e.detail.action === "visibility") {
       var cur2 = node.visibility || "show";
       var next = cur2 === "show" ? "hide" : "show";
-      pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? void 0 : next });
+      pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? void 0 : next });
       if (next === "show") delete node.visibility;
       else node.visibility = next;
       state.selectedIds = state.selectedIds.filter(function(id2) {
-        return tree_exports.effectiveVisibility(screen, id2) === "show";
+        return tree_exports.effectiveVisibility(screen2, id2) === "show";
       });
     } else if (e.detail.action === "lock") {
-      pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "locked", from: node.locked, to: !node.locked || void 0 });
+      pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "locked", from: node.locked, to: !node.locked || void 0 });
       if (node.locked) delete node.locked;
       else node.locked = true;
     } else if (e.detail.action === "delete") {
-      var before = treeSnapshot(screen);
-      screen.orphans = (screen.orphans || []).filter(function(o) {
+      var before = treeSnapshot(screen2);
+      screen2.orphans = (screen2.orphans || []).filter(function(o) {
         return o.id !== node.id;
       });
-      pushTreeChange(screen, before);
+      pushTreeChange(screen2, before);
     }
     markDirty();
     var keep = state.selectedIds.slice();
@@ -34135,22 +34313,22 @@
     renderHierarchyPanel();
   }
   function onRename(e) {
-    var screen = getActiveScreen();
-    var node = screen && tree_exports.find(screen, e.detail.id);
+    var screen2 = getActiveScreen();
+    var node = screen2 && tree_exports.find(screen2, e.detail.id);
     if (!node) return;
     var name2 = e.detail.name;
     if ((node.name || "") === name2) return;
-    pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "name", from: node.name, to: name2 || void 0 });
+    pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "name", from: node.name, to: name2 || void 0 });
     if (name2) node.name = name2;
     else delete node.name;
     markDirty();
     renderHierarchyPanel();
   }
   function onSelect(e) {
-    var screen = getActiveScreen();
-    var loc = screen && tree_exports.locate(screen, e.detail.id);
+    var screen2 = getActiveScreen();
+    var loc = screen2 && tree_exports.locate(screen2, e.detail.id);
     if (!loc || loc.orphan) return;
-    var hidden = tree_exports.ancestors(screen, e.detail.id).concat([loc.node]).filter(function(n) {
+    var hidden = tree_exports.ancestors(screen2, e.detail.id).concat([loc.node]).filter(function(n) {
       return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
     });
     if (hidden.length) {
@@ -34187,8 +34365,8 @@
     if (!state.hierarchyPane) return;
     wireOnce();
     var pane = state.hierarchyPane;
-    var screen = getActiveScreen();
-    if (!screen) {
+    var screen2 = getActiveScreen();
+    if (!screen2) {
       pane.empty();
       return;
     }
@@ -34197,8 +34375,8 @@
       window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The hierarchy needs the Nexa property kit.").appendTo(pane);
       return;
     }
-    var nodes = rows(screen, screen.components || [], false);
-    var orphans = rows(screen, screen.orphans || [], true);
+    var nodes = rows(screen2, screen2.components || [], false);
+    var orphans = rows(screen2, screen2.orphans || [], true);
     if (!treeEl || !pane.get(0).contains(treeEl)) {
       pane.empty();
       var host = pane.get(0);
@@ -34250,7 +34428,7 @@
       });
       host.appendChild(orphanEl);
     }
-    treeEl.setAttribute("persist-key", "hierarchy:" + screen.id);
+    treeEl.setAttribute("persist-key", "hierarchy:" + screen2.id);
     treeEl.nodes = nodes;
     treeEl.selected = state.selectedIds.slice();
     orphanEl.nodes = [{
@@ -34677,10 +34855,10 @@
       cb(null);
     });
   }
-  function openScreenInBrowser(screen) {
+  function openScreenInBrowser(screen2) {
     var tab = window.open("", "_blank");
     fetchScreenWorkerPort(function(port) {
-      var cleanPath = (screen.path || "").replace(/^\/+/, "");
+      var cleanPath = (screen2.path || "").replace(/^\/+/, "");
       var hostname = window.location.hostname || "localhost";
       var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
       if (tab) tab.location.href = fullUrl;
@@ -34875,10 +35053,11 @@
       placeInTemplate(node, t2.parentId);
     });
     state.flows.forEach(function(fl) {
+      var isDef = !!fl.isDefault;
       var node = {
         id: fl.id,
-        label: fl.name,
-        title: fl.name + " (" + (fl.endpoint || "/flow") + ")",
+        label: fl.name + (isDef ? " \u2605" : ""),
+        title: fl.name + (isDef ? " [Default Flow]" : "") + " (" + (fl.endpoint || "/flow") + ")",
         icon: "fa fa-code-fork",
         type: "flow",
         actions: [
@@ -34988,10 +35167,10 @@
       renderScreenForm();
       return;
     }
-    var screen = state.screens.find(function(s) {
+    var screen2 = state.screens.find(function(s) {
       return s.id === id2;
     });
-    if (screen) {
+    if (screen2) {
       selectScreenFromSidebar(id2);
       return;
     }
@@ -35383,8 +35562,8 @@
       treeEl2.selected = activeId ? [activeId] : [];
       state.screensFlowsTreeEl = treeEl2;
     }
-    state.screens.forEach(function(screen) {
-      var isActive = screen.id === state.activeScreenId && state.editingMode === "screen";
+    state.screens.forEach(function(screen2) {
+      var isActive = screen2.id === state.activeScreenId && state.editingMode === "screen";
       var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
         padding: "8px 10px",
         "border-radius": "5px",
@@ -35402,34 +35581,34 @@
       }).appendTo(state.screenListEl);
       window.$("<span>", {
         style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
-        title: screen.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
-      }).html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
+        title: screen2.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
+      }).html(screen2.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
-        screen.disabled = !screen.disabled;
+        screen2.disabled = !screen2.disabled;
         markDirty();
         renderScreenList();
         renderScreenForm();
       }).appendTo(row);
       window.$("<span>", {
-        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
-      }).text(screen.name).appendTo(row);
-      if (screen.disabled) {
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen2.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
+      }).text(screen2.name).appendTo(row);
+      if (screen2.disabled) {
         window.$("<span>", {
           style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
         }).text("DISABLED").appendTo(row);
       }
       window.$("<div>", {
         style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
-      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? screen.path.startsWith("/") ? screen.path : "/" + screen.path : "/screen") + "</span>").appendTo(row);
+      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen2.path ? screen2.path.startsWith("/") ? screen2.path : "/" + screen2.path : "/screen") + "</span>").appendTo(row);
       window.$("<button>", {
         type: "button",
         class: "red-ui-button red-ui-button-small",
-        title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
+        title: "Open deployed screen in new tab (" + (screen2.path || "/screen") + ")",
         style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
       }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
-        openScreenInBrowser(screen);
+        openScreenInBrowser(screen2);
       }).appendTo(row);
       if (state.screens.length > 1) {
         window.$("<a>", {
@@ -35440,11 +35619,11 @@
         }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
-          removeScreen(screen.id);
+          removeScreen(screen2.id);
         }).appendTo(row);
       }
       row.on("click", function() {
-        selectScreenFromSidebar(screen.id);
+        selectScreenFromSidebar(screen2.id);
       });
     });
   }
@@ -35472,7 +35651,87 @@
       return input;
     }
     row("Flow Name", "name", flow.name);
-    row("Starting Endpoint", "endpoint", flow.endpoint);
+    var epRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Starting Endpoint").appendTo(epRow);
+    var epInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(flow.endpoint || "/flow").appendTo(epRow);
+    var epError = window.$("<div>").css({ color: "#ef4444", "font-size": "11px", "margin-top": "4px", display: "none" }).appendTo(epRow);
+    function validateEndpoint(val) {
+      var raw = (val || "").trim();
+      if (!raw) raw = "/flow";
+      if (raw.charAt(0) !== "/") raw = "/" + raw;
+      raw = raw.replace(/\/+$/, "") || "/";
+      var duplicate = (state.flows || []).find(function(f) {
+        if (f.id === flow.id) return false;
+        var other = (f.endpoint || "").trim();
+        if (other.charAt(0) !== "/") other = "/" + other;
+        other = other.replace(/\/+$/, "") || "/";
+        return other.toLowerCase() === raw.toLowerCase();
+      });
+      if (duplicate) {
+        epInput.css({ border: "1px solid #ef4444", background: "#fff5f5" });
+        epError.html('<i class="fa fa-exclamation-circle"></i> Endpoint <code>' + raw + '</code> is already in use by Flow "<b>' + (duplicate.name || duplicate.id) + '</b>". Flow endpoints must be unique!').show();
+        if (window.RED && window.RED.notify) {
+          window.RED.notify("Flow endpoint '" + raw + "' is already in use by Flow '" + (duplicate.name || duplicate.id) + "'. Endpoint must be unique.", "error");
+        }
+        return false;
+      } else {
+        epInput.css({ border: "", background: "" });
+        epError.hide();
+        return raw;
+      }
+    }
+    epInput.on("input", function() {
+      var res = validateEndpoint(epInput.val());
+      if (res !== false) {
+        flow.endpoint = res;
+        renderScreenList();
+        markDirty();
+      }
+    });
+    epInput.on("blur", function() {
+      var res = validateEndpoint(epInput.val());
+      if (res === false) {
+        epInput.val(flow.endpoint);
+        validateEndpoint(flow.endpoint);
+      } else {
+        epInput.val(res);
+        flow.endpoint = res;
+        renderScreenList();
+        markDirty();
+      }
+    });
+    var defaultRow = window.$("<div>").css({
+      "margin-bottom": "12px",
+      padding: "8px 10px",
+      background: "var(--red-ui-secondary-background, #f8fafc)",
+      border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      "border-radius": "6px"
+    }).appendTo(state.screenFormEl);
+    var defaultLabel = window.$("<label>").css({
+      display: "flex",
+      "align-items": "center",
+      gap: "8px",
+      "font-size": "12px",
+      cursor: "pointer",
+      color: "var(--red-ui-primary-text-color, #333)",
+      margin: 0
+    }).appendTo(defaultRow);
+    var defaultCheck = window.$("<input>", { type: "checkbox" }).appendTo(defaultLabel);
+    defaultCheck.prop("checked", !!flow.isDefault);
+    window.$("<span>").html("<strong>Default Flow</strong> (Redirect root <code>/</code> and <code>/nexa</code> to this flow)").appendTo(defaultLabel);
+    defaultCheck.on("change", function() {
+      var isChecked = defaultCheck.is(":checked");
+      if (isChecked) {
+        (state.flows || []).forEach(function(f) {
+          f.isDefault = false;
+        });
+        flow.isDefault = true;
+      } else {
+        flow.isDefault = false;
+      }
+      renderScreenList();
+      markDirty();
+    });
     var policyRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Flow Routing Rules").appendTo(policyRow);
     var policySelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(policyRow);
@@ -35543,7 +35802,7 @@
       renderScreenForm();
     }).appendTo(state.screenFormEl);
   }
-  function renderVariablePropertiesForm(variable2, isApp, screen) {
+  function renderVariablePropertiesForm(variable2, isApp, screen2) {
     var header = window.$("<div>").css({
       "font-weight": "bold",
       "font-size": "13px",
@@ -35555,7 +35814,7 @@
       "align-items": "center",
       gap: "6px"
     }).html(
-      isApp ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties' : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (screen ? screen.name : "") + ")"
+      isApp ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties' : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (screen2 ? screen2.name : "") + ")"
     ).appendTo(state.screenFormEl);
     window.$("<div>").css({
       "margin-bottom": "14px",
@@ -35567,7 +35826,7 @@
       color: isApp ? "#5b21b6" : "#0369a1",
       "line-height": "1.4"
     }).html(
-      isApp ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : "<strong>Screen-Scoped Variable (" + (screen ? screen.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
+      isApp ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : "<strong>Screen-Scoped Variable (" + (screen2 ? screen2.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
     ).appendTo(state.screenFormEl);
     var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
@@ -35652,8 +35911,8 @@
         });
         state.activeAppVariableId = null;
         state.editingMode = "screen";
-      } else if (screen) {
-        screen.variables = (screen.variables || []).filter(function(v) {
+      } else if (screen2) {
+        screen2.variables = (screen2.variables || []).filter(function(v) {
           return v.id !== variable2.id;
         });
         state.activeScreenVariableId = null;
@@ -35707,8 +35966,8 @@
       renderTemplateForm(state.screenFormEl);
       return;
     }
-    var screen = getActiveScreen();
-    if (!screen || state.editingMode !== "screen") {
+    var screen2 = getActiveScreen();
+    if (!screen2 || state.editingMode !== "screen") {
       window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-desktop" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select a screen, template, or flow from the tree on the left.').appendTo(state.screenFormEl);
       return;
     }
@@ -35729,17 +35988,17 @@
       var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
       input.on("change", function() {
         var v = type === "number" ? parseInt(input.val(), 10) || 0 : input.val();
-        var oldSize = { w: screen.width, h: screen.height };
-        screen[field] = v;
-        if (field === "width" || field === "height") applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
+        var oldSize = { w: screen2.width, h: screen2.height };
+        screen2[field] = v;
+        if (field === "width" || field === "height") applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
         if (field === "name" || field === "path") renderScreenList();
         markDirty();
         renderActiveScreen();
       });
       return input;
     }
-    row("Name", "name", screen.name);
-    row("URL path", "path", screen.path);
+    row("Name", "name", screen2.name);
+    row("URL path", "path", screen2.path);
     var DEVICES = [
       ["", "Custom size"],
       ["1920x1080", "Full HD 1920 \xD7 1080"],
@@ -35757,26 +36016,26 @@
     DEVICES.forEach(function(d) {
       window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel);
     });
-    presetSel.val(screen.width + "x" + screen.height);
+    presetSel.val(screen2.width + "x" + screen2.height);
     if (!presetSel.val()) presetSel.val("");
-    var widthInput = row("Width (px)", "width", screen.width, "number");
-    var heightInput = row("Height (px)", "height", screen.height, "number");
+    var widthInput = row("Width (px)", "width", screen2.width, "number");
+    var heightInput = row("Height (px)", "height", screen2.height, "number");
     presetSel.on("change", function() {
       var m = /^(\d+)x(\d+)$/.exec(presetSel.val());
       if (!m) return;
-      var oldSize = { w: screen.width, h: screen.height };
-      screen.width = Number(m[1]);
-      screen.height = Number(m[2]);
-      widthInput.val(screen.width);
-      heightInput.val(screen.height);
-      applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
+      var oldSize = { w: screen2.width, h: screen2.height };
+      screen2.width = Number(m[1]);
+      screen2.height = Number(m[2]);
+      widthInput.val(screen2.width);
+      heightInput.val(screen2.height);
+      applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
       markDirty();
       renderActiveScreen();
       syncHelp();
     });
     [widthInput, heightInput].forEach(function(inp) {
       inp.on("change", function() {
-        presetSel.val(screen.width + "x" + screen.height);
+        presetSel.val(screen2.width + "x" + screen2.height);
         if (!presetSel.val()) presetSel.val("");
         syncHelp();
       });
@@ -35792,11 +36051,11 @@
     ].forEach(function(o) {
       window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel);
     });
-    modeSel.val(screen.displayMode || "fixed");
+    modeSel.val(screen2.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
     var HELP3 = {
       fixed: function() {
-        return "Shown at exactly " + screen.width + " \xD7 " + screen.height + " px \u2014 for a known panel / device.";
+        return "Shown at exactly " + screen2.width + " \xD7 " + screen2.height + " px \u2014 for a known panel / device.";
       },
       fit: "Everything scales together so the whole screen fits any window.",
       fitWidth: "Scales to the window's width; taller content scrolls \u2014 good for web pages.",
@@ -35808,12 +36067,12 @@
     };
     syncHelp();
     modeSel.on("change", function() {
-      if (modeSel.val() === "fixed") delete screen.displayMode;
-      else screen.displayMode = modeSel.val();
+      if (modeSel.val() === "fixed") delete screen2.displayMode;
+      else screen2.displayMode = modeSel.val();
       syncHelp();
       markDirty();
     });
-    row("Grid size (px)", "gridSize", screen.gridSize, "number");
+    row("Grid size (px)", "gridSize", screen2.gridSize, "number");
     var checksWrap = window.$("<div>").css({
       "margin-top": "12px",
       "padding-top": "10px",
@@ -35823,17 +36082,17 @@
       gap: "8px"
     }).appendTo(state.screenFormEl);
     var snapRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
-    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", screen.snap !== false).appendTo(snapRow);
+    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", screen2.snap !== false).appendTo(snapRow);
     window.$("<span>").text("Snap to grid").appendTo(snapRow);
     snapInput.on("change", function() {
-      screen.snap = snapInput.is(":checked");
+      screen2.snap = snapInput.is(":checked");
       markDirty();
     });
     var enableRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
-    var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !screen.disabled).appendTo(enableRow);
+    var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !screen2.disabled).appendTo(enableRow);
     window.$("<span>").text("Enable screen (live page at URL path)").appendTo(enableRow);
     enableInput.on("change", function() {
-      screen.disabled = !enableInput.is(":checked");
+      screen2.disabled = !enableInput.is(":checked");
       markDirty();
       renderScreenList();
     });
@@ -35880,9 +36139,9 @@
     state.editingMode = "screen";
     state.activeTemplateId = null;
     state.selectedFolderId = null;
-    var screen = makeScreen(opts || {});
-    state.screens.push(screen);
-    state.activeScreenId = screen.id;
+    var screen2 = makeScreen(opts || {});
+    state.screens.push(screen2);
+    state.activeScreenId = screen2.id;
     updateCanvasTabsVisibility();
     renderScreenList();
     renderScreenForm();
@@ -37099,7 +37358,7 @@
       }) };
     };
     var current2 = view();
-    var screen = getActiveScreen();
+    var screen2 = getActiveScreen();
     var meta2 = {
       id: "@breakpoints",
       stateList: [],
@@ -37122,7 +37381,7 @@
         });
         return html`
                 <div class="nx-help" style="margin-bottom:8px">Bands of window widths, like Tailwind's sm md lg xl: each one starts at its "From" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.</div>
-                ${screen ? html`<nx-alert tone="info" text="${(screen.name || "This screen") + " (" + screen.width + " px) is designed in " + designBreakpoint(app2, screen) + "."}"></nx-alert>` : nothing}
+                ${screen2 ? html`<nx-alert tone="info" text="${(screen2.name || "This screen") + " (" + screen2.width + " px) is designed in " + designBreakpoint(app2, screen2) + "."}"></nx-alert>` : nothing}
                 ${problems.map(function(p) {
           return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
         })}
@@ -37544,8 +37803,8 @@
         if (state.componentsPane) {
           buildPalette(state.componentsPane);
         }
-        var screen = getActiveScreen();
-        if (screen && tree_exports.allNodes(screen).some(function(c) {
+        var screen2 = getActiveScreen();
+        if (screen2 && tree_exports.allNodes(screen2).some(function(c) {
           return c.type === id2;
         })) renderActiveScreen();
         if (state.eventsPane && state.eventsPane.is(":visible")) {

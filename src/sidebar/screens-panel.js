@@ -240,10 +240,11 @@ export function buildScreensFlowsTreeNodes() {
 
     // Flows
     state.flows.forEach(function (fl) {
+        var isDef = !!fl.isDefault;
         var node = {
             id: fl.id,
-            label: fl.name,
-            title: fl.name + " (" + (fl.endpoint || "/flow") + ")",
+            label: fl.name + (isDef ? " ★" : ""),
+            title: fl.name + (isDef ? " [Default Flow]" : "") + " (" + (fl.endpoint || "/flow") + ")",
             icon: "fa fa-code-fork",
             type: "flow",
             actions: [
@@ -834,7 +835,88 @@ function renderFlowForm(flow) {
     }
 
     row("Flow Name", "name", flow.name);
-    row("Starting Endpoint", "endpoint", flow.endpoint);
+
+    // Starting Endpoint with uniqueness guard
+    var epRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Starting Endpoint").appendTo(epRow);
+    var epInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(flow.endpoint || "/flow").appendTo(epRow);
+    var epError = window.$("<div>").css({ color: "#ef4444", "font-size": "11px", "margin-top": "4px", display: "none" }).appendTo(epRow);
+
+    function validateEndpoint(val) {
+        var raw = (val || "").trim();
+        if (!raw) raw = "/flow";
+        if (raw.charAt(0) !== "/") raw = "/" + raw;
+        raw = raw.replace(/\/+$/, "") || "/";
+        var duplicate = (state.flows || []).find(function (f) {
+            if (f.id === flow.id) return false;
+            var other = (f.endpoint || "").trim();
+            if (other.charAt(0) !== "/") other = "/" + other;
+            other = other.replace(/\/+$/, "") || "/";
+            return other.toLowerCase() === raw.toLowerCase();
+        });
+        if (duplicate) {
+            epInput.css({ border: "1px solid #ef4444", background: "#fff5f5" });
+            epError.html('<i class="fa fa-exclamation-circle"></i> Endpoint <code>' + raw + '</code> is already in use by Flow "<b>' + (duplicate.name || duplicate.id) + '</b>". Flow endpoints must be unique!').show();
+            if (window.RED && window.RED.notify) {
+                window.RED.notify("Flow endpoint '" + raw + "' is already in use by Flow '" + (duplicate.name || duplicate.id) + "'. Endpoint must be unique.", "error");
+            }
+            return false;
+        } else {
+            epInput.css({ border: "", background: "" });
+            epError.hide();
+            return raw;
+        }
+    }
+
+    epInput.on("input", function () {
+        var res = validateEndpoint(epInput.val());
+        if (res !== false) {
+            flow.endpoint = res;
+            renderScreenList();
+            markDirty();
+        }
+    });
+
+    epInput.on("blur", function () {
+        var res = validateEndpoint(epInput.val());
+        if (res === false) {
+            epInput.val(flow.endpoint);
+            validateEndpoint(flow.endpoint);
+        } else {
+            epInput.val(res);
+            flow.endpoint = res;
+            renderScreenList();
+            markDirty();
+        }
+    });
+
+    // Default Flow Checkbox
+    var defaultRow = window.$("<div>").css({
+        "margin-bottom": "12px",
+        padding: "8px 10px",
+        background: "var(--red-ui-secondary-background, #f8fafc)",
+        border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        "border-radius": "6px"
+    }).appendTo(state.screenFormEl);
+    var defaultLabel = window.$("<label>").css({
+        display: "flex", "align-items": "center", gap: "8px", "font-size": "12px",
+        cursor: "pointer", color: "var(--red-ui-primary-text-color, #333)", margin: 0
+    }).appendTo(defaultRow);
+    var defaultCheck = window.$("<input>", { type: "checkbox" }).appendTo(defaultLabel);
+    defaultCheck.prop("checked", !!flow.isDefault);
+    window.$("<span>").html("<strong>Default Flow</strong> (Redirect root <code>/</code> and <code>/nexa</code> to this flow)").appendTo(defaultLabel);
+    defaultCheck.on("change", function () {
+        var isChecked = defaultCheck.is(":checked");
+        if (isChecked) {
+            (state.flows || []).forEach(function (f) { f.isDefault = false; });
+            flow.isDefault = true;
+        } else {
+            flow.isDefault = false;
+        }
+        renderScreenList();
+        markDirty();
+    });
 
     // Flow Routing Policy
     var policyRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);

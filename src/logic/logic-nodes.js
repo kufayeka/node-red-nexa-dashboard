@@ -21,8 +21,10 @@ import { openTeleportNodeEditor, teleportNodeLabel } from "../dialogs/teleport-d
 import { openDelayNodeEditor } from "../dialogs/delay-dialog.js";
 import { openNavigateNodeEditor } from "../dialogs/navigate-dialog.js";
 import { openRouteTriggerNodeEditor } from "../dialogs/route-trigger-dialog.js";
+import { openRouteNotFoundNodeEditor } from "../dialogs/route-not-found-dialog.js";
 import { openRenderScreenNodeEditor } from "../dialogs/render-screen-dialog.js";
 import { openSendToFlowNodeEditor } from "../dialogs/send-to-flow-dialog.js";
+import { getReachableRenderScreens } from "./logic-wires.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -65,6 +67,9 @@ export function logicNodeLabel(node) {
         var activeFl = getActiveScreen();
         var ep = (activeFl && activeFl.endpoint) || node.path || "/";
         return "Route Trigger (" + ep + ")";
+    }
+    if (node.type === "route-not-found") {
+        return "Route Not Found (404)";
     }
     if (node.type === "render-screen") {
         var rScreen = (state.screens || []).find(function (x) { return x.id === node.screenId; });
@@ -193,6 +198,17 @@ export function addLogicNode(nodeData, x, y) {
         }
         nodeData.path = screen.endpoint || "/";
     }
+    if (nodeData.type === "route-not-found") {
+        if (state.editingMode !== "flow") {
+            if (window.RED && window.RED.notify) window.RED.notify("Route Not Found can only be used in a Screen Flow.", "warning");
+            return;
+        }
+        var hasNotFound = (screen.logic && screen.logic.nodes || []).some(function (n) { return n.type === "route-not-found"; });
+        if (hasNotFound) {
+            if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Not Found node is allowed per flow.", "warning");
+            return;
+        }
+    }
     var node = { id: genId(), x: x, y: y };
     for (var k in nodeData) node[k] = nodeData[k];
     screen.logic.nodes.push(node);
@@ -297,6 +313,26 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure route trigger").on("dblclick", function (e) {
             e.stopPropagation();
             openRouteTriggerNodeEditor(node);
+        });
+        if (state.editingMode === "flow" && screen && screen.logic) {
+            var reachableScreens = getReachableRenderScreens(node.id, screen.logic.nodes, screen.logic.wires);
+            if (reachableScreens.length > 1) {
+                box.css("border", "2px solid #ef4444");
+                window.$("<div>").css({
+                    position: "absolute", right: "-8px", top: "-8px",
+                    background: "#ef4444", color: "#fff",
+                    "border-radius": "50%", width: "18px", height: "18px",
+                    "font-size": "11px", "font-weight": "bold",
+                    display: "flex", "align-items": "center", "justify-content": "center",
+                    cursor: "help"
+                }).text("!").attr("title", "Fan-out error: Route Trigger branches to " + reachableScreens.length + " Render Screen nodes. Only 1 Render Screen allowed per route path!").appendTo(box);
+            }
+        }
+    }
+    if (node.type === "route-not-found") {
+        box.attr("title", "Double-click to configure route not found").on("dblclick", function (e) {
+            e.stopPropagation();
+            openRouteNotFoundNodeEditor(node);
         });
     }
     if (node.type === "render-screen") {
