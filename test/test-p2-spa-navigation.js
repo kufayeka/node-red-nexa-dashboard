@@ -35,6 +35,15 @@ const artboard = makeEl('div');
 artboard.id = 'nexa-runtime-artboard';
 
 const eventListeners = {};
+const bodyClasses = new Set();
+const bodyMock = {
+  style: {},
+  classList: {
+    add(c) { bodyClasses.add(c); },
+    remove(c) { bodyClasses.delete(c); },
+    contains(c) { return bodyClasses.has(c); }
+  }
+};
 global.document = {
   createElement(tag) { return makeEl(tag); },
   getElementById(id) { return id === 'nexa-runtime-artboard' ? artboard : null; },
@@ -43,7 +52,8 @@ global.document = {
     return m ? (elements.find(e => e.attrs['data-id'] === m[1]) || null) : null;
   },
   querySelectorAll() { return []; },
-  title: 'Initial Title'
+  title: 'Initial Title',
+  body: bodyMock
 };
 
 global.window = global;
@@ -54,6 +64,11 @@ let historyIndex = -1;
 global.addEventListener = function (evt, fn) {
   eventListeners[evt] = eventListeners[evt] || [];
   eventListeners[evt].push(fn);
+};
+global.removeEventListener = function (evt, fn) {
+  if (eventListeners[evt]) {
+    eventListeners[evt] = eventListeners[evt].filter(f => f !== fn);
+  }
 };
 global.dispatchEvent = function (evt) {
   (eventListeners[evt.type] || []).forEach(fn => fn(evt));
@@ -172,11 +187,26 @@ const screen2 = {
   }
 };
 
+const screen3 = {
+  id: 'screen3',
+  name: 'Fullscreen Dashboard',
+  path: '/fullscreen',
+  width: 1920,
+  height: 1080,
+  displayMode: 'fill',
+  layers: [{ id: 'default', name: 'Default', parentId: null, visible: true }],
+  components: [
+    { id: 'fullBox', type: 'nexa-box', x: 0, y: 0, w: 1920, h: 1080, rotation: 0, locked: false, layerId: 'default', props: { color: 'purple' } }
+  ],
+  logic: { nodes: [], wires: [] }
+};
+
 migrateSurface(screen1);
 migrateSurface(screen2);
+migrateSurface(screen3);
 
 window.__NEXA_SCREEN__ = screen1;
-window.__NEXA_SCREENS__ = [screen1, screen2];
+window.__NEXA_SCREENS__ = [screen1, screen2, screen3];
 window.__NEXA_TEMPLATES__ = [];
 window.__NEXA_APP__ = { variables: [] };
 
@@ -277,7 +307,24 @@ async function runTests() {
   // Now test window.history.back()
   window.history.back();
   assert.strictEqual(artboard.children.length, 1, 'window.history.back() navigated to screen2 in SPA mode');
-  console.log('window.history.back() restores previous screen without reload?', true);
+  console.log('--- [P2 Phase 1] 6. Screen Dimensions & DisplayMode Switching ---');
+  // Transition to screen3 (displayMode: fill, width: 1920, height: 1080)
+  runtime.navigateToScreen('screen3');
+  assert.strictEqual(artboard.style.width, '100vw', 'Screen3 fill mode applies width 100vw');
+  assert.strictEqual(artboard.style.height, '100vh', 'Screen3 fill mode applies height 100vh');
+  assert.strictEqual(bodyMock.classList.contains('nexa-mode-fill'), true, 'body class has nexa-mode-fill');
+  assert.strictEqual(bodyMock.classList.contains('nexa-mode-fixed'), false, 'body class does NOT have nexa-mode-fixed');
+  console.log('Transition to Fill mode screen sets 100vw/100vh and body class?', true);
+
+  // Transition back to screen1 (displayMode: fixed, width: 800, height: 600)
+  runtime.navigateToScreen('screen1');
+  assert.strictEqual(artboard.style.width, '800px', 'Screen1 fixed mode restored width 800px');
+  assert.strictEqual(artboard.style.height, '600px', 'Screen1 fixed mode restored height 600px');
+  assert.strictEqual(artboard.style.position, 'relative', 'Screen1 fixed mode restored position relative');
+  assert.strictEqual(artboard.style.margin, '20px auto', 'Screen1 fixed mode restored margin 20px auto');
+  assert.strictEqual(bodyMock.classList.contains('nexa-mode-fixed'), true, 'body class has nexa-mode-fixed');
+  assert.strictEqual(bodyMock.classList.contains('nexa-mode-fill'), false, 'body class does NOT have nexa-mode-fill');
+  console.log('Transition back to Fixed mode screen restores dimensions and margins?', true);
 
   console.log('ALL OK');
   process.exit(0);
