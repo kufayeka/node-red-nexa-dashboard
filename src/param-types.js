@@ -79,7 +79,8 @@ export function buildTypedInputWidget(container, initialType, initialValue, onCh
     if (typeof input.typedInput === "function") {
         input.typedInput({
             default: tiType,
-            types: types
+            types: types,
+            width: "100%"
         });
         input.typedInput("type", tiType);
         input.typedInput("value", initialText);

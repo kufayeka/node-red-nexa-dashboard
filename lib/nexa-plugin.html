@@ -4856,7 +4856,8 @@
     if (typeof input.typedInput === "function") {
       input.typedInput({
         default: tiType,
-        types: types2
+        types: types2,
+        width: "100%"
       });
       input.typedInput("type", tiType);
       input.typedInput("value", initialText);
@@ -35595,77 +35596,38 @@
     typeSelect.val(variable2.type || "string");
     var valRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
-    var valInputContainer = window.$("<div>").appendTo(valRow);
-    function renderValueControl(currentType) {
-      valInputContainer.empty();
-      if (currentType === "boolean") {
-        var bSel = window.$("<select>").css({ width: "100%", padding: "4px" }).appendTo(valInputContainer);
-        window.$("<option>", { value: "false" }).text("false").appendTo(bSel);
-        window.$("<option>", { value: "true" }).text("true").appendTo(bSel);
-        bSel.val(String(!!variable2.defaultValue));
-        bSel.on("change", function() {
-          variable2.defaultValue = bSel.val() === "true";
-          markDirty();
-        });
-      } else if (currentType === "number") {
-        var nIn = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(variable2.defaultValue !== void 0 ? variable2.defaultValue : 0).appendTo(valInputContainer);
-        nIn.on("change input", function() {
-          var num2 = parseFloat(nIn.val());
-          variable2.defaultValue = isFinite(num2) ? num2 : 0;
-          markDirty();
-        });
-      } else if (currentType === "color") {
-        var cWrap = window.$("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(valInputContainer);
-        var colorPick = window.$("<input>", { type: "color" }).css({ width: "32px", height: "26px", padding: "0", border: "1px solid #ccc", "border-radius": "3px", cursor: "pointer" }).val(variable2.defaultValue || "#000000").appendTo(cWrap);
-        var colorText = window.$("<input>", { type: "text" }).css({ flex: "1 1 auto", "box-sizing": "border-box" }).val(variable2.defaultValue || "#000000").appendTo(cWrap);
-        colorPick.on("input change", function() {
-          colorText.val(colorPick.val());
-          variable2.defaultValue = colorPick.val();
-          markDirty();
-        });
-        colorText.on("input change", function() {
-          colorPick.val(colorText.val());
-          variable2.defaultValue = colorText.val();
-          markDirty();
-        });
-      } else if (currentType === "object" || currentType === "array") {
-        var valStr = "";
-        try {
-          valStr = variable2.defaultValue !== void 0 ? JSON.stringify(variable2.defaultValue, null, 2) : currentType === "array" ? "[]" : "{}";
-        } catch (err) {
-          valStr = currentType === "array" ? "[]" : "{}";
-        }
-        var ta = window.$("<textarea>", { rows: 4 }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace", "font-size": "11px", padding: "5px" }).val(valStr).appendTo(valInputContainer);
-        var jsonErr = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(valInputContainer);
-        ta.on("change", function() {
-          try {
-            variable2.defaultValue = JSON.parse(ta.val());
-            jsonErr.hide();
-            markDirty();
-          } catch (e) {
-            jsonErr.text("Invalid JSON syntax").show();
-          }
-        });
-      } else {
-        var sIn = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(variable2.defaultValue !== void 0 ? String(variable2.defaultValue) : "").appendTo(valInputContainer);
-        sIn.on("change input", function() {
-          variable2.defaultValue = sIn.val();
-          markDirty();
-        });
+    var valInputContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+    var typedInputEl = buildTypedInputWidget(valInputContainer, variable2.type || "string", variable2.defaultValue, function(parsedVal, detType) {
+      variable2.defaultValue = parsedVal;
+      if (detType && detType !== variable2.type) {
+        variable2.type = detType;
+        typeSelect.val(detType);
       }
-    }
-    renderValueControl(variable2.type || "string");
+      markDirty();
+    });
     typeSelect.on("change", function() {
-      var oldType = variable2.type || "string";
       var newType = typeSelect.val();
       variable2.type = newType;
-      if (newType === "boolean" && typeof variable2.defaultValue !== "boolean") variable2.defaultValue = false;
-      else if (newType === "number" && typeof variable2.defaultValue !== "number") variable2.defaultValue = 0;
-      else if (newType === "object" && (typeof variable2.defaultValue !== "object" || Array.isArray(variable2.defaultValue))) variable2.defaultValue = {};
-      else if (newType === "array" && !Array.isArray(variable2.defaultValue)) variable2.defaultValue = [];
-      else if (newType === "color" && typeof variable2.defaultValue !== "string") variable2.defaultValue = "#000000";
-      else if (newType === "string" && typeof variable2.defaultValue !== "string") variable2.defaultValue = "";
-      renderValueControl(newType);
+      var tiType = mapParamTypeToTypedInputType(newType);
+      if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+        typedInputEl.typedInput("type", tiType);
+        if (newType === "boolean") {
+          typedInputEl.typedInput("value", "false");
+          variable2.defaultValue = false;
+        } else if (newType === "number") {
+          typedInputEl.typedInput("value", "0");
+          variable2.defaultValue = 0;
+        } else if (newType === "object") {
+          typedInputEl.typedInput("value", "{}");
+          variable2.defaultValue = {};
+        } else if (newType === "array") {
+          typedInputEl.typedInput("value", "[]");
+          variable2.defaultValue = [];
+        } else if (newType === "string") {
+          typedInputEl.typedInput("value", "");
+          variable2.defaultValue = "";
+        }
+      }
       markDirty();
     });
     if (isApp) {

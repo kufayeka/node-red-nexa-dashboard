@@ -40,8 +40,10 @@ function fakeDomNode() {
 let documentJQ = null;
 function fakeJQ(selOrHtml, attrs) {
   const domNode = fakeDomNode();
+  const tag = String(selOrHtml || '').replace(/[<>]/g, '').trim().toLowerCase();
   const el = {
     _isFakeJQ: true,
+    _tag: tag,
     _css: {}, _text: '', _attrs: attrs || {}, _children: [], _handlers: {}, _domNode: domNode,
     css(o) { if (typeof o === 'string') return this._css[o]; Object.assign(this._css, o); return this; },
     attr(k, v) { if (typeof k === 'object') { Object.assign(this._attrs, k); return this; } if (v === undefined) return this._attrs[k]; this._attrs[k] = v; return this; },
@@ -84,7 +86,7 @@ function fakeJQ(selOrHtml, attrs) {
           if (c._attrs) {
             if (sel.startsWith('.') && (' ' + (c._attrs['class'] || '') + ' ').includes(' ' + sel.slice(1) + ' ')) out.push(c);
             else if (sel.startsWith('#') && c._attrs.id === sel.slice(1)) out.push(c);
-            else if (sel === 'li') out.push(c);
+            else if (c._tag === sel) out.push(c);
           }
           walk(c);
         });
@@ -114,7 +116,23 @@ function fakeJQ(selOrHtml, attrs) {
     width() { return 1280; },
     height() { return 800; },
     on(evt, fn) { this._handlers[evt] = this._handlers[evt] || []; this._handlers[evt].push(fn); return this; },
-    trigger(evt, payload) { (this._handlers[evt] || []).forEach(fn => fn(payload)); return this; }
+    trigger(evt, payload) { (this._handlers[evt] || []).forEach(fn => fn(payload)); return this; },
+    typedInput(optOrMethod, arg) {
+      if (optOrMethod === 'type') {
+        if (arg === undefined) return this._typedInputType || (this._typedInputOpts && this._typedInputOpts.default) || 'str';
+        this._typedInputType = arg;
+        return this;
+      }
+      if (optOrMethod === 'value') {
+        if (arg === undefined) return this._typedInputValue !== undefined ? this._typedInputValue : (this._val !== undefined ? this._val : '');
+        this._typedInputValue = arg;
+        this._val = arg;
+        return this;
+      }
+      this._typedInputOpts = optOrMethod;
+      if (optOrMethod && optOrMethod.default) this._typedInputType = optOrMethod.default;
+      return this;
+    }
   };
   return el;
 }
@@ -287,5 +305,8 @@ treeEl.dispatchEvent({
 });
 console.log('Selecting screen-var in tree sets editingMode to "screen-variable"?', state.editingMode === 'screen-variable');
 console.log('Active screen variable ID matches?', state.activeScreenVariableId === 'sv1');
+
+api.renderScreenForm();
+console.log('renderScreenForm renders typedInput widget for variable defaultValue?', !!state.screenFormEl.find('input')._collection.find(c => c._typedInputOpts));
 
 console.log('ALL OK - ALL TREE & VARIABLE TESTS PASSED!');
