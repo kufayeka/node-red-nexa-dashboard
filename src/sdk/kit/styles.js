@@ -202,7 +202,7 @@ nx-tab[hidden] { display: none !important; }
 
 /* ---- tree (the MQTT Sparkplug explorer's look) ---- */
 .nx-kit .nx-tree { font-size: 12px; user-select: none; }
-.nx-kit .nx-tree-row { position: relative; display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 0 6px 0 4px; border-radius: 3px; cursor: default; color: var(--nx-text-strong); }
+.nx-kit .nx-tree-row { position: relative; display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 6px 2px 4px; border-radius: 3px; cursor: default; color: var(--nx-text-strong); }
 .nx-kit .nx-tree-row:hover { background: var(--nx-bg-hover); }
 .nx-kit .nx-tree-row.nx-on { background: var(--nx-bg-selected); box-shadow: inset 2px 0 0 var(--nx-accent); }
 .nx-kit .nx-tree-row.nx-muted { color: var(--nx-text-faint); }
@@ -215,7 +215,7 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-tree-icon { flex: 0 0 auto; width: 14px; text-align: center; color: var(--nx-text-muted); }
 .nx-kit .nx-tree-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nx-kit.nx-kit .nx-tree-rename { flex: 1 1 auto; height: 20px; min-height: 20px; padding: 0 4px; font-size: 12px; }
-.nx-kit .nx-tree-actions { flex: 0 0 auto; display: flex; gap: 1px; opacity: 0.35; }
+.nx-kit .nx-tree-actions { flex: 0 0 auto; display: flex; gap: 2px; opacity: 0.45; margin-left: auto; }
 .nx-kit .nx-tree-row:hover .nx-tree-actions, .nx-kit .nx-tree-row.nx-on .nx-tree-actions, .nx-kit .nx-tree-actions .nx-on { opacity: 1; }
 .nx-kit .nx-tree-children { margin-left: 9px; border-left: 1px dotted var(--nx-border); }
 .nx-kit .nx-tree-empty { padding: 10px; font-size: 11px; color: var(--nx-text-faint); text-align: center; }

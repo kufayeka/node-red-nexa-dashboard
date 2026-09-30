@@ -2503,13 +2503,19 @@
   }
   function getOrCreateProjectConfigNode() {
     var existing = null;
-    RED.nodes.eachConfig(function(n) {
-      if (n.type === "kufayeka-nexa-project") existing = n;
-    });
+    if (typeof RED === "undefined" || !RED.nodes) return null;
+    if (typeof RED.nodes.eachConfig === "function") {
+      RED.nodes.eachConfig(function(n) {
+        if (n.type === "kufayeka-nexa-project") existing = n;
+      });
+    }
     if (existing) return existing;
-    var node_def = RED.nodes.getType("kufayeka-nexa-project");
+    var node_def = typeof RED.nodes.getType === "function" ? RED.nodes.getType("kufayeka-nexa-project") : null;
     if (!node_def) {
-      RED.notify("Nexa Dashboard: kufayeka-nexa-project node type not found \u2014 is the package installed correctly?", { type: "error" });
+      var coreReady = typeof RED.nodes.getType === "function" && (RED.nodes.getType("inject") || RED.nodes.getType("debug"));
+      if (coreReady) {
+        RED.notify("Nexa Dashboard: kufayeka-nexa-project node type not found \u2014 is the package installed correctly?", { type: "error" });
+      }
       return null;
     }
     var node = {
@@ -2538,7 +2544,30 @@
       if (cb) cb();
       return;
     }
+    if (typeof RED !== "undefined" && RED.nodes) {
+      var existing = null;
+      if (typeof RED.nodes.eachConfig === "function") {
+        RED.nodes.eachConfig(function(n) {
+          if (n.type === "kufayeka-nexa-project") existing = n;
+        });
+      }
+      var node_def = typeof RED.nodes.getType === "function" ? RED.nodes.getType("kufayeka-nexa-project") : null;
+      if (!existing && !node_def) {
+        var retry = function() {
+          if (!state.screensLoaded) ensureScreensLoaded(cb);
+        };
+        if (RED.events && typeof RED.events.once === "function") {
+          RED.events.once("flows:loaded", retry);
+          RED.events.once("workspace:change", retry);
+        }
+        setTimeout(retry, 250);
+        return;
+      }
+    }
     state.projectConfigNode = getOrCreateProjectConfigNode();
+    if (!state.projectConfigNode) {
+      return;
+    }
     var data = state.projectConfigNode && state.projectConfigNode.screens || [];
     data.forEach(backfillSurface);
     state.screenCounter = data.length;
@@ -34238,11 +34267,15 @@
   // src/sidebar/screens-panel.js
   var screens_panel_exports = {};
   __export(screens_panel_exports, {
+    addAppVariableFromSidebar: () => addAppVariableFromSidebar,
     addFlowFromSidebar: () => addFlowFromSidebar,
     addGroupFromSidebar: () => addGroupFromSidebar,
     addScreenFromSidebar: () => addScreenFromSidebar,
     addTemplateFromScreensPanel: () => addTemplateFromScreensPanel,
     buildScreensFlowsTreeNodes: () => buildScreensFlowsTreeNodes,
+    collapseAllScreensTree: () => collapseAllScreensTree,
+    expandAllScreensTree: () => expandAllScreensTree,
+    openFlowInBrowser: () => openFlowInBrowser,
     openScreenInBrowser: () => openScreenInBrowser,
     refreshLogicCanvasIfActive: () => refreshLogicCanvasIfActive,
     removeScreen: () => removeScreen,
@@ -34652,6 +34685,59 @@
       if (tab) tab.location.href = fullUrl;
     });
   }
+  function openFlowInBrowser(flow) {
+    var tab = window.open("", "_blank");
+    fetchScreenWorkerPort(function(port) {
+      var cleanEndpoint = (flow.endpoint || "").replace(/^\/+/, "");
+      var hostname = window.location.hostname || "localhost";
+      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanEndpoint;
+      if (tab) tab.location.href = fullUrl;
+    });
+  }
+  function expandAllScreensTree() {
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
+      state.screensFlowsTreeEl.setAllCollapsed(false);
+    }
+  }
+  function collapseAllScreensTree() {
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
+      state.screensFlowsTreeEl.setAllCollapsed(true);
+    }
+  }
+  function addAppVariableFromSidebar() {
+    var app2 = getApp();
+    app2.variables = app2.variables || [];
+    var newVar = { id: genId(), name: "appVar" + (app2.variables.length + 1), type: "string", defaultValue: "", persist: "none" };
+    app2.variables.push(newVar);
+    state.editingMode = "app-variable";
+    state.activeAppVariableId = newVar.id;
+    markDirty();
+    renderScreenList();
+    renderScreenForm();
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+      state.screensFlowsTreeEl.reveal("app-var:" + newVar.id);
+    }
+  }
+  function reorderInArray(arr, itemId, targetId, position) {
+    var fromIdx = arr.findIndex(function(x) {
+      return x.id === itemId;
+    });
+    if (fromIdx === -1) return false;
+    var toIdx = arr.findIndex(function(x) {
+      return x.id === targetId;
+    });
+    if (toIdx === -1) return false;
+    var item = arr.splice(fromIdx, 1)[0];
+    toIdx = arr.findIndex(function(x) {
+      return x.id === targetId;
+    });
+    if (position === "after") {
+      arr.splice(toIdx + 1, 0, item);
+    } else {
+      arr.splice(toIdx, 0, item);
+    }
+    return true;
+  }
   function isFolderDescendant(ancestorId, testId) {
     var cur2 = findFolder(testId);
     var seen = {};
@@ -34740,16 +34826,29 @@
       }
     }
     state.screens.forEach(function(s) {
+      var screenVars = (s.variables || []).map(function(v) {
+        return {
+          id: "screen-var:" + s.id + ":" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + ")",
+          icon: "fa fa-tag",
+          type: "screen-variable",
+          actions: [
+            { id: "delete-screen-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      });
       var node = {
         id: s.id,
         label: s.name,
         title: s.name + " (" + (s.path || "/screen") + ")",
         icon: "fa fa-desktop",
-        badge: "screen",
         type: "screen",
+        container: true,
+        children: screenVars,
         muted: !!s.disabled,
         actions: [
-          { id: "open", icon: "fa fa-external-link", title: "Open in new tab" },
+          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
           { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
           { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
         ]
@@ -34765,7 +34864,6 @@
         label: t2.name,
         title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
         icon: "fa fa-clone",
-        badge: "template",
         type: "template",
         actions: [
           { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
@@ -34781,25 +34879,51 @@
         label: fl.name,
         title: fl.name + " (" + (fl.endpoint || "/flow") + ")",
         icon: "fa fa-code-fork",
-        badge: "flow",
         type: "flow",
         actions: [
+          { id: "open", icon: "fa fa-external-link", title: "Open flow in new tab" },
           { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
           { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
         ]
       };
       placeInFlow(node, fl.parentId);
     });
+    var app2 = getApp();
+    var appVars = app2.variables || [];
+    var appVarsSection = {
+      id: "section:app-variables",
+      label: "App Variables",
+      icon: "fa fa-globe",
+      container: true,
+      type: "section",
+      badge: String(appVars.length),
+      actions: [
+        { id: "add-app-var", icon: "fa fa-plus", title: "Add App Variable" }
+      ],
+      children: appVars.map(function(v) {
+        return {
+          id: "app-var:" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + (v.persist && v.persist !== "none" ? ", " + v.persist : "") + ")",
+          icon: "fa fa-cube",
+          type: "app-variable",
+          actions: [
+            { id: "delete-app-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      })
+    };
+    var screenFolderList = [], templateFolderList = [], flowFolderList = [];
     state.folders.forEach(function(f) {
       var node = folderNodes[f.id];
       if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant(f.id, f.parentId)) {
         folderNodes[f.parentId].children.push(node);
       } else if (f.parentId === "section:templates" || f.category === "template") {
-        templatesSection.children.unshift(node);
+        templateFolderList.push(node);
       } else if (f.parentId === "section:flows" || f.category === "flow") {
-        flowsSection.children.unshift(node);
+        flowFolderList.push(node);
       } else if (f.parentId === "section:screens" || f.category === "screen") {
-        screensSection.children.unshift(node);
+        screenFolderList.push(node);
       } else {
         var hasTemplates = state.templates.some(function(t2) {
           return t2.parentId === f.id;
@@ -34809,34 +34933,58 @@
         });
         if (hasTemplates) {
           f.category = "template";
-          templatesSection.children.unshift(node);
+          templateFolderList.push(node);
         } else if (hasFlows) {
           f.category = "flow";
-          flowsSection.children.unshift(node);
+          flowFolderList.push(node);
         } else {
           f.category = "screen";
-          screensSection.children.unshift(node);
+          screenFolderList.push(node);
         }
       }
     });
+    screensSection.children = screenFolderList.concat(screensSection.children);
+    templatesSection.children = templateFolderList.concat(templatesSection.children);
+    flowsSection.children = flowFolderList.concat(flowsSection.children);
     Object.keys(folderNodes).forEach(function(fid) {
       folderNodes[fid].badge = String(folderNodes[fid].children.length);
     });
     screensSection.badge = String(state.screens.length);
     templatesSection.badge = String(state.templates.length);
     flowsSection.badge = String(state.flows.length);
-    return [screensSection, templatesSection, flowsSection];
+    return [screensSection, templatesSection, flowsSection, appVarsSection];
   }
   function onScreensFlowsSelect(e) {
     var id2 = e.detail.id;
-    if (id2 === "section:screens" || id2 === "section:templates" || id2 === "section:flows") {
+    if (id2 === "section:screens" || id2 === "section:templates" || id2 === "section:flows" || id2 === "section:app-variables") {
       if (id2 === "section:screens" && state.editingMode !== "screen" && state.screens.length) {
         selectScreenFromSidebar(state.activeScreenId || state.screens[0].id);
       } else if (id2 === "section:templates" && state.editingMode !== "template" && state.templates.length) {
         selectTemplateFromScreensPanel(state.activeTemplateId || state.templates[0].id);
       } else if (id2 === "section:flows" && state.editingMode !== "flow" && state.flows.length) {
         selectFlowFromScreensPanel(state.activeFlowId || state.flows[0].id);
+      } else if (id2 === "section:app-variables") {
+        var app2 = getApp();
+        if (app2.variables && app2.variables.length) {
+          state.editingMode = "app-variable";
+          state.activeAppVariableId = app2.variables[0].id;
+          renderScreenForm();
+        }
       }
+      return;
+    }
+    if (id2.startsWith("app-var:")) {
+      state.editingMode = "app-variable";
+      state.activeAppVariableId = id2.substring("app-var:".length);
+      renderScreenForm();
+      return;
+    }
+    if (id2.startsWith("screen-var:")) {
+      var parts = id2.split(":");
+      state.editingMode = "screen-variable";
+      state.activeScreenId = parts[1];
+      state.activeScreenVariableId = parts[2];
+      renderScreenForm();
       return;
     }
     var screen = state.screens.find(function(s) {
@@ -34889,7 +35037,74 @@
       addGroupFromSidebar({ category: "flow", parentId: null });
       return;
     }
+    if (action === "add-app-var") {
+      addAppVariableFromSidebar();
+      return;
+    }
+    if (action === "add-screen-var") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        s.variables = s.variables || [];
+        var newVar = { id: genId(), name: "var" + (s.variables.length + 1), type: "string", defaultValue: "" };
+        s.variables.push(newVar);
+        state.editingMode = "screen-variable";
+        state.activeScreenId = s.id;
+        state.activeScreenVariableId = newVar.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
+        }
+        return;
+      }
+    }
+    if (action === "delete-app-var") {
+      var varId = id2.startsWith("app-var:") ? id2.substring("app-var:".length) : id2;
+      var app2 = getApp();
+      if (app2 && app2.variables) {
+        app2.variables = app2.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeAppVariableId === varId) {
+          state.activeAppVariableId = null;
+          state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "delete-screen-var") {
+      var parts = id2.split(":");
+      var screenId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === screenId;
+      });
+      if (s && s.variables) {
+        s.variables = s.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeScreenVariableId === varId) {
+          state.activeScreenVariableId = null;
+          state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
     if (action === "open") {
+      var fl = findFlow(id2);
+      if (fl) {
+        openFlowInBrowser(fl);
+        return;
+      }
       var s = state.screens.find(function(sc2) {
         return sc2.id === id2;
       });
@@ -34991,8 +35206,39 @@
   function onScreensFlowsRename(e) {
     var id2 = e.detail.id;
     var name2 = e.detail.name;
-    var item = state.screens.find(function(s) {
-      return s.id === id2;
+    if (id2.startsWith("app-var:")) {
+      var varId = id2.substring("app-var:".length);
+      var v = (getApp().variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    if (id2.startsWith("screen-var:")) {
+      var parts = id2.split(":");
+      var screenId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc) {
+        return sc.id === screenId;
+      });
+      var v = s && (s.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    var item = state.screens.find(function(s2) {
+      return s2.id === id2;
     }) || findTemplate(id2) || findFlow(id2) || findFolder(id2);
     if (item && name2 && item.name !== name2) {
       item.name = name2;
@@ -35008,8 +35254,8 @@
     var item = state.screens.find(function(s) {
       return s.id === d.id;
     }) || findTemplate(d.id) || findFlow(d.id) || findFolder(d.id);
-    if (!item) return;
     if (d.position === "inside") {
+      if (!item) return;
       if (d.targetId === "section:screens") {
         if (item.type === "template") {
           var sc = convertTemplateToScreen(item.id);
@@ -35056,15 +35302,46 @@
         }
       }
     } else {
-      if (d.targetId === "section:screens" || d.targetId === "section:templates" || d.targetId === "section:flows") {
+      if (d.targetId === "section:screens" || d.targetId === "section:templates" || d.targetId === "section:flows" || d.targetId === "section:app-variables") {
         return;
       }
+      if (d.id.startsWith("app-var:") && d.targetId.startsWith("app-var:")) {
+        var app2 = getApp();
+        reorderInArray(app2.variables || [], d.id.substring("app-var:".length), d.targetId.substring("app-var:".length), d.position);
+        markDirty();
+        renderScreenList();
+        return;
+      }
+      if (d.id.startsWith("screen-var:") && d.targetId.startsWith("screen-var:")) {
+        var sParts1 = d.id.split(":"), sParts2 = d.targetId.split(":");
+        if (sParts1[1] === sParts2[1]) {
+          var sc = state.screens.find(function(s) {
+            return s.id === sParts1[1];
+          });
+          if (sc && sc.variables) {
+            reorderInArray(sc.variables, sParts1[2], sParts2[2], d.position);
+            markDirty();
+            renderScreenList();
+          }
+        }
+        return;
+      }
+      if (!item) return;
       var target = state.screens.find(function(s) {
         return s.id === d.targetId;
       }) || findTemplate(d.targetId) || findFlow(d.targetId) || findFolder(d.targetId);
       if (target) {
         item.parentId = target.parentId || null;
-        if (target.type === "template" && item.type === "screen") {
+        if (item.type === "folder" && target.type === "folder") {
+          item.category = target.category || item.category;
+          reorderInArray(state.folders, item.id, target.id, d.position);
+        } else if (item.type === "screen" && target.type === "screen") {
+          reorderInArray(state.screens, item.id, target.id, d.position);
+        } else if (item.type === "template" && target.type === "template") {
+          reorderInArray(state.templates, item.id, target.id, d.position);
+        } else if (item.type === "flow" && target.type === "flow") {
+          reorderInArray(state.flows, item.id, target.id, d.position);
+        } else if (target.type === "template" && item.type === "screen") {
           var tmpl2 = convertScreenToTemplate(item.id);
           tmpl2.parentId = target.parentId || null;
           markDirty();
@@ -35101,7 +35378,7 @@
       treeHost.get(0).appendChild(treeEl2);
       var nodes = buildScreensFlowsTreeNodes();
       treeEl2.nodes = nodes;
-      var activeId = state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
       treeEl2.selected = activeId ? [activeId] : [];
       state.screensFlowsTreeEl = treeEl2;
     }
@@ -35265,6 +35542,166 @@
       renderScreenForm();
     }).appendTo(state.screenFormEl);
   }
+  function renderVariablePropertiesForm(variable2, isApp, screen) {
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "13px",
+      "margin-bottom": "14px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px"
+    }).html(
+      isApp ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties' : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (screen ? screen.name : "") + ")"
+    ).appendTo(state.screenFormEl);
+    window.$("<div>").css({
+      "margin-bottom": "14px",
+      padding: "8px 12px",
+      background: isApp ? "#f5f3ff" : "#f0f9ff",
+      border: "1px solid " + (isApp ? "#ddd6fe" : "#bae6fd"),
+      "border-radius": "6px",
+      "font-size": "11px",
+      color: isApp ? "#5b21b6" : "#0369a1",
+      "line-height": "1.4"
+    }).html(
+      isApp ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : "<strong>Screen-Scoped Variable (" + (screen ? screen.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
+    ).appendTo(state.screenFormEl);
+    var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
+    var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(variable2.name || "").appendTo(nameRow);
+    var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+    nameInput.on("input change", function() {
+      var val = nameInput.val().trim();
+      if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+        nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+      } else {
+        nameError.hide();
+        variable2.name = val;
+        renderScreenList();
+        markDirty();
+      }
+    });
+    var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+    var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+    ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+      window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+    });
+    (getApp().types || []).forEach(function(t2) {
+      window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+    });
+    typeSelect.val(variable2.type || "string");
+    var valRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+    var valInputContainer = window.$("<div>").appendTo(valRow);
+    function renderValueControl(currentType) {
+      valInputContainer.empty();
+      if (currentType === "boolean") {
+        var bSel = window.$("<select>").css({ width: "100%", padding: "4px" }).appendTo(valInputContainer);
+        window.$("<option>", { value: "false" }).text("false").appendTo(bSel);
+        window.$("<option>", { value: "true" }).text("true").appendTo(bSel);
+        bSel.val(String(!!variable2.defaultValue));
+        bSel.on("change", function() {
+          variable2.defaultValue = bSel.val() === "true";
+          markDirty();
+        });
+      } else if (currentType === "number") {
+        var nIn = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(variable2.defaultValue !== void 0 ? variable2.defaultValue : 0).appendTo(valInputContainer);
+        nIn.on("change input", function() {
+          var num2 = parseFloat(nIn.val());
+          variable2.defaultValue = isFinite(num2) ? num2 : 0;
+          markDirty();
+        });
+      } else if (currentType === "color") {
+        var cWrap = window.$("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(valInputContainer);
+        var colorPick = window.$("<input>", { type: "color" }).css({ width: "32px", height: "26px", padding: "0", border: "1px solid #ccc", "border-radius": "3px", cursor: "pointer" }).val(variable2.defaultValue || "#000000").appendTo(cWrap);
+        var colorText = window.$("<input>", { type: "text" }).css({ flex: "1 1 auto", "box-sizing": "border-box" }).val(variable2.defaultValue || "#000000").appendTo(cWrap);
+        colorPick.on("input change", function() {
+          colorText.val(colorPick.val());
+          variable2.defaultValue = colorPick.val();
+          markDirty();
+        });
+        colorText.on("input change", function() {
+          colorPick.val(colorText.val());
+          variable2.defaultValue = colorText.val();
+          markDirty();
+        });
+      } else if (currentType === "object" || currentType === "array") {
+        var valStr = "";
+        try {
+          valStr = variable2.defaultValue !== void 0 ? JSON.stringify(variable2.defaultValue, null, 2) : currentType === "array" ? "[]" : "{}";
+        } catch (err) {
+          valStr = currentType === "array" ? "[]" : "{}";
+        }
+        var ta = window.$("<textarea>", { rows: 4 }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace", "font-size": "11px", padding: "5px" }).val(valStr).appendTo(valInputContainer);
+        var jsonErr = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(valInputContainer);
+        ta.on("change", function() {
+          try {
+            variable2.defaultValue = JSON.parse(ta.val());
+            jsonErr.hide();
+            markDirty();
+          } catch (e) {
+            jsonErr.text("Invalid JSON syntax").show();
+          }
+        });
+      } else {
+        var sIn = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(variable2.defaultValue !== void 0 ? String(variable2.defaultValue) : "").appendTo(valInputContainer);
+        sIn.on("change input", function() {
+          variable2.defaultValue = sIn.val();
+          markDirty();
+        });
+      }
+    }
+    renderValueControl(variable2.type || "string");
+    typeSelect.on("change", function() {
+      var oldType = variable2.type || "string";
+      var newType = typeSelect.val();
+      variable2.type = newType;
+      if (newType === "boolean" && typeof variable2.defaultValue !== "boolean") variable2.defaultValue = false;
+      else if (newType === "number" && typeof variable2.defaultValue !== "number") variable2.defaultValue = 0;
+      else if (newType === "object" && (typeof variable2.defaultValue !== "object" || Array.isArray(variable2.defaultValue))) variable2.defaultValue = {};
+      else if (newType === "array" && !Array.isArray(variable2.defaultValue)) variable2.defaultValue = [];
+      else if (newType === "color" && typeof variable2.defaultValue !== "string") variable2.defaultValue = "#000000";
+      else if (newType === "string" && typeof variable2.defaultValue !== "string") variable2.defaultValue = "";
+      renderValueControl(newType);
+      markDirty();
+    });
+    if (isApp) {
+      var persistRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(state.screenFormEl);
+      window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Kept for (Persistence)").appendTo(persistRow);
+      var persistSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(persistRow);
+      window.$("<option>", { value: "none" }).text("this page (resets on reload)").appendTo(persistSelect);
+      window.$("<option>", { value: "session" }).text("tab session (sessionStorage)").appendTo(persistSelect);
+      window.$("<option>", { value: "local" }).text("browser (localStorage \u2014 kept across reloads)").appendTo(persistSelect);
+      persistSelect.val(variable2.persist || "none");
+      persistSelect.on("change", function() {
+        variable2.persist = persistSelect.val();
+        markDirty();
+      });
+    }
+    var btnRow = window.$("<div>").css({ "margin-top": "16px", "padding-top": "12px", "border-top": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)" }).appendTo(state.screenFormEl);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
+      if (isApp) {
+        var app2 = getApp();
+        app2.variables = (app2.variables || []).filter(function(v) {
+          return v.id !== variable2.id;
+        });
+        state.activeAppVariableId = null;
+        state.editingMode = "screen";
+      } else if (screen) {
+        screen.variables = (screen.variables || []).filter(function(v) {
+          return v.id !== variable2.id;
+        });
+        state.activeScreenVariableId = null;
+        state.editingMode = "screen";
+      }
+      markDirty();
+      renderScreenList();
+      renderScreenForm();
+    }).appendTo(btnRow);
+  }
   function renderScreenForm() {
     if (!state.screenFormEl) return;
     state.screenFormEl.empty();
@@ -35272,6 +35709,28 @@
       var folder = findFolder(state.selectedFolderId);
       if (folder) {
         renderFolderForm(folder);
+        return;
+      }
+    }
+    if (state.editingMode === "app-variable") {
+      var app2 = getApp();
+      var appVar = (app2.variables || []).find(function(v) {
+        return v.id === state.activeAppVariableId;
+      });
+      if (appVar) {
+        renderVariablePropertiesForm(appVar, true, null);
+        return;
+      }
+    }
+    if (state.editingMode === "screen-variable") {
+      var sc = state.screens.find(function(s) {
+        return s.id === state.activeScreenId;
+      });
+      var scVar = sc && (sc.variables || []).find(function(v) {
+        return v.id === state.activeScreenVariableId;
+      });
+      if (scVar) {
+        renderVariablePropertiesForm(scVar, false, sc);
         return;
       }
     }
@@ -35393,8 +35852,6 @@
       markDirty();
     });
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
-    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), screen, true);
-    renderVariablesInspector(window.$("<div>").css({ "margin-top": "12px" }).appendTo(state.screenFormEl), getApp(), "app");
     var checksWrap = window.$("<div>").css({
       "margin-top": "12px",
       "padding-top": "10px",
@@ -35541,6 +35998,9 @@
       addTemplateFromScreensPanel,
       addFlowFromSidebar,
       addGroupFromSidebar,
+      addAppVariableFromSidebar,
+      expandAllScreensTree,
+      collapseAllScreensTree,
       removeScreen
     });
   }
@@ -37044,6 +37504,9 @@
       width: "100%"
     }).appendTo(screenToolbar);
     window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-sitemap'></i> Screens & Flows</span>").appendTo(screenTitleRow);
+    var expandCollapseGroup = window.$("<div>").css({ display: "flex", gap: "3px", "align-items": "center" }).appendTo(screenTitleRow);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Expand all" }).html("<i class='fa fa-angle-double-down'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", expandAllScreensTree).appendTo(expandCollapseGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Collapse all" }).html("<i class='fa fa-angle-double-up'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", collapseAllScreensTree).appendTo(expandCollapseGroup);
     var screenBtnGroup = window.$("<div>").css({
       display: "flex",
       "align-items": "center",
@@ -37055,6 +37518,7 @@
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" }).text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" }).text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" }).text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" }).text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
     var screenRightCol = window.$("<div>").css({
@@ -37076,15 +37540,15 @@
       scrollable: true,
       onchange: function(tab) {
         if (!tab) return;
-        state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
         screensPane.toggle(tab.id === "screens");
-        state.propertiesPane.toggle(tab.id === "properties");
+        state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
         state.hierarchyPane.toggle(tab.id === "hierarchy");
         state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
+        state.propertiesPane.toggle(tab.id === "properties");
+        state.themePane.toggle(tab.id === "theme");
         state.typesPane.toggle(tab.id === "types");
         state.assetsPane.toggle(tab.id === "assets");
         state.breakpointsPane.toggle(tab.id === "breakpoints");
-        state.themePane.toggle(tab.id === "theme");
         state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
         if (tab.id === "screens") {
           ensureScreensLoaded(function() {
@@ -37093,25 +37557,25 @@
           });
         }
         if (tab.id === "components") buildPalette(state.componentsPane);
-        if (tab.id === "properties") renderPropertiesPanel();
         if (tab.id === "hierarchy") renderHierarchyPanel();
         if (tab.id === "events") renderEventsPanel();
-        if (tab.id === "sparkplug") renderSparkplugPanel();
+        if (tab.id === "properties") renderPropertiesPanel();
+        if (tab.id === "theme") renderThemePanel();
         if (tab.id === "types") renderTypesPanel();
         if (tab.id === "assets") renderAssetsPanel();
         if (tab.id === "breakpoints") renderBreakpointsPanel();
-        if (tab.id === "theme") renderThemePanel();
+        if (tab.id === "sparkplug") renderSparkplugPanel();
       }
     });
-    state.sidebarTabs.addTab({ id: "components", label: "Components" });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
+    state.sidebarTabs.addTab({ id: "components", label: "Components" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
+    state.sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
-    state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
-    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
-    state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
       window.NEXA.onRegister(function(id2) {
@@ -37124,6 +37588,17 @@
         })) renderActiveScreen();
         if (state.eventsPane && state.eventsPane.is(":visible")) {
           renderEventsPanel();
+        }
+      });
+    }
+    if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
+      window.RED.events.on("flows:loaded", function() {
+        if (!state.projectConfigNode) {
+          state.screensLoaded = false;
+          ensureScreensLoaded(function() {
+            renderScreenList();
+            renderScreenForm();
+          });
         }
       });
     }

@@ -315,16 +315,18 @@ template1.parentId = null;
 flow1.parentId = null;
 
 const treeNodes = api.buildScreensFlowsTreeNodes();
-console.log('treeNodes has 3 root sections (Screens, Templates, Flows)?',
-  treeNodes.length === 3 &&
+console.log('treeNodes has 4 root sections (Screens, Templates, Flows, App Variables)?',
+  treeNodes.length === 4 &&
   treeNodes[0].id === 'section:screens' &&
   treeNodes[1].id === 'section:templates' &&
-  treeNodes[2].id === 'section:flows'
+  treeNodes[2].id === 'section:flows' &&
+  treeNodes[3].id === 'section:app-variables'
 );
 
 const screensSection = treeNodes[0];
 const templatesSection = treeNodes[1];
 const flowsSection = treeNodes[2];
+const appVarsSection = treeNodes[3];
 
 const groupANode = screensSection.children.find(n => n.id === groupA.id);
 console.log('Group A node is container in screensSection?', groupANode && groupANode.container === true);
@@ -333,11 +335,20 @@ console.log('Templates section contains template1?', templatesSection.children.s
 console.log('Flows section contains flow1?', flowsSection.children.some(n => n.id === flow1.id));
 
 const screenTreeNode = groupANode.children.find(c => c.id === screen1.id);
-console.log('Screen tree node has desktop icon and badge "screen"?', screenTreeNode.icon === 'fa fa-desktop' && screenTreeNode.badge === 'screen');
-console.log('Screen tree node has actions: open, convert, duplicate?', screenTreeNode.actions.some(a => a.id === 'open') && screenTreeNode.actions.some(a => a.id === 'convert') && screenTreeNode.actions.some(a => a.id === 'duplicate'));
+console.log('Screen tree node has desktop icon and badge is removed?', screenTreeNode.icon === 'fa fa-desktop' && !screenTreeNode.badge);
+console.log('Screen tree node has actions: add-screen-var, convert, duplicate (open removed)?',
+  !screenTreeNode.actions.some(a => a.id === 'open') &&
+  screenTreeNode.actions.some(a => a.id === 'add-screen-var') &&
+  screenTreeNode.actions.some(a => a.id === 'convert') &&
+  screenTreeNode.actions.some(a => a.id === 'duplicate')
+);
 
 const flowTreeNode = flowsSection.children.find(c => c.id === flow1.id);
-console.log('Flow tree node has code-fork icon and badge "flow"?', flowTreeNode.icon === 'fa fa-code-fork' && flowTreeNode.badge === 'flow');
+console.log('Flow tree node has code-fork icon, badge is removed, and has open action?',
+  flowTreeNode.icon === 'fa fa-code-fork' &&
+  !flowTreeNode.badge &&
+  flowTreeNode.actions.some(a => a.id === 'open')
+);
 
 console.log('--- [P1] 10. Sidebar Actions & Selection Integration ---');
 const canvasTabsApi = global.__allTabsApis.filter(api => 'logic' in api._tabs).pop();

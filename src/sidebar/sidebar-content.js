@@ -5,7 +5,8 @@ import { renderPropertiesPanel } from "./properties-panel.js";
 import { renderHierarchyPanel } from "./hierarchy-panel.js";
 import {
     renderScreenList, renderScreenForm, addScreenFromSidebar,
-    addTemplateFromScreensPanel, addFlowFromSidebar, addGroupFromSidebar
+    addTemplateFromScreensPanel, addFlowFromSidebar, addGroupFromSidebar,
+    expandAllScreensTree, collapseAllScreensTree, addAppVariableFromSidebar
 } from "./screens-panel.js";
 import { renderTemplateList } from "./templates-panel.js";
 import { renderSparkplugPanel } from "./sparkplug-panel.js";
@@ -73,6 +74,18 @@ export function buildSidebarContent() {
     }).appendTo(screenToolbar);
     window.$("<span style='font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--red-ui-secondary-text-color, #64748b); display: flex; align-items: center; gap: 5px;'><i class='fa fa-sitemap'></i> Screens & Flows</span>").appendTo(screenTitleRow);
 
+    var expandCollapseGroup = window.$("<div>").css({ display: "flex", gap: "3px", "align-items": "center" }).appendTo(screenTitleRow);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Expand all" })
+        .html("<i class='fa fa-angle-double-down'></i>")
+        .css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" })
+        .on("click", expandAllScreensTree)
+        .appendTo(expandCollapseGroup);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Collapse all" })
+        .html("<i class='fa fa-angle-double-up'></i>")
+        .css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" })
+        .on("click", collapseAllScreensTree)
+        .appendTo(expandCollapseGroup);
+
     var screenBtnGroup = window.$("<div>").css({
         display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "4px", width: "100%"
     }).appendTo(screenToolbar);
@@ -92,6 +105,11 @@ export function buildSidebarContent() {
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" })
         .text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
         .on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
+
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" })
+        .text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+        .on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
+
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
 
@@ -117,15 +135,15 @@ export function buildSidebarContent() {
             // its own to restore and would fall back to the tag's default
             // ("block"), silently discarding the flex layout those two panes
             // depend on.
-            state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             screensPane.toggle(tab.id === "screens");
-            state.propertiesPane.toggle(tab.id === "properties");
+            state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             state.hierarchyPane.toggle(tab.id === "hierarchy");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
+            state.propertiesPane.toggle(tab.id === "properties");
+            state.themePane.toggle(tab.id === "theme");
             state.typesPane.toggle(tab.id === "types");
             state.assetsPane.toggle(tab.id === "assets");
             state.breakpointsPane.toggle(tab.id === "breakpoints");
-            state.themePane.toggle(tab.id === "theme");
             state.sparkplugPane.css("display", tab.id === "sparkplug" ? "flex" : "none");
             if (tab.id === "screens") {
                 ensureScreensLoaded(function () {
@@ -134,25 +152,25 @@ export function buildSidebarContent() {
                 });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
-            if (tab.id === "properties") renderPropertiesPanel();
             if (tab.id === "hierarchy") renderHierarchyPanel();
             if (tab.id === "events") renderEventsPanel();
-            if (tab.id === "sparkplug") renderSparkplugPanel();
+            if (tab.id === "properties") renderPropertiesPanel();
+            if (tab.id === "theme") renderThemePanel();
             if (tab.id === "types") renderTypesPanel();
             if (tab.id === "assets") renderAssetsPanel();
             if (tab.id === "breakpoints") renderBreakpointsPanel();
-            if (tab.id === "theme") renderThemePanel();
+            if (tab.id === "sparkplug") renderSparkplugPanel();
         }
     });
-    state.sidebarTabs.addTab({ id: "components", label: "Components" });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
+    state.sidebarTabs.addTab({ id: "components", label: "Components" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
+    state.sidebarTabs.addTab({ id: "events", label: "Events" });
+    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
     state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
-    state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
-    state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
-    state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
@@ -166,6 +184,18 @@ export function buildSidebarContent() {
             if (screen && Tree.allNodes(screen).some(function (c) { return c.type === id; })) renderActiveScreen();
             if (state.eventsPane && state.eventsPane.is(":visible")) {
                 renderEventsPanel();
+            }
+        });
+    }
+
+    if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
+        window.RED.events.on("flows:loaded", function () {
+            if (!state.projectConfigNode) {
+                state.screensLoaded = false;
+                ensureScreensLoaded(function () {
+                    renderScreenList();
+                    renderScreenForm();
+                });
             }
         });
     }

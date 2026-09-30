@@ -537,14 +537,20 @@ export function markDirty() {
 
 export function getOrCreateProjectConfigNode() {
     var existing = null;
-    RED.nodes.eachConfig(function (n) {
-        if (n.type === "kufayeka-nexa-project") existing = n;
-    });
+    if (typeof RED === "undefined" || !RED.nodes) return null;
+    if (typeof RED.nodes.eachConfig === "function") {
+        RED.nodes.eachConfig(function (n) {
+            if (n.type === "kufayeka-nexa-project") existing = n;
+        });
+    }
     if (existing) return existing;
 
-    var node_def = RED.nodes.getType("kufayeka-nexa-project");
+    var node_def = (typeof RED.nodes.getType === "function") ? RED.nodes.getType("kufayeka-nexa-project") : null;
     if (!node_def) {
-        RED.notify("Nexa Dashboard: kufayeka-nexa-project node type not found — is the package installed correctly?", { type: "error" });
+        var coreReady = typeof RED.nodes.getType === "function" && (RED.nodes.getType("inject") || RED.nodes.getType("debug"));
+        if (coreReady) {
+            RED.notify("Nexa Dashboard: kufayeka-nexa-project node type not found — is the package installed correctly?", { type: "error" });
+        }
         return null;
     }
     var node = {
@@ -576,7 +582,30 @@ export function ensureScreensLoaded(cb) {
         if (cb) cb();
         return;
     }
+    if (typeof RED !== "undefined" && RED.nodes) {
+        var existing = null;
+        if (typeof RED.nodes.eachConfig === "function") {
+            RED.nodes.eachConfig(function (n) {
+                if (n.type === "kufayeka-nexa-project") existing = n;
+            });
+        }
+        var node_def = (typeof RED.nodes.getType === "function") ? RED.nodes.getType("kufayeka-nexa-project") : null;
+        if (!existing && !node_def) {
+            var retry = function () {
+                if (!state.screensLoaded) ensureScreensLoaded(cb);
+            };
+            if (RED.events && typeof RED.events.once === "function") {
+                RED.events.once("flows:loaded", retry);
+                RED.events.once("workspace:change", retry);
+            }
+            setTimeout(retry, 250);
+            return;
+        }
+    }
     state.projectConfigNode = getOrCreateProjectConfigNode();
+    if (!state.projectConfigNode) {
+        return;
+    }
     var data = (state.projectConfigNode && state.projectConfigNode.screens) || [];
     data.forEach(backfillSurface);
     state.screenCounter = data.length;

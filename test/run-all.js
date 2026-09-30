@@ -46,7 +46,8 @@ const STANDALONE_TESTS = [
     // the node tree, frames / auto layout (model in Node; deployed page in headless Chrome)
     "model-tree.test.js", "model-slots.test.js", "model-place.test.js", "model-breakpoints.test.js", "model-theme.test.js", "runtime-layout-browser.test.js", "runtime-variables-browser.test.js", "runtime-display-browser.test.js", "runtime-state-browser.test.js", "runtime-repeater-browser.test.js", "runtime-virtual-browser.test.js", "media-browser.test.js", "runtime-carousel-browser.test.js", "runtime-pin-browser.test.js", "runtime-zoom-browser.test.js", "runtime-breakpoints-browser.test.js", "runtime-overlay-browser.test.js", "runtime-teleport-browser.test.js", "runtime-theme-browser.test.js", "runtime-slots-browser.test.js", "runtime-place-browser.test.js", "runtime-actions-browser.test.js",
     // Screens, Templates & Screen Flows (P0-P2 architecture, SPA Navigation & Flow Gateway)
-    "test-p0-p1-screens-flows.js", "test-p2-spa-navigation.js", "test-p2-flow-routing.js"
+    "test-p0-p1-screens-flows.js", "test-p2-spa-navigation.js", "test-p2-flow-routing.js",
+    "test-tree-variables-sidebar.js"
 ];
 
 function runBuild() {

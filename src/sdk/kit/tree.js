@@ -145,8 +145,10 @@ export class NxTree extends KitElement {
                         }}" @blur="${(e) => { if (this._renaming === node.id) { this._renaming = null; this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() }); } }}">`
                     : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => { e.stopPropagation(); if (node.renamable !== false) this._renaming = node.id; }}">${node.label}</span>`}
                 ${node.badge !== undefined && node.badge !== "" ? html`<span class="nx-badge">${node.badge}</span>` : nothing}
-                <span class="nx-tree-actions">${(node.actions || []).map((a) => html`<button type="button" class="nx-icon-btn ${a.on ? "nx-on" : ""}" title="${a.title || a.id}"
-                    @click="${(e) => { e.stopPropagation(); this._fire("nx-tree-action", { id: node.id, action: a.id }); }}"><i class="${a.icon}"></i></button>`)}</span>
+                ${node.actions && node.actions.length ? html`
+                    <span class="nx-tree-actions">${(node.actions || []).map((a) => html`<button type="button" class="nx-icon-btn ${a.on ? "nx-on" : ""}" title="${a.title || a.id}"
+                        @click="${(e) => { e.stopPropagation(); this._fire("nx-tree-action", { id: node.id, action: a.id }); }}"><i class="${a.icon}"></i></button>`)}</span>
+                ` : nothing}
             </div>
             ${hasKids && !collapsed ? html`<div class="nx-tree-children" role="group">${node.children.map((c) => this._row(c, depth + 1))}</div>` : nothing}`;
     }
