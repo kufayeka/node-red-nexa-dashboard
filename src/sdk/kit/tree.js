@@ -117,7 +117,19 @@ export class NxTree extends KitElement {
         return html`
             <div class="nx-tree-row ${selected ? "nx-on" : ""} ${node.muted ? "nx-muted" : ""} ${drop ? "nx-drop-" + drop : ""}"
                 data-id="${node.id}" draggable="${renaming ? "false" : "true"}" role="treeitem" aria-selected="${selected}" aria-expanded="${hasKids ? String(!collapsed) : nothing}"
-                @click="${(e) => this._fire("nx-tree-select", { id: node.id, additive: e.shiftKey || e.ctrlKey || e.metaKey })}"
+                @click="${(e) => {
+                    var additive = e.shiftKey || e.ctrlKey || e.metaKey;
+                    if (additive) {
+                        var cur = (this.selected || []).slice();
+                        var idx = cur.indexOf(node.id);
+                        if (idx !== -1) cur.splice(idx, 1);
+                        else cur.push(node.id);
+                        this.selected = cur;
+                    } else {
+                        this.selected = [node.id];
+                    }
+                    this._fire("nx-tree-select", { id: node.id, additive: additive });
+                }}"
                 @dragstart="${(e) => { this._dragId = node.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", node.id); } catch (err) { /* ok */ } }}"
                 @dragend="${() => { this._dragId = null; this._drop = null; }}"
                 @dragover="${(e) => {

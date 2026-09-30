@@ -251,11 +251,6 @@ export function renderTemplateForm(targetEl) {
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
 
     renderTemplateLiveSection(template, formEl);
-    renderTemplateParamsSection(formEl);
-    // the same Variables block as a screen's (types / UDT included): each instance gets its own
-    formEl.find(".nexa-template-vars-section").remove();
-    var tmpl = findTemplate(state.activeTemplateId);
-    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(formEl), tmpl, "template");
 }
 
 // On the live page: how big this template is where it is used (a list row, a grid cell, a

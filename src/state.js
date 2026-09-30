@@ -179,7 +179,7 @@ export function snap(v, gridSize) {
 // groupMemberIds, the whole canvas/palette/properties/layers machinery)
 // just wants "the current editable thing" and needs no changes for this.
 export function getActiveScreen() {
-    if (state.editingMode === "template") {
+    if (state.editingMode === "template" || state.editingMode === "template-variable" || state.editingMode === "template-param" || state.editingMode === "template-vars-group" || state.editingMode === "template-params-group") {
         return findTemplate(state.activeTemplateId);
     }
     if (state.editingMode === "flow") {
@@ -503,6 +503,7 @@ export function makeTemplate(opts) {
     template.name = (opts && opts.name) || ("Template " + state.templateCounter);
     template.identifier = (opts && opts.identifier) || "";
     template.params = (opts && opts.params) || [];
+    template.variables = (opts && opts.variables) || [];
     template.parentId = (opts && opts.parentId) || null;
     return template;
 }
@@ -635,6 +636,7 @@ export function ensureScreensLoaded(cb) {
     templateData.forEach(function (t) {
         backfillSurface(t);
         if (!t.params) t.params = [];
+        if (!t.variables) t.variables = [];
         if (t.identifier === undefined) t.identifier = "";
         if (t.parentId === undefined) t.parentId = null;
     });

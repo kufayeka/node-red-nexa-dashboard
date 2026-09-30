@@ -299,14 +299,64 @@ console.log('addAppVariableFromSidebar adds new variable?', (app.variables || []
 console.log('addAppVariableFromSidebar sets editingMode to "app-variable"?', state.editingMode === 'app-variable');
 
 // Select variable in tree
-treeEl.dispatchEvent({
+state.screensFlowsTreeEl.dispatchEvent({
   type: 'nx-tree-select',
   detail: { id: 'screen-var:' + screen1.id + ':sv1' }
 });
 console.log('Selecting screen-var in tree sets editingMode to "screen-variable"?', state.editingMode === 'screen-variable');
 console.log('Active screen variable ID matches?', state.activeScreenVariableId === 'sv1');
+console.log('Tree selected property immediately updated to selected variable?', Array.isArray(state.screensFlowsTreeEl.selected) && state.screensFlowsTreeEl.selected[0] === 'screen-var:' + screen1.id + ':sv1');
 
 api.renderScreenForm();
 console.log('renderScreenForm renders typedInput widget for variable defaultValue?', !!state.screenFormEl.find('input')._collection.find(c => c._typedInputOpts));
+
+console.log('--- 6. Template Tree Hierarchy: Variables & Parameters ---');
+const tmpl1 = api.makeTemplate({ name: 'MyTemplate' });
+tmpl1.variables = [{ id: 'tv1', name: 'tempVar', type: 'string', defaultValue: 'hello' }];
+tmpl1.params = [{ id: 'tp1', name: 'tempParam', label: 'Temp Param', type: 'number', defaultValue: 42 }];
+state.templates = [tmpl1];
+
+const updatedNodes = api.buildScreensFlowsTreeNodes();
+const tmplSec = updatedNodes[1];
+const tmplNode = tmplSec.children.find(c => c.id === tmpl1.id);
+console.log('Template node is container with 2 children (Variables & Parameters)?', tmplNode && tmplNode.container && tmplNode.children.length === 2);
+const tmplVarsGroup = tmplNode.children[0];
+const tmplParamsGroup = tmplNode.children[1];
+console.log('Template child 1 is Variables group with add-template-var?', tmplVarsGroup.label === 'Variables' && tmplVarsGroup.actions.some(a => a.id === 'add-template-var'));
+console.log('Template child 1 contains template variable?', tmplVarsGroup.children.some(c => c.id === 'template-var:' + tmpl1.id + ':tv1'));
+console.log('Template child 2 is Parameters group with add-template-param?', tmplParamsGroup.label === 'Parameters' && tmplParamsGroup.actions.some(a => a.id === 'add-template-param'));
+console.log('Template child 2 contains template param?', tmplParamsGroup.children.some(c => c.id === 'template-param:' + tmpl1.id + ':tp1'));
+
+// Select template variable
+state.screensFlowsTreeEl.dispatchEvent({
+  type: 'nx-tree-select',
+  detail: { id: 'template-var:' + tmpl1.id + ':tv1' }
+});
+console.log('Selecting template variable sets editingMode to "template-variable"?', state.editingMode === 'template-variable');
+console.log('Tree selected property immediately updated to template-var?', state.screensFlowsTreeEl.selected[0] === 'template-var:' + tmpl1.id + ':tv1');
+
+api.renderScreenForm();
+console.log('renderScreenForm renders template variable property form?', !!state.screenFormEl.find('input')._collection.find(c => c.val() === 'tempVar'));
+
+// Select template parameter
+state.screensFlowsTreeEl.dispatchEvent({
+  type: 'nx-tree-select',
+  detail: { id: 'template-param:' + tmpl1.id + ':tp1' }
+});
+console.log('Selecting template parameter sets editingMode to "template-param"?', state.editingMode === 'template-param');
+console.log('Tree selected property immediately updated to template-param?', state.screensFlowsTreeEl.selected[0] === 'template-param:' + tmpl1.id + ':tp1');
+
+api.renderScreenForm();
+console.log('renderScreenForm renders template parameter property form?', !!state.screenFormEl.find('input')._collection.find(c => c.val() === 'tempParam'));
+
+// Select template itself
+state.screensFlowsTreeEl.dispatchEvent({
+  type: 'nx-tree-select',
+  detail: { id: tmpl1.id }
+});
+console.log('Selecting template sets editingMode to "template"?', state.editingMode === 'template');
+api.renderScreenForm();
+console.log('Template properties form has NO parameters list embedded?', state.screenFormEl.find('.nexa-template-params-section').length === 0);
+console.log('Template properties form has NO variables list embedded?', state.screenFormEl.find('.nexa-template-vars-section').length === 0);
 
 console.log('ALL OK - ALL TREE & VARIABLE TESTS PASSED!');

@@ -223,12 +223,69 @@ export function buildScreensFlowsTreeNodes() {
 
     // Templates
     state.templates.forEach(function (t) {
+        t.variables = t.variables || [];
+        t.params = t.params || [];
+
+        var tmplVars = (t.variables || []).map(function (v) {
+            return {
+                id: "template-var:" + t.id + ":" + v.id,
+                label: v.name,
+                title: v.name + " (" + (v.type || "string") + ")",
+                icon: "fa fa-tag",
+                type: "template-variable",
+                actions: [
+                    { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
+                ]
+            };
+        });
+
+        var varsGroup = {
+            id: "template-vars-group:" + t.id,
+            label: "Variables",
+            icon: "fa fa-tags",
+            type: "template-vars-group",
+            container: true,
+            badge: String(tmplVars.length),
+            actions: [
+                { id: "add-template-var", icon: "fa fa-plus", title: "Add Variable" }
+            ],
+            children: tmplVars
+        };
+
+        var tmplParams = (t.params || []).map(function (p) {
+            return {
+                id: "template-param:" + t.id + ":" + p.id,
+                label: p.name,
+                title: (p.label ? p.label + " (" + p.name + ")" : p.name) + " (" + (p.type || "string") + ")",
+                icon: "fa fa-sliders",
+                type: "template-param",
+                actions: [
+                    { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
+                ]
+            };
+        });
+
+        var paramsGroup = {
+            id: "template-params-group:" + t.id,
+            label: "Parameters",
+            icon: "fa fa-sliders",
+            type: "template-params-group",
+            container: true,
+            badge: String(tmplParams.length),
+            actions: [
+                { id: "add-template-param", icon: "fa fa-plus", title: "Add Parameter" }
+            ],
+            children: tmplParams
+        };
+
         var node = {
             id: t.id,
             label: t.name,
             title: t.name + (t.identifier ? " (@" + t.identifier + ")" : ""),
             icon: "fa fa-clone",
             type: "template",
+            container: true,
+            children: [varsGroup, paramsGroup],
             actions: [
                 { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
                 { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
@@ -341,6 +398,7 @@ function onScreensFlowsSelect(e) {
             if (app.variables && app.variables.length) {
                 state.editingMode = "app-variable";
                 state.activeAppVariableId = app.variables[0].id;
+                if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
                 renderScreenForm();
             }
         }
@@ -349,6 +407,7 @@ function onScreensFlowsSelect(e) {
     if (id.startsWith("app-var:")) {
         state.editingMode = "app-variable";
         state.activeAppVariableId = id.substring("app-var:".length);
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
         return;
     }
@@ -357,6 +416,75 @@ function onScreensFlowsSelect(e) {
         state.editingMode = "screen-variable";
         state.activeScreenId = parts[1];
         state.activeScreenVariableId = parts[2];
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        renderScreenForm();
+        return;
+    }
+    if (id.startsWith("template-vars-group:")) {
+        var tId = id.substring("template-vars-group:".length);
+        var tmpl = findTemplate(tId);
+        if (state.activeTemplateId !== tId) {
+            state.activeTemplateId = tId;
+            renderActiveScreen();
+            updateCanvasTabsVisibility();
+        }
+        if (tmpl && tmpl.variables && tmpl.variables.length) {
+            state.editingMode = "template-variable";
+            state.activeTemplateVariableId = tmpl.variables[0].id;
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["template-var:" + tId + ":" + tmpl.variables[0].id];
+        } else {
+            state.editingMode = "template-vars-group";
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        }
+        renderScreenForm();
+        return;
+    }
+    if (id.startsWith("template-params-group:")) {
+        var tId = id.substring("template-params-group:".length);
+        var tmpl = findTemplate(tId);
+        if (state.activeTemplateId !== tId) {
+            state.activeTemplateId = tId;
+            renderActiveScreen();
+            updateCanvasTabsVisibility();
+        }
+        if (tmpl && tmpl.params && tmpl.params.length) {
+            state.editingMode = "template-param";
+            state.activeTemplateParamId = tmpl.params[0].id;
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["template-param:" + tId + ":" + tmpl.params[0].id];
+        } else {
+            state.editingMode = "template-params-group";
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        }
+        renderScreenForm();
+        return;
+    }
+    if (id.startsWith("template-var:")) {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var varId = parts[2];
+        if (state.activeTemplateId !== tId) {
+            state.activeTemplateId = tId;
+            renderActiveScreen();
+            updateCanvasTabsVisibility();
+        }
+        state.editingMode = "template-variable";
+        state.activeTemplateVariableId = varId;
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        renderScreenForm();
+        return;
+    }
+    if (id.startsWith("template-param:")) {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var paramId = parts[2];
+        if (state.activeTemplateId !== tId) {
+            state.activeTemplateId = tId;
+            renderActiveScreen();
+            updateCanvasTabsVisibility();
+        }
+        state.editingMode = "template-param";
+        state.activeTemplateParamId = paramId;
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
         return;
     }
@@ -416,6 +544,79 @@ function onScreensFlowsAction(e) {
             if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
                 state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
             }
+            return;
+        }
+    }
+    if (action === "add-template-var") {
+        var tId = id.startsWith("template-vars-group:") ? id.substring("template-vars-group:".length) : id;
+        var t = findTemplate(tId);
+        if (t) {
+            t.variables = t.variables || [];
+            var newVar = { id: genId(), name: "var" + (t.variables.length + 1), type: "string", defaultValue: "" };
+            t.variables.push(newVar);
+            state.activeTemplateId = t.id;
+            state.editingMode = "template-variable";
+            state.activeTemplateVariableId = newVar.id;
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+            if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+                state.screensFlowsTreeEl.reveal("template-var:" + t.id + ":" + newVar.id);
+            }
+            return;
+        }
+    }
+    if (action === "delete-template-var") {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var varId = parts[2];
+        var t = findTemplate(tId);
+        if (t && t.variables) {
+            t.variables = t.variables.filter(function (v) { return v.id !== varId; });
+            if (state.activeTemplateVariableId === varId) {
+                state.activeTemplateVariableId = null;
+                state.editingMode = "template";
+            }
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+            return;
+        }
+    }
+    if (action === "add-template-param") {
+        var tId = id.startsWith("template-params-group:") ? id.substring("template-params-group:".length) : id;
+        var t = findTemplate(tId);
+        if (t) {
+            t.params = t.params || [];
+            var pName = "param" + (t.params.length + 1);
+            var newParam = { id: genId(), name: pName, label: pName, type: "string", defaultValue: "" };
+            t.params.push(newParam);
+            state.activeTemplateId = t.id;
+            state.editingMode = "template-param";
+            state.activeTemplateParamId = newParam.id;
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+            if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+                state.screensFlowsTreeEl.reveal("template-param:" + t.id + ":" + newParam.id);
+            }
+            return;
+        }
+    }
+    if (action === "delete-template-param") {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var paramId = parts[2];
+        var t = findTemplate(tId);
+        if (t && t.params) {
+            t.params = t.params.filter(function (p) { return p.id !== paramId; });
+            if (state.activeTemplateParamId === paramId) {
+                state.activeTemplateParamId = null;
+                state.editingMode = "template";
+            }
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
             return;
         }
     }
@@ -571,6 +772,35 @@ function onScreensFlowsRename(e) {
         }
         return;
     }
+    if (id.startsWith("template-var:")) {
+        var parts = id.split(":");
+        var tmplId = parts[1];
+        var varId = parts[2];
+        var tmpl = findTemplate(tmplId);
+        var v = tmpl && (tmpl.variables || []).find(function (x) { return x.id === varId; });
+        if (v && name && v.name !== name) {
+            v.name = name;
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+        }
+        return;
+    }
+    if (id.startsWith("template-param:")) {
+        var parts = id.split(":");
+        var tmplId = parts[1];
+        var paramId = parts[2];
+        var tmpl = findTemplate(tmplId);
+        var p = tmpl && (tmpl.params || []).find(function (x) { return x.id === paramId; });
+        if (p && name && p.name !== name) {
+            p.name = name;
+            if (!p.label || p.label === p.name) p.label = name;
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+        }
+        return;
+    }
     var item = state.screens.find(function (s) { return s.id === id; }) ||
         findTemplate(id) ||
         findFlow(id) ||
@@ -664,6 +894,30 @@ function onScreensFlowsMove(e) {
             }
             return;
         }
+        if (d.id.startsWith("template-var:") && d.targetId.startsWith("template-var:")) {
+            var sParts1 = d.id.split(":"), sParts2 = d.targetId.split(":");
+            if (sParts1[1] === sParts2[1]) {
+                var tmpl = findTemplate(sParts1[1]);
+                if (tmpl && tmpl.variables) {
+                    reorderInArray(tmpl.variables, sParts1[2], sParts2[2], d.position);
+                    markDirty();
+                    renderScreenList();
+                }
+            }
+            return;
+        }
+        if (d.id.startsWith("template-param:") && d.targetId.startsWith("template-param:")) {
+            var sParts1 = d.id.split(":"), sParts2 = d.targetId.split(":");
+            if (sParts1[1] === sParts2[1]) {
+                var tmpl = findTemplate(sParts1[1]);
+                if (tmpl && tmpl.params) {
+                    reorderInArray(tmpl.params, sParts1[2], sParts2[2], d.position);
+                    markDirty();
+                    renderScreenList();
+                }
+            }
+            return;
+        }
 
         if (!item) return;
 
@@ -725,6 +979,8 @@ export function renderScreenList() {
         treeEl.nodes = nodes;
         var activeId = state.editingMode === "app-variable" ? ("app-var:" + state.activeAppVariableId)
             : state.editingMode === "screen-variable" ? ("screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId)
+            : state.editingMode === "template-variable" ? ("template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId)
+            : state.editingMode === "template-param" ? ("template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId)
             : state.editingMode === "flow" ? state.activeFlowId
             : state.editingMode === "template" ? state.activeTemplateId
             : (state.selectedFolderId || state.activeScreenId);
@@ -1003,7 +1259,9 @@ function renderFolderForm(folder) {
         }).appendTo(state.screenFormEl);
 }
 
-function renderVariablePropertiesForm(variable, isApp, screen) {
+function renderVariablePropertiesForm(variable, isApp, surface) {
+    var isTmpl = isApp === "template";
+    var isAppVar = isApp === true;
     var header = window.$("<div>").css({
         "font-weight": "bold",
         "font-size": "13px",
@@ -1014,24 +1272,28 @@ function renderVariablePropertiesForm(variable, isApp, screen) {
         display: "flex",
         "align-items": "center",
         gap: "6px"
-    }).html(isApp
+    }).html(isAppVar
         ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties'
-        : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (screen ? screen.name : "") + ')'
+        : isTmpl
+            ? '<i class="fa fa-tag" style="color: #0284c7;"></i> Template Variable Properties (' + (surface ? surface.name : "Template") + ')'
+            : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (surface ? surface.name : "Screen") + ')'
     ).appendTo(state.screenFormEl);
 
     // Context / info box
     window.$("<div>").css({
         "margin-bottom": "14px",
         padding: "8px 12px",
-        background: isApp ? "#f5f3ff" : "#f0f9ff",
-        border: "1px solid " + (isApp ? "#ddd6fe" : "#bae6fd"),
+        background: isAppVar ? "#f5f3ff" : "#f0f9ff",
+        border: "1px solid " + (isAppVar ? "#ddd6fe" : "#bae6fd"),
         "border-radius": "6px",
         "font-size": "11px",
-        color: isApp ? "#5b21b6" : "#0369a1",
+        color: isAppVar ? "#5b21b6" : "#0369a1",
         "line-height": "1.4"
-    }).html(isApp
+    }).html(isAppVar
         ? '<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.'
-        : '<strong>Screen-Scoped Variable (' + (screen ? screen.name : "Screen") + ')</strong><br>Available to all components on this screen. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
+        : isTmpl
+            ? '<strong>Template-Scoped Variable (' + (surface ? surface.name : "Template") + ')</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
+            : '<strong>Screen-Scoped Variable (' + (surface ? surface.name : "Screen") + ')</strong><br>Available to all components on this screen. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
     ).appendTo(state.screenFormEl);
 
     // Variable Name Row
@@ -1107,9 +1369,8 @@ function renderVariablePropertiesForm(variable, isApp, screen) {
         markDirty();
     });
 
-
     // Kept for (Persistence) - Only for App Variables
-    if (isApp) {
+    if (isAppVar) {
         var persistRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(state.screenFormEl);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
             .text("Kept for (Persistence)").appendTo(persistRow);
@@ -1130,19 +1391,153 @@ function renderVariablePropertiesForm(variable, isApp, screen) {
         .css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" })
         .html('<i class="fa fa-trash"></i> Delete Variable')
         .on("click", function () {
-            if (isApp) {
+            if (isAppVar) {
                 var app = getApp();
                 app.variables = (app.variables || []).filter(function (v) { return v.id !== variable.id; });
                 state.activeAppVariableId = null;
                 state.editingMode = "screen";
-            } else if (screen) {
-                screen.variables = (screen.variables || []).filter(function (v) { return v.id !== variable.id; });
+            } else if (isTmpl && surface) {
+                surface.variables = (surface.variables || []).filter(function (v) { return v.id !== variable.id; });
+                state.activeTemplateVariableId = null;
+                state.editingMode = "template";
+            } else if (surface) {
+                surface.variables = (surface.variables || []).filter(function (v) { return v.id !== variable.id; });
                 state.activeScreenVariableId = null;
                 state.editingMode = "screen";
             }
             markDirty();
             renderScreenList();
             renderScreenForm();
+        }).appendTo(btnRow);
+}
+
+function renderTemplateParamPropertiesForm(param, template) {
+    var header = window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+    }).html('<i class="fa fa-sliders" style="color: #6366f1;"></i> Template Parameter Properties (' + (template ? template.name : "Template") + ')').appendTo(state.screenFormEl);
+
+    // Info box
+    window.$("<div>").css({
+        "margin-bottom": "14px",
+        padding: "8px 12px",
+        background: "#f5f3ff",
+        border: "1px solid #ddd6fe",
+        "border-radius": "6px",
+        "font-size": "11px",
+        color: "#5b21b6",
+        "line-height": "1.4"
+    }).html('<strong>Template Parameter (' + (template ? template.name : "Template") + ')</strong><br>Exposed outward when this template is used as an instance. Reference inside this template using <code>{' + (param.name || "param") + '}</code> or bind outward.').appendTo(state.screenFormEl);
+
+    // Param Name Row
+    var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Parameter Name").appendTo(nameRow);
+    var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(param.name || "").appendTo(nameRow);
+    var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+
+    nameInput.on("input change", function () {
+        var val = nameInput.val().trim();
+        if (!val || (Scope && Scope.NAME_RE && !Scope.NAME_RE.test(val))) {
+            nameError.text('Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.').show();
+        } else {
+            nameError.hide();
+            param.name = val;
+            if (!param.label || param.label === param.name) {
+                param.label = val;
+                if (labelInput) labelInput.val(val);
+            }
+            renderScreenList();
+            markDirty();
+        }
+    });
+
+    // Label Row
+    var labelRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Display Label").appendTo(labelRow);
+    var labelInput = window.$("<input>", { type: "text", placeholder: "e.g. Motor Speed" }).css({ width: "100%", "box-sizing": "border-box" }).val(param.label || param.name || "").appendTo(labelRow);
+    labelInput.on("change", function () {
+        param.label = labelInput.val().trim() || param.name;
+        renderScreenList();
+        markDirty();
+    });
+
+    // Type Row
+    var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Type").appendTo(typeRow);
+    var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+    ["string", "number", "boolean", "object", "array", "color"].forEach(function (t) {
+        window.$("<option>", { value: t }).text(t).appendTo(typeSelect);
+    });
+    (getApp().types || []).forEach(function (t) {
+        window.$("<option>", { value: "type:" + t.id }).text(t.name + " (custom type)").appendTo(typeSelect);
+    });
+    typeSelect.val(param.type || "string");
+
+    // Default Value Row
+    var valRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
+        .text("Default Value").appendTo(valRow);
+    var valInputContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+
+    var typedInputEl = buildTypedInputWidget(valInputContainer, param.type || "string", param.defaultValue, function (parsedVal, detType) {
+        param.defaultValue = parsedVal;
+        if (detType && detType !== param.type) {
+            param.type = detType;
+            typeSelect.val(detType);
+        }
+        markDirty();
+    });
+
+    typeSelect.on("change", function () {
+        var newType = typeSelect.val();
+        param.type = newType;
+        var tiType = mapParamTypeToTypedInputType(newType);
+        if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (newType === "boolean") {
+                typedInputEl.typedInput("value", "false");
+                param.defaultValue = false;
+            } else if (newType === "number") {
+                typedInputEl.typedInput("value", "0");
+                param.defaultValue = 0;
+            } else if (newType === "object") {
+                typedInputEl.typedInput("value", "{}");
+                param.defaultValue = {};
+            } else if (newType === "array") {
+                typedInputEl.typedInput("value", "[]");
+                param.defaultValue = [];
+            } else if (newType === "string") {
+                typedInputEl.typedInput("value", "");
+                param.defaultValue = "";
+            }
+        }
+        markDirty();
+    });
+
+    // Delete Button
+    var btnRow = window.$("<div>").css({ "margin-top": "16px", "padding-top": "12px", "border-top": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)" }).appendTo(state.screenFormEl);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" })
+        .css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" })
+        .html('<i class="fa fa-trash"></i> Delete Parameter')
+        .on("click", function () {
+            if (template && template.params) {
+                template.params = template.params.filter(function (p) { return p.id !== param.id; });
+                state.activeTemplateParamId = null;
+                state.editingMode = "template";
+                markDirty();
+                renderScreenList();
+                renderScreenForm();
+            }
         }).appendTo(btnRow);
 }
 
@@ -1174,6 +1569,68 @@ export function renderScreenForm() {
             renderVariablePropertiesForm(scVar, false, sc);
             return;
         }
+    }
+
+    if (state.editingMode === "template-variable") {
+        var tmpl = findTemplate(state.activeTemplateId);
+        var tmplVar = tmpl && (tmpl.variables || []).find(function (v) { return v.id === state.activeTemplateVariableId; });
+        if (tmplVar) {
+            renderVariablePropertiesForm(tmplVar, "template", tmpl);
+            return;
+        }
+    }
+
+    if (state.editingMode === "template-param") {
+        var tmpl = findTemplate(state.activeTemplateId);
+        var tmplParam = tmpl && (tmpl.params || []).find(function (p) { return p.id === state.activeTemplateParamId; });
+        if (tmplParam) {
+            renderTemplateParamPropertiesForm(tmplParam, tmpl);
+            return;
+        }
+    }
+
+    if (state.editingMode === "template-vars-group") {
+        var tmpl = findTemplate(state.activeTemplateId);
+        window.$("<div>").css({
+            "font-weight": "bold", "font-size": "13px", "margin-bottom": "14px", "padding-bottom": "8px",
+            "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+            color: "var(--red-ui-primary-text-color, #1e293b)", display: "flex", "align-items": "center", gap: "6px"
+        }).html('<i class="fa fa-tags" style="color: #0284c7;"></i> Template Variables (' + (tmpl ? tmpl.name : "Template") + ')').appendTo(state.screenFormEl);
+
+        window.$("<div>").css({
+            "margin-bottom": "14px", padding: "10px 12px", background: "#f0f9ff", border: "1px solid #bae6fd",
+            "border-radius": "6px", "font-size": "11px", color: "#0369a1", "line-height": "1.4"
+        }).html('<strong>Template Variables (' + (tmpl ? tmpl.name : "Template") + ')</strong><br>Internal variables scoped to this template. Available to all components inside this template. Click <strong>+ Add Variable</strong> to create one.').appendTo(state.screenFormEl);
+
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" })
+            .css({ display: "inline-flex", "align-items": "center", gap: "4px" })
+            .html('<i class="fa fa-plus"></i> Add Variable')
+            .on("click", function () {
+                if (tmpl) onScreensFlowsAction({ detail: { id: "template-vars-group:" + tmpl.id, action: "add-template-var" } });
+            }).appendTo(state.screenFormEl);
+        return;
+    }
+
+    if (state.editingMode === "template-params-group") {
+        var tmpl = findTemplate(state.activeTemplateId);
+        window.$("<div>").css({
+            "font-weight": "bold", "font-size": "13px", "margin-bottom": "14px", "padding-bottom": "8px",
+            "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+            color: "var(--red-ui-primary-text-color, #1e293b)", display: "flex", "align-items": "center", gap: "6px"
+        }).html('<i class="fa fa-sliders" style="color: #6366f1;"></i> Template Parameters (' + (tmpl ? tmpl.name : "Template") + ')').appendTo(state.screenFormEl);
+
+        window.$("<div>").css({
+            "margin-bottom": "14px", padding: "10px 12px", background: "#f5f3ff", border: "1px solid #ddd6fe",
+            "border-radius": "6px", "font-size": "11px", color: "#5b21b6", "line-height": "1.4"
+        }).html('<strong>Template Parameters (' + (tmpl ? tmpl.name : "Template") + ')</strong><br>Parameters exposed outward when this template is used as an instance. Click <strong>+ Add Parameter</strong> to create one.').appendTo(state.screenFormEl);
+
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" })
+            .css({ display: "inline-flex", "align-items": "center", gap: "4px" })
+            .html('<i class="fa fa-plus"></i> Add Parameter')
+            .on("click", function () {
+                if (tmpl) onScreensFlowsAction({ detail: { id: "template-params-group:" + tmpl.id, action: "add-template-param" } });
+            }).appendTo(state.screenFormEl);
+        return;
     }
 
     if (state.editingMode === "flow") {
@@ -1257,7 +1714,7 @@ export function renderScreenForm() {
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("On the live page").appendTo(modeRow);
     var modeSel = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
     [["fixed", "Exact size (this device), centred"], ["fit", "Scale to fit the window (keep proportions)"],
-        ["fitWidth", "Scale to the window width (scroll down)"], ["fill", "Fill the window (responsive, by constraints)"]]
+    ["fitWidth", "Scale to the window width (scroll down)"], ["fill", "Fill the window (responsive, by constraints)"]]
         .forEach(function (o) { window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel); });
     modeSel.val(screen.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);

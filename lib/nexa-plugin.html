@@ -1326,7 +1326,7 @@
   var V_CONSTRAINTS = ["top", "bottom", "topBottom", "center", "scale"];
   function constraintsOf(node) {
     var c = node && node.constraints || {};
-    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
+    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "leftRight" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "topBottom" : c.v };
   }
   function hasConstraints(node, parent) {
     if (node && placeOf(node, parent) === "dock") return false;
@@ -1515,7 +1515,7 @@
     return !isInFlow(node, parent) && !inSlot(node);
   }
   function makeFrame(mode, w, h) {
-    var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
+    var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], constraints: { h: "leftRight", v: "topBottom" }, style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
     if (mode === "carousel") {
       frame.layout = { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: 0, carousel: Object.assign({}, CAROUSEL_DEFAULT) };
       frame.style.clip = true;
@@ -2160,7 +2160,7 @@
     return Math.round(v / gridSize) * gridSize;
   }
   function getActiveScreen() {
-    if (state.editingMode === "template") {
+    if (state.editingMode === "template" || state.editingMode === "template-variable" || state.editingMode === "template-param" || state.editingMode === "template-vars-group" || state.editingMode === "template-params-group") {
       return findTemplate(state.activeTemplateId);
     }
     if (state.editingMode === "flow") {
@@ -2486,6 +2486,7 @@
     template.name = opts && opts.name || "Template " + state.templateCounter;
     template.identifier = opts && opts.identifier || "";
     template.params = opts && opts.params || [];
+    template.variables = opts && opts.variables || [];
     template.parentId = opts && opts.parentId || null;
     return template;
   }
@@ -2600,6 +2601,7 @@
     templateData.forEach(function(t2) {
       backfillSurface(t2);
       if (!t2.params) t2.params = [];
+      if (!t2.variables) t2.variables = [];
       if (t2.identifier === void 0) t2.identifier = "";
       if (t2.parentId === void 0) t2.parentId = null;
     });
@@ -28551,7 +28553,7 @@
       chip(state.eventsPane, "Goto Screen (SPA)", function() {
         return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
       }, "", "navigate", true, "Goto Screen is disabled in Flow Logic. Use 'Render Screen' to serve views in a Flow.");
-    } else if (state.editingMode === "screen") {
+    } else if (state.editingMode === "screen" || state.editingMode === "screen-variable" || state.editingMode === "app-variable") {
       chip(state.eventsPane, "On Load", function() {
         return { type: "onload" };
       }, "", "onload");
@@ -28580,6 +28582,12 @@
         return { type: "render-screen" };
       }, "", "render-screen", true, "Render Screen is only used in Flow Logic.");
     } else {
+      chip(state.eventsPane, "On Load", function() {
+        return { type: "onload" };
+      }, "", "onload");
+      chip(state.eventsPane, "On Render", function() {
+        return { type: "onrender" };
+      }, "", "onrender");
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
       }, "", "param-input");
@@ -30184,6 +30192,9 @@
   };
   function renderConstraintsInspector(container, node, parent) {
     if (!window.NexaKit || !lit() || !layout_exports.hasConstraints(node, parent)) return false;
+    if (!node.constraints || !node.constraints.h && !node.constraints.v) {
+      node.constraints = { h: "leftRight", v: "topBottom" };
+    }
     var html = lit().html;
     var meta2 = Object.assign({}, CONSTRAINT_META, {
       inspector: function(o) {
@@ -30196,7 +30207,10 @@
       }
     });
     var constraintView = function(n) {
-      var c = n && n.constraints && (n.constraints.h || n.constraints.v) ? layout_exports.constraintsOf(n) : parent ? layout_exports.guessConstraints(n, parent.w || 1280, parent.h || 800) : layout_exports.guessConstraints(n, 1280, 800);
+      if (!n.constraints) {
+        n.constraints = { h: "leftRight", v: "topBottom" };
+      }
+      var c = layout_exports.constraintsOf(n);
       return Object.assign({}, c, { scrollBehavior: n.scrollBehavior || "scrolls" });
     };
     var writeConstraint = function(n, key, v) {
@@ -30205,6 +30219,7 @@
         else n.scrollBehavior = v;
         return;
       }
+      if (!n.constraints) n.constraints = { h: "leftRight", v: "topBottom" };
       var current2 = constraintView(n);
       var c = Object.assign({}, current2);
       c[key] = v;
@@ -30791,8 +30806,18 @@
 
   // src/logic/logic-wires.js
   var LOGIC_PORT_HIT_RADIUS = 26;
-  function logicNodePortPoint(node, role) {
-    return { x: role === "input" ? node.x : node.x + logicNodeWidth(node), y: node.y + LOGIC_NODE_H / 2 };
+  function logicNodePortPoint(node, role, portIndex) {
+    var nodeH = typeof logicNodeHeight === "function" ? logicNodeHeight(node) : LOGIC_NODE_H;
+    if (role === "input") {
+      return { x: node.x, y: node.y + nodeH / 2 };
+    }
+    if (node && node.type === "switch") {
+      var numPorts = node.rules && node.rules.length ? node.rules.length : 1;
+      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
+      var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
+      return { x: node.x + logicNodeWidth(node), y: node.y + yOffset };
+    }
+    return { x: node.x + logicNodeWidth(node), y: node.y + nodeH / 2 };
   }
   function logicWirePath(p1, p2) {
     var dx = p2.x - p1.x;
@@ -30823,13 +30848,13 @@
       var fromNode = findLogicNode(screen2, w.from);
       var toNode = findLogicNode(screen2, w.to);
       if (!fromNode || !toNode) return;
-      var p1 = logicNodePortPoint(fromNode, "output");
+      var p1 = logicNodePortPoint(fromNode, "output", w.fromPort);
       var p2 = logicNodePortPoint(toNode, "input");
       var line = window.$(document.createElementNS(SVG_NS, "path")).attr({
         d: logicWirePath(p1, p2),
         fill: "none"
       }).css({ stroke: "var(--red-ui-node-border, #888)", "stroke-width": "2", cursor: "pointer", "pointer-events": "auto" }).appendTo(state.logicSvgEl);
-      line.attr("title", "Click to delete this wire");
+      line.attr("title", "Click to delete this wire" + (w.fromPort !== void 0 ? " (Port " + (w.fromPort + 1) + ")" : ""));
       line.on("mouseenter", function() {
         line.css("stroke", "#d32f2f");
       });
@@ -30859,40 +30884,71 @@
     });
     return best;
   }
-  function getReachableRenderScreens(startNodeId, nodes, wires) {
-    var reachable = [];
-    var visited = {};
+  function hasIllegalRouteFanOut(startNodeId, nodes, wires) {
     var nodeMap = {};
     (nodes || []).forEach(function(n) {
       if (n && n.id) nodeMap[n.id] = n;
     });
-    function dfs(currId) {
-      if (visited[currId]) return;
+    var visited = {};
+    function countParallelRenders(currId) {
+      if (visited[currId]) return 0;
       visited[currId] = true;
-      (wires || []).forEach(function(w) {
-        if (w.from === currId) {
+      var node = nodeMap[currId];
+      if (!node) return 0;
+      var outWires = (wires || []).filter(function(w) {
+        return w.from === currId;
+      });
+      if (!outWires.length) return 0;
+      if (node.type === "switch") {
+        var portMap = {};
+        outWires.forEach(function(w) {
+          var p2 = w.fromPort || 0;
+          if (!portMap[p2]) portMap[p2] = [];
+          portMap[p2].push(w);
+        });
+        var maxForAnyPort = 0;
+        for (var p in portMap) {
+          var portWires = portMap[p];
+          var portTotal = 0;
+          portWires.forEach(function(w) {
+            var target = nodeMap[w.to];
+            if (target) {
+              if (target.type === "render-screen") {
+                portTotal += 1;
+              } else {
+                portTotal += countParallelRenders(target.id);
+              }
+            }
+          });
+          if (portTotal > maxForAnyPort) maxForAnyPort = portTotal;
+        }
+        visited[currId] = false;
+        return maxForAnyPort;
+      } else {
+        var total = 0;
+        outWires.forEach(function(w) {
           var target = nodeMap[w.to];
           if (target) {
             if (target.type === "render-screen") {
-              if (reachable.indexOf(target.id) === -1) {
-                reachable.push(target.id);
-              }
-            }
-            if (target.type !== "render-screen") {
-              dfs(target.id);
+              total += 1;
+            } else {
+              total += countParallelRenders(target.id);
             }
           }
-        }
-      });
+        });
+        visited[currId] = false;
+        return total;
+      }
     }
-    dfs(startNodeId);
-    return reachable;
+    var maxConcurrent = countParallelRenders(startNodeId);
+    return maxConcurrent > 1;
   }
-  function wireLogicOutputPort(outDot, node) {
+  function wireLogicOutputPort(outDot, node, portIndex) {
     outDot.get(0).addEventListener("mousedown", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      var start = logicNodePortPoint(node, "output");
+      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
+      var start = logicNodePortPoint(node, "output", pIdx);
       var tempLine = window.$(document.createElementNS(SVG_NS, "path")).attr({
         d: logicWirePath(start, start),
         fill: "none"
@@ -30914,29 +30970,28 @@
         if (!hovered) return;
         var screen2 = getActiveScreen();
         var alreadyWired = screen2.logic.wires.some(function(w) {
-          return w.from === node.id && w.to === hovered.id;
+          return w.from === node.id && w.to === hovered.id && (w.fromPort || 0) === pIdx;
         });
         if (alreadyWired) return;
         if (state.editingMode === "flow") {
-          var testWires = (screen2.logic.wires || []).concat([{ from: node.id, to: hovered.id }]);
+          var testWires = (screen2.logic.wires || []).concat([{ from: node.id, to: hovered.id, fromPort: pIdx }]);
           var triggerNodes = (screen2.logic.nodes || []).filter(function(n) {
             return n.type === "route-trigger";
           });
           var hasFanOutConflict = false;
           triggerNodes.forEach(function(trig) {
-            var reachable = getReachableRenderScreens(trig.id, screen2.logic.nodes, testWires);
-            if (reachable.length > 1) {
+            if (hasIllegalRouteFanOut(trig.id, screen2.logic.nodes, testWires)) {
               hasFanOutConflict = true;
             }
           });
           if (hasFanOutConflict) {
             if (window.RED && window.RED.notify) {
-              window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes. Ambiguous entry screen: which screen should be rendered first?", "error");
+              window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes on the same execution path. Ambiguous entry screen: which screen should be rendered first?", "error");
             }
             return;
           }
         }
-        var wire = { id: genId(), from: node.id, to: hovered.id };
+        var wire = { id: genId(), from: node.id, to: hovered.id, fromPort: pIdx };
         screen2.logic.wires.push(wire);
         pushHistory({ t: "addLogicWire", screenId: screen2.id, wire });
         renderLogicWires();
@@ -32414,6 +32469,278 @@
     });
   }
 
+  // src/dialogs/switch-dialog.js
+  var OPERATORS = [
+    { v: "eq", label: "==" },
+    { v: "neq", label: "!=" },
+    { v: "lt", label: "<" },
+    { v: "lte", label: "<=" },
+    { v: "gt", label: ">" },
+    { v: "gte", label: ">=" },
+    { v: "btwn", label: "is between" },
+    { v: "cont", label: "contains" },
+    { v: "true", label: "is true" },
+    { v: "false", label: "is false" },
+    { v: "null", label: "is null" },
+    { v: "nnull", label: "is not null" },
+    { v: "empty", label: "is empty" },
+    { v: "nempty", label: "is not empty" },
+    { v: "else", label: "otherwise" }
+  ];
+  var UNARY_OPERATORS = ["true", "false", "null", "nnull", "empty", "nempty", "else"];
+  function isUnary(op) {
+    return UNARY_OPERATORS.indexOf(op) !== -1;
+  }
+  function openSwitchNodeEditor(node) {
+    var nameInput, propertyInput, checkallSelect;
+    var currentPropertyType = node.propertyType || "msg";
+    var rulesListEl;
+    window.RED.tray.show({
+      id: "nexa-logic-switch-editor",
+      title: "Configure Switch Node",
+      width: 600,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.name = (nameInput.val() || "").trim();
+            node.checkall = checkallSelect.val();
+            if (typeof propertyInput.typedInput === "function") {
+              node.propertyType = propertyInput.typedInput("type");
+              node.property = propertyInput.typedInput("value");
+            } else {
+              node.propertyType = currentPropertyType;
+              node.property = propertyInput.val();
+            }
+            var gatheredRules = [];
+            rulesListEl.find(".nexa-switch-rule-row").each(function() {
+              var row = window.$(this);
+              var getter = row.data("getRuleData");
+              if (typeof getter === "function") {
+                gatheredRules.push(getter());
+              }
+            });
+            if (!gatheredRules.length) {
+              gatheredRules.push({ t: "eq", v: "", vt: "str" });
+            }
+            node.rules = gatheredRules;
+            node.outputs = gatheredRules.length;
+            var screen2 = getActiveScreen();
+            if (screen2 && screen2.logic && screen2.logic.wires) {
+              screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+                if (w.from === node.id) {
+                  return (w.fromPort || 0) < gatheredRules.length;
+                }
+                return true;
+              });
+            }
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Route messages based on property values and conditional rules. Each rule outputs to its corresponding output port.").appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Name").appendTo(nameRow);
+        nameInput = window.$("<input>", { type: "text", placeholder: "Switch" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.name || "").appendTo(nameRow);
+        var propRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Property").appendTo(propRow);
+        var propContainer = window.$("<div>").css({ width: "100%" }).appendTo(propRow);
+        propertyInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(propContainer);
+        var propTypes = [
+          { value: "msg", label: "msg.", hasValue: true },
+          { value: "var", label: "var", hasValue: true },
+          { value: "tag", label: "tag", hasValue: true }
+        ];
+        if (typeof propertyInput.typedInput === "function") {
+          propertyInput.typedInput({
+            default: node.propertyType || "msg",
+            types: propTypes,
+            width: "100%"
+          });
+          propertyInput.typedInput("type", node.propertyType || "msg");
+          propertyInput.typedInput("value", node.property !== void 0 ? String(node.property) : "payload");
+        } else {
+          propContainer.empty();
+          var pFlex = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(propContainer);
+          var pTypeSel = window.$("<select>").css({ width: "90px" }).appendTo(pFlex);
+          propTypes.forEach(function(pt) {
+            window.$("<option>", { value: pt.value }).text(pt.label).prop("selected", (node.propertyType || "msg") === pt.value).appendTo(pTypeSel);
+          });
+          propertyInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(node.property !== void 0 ? String(node.property) : "payload").appendTo(pFlex);
+          pTypeSel.on("change", function() {
+            currentPropertyType = pTypeSel.val();
+          });
+        }
+        var rulesSection = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "6px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Rules (Output Ports)").appendTo(rulesSection);
+        var valueTypes = [
+          { value: "str", label: "string", hasValue: true },
+          { value: "num", label: "num", hasValue: true },
+          { value: "bool", label: "bool", hasValue: true },
+          { value: "msg", label: "msg.", hasValue: true },
+          { value: "var", label: "var", hasValue: true },
+          { value: "tag", label: "tag", hasValue: true }
+        ];
+        function refreshPortBadges() {
+          rulesListEl.find(".nexa-switch-rule-row").each(function(idx) {
+            window.$(this).find(".nexa-switch-port-badge").text(idx + 1);
+          });
+        }
+        rulesListEl = buildEditableListWidget(rulesSection, {
+          minHeight: "160px",
+          maxHeight: "320px",
+          addButton: "add rule",
+          removable: true,
+          sortable: true,
+          addItem: function(container, index, ruleData) {
+            var rule = ruleData && ruleData.t ? ruleData : { t: "eq", v: "", vt: "str", v2: "", v2t: "num" };
+            var row = window.$("<div>", { "class": "nexa-switch-rule-row" }).css({
+              display: "flex",
+              "align-items": "center",
+              gap: "6px",
+              width: "100%",
+              padding: "2px 0"
+            }).appendTo(container);
+            var badge = window.$("<span>", { "class": "nexa-switch-port-badge" }).css({
+              display: "inline-flex",
+              "align-items": "center",
+              "justify-content": "center",
+              width: "20px",
+              height: "20px",
+              background: "var(--red-ui-secondary-background, #f1f5f9)",
+              color: "var(--red-ui-primary-text-color, #334155)",
+              border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)",
+              "border-radius": "50%",
+              "font-size": "10px",
+              "font-weight": "bold",
+              "flex-shrink": "0"
+            }).text(index + 1).appendTo(row);
+            var opSel = window.$("<select>").css({
+              width: "110px",
+              "flex-shrink": "0",
+              height: "28px"
+            }).appendTo(row);
+            OPERATORS.forEach(function(op) {
+              window.$("<option>", { value: op.v }).text(op.label).prop("selected", rule.t === op.v).appendTo(opSel);
+            });
+            var valContainer = window.$("<div>").css({ flex: "1", "min-width": "0" }).appendTo(row);
+            var valInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(valContainer);
+            var currentVt = rule.vt || "str";
+            if (typeof valInput.typedInput === "function") {
+              valInput.typedInput({
+                default: currentVt,
+                types: valueTypes,
+                width: "100%"
+              });
+              valInput.typedInput("type", currentVt);
+              valInput.typedInput("value", rule.v !== void 0 ? String(rule.v) : "");
+            } else {
+              valContainer.empty();
+              var vFlex = window.$("<div>").css({ display: "flex", gap: "4px" }).appendTo(valContainer);
+              var vtSel = window.$("<select>").css({ width: "65px" }).appendTo(vFlex);
+              valueTypes.forEach(function(vt) {
+                window.$("<option>", { value: vt.value }).text(vt.label).prop("selected", currentVt === vt.value).appendTo(vtSel);
+              });
+              valInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(rule.v !== void 0 ? String(rule.v) : "").appendTo(vFlex);
+              vtSel.on("change", function() {
+                currentVt = vtSel.val();
+              });
+            }
+            var btwnContainer = window.$("<div>").css({
+              display: rule.t === "btwn" ? "flex" : "none",
+              "align-items": "center",
+              gap: "4px",
+              flex: "1",
+              "min-width": "0"
+            }).appendTo(row);
+            window.$("<span>").css({ "font-size": "11px", color: "#666" }).text("and").appendTo(btwnContainer);
+            var val2Input = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(btwnContainer);
+            var currentV2t = rule.v2t || "num";
+            if (typeof val2Input.typedInput === "function") {
+              val2Input.typedInput({
+                default: currentV2t,
+                types: valueTypes,
+                width: "100%"
+              });
+              val2Input.typedInput("type", currentV2t);
+              val2Input.typedInput("value", rule.v2 !== void 0 ? String(rule.v2) : "");
+            } else {
+              var v2Flex = window.$("<div>").css({ display: "flex", gap: "4px", width: "100%" }).appendTo(btwnContainer);
+              var v2tSel = window.$("<select>").css({ width: "65px" }).appendTo(v2Flex);
+              valueTypes.forEach(function(vt) {
+                window.$("<option>", { value: vt.value }).text(vt.label).prop("selected", currentV2t === vt.value).appendTo(v2tSel);
+              });
+              val2Input = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(rule.v2 !== void 0 ? String(rule.v2) : "").appendTo(v2Flex);
+              v2tSel.on("change", function() {
+                currentV2t = v2tSel.val();
+              });
+            }
+            function updateRuleVisibility() {
+              var op = opSel.val();
+              if (isUnary(op)) {
+                valContainer.hide();
+                btwnContainer.hide();
+              } else if (op === "btwn") {
+                valContainer.show();
+                btwnContainer.show();
+              } else {
+                valContainer.show();
+                btwnContainer.hide();
+              }
+            }
+            opSel.on("change", updateRuleVisibility);
+            updateRuleVisibility();
+            row.data("getRuleData", function() {
+              var op = opSel.val();
+              var rObj = { t: op };
+              if (!isUnary(op)) {
+                if (typeof valInput.typedInput === "function") {
+                  rObj.vt = valInput.typedInput("type");
+                  rObj.v = valInput.typedInput("value");
+                } else {
+                  rObj.vt = currentVt;
+                  rObj.v = valInput.val();
+                }
+                if (op === "btwn") {
+                  if (typeof val2Input.typedInput === "function") {
+                    rObj.v2t = val2Input.typedInput("type");
+                    rObj.v2 = val2Input.typedInput("value");
+                  } else {
+                    rObj.v2t = currentV2t;
+                    rObj.v2 = val2Input.val();
+                  }
+                }
+              }
+              return rObj;
+            });
+            setTimeout(refreshPortBadges, 10);
+          },
+          removeItem: function() {
+            setTimeout(refreshPortBadges, 10);
+          }
+        });
+        var initialRules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+        initialRules.forEach(function(r) {
+          rulesListEl.editableList("addItem", r);
+        });
+        refreshPortBadges();
+        var checkallRow = window.$("<div>").css({ "margin-top": "12px", display: "flex", "align-items": "center", gap: "8px" }).appendTo(body);
+        window.$("<label>").css({ "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Evaluate").appendTo(checkallRow);
+        checkallSelect = window.$("<select>").css({ flex: "1" }).appendTo(checkallRow);
+        window.$("<option>", { value: "true" }).text("checking all rules").prop("selected", node.checkall !== "false").appendTo(checkallSelect);
+        window.$("<option>", { value: "false" }).text("stopping after first match").prop("selected", node.checkall === "false").appendTo(checkallSelect);
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -32533,10 +32860,15 @@
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
       var instTemplate = instComp && findTemplate(instComp.templateId);
-      var param = instTemplate && (instTemplate.params || []).find(function(p) {
-        return p.name === node.paramName;
+      var param = instTemplate && (instTemplate.params || []).find(function(p2) {
+        return p2.name === node.paramName;
       });
       return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " \u2192 Set " + (param ? param.label : node.paramName);
+    }
+    if (node.type === "switch") {
+      var p = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
+      var nRules = (node.rules || []).length;
+      return (node.name || "Switch") + " [" + p + " : " + nRules + "]";
     }
     return kind.label || node.type;
   }
@@ -32574,6 +32906,13 @@
     var extra = 8;
     var needed = Math.ceil(textWidth + padLeft + padRight + border + extra);
     return Math.max(LOGIC_NODE_W, needed);
+  }
+  function logicNodeHeight(node) {
+    if (node && node.type === "switch") {
+      var numRules = node.rules && node.rules.length ? node.rules.length : 1;
+      return Math.max(LOGIC_NODE_H, numRules * 20 + 10);
+    }
+    return LOGIC_NODE_H;
   }
   function addLogicNode(nodeData, x, y) {
     var screen2 = getActiveScreen();
@@ -32645,13 +32984,15 @@
     var kind = LOGIC_NODE_KINDS[node.type] || {};
     var label = logicNodeLabel(node);
     var nodeW = logicNodeWidth(node);
+    var nodeH = logicNodeHeight(node);
     node.w = nodeW;
+    node.h = nodeH;
     var box2 = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
       position: "absolute",
       left: node.x + "px",
       top: node.y + "px",
       width: nodeW + "px",
-      height: LOGIC_NODE_H + "px",
+      height: nodeH + "px",
       background: "var(--red-ui-view-background, #fff)",
       color: "var(--red-ui-node-label-color, #333)",
       "border-radius": "4px",
@@ -32699,6 +33040,12 @@
         openFunctionNodeEditor(node);
       });
     }
+    if (node.type === "switch") {
+      box2.attr("title", "Double-click to configure switch rules").on("dblclick", function(e) {
+        e.stopPropagation();
+        openSwitchNodeEditor(node);
+      });
+    }
     if (node.type === "ui-update") {
       box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
@@ -32735,8 +33082,7 @@
         openRouteTriggerNodeEditor(node);
       });
       if (state.editingMode === "flow" && screen && screen.logic) {
-        var reachableScreens = getReachableRenderScreens(node.id, screen.logic.nodes, screen.logic.wires);
-        if (reachableScreens.length > 1) {
+        if (hasIllegalRouteFanOut(node.id, screen.logic.nodes, screen.logic.wires)) {
           box2.css("border", "2px solid #ef4444");
           window.$("<div>").css({
             position: "absolute",
@@ -32753,7 +33099,7 @@
             "align-items": "center",
             "justify-content": "center",
             cursor: "help"
-          }).text("!").attr("title", "Fan-out error: Route Trigger branches to " + reachableScreens.length + " Render Screen nodes. Only 1 Render Screen allowed per route path!").appendTo(box2);
+          }).text("!").attr("title", "Fan-out error: Route Trigger branches to multiple concurrent Render Screen nodes on the same path!").appendTo(box2);
         }
       }
     }
@@ -32836,24 +33182,47 @@
       });
     }
     if (kind.hasOutput) {
-      var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
-        position: "absolute",
-        right: "-4px",
-        top: "50%",
-        "margin-top": "-4px",
-        width: "8px",
-        height: "8px",
-        background: "var(--red-ui-node-border, #999)",
-        cursor: "crosshair",
-        transform: "scale(" + 1 / state.logicZoomLevel + ")"
-      }).appendTo(box2);
-      wireLogicOutputPort(outDot, node);
+      if (node.type === "switch") {
+        var rules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+        var numPorts = rules.length;
+        for (var pIdx = 0; pIdx < numPorts; pIdx++) {
+          var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
+          var outDot = window.$("<div>", {
+            "class": "nexa-logic-port-out",
+            "data-port-index": pIdx
+          }).css({
+            position: "absolute",
+            right: "-4px",
+            top: yOffset + "px",
+            "margin-top": "-4px",
+            width: "8px",
+            height: "8px",
+            background: "var(--red-ui-node-border, #999)",
+            cursor: "crosshair",
+            transform: "scale(" + 1 / state.logicZoomLevel + ")"
+          }).attr("title", "Port " + (pIdx + 1) + ": " + (rules[pIdx] ? rules[pIdx].t || "rule" : "")).appendTo(box2);
+          wireLogicOutputPort(outDot, node, pIdx);
+        }
+      } else {
+        var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
+          position: "absolute",
+          right: "-4px",
+          top: nodeH / 2 + "px",
+          "margin-top": "-4px",
+          width: "8px",
+          height: "8px",
+          background: "var(--red-ui-node-border, #999)",
+          cursor: "crosshair",
+          transform: "scale(" + 1 / state.logicZoomLevel + ")"
+        }).appendTo(box2);
+        wireLogicOutputPort(outDot, node, 0);
+      }
     }
     if (kind.hasInput) {
       window.$("<div>", { "class": "nexa-logic-port-in", "data-node-id": node.id }).css({
         position: "absolute",
         left: "-4px",
-        top: "50%",
+        top: nodeH / 2 + "px",
         "margin-top": "-4px",
         width: "8px",
         height: "8px",
@@ -32883,7 +33252,7 @@
           localTop = snapLogic(localTop);
         }
         localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW));
-        localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+        localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - nodeH));
         ui.position.left = localLeft;
         ui.position.top = localTop;
         var dx = localLeft - node.x, dy = localTop - node.y;
@@ -32907,7 +33276,7 @@
           localTop = snapLogic(localTop);
         }
         var ddx = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW)) - node.x;
-        var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H)) - node.y;
+        var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - nodeH)) - node.y;
         node.x += ddx;
         node.y += ddy;
         state.logicSelectedIds.forEach(function(id2) {
@@ -33126,7 +33495,7 @@
       var screen2 = getActiveScreen();
       if (!screen2 || !screen2.logic) return;
       var hits = (screen2.logic.nodes || []).filter(function(n) {
-        return !(n.x > box2.left + box2.width || n.x + logicNodeWidth(n) < box2.left || n.y > box2.top + box2.height || n.y + LOGIC_NODE_H < box2.top);
+        return !(n.x > box2.left + box2.width || n.x + logicNodeWidth(n) < box2.left || n.y > box2.top + box2.height || n.y + (typeof logicNodeHeight === "function" ? logicNodeHeight(n) : LOGIC_NODE_H) < box2.top);
       }).map(function(n) {
         return n.id;
       });
@@ -34676,10 +35045,6 @@
     });
     window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer", display: "flex", "align-items": "center" }).append(snapInput).append("Snap to grid").appendTo(snapRow);
     renderTemplateLiveSection(template, formEl);
-    renderTemplateParamsSection(formEl);
-    formEl.find(".nexa-template-vars-section").remove();
-    var tmpl = findTemplate(state.activeTemplateId);
-    if (tmpl) renderVariablesInspector(window.$("<div>", { "class": "nexa-template-vars-section" }).css({ "margin-top": "14px" }).appendTo(formEl), tmpl, "template");
   }
   function renderTemplateLiveSection(template, formEl) {
     var $2 = window.$;
@@ -34766,72 +35131,6 @@
       if (n.type === "@frame" && !layout_exports.hasAutoLayout(n) && n.children && n.children.length) count += autoConstrain(n.children, { w: n.w, h: n.h });
     });
     return count;
-  }
-  function renderTemplateParamsSection(formEl) {
-    formEl = formEl || state.templateFormEl;
-    if (!formEl) return;
-    formEl.find(".nexa-template-params-section").remove();
-    var template = findTemplate(state.activeTemplateId);
-    if (!template) return;
-    var section = window.$("<div>", { "class": "nexa-template-params-section" }).css({
-      "margin-top": "14px",
-      "border-top": "1px solid var(--red-ui-secondary-border-color, #eee)",
-      "padding-top": "10px"
-    }).appendTo(formEl);
-    window.$("<label>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px", display: "flex", "align-items": "center", gap: "6px", color: "var(--red-ui-primary-text-color, #333)" }).html('<i class="fa fa-list" style="color: #2196f3;"></i> Parameters').appendTo(section);
-    window.$("<div>").css({ color: "var(--red-ui-secondary-text-color, #888)", "font-size": "11px", "margin-bottom": "8px" }).text(`Declared like a Subflow's env vars. Reference one anywhere in this template's component props as {name}, or wire from the "On Params Change" node on this template's own Logic canvas.`).appendTo(section);
-    template.params = template.params || [];
-    var paramList = buildEditableListWidget(section, {
-      minHeight: "260px",
-      removable: true,
-      sortable: true,
-      addItem: function(container, i2, opt) {
-        var p = opt || {};
-        if (!p.id) p.id = genId();
-        if (!p.name) p.name = "param" + (template.params.length + 1);
-        if (!p.label) p.label = p.name;
-        if (p.type === void 0) p.type = "string";
-        if (p.defaultValue === void 0) p.defaultValue = "";
-        if (template.params.indexOf(p) === -1) {
-          template.params.push(p);
-          markDirty();
-        }
-        var row = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "6px", padding: "4px 0" }).appendTo(container);
-        var nameRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-tag"></i> Name').appendTo(nameRow);
-        var nameInput = window.$("<input>", { type: "text", "class": "node-input-param-name", placeholder: "e.g. speed" }).css({ flex: "1" }).val(p.name).appendTo(nameRow);
-        nameInput.on("change", function() {
-          var newName = nameInput.val().trim();
-          p.name = newName;
-          markDirty();
-        });
-        var labelRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-font"></i> Label').appendTo(labelRow);
-        var labelInput = window.$("<input>", { type: "text", "class": "node-input-param-label", placeholder: "e.g. Motor Speed" }).css({ flex: "1" }).val(p.label).appendTo(labelRow);
-        labelInput.on("change", function() {
-          p.label = labelInput.val();
-          markDirty();
-        });
-        var valRow = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(row);
-        window.$("<span>").css({ width: "50px", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).html('<i class="fa fa-arrow-left"></i> Value').appendTo(valRow);
-        var valWrapper = window.$("<div>").css({ flex: "1" }).appendTo(valRow);
-        buildTypedInputWidget(valWrapper, p.type || "string", p.defaultValue, function(parsedVal, detType) {
-          p.defaultValue = parsedVal;
-          p.type = detType;
-          markDirty();
-        });
-      },
-      removeItem: function(opt) {
-        var idx = template.params.indexOf(opt);
-        if (idx !== -1) {
-          template.params.splice(idx, 1);
-          markDirty();
-        }
-      }
-    });
-    template.params.forEach(function(p) {
-      paramList.editableList("addItem", p);
-    });
   }
 
   // src/sidebar/screens-panel.js
@@ -35038,12 +35337,64 @@
       placeInScreen(node, s.parentId);
     });
     state.templates.forEach(function(t2) {
+      t2.variables = t2.variables || [];
+      t2.params = t2.params || [];
+      var tmplVars = (t2.variables || []).map(function(v) {
+        return {
+          id: "template-var:" + t2.id + ":" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + ")",
+          icon: "fa fa-tag",
+          type: "template-variable",
+          actions: [
+            { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      });
+      var varsGroup = {
+        id: "template-vars-group:" + t2.id,
+        label: "Variables",
+        icon: "fa fa-tags",
+        type: "template-vars-group",
+        container: true,
+        badge: String(tmplVars.length),
+        actions: [
+          { id: "add-template-var", icon: "fa fa-plus", title: "Add Variable" }
+        ],
+        children: tmplVars
+      };
+      var tmplParams = (t2.params || []).map(function(p) {
+        return {
+          id: "template-param:" + t2.id + ":" + p.id,
+          label: p.name,
+          title: (p.label ? p.label + " (" + p.name + ")" : p.name) + " (" + (p.type || "string") + ")",
+          icon: "fa fa-sliders",
+          type: "template-param",
+          actions: [
+            { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
+          ]
+        };
+      });
+      var paramsGroup = {
+        id: "template-params-group:" + t2.id,
+        label: "Parameters",
+        icon: "fa fa-sliders",
+        type: "template-params-group",
+        container: true,
+        badge: String(tmplParams.length),
+        actions: [
+          { id: "add-template-param", icon: "fa fa-plus", title: "Add Parameter" }
+        ],
+        children: tmplParams
+      };
       var node = {
         id: t2.id,
         label: t2.name,
         title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
         icon: "fa fa-clone",
         type: "template",
+        container: true,
+        children: [varsGroup, paramsGroup],
         actions: [
           { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
           { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
@@ -35148,6 +35499,7 @@
         if (app2.variables && app2.variables.length) {
           state.editingMode = "app-variable";
           state.activeAppVariableId = app2.variables[0].id;
+          if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
           renderScreenForm();
         }
       }
@@ -35156,6 +35508,7 @@
     if (id2.startsWith("app-var:")) {
       state.editingMode = "app-variable";
       state.activeAppVariableId = id2.substring("app-var:".length);
+      if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
       return;
     }
@@ -35164,6 +35517,75 @@
       state.editingMode = "screen-variable";
       state.activeScreenId = parts[1];
       state.activeScreenVariableId = parts[2];
+      if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
+      renderScreenForm();
+      return;
+    }
+    if (id2.startsWith("template-vars-group:")) {
+      var tId = id2.substring("template-vars-group:".length);
+      var tmpl = findTemplate(tId);
+      if (state.activeTemplateId !== tId) {
+        state.activeTemplateId = tId;
+        renderActiveScreen();
+        updateCanvasTabsVisibility();
+      }
+      if (tmpl && tmpl.variables && tmpl.variables.length) {
+        state.editingMode = "template-variable";
+        state.activeTemplateVariableId = tmpl.variables[0].id;
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["template-var:" + tId + ":" + tmpl.variables[0].id];
+      } else {
+        state.editingMode = "template-vars-group";
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
+      }
+      renderScreenForm();
+      return;
+    }
+    if (id2.startsWith("template-params-group:")) {
+      var tId = id2.substring("template-params-group:".length);
+      var tmpl = findTemplate(tId);
+      if (state.activeTemplateId !== tId) {
+        state.activeTemplateId = tId;
+        renderActiveScreen();
+        updateCanvasTabsVisibility();
+      }
+      if (tmpl && tmpl.params && tmpl.params.length) {
+        state.editingMode = "template-param";
+        state.activeTemplateParamId = tmpl.params[0].id;
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["template-param:" + tId + ":" + tmpl.params[0].id];
+      } else {
+        state.editingMode = "template-params-group";
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
+      }
+      renderScreenForm();
+      return;
+    }
+    if (id2.startsWith("template-var:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var varId = parts[2];
+      if (state.activeTemplateId !== tId) {
+        state.activeTemplateId = tId;
+        renderActiveScreen();
+        updateCanvasTabsVisibility();
+      }
+      state.editingMode = "template-variable";
+      state.activeTemplateVariableId = varId;
+      if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
+      renderScreenForm();
+      return;
+    }
+    if (id2.startsWith("template-param:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var paramId = parts[2];
+      if (state.activeTemplateId !== tId) {
+        state.activeTemplateId = tId;
+        renderActiveScreen();
+        updateCanvasTabsVisibility();
+      }
+      state.editingMode = "template-param";
+      state.activeTemplateParamId = paramId;
+      if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
       return;
     }
@@ -35238,6 +35660,83 @@
         if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
           state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
         }
+        return;
+      }
+    }
+    if (action === "add-template-var") {
+      var tId = id2.startsWith("template-vars-group:") ? id2.substring("template-vars-group:".length) : id2;
+      var t2 = findTemplate(tId);
+      if (t2) {
+        t2.variables = t2.variables || [];
+        var newVar = { id: genId(), name: "var" + (t2.variables.length + 1), type: "string", defaultValue: "" };
+        t2.variables.push(newVar);
+        state.activeTemplateId = t2.id;
+        state.editingMode = "template-variable";
+        state.activeTemplateVariableId = newVar.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("template-var:" + t2.id + ":" + newVar.id);
+        }
+        return;
+      }
+    }
+    if (action === "delete-template-var") {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var varId = parts[2];
+      var t2 = findTemplate(tId);
+      if (t2 && t2.variables) {
+        t2.variables = t2.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeTemplateVariableId === varId) {
+          state.activeTemplateVariableId = null;
+          state.editingMode = "template";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "add-template-param") {
+      var tId = id2.startsWith("template-params-group:") ? id2.substring("template-params-group:".length) : id2;
+      var t2 = findTemplate(tId);
+      if (t2) {
+        t2.params = t2.params || [];
+        var pName = "param" + (t2.params.length + 1);
+        var newParam = { id: genId(), name: pName, label: pName, type: "string", defaultValue: "" };
+        t2.params.push(newParam);
+        state.activeTemplateId = t2.id;
+        state.editingMode = "template-param";
+        state.activeTemplateParamId = newParam.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("template-param:" + t2.id + ":" + newParam.id);
+        }
+        return;
+      }
+    }
+    if (action === "delete-template-param") {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var paramId = parts[2];
+      var t2 = findTemplate(tId);
+      if (t2 && t2.params) {
+        t2.params = t2.params.filter(function(p) {
+          return p.id !== paramId;
+        });
+        if (state.activeTemplateParamId === paramId) {
+          state.activeTemplateParamId = null;
+          state.editingMode = "template";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
         return;
       }
     }
@@ -35417,6 +35916,39 @@
       }
       return;
     }
+    if (id2.startsWith("template-var:")) {
+      var parts = id2.split(":");
+      var tmplId = parts[1];
+      var varId = parts[2];
+      var tmpl = findTemplate(tmplId);
+      var v = tmpl && (tmpl.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    if (id2.startsWith("template-param:")) {
+      var parts = id2.split(":");
+      var tmplId = parts[1];
+      var paramId = parts[2];
+      var tmpl = findTemplate(tmplId);
+      var p = tmpl && (tmpl.params || []).find(function(x) {
+        return x.id === paramId;
+      });
+      if (p && name2 && p.name !== name2) {
+        p.name = name2;
+        if (!p.label || p.label === p.name) p.label = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
     var item = state.screens.find(function(s2) {
       return s2.id === id2;
     }) || findTemplate(id2) || findFlow(id2) || findFolder(id2);
@@ -35506,6 +36038,30 @@
         }
         return;
       }
+      if (d.id.startsWith("template-var:") && d.targetId.startsWith("template-var:")) {
+        var sParts1 = d.id.split(":"), sParts2 = d.targetId.split(":");
+        if (sParts1[1] === sParts2[1]) {
+          var tmpl = findTemplate(sParts1[1]);
+          if (tmpl && tmpl.variables) {
+            reorderInArray(tmpl.variables, sParts1[2], sParts2[2], d.position);
+            markDirty();
+            renderScreenList();
+          }
+        }
+        return;
+      }
+      if (d.id.startsWith("template-param:") && d.targetId.startsWith("template-param:")) {
+        var sParts1 = d.id.split(":"), sParts2 = d.targetId.split(":");
+        if (sParts1[1] === sParts2[1]) {
+          var tmpl = findTemplate(sParts1[1]);
+          if (tmpl && tmpl.params) {
+            reorderInArray(tmpl.params, sParts1[2], sParts2[2], d.position);
+            markDirty();
+            renderScreenList();
+          }
+        }
+        return;
+      }
       if (!item) return;
       var target = state.screens.find(function(s) {
         return s.id === d.targetId;
@@ -35558,7 +36114,7 @@
       treeHost.get(0).appendChild(treeEl2);
       var nodes = buildScreensFlowsTreeNodes();
       treeEl2.nodes = nodes;
-      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
       treeEl2.selected = activeId ? [activeId] : [];
       state.screensFlowsTreeEl = treeEl2;
     }
@@ -35802,7 +36358,9 @@
       renderScreenForm();
     }).appendTo(state.screenFormEl);
   }
-  function renderVariablePropertiesForm(variable2, isApp, screen2) {
+  function renderVariablePropertiesForm(variable2, isApp, surface) {
+    var isTmpl = isApp === "template";
+    var isAppVar = isApp === true;
     var header = window.$("<div>").css({
       "font-weight": "bold",
       "font-size": "13px",
@@ -35814,19 +36372,19 @@
       "align-items": "center",
       gap: "6px"
     }).html(
-      isApp ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties' : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (screen2 ? screen2.name : "") + ")"
+      isAppVar ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties' : isTmpl ? '<i class="fa fa-tag" style="color: #0284c7;"></i> Template Variable Properties (' + (surface ? surface.name : "Template") + ")" : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (surface ? surface.name : "Screen") + ")"
     ).appendTo(state.screenFormEl);
     window.$("<div>").css({
       "margin-bottom": "14px",
       padding: "8px 12px",
-      background: isApp ? "#f5f3ff" : "#f0f9ff",
-      border: "1px solid " + (isApp ? "#ddd6fe" : "#bae6fd"),
+      background: isAppVar ? "#f5f3ff" : "#f0f9ff",
+      border: "1px solid " + (isAppVar ? "#ddd6fe" : "#bae6fd"),
       "border-radius": "6px",
       "font-size": "11px",
-      color: isApp ? "#5b21b6" : "#0369a1",
+      color: isAppVar ? "#5b21b6" : "#0369a1",
       "line-height": "1.4"
     }).html(
-      isApp ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : "<strong>Screen-Scoped Variable (" + (screen2 ? screen2.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
+      isAppVar ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : isTmpl ? "<strong>Template-Scoped Variable (" + (surface ? surface.name : "Template") + ")</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{" + (variable2.name || "var") + "}</code>." : "<strong>Screen-Scoped Variable (" + (surface ? surface.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
     ).appendTo(state.screenFormEl);
     var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
@@ -35889,7 +36447,7 @@
       }
       markDirty();
     });
-    if (isApp) {
+    if (isAppVar) {
       var persistRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(state.screenFormEl);
       window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Kept for (Persistence)").appendTo(persistRow);
       var persistSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(persistRow);
@@ -35904,15 +36462,21 @@
     }
     var btnRow = window.$("<div>").css({ "margin-top": "16px", "padding-top": "12px", "border-top": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)" }).appendTo(state.screenFormEl);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
-      if (isApp) {
+      if (isAppVar) {
         var app2 = getApp();
         app2.variables = (app2.variables || []).filter(function(v) {
           return v.id !== variable2.id;
         });
         state.activeAppVariableId = null;
         state.editingMode = "screen";
-      } else if (screen2) {
-        screen2.variables = (screen2.variables || []).filter(function(v) {
+      } else if (isTmpl && surface) {
+        surface.variables = (surface.variables || []).filter(function(v) {
+          return v.id !== variable2.id;
+        });
+        state.activeTemplateVariableId = null;
+        state.editingMode = "template";
+      } else if (surface) {
+        surface.variables = (surface.variables || []).filter(function(v) {
           return v.id !== variable2.id;
         });
         state.activeScreenVariableId = null;
@@ -35921,6 +36485,115 @@
       markDirty();
       renderScreenList();
       renderScreenForm();
+    }).appendTo(btnRow);
+  }
+  function renderTemplateParamPropertiesForm(param, template) {
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "13px",
+      "margin-bottom": "14px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "6px"
+    }).html('<i class="fa fa-sliders" style="color: #6366f1;"></i> Template Parameter Properties (' + (template ? template.name : "Template") + ")").appendTo(state.screenFormEl);
+    window.$("<div>").css({
+      "margin-bottom": "14px",
+      padding: "8px 12px",
+      background: "#f5f3ff",
+      border: "1px solid #ddd6fe",
+      "border-radius": "6px",
+      "font-size": "11px",
+      color: "#5b21b6",
+      "line-height": "1.4"
+    }).html("<strong>Template Parameter (" + (template ? template.name : "Template") + ")</strong><br>Exposed outward when this template is used as an instance. Reference inside this template using <code>{" + (param.name || "param") + "}</code> or bind outward.").appendTo(state.screenFormEl);
+    var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Parameter Name").appendTo(nameRow);
+    var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(param.name || "").appendTo(nameRow);
+    var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+    nameInput.on("input change", function() {
+      var val = nameInput.val().trim();
+      if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+        nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+      } else {
+        nameError.hide();
+        param.name = val;
+        if (!param.label || param.label === param.name) {
+          param.label = val;
+          if (labelInput) labelInput.val(val);
+        }
+        renderScreenList();
+        markDirty();
+      }
+    });
+    var labelRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Display Label").appendTo(labelRow);
+    var labelInput = window.$("<input>", { type: "text", placeholder: "e.g. Motor Speed" }).css({ width: "100%", "box-sizing": "border-box" }).val(param.label || param.name || "").appendTo(labelRow);
+    labelInput.on("change", function() {
+      param.label = labelInput.val().trim() || param.name;
+      renderScreenList();
+      markDirty();
+    });
+    var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+    var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+    ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+      window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+    });
+    (getApp().types || []).forEach(function(t2) {
+      window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+    });
+    typeSelect.val(param.type || "string");
+    var valRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+    var valInputContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+    var typedInputEl = buildTypedInputWidget(valInputContainer, param.type || "string", param.defaultValue, function(parsedVal, detType) {
+      param.defaultValue = parsedVal;
+      if (detType && detType !== param.type) {
+        param.type = detType;
+        typeSelect.val(detType);
+      }
+      markDirty();
+    });
+    typeSelect.on("change", function() {
+      var newType = typeSelect.val();
+      param.type = newType;
+      var tiType = mapParamTypeToTypedInputType(newType);
+      if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+        typedInputEl.typedInput("type", tiType);
+        if (newType === "boolean") {
+          typedInputEl.typedInput("value", "false");
+          param.defaultValue = false;
+        } else if (newType === "number") {
+          typedInputEl.typedInput("value", "0");
+          param.defaultValue = 0;
+        } else if (newType === "object") {
+          typedInputEl.typedInput("value", "{}");
+          param.defaultValue = {};
+        } else if (newType === "array") {
+          typedInputEl.typedInput("value", "[]");
+          param.defaultValue = [];
+        } else if (newType === "string") {
+          typedInputEl.typedInput("value", "");
+          param.defaultValue = "";
+        }
+      }
+      markDirty();
+    });
+    var btnRow = window.$("<div>").css({ "margin-top": "16px", "padding-top": "12px", "border-top": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)" }).appendTo(state.screenFormEl);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Parameter').on("click", function() {
+      if (template && template.params) {
+        template.params = template.params.filter(function(p) {
+          return p.id !== param.id;
+        });
+        state.activeTemplateParamId = null;
+        state.editingMode = "template";
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
     }).appendTo(btnRow);
   }
   function renderScreenForm() {
@@ -35954,6 +36627,82 @@
         renderVariablePropertiesForm(scVar, false, sc);
         return;
       }
+    }
+    if (state.editingMode === "template-variable") {
+      var tmpl = findTemplate(state.activeTemplateId);
+      var tmplVar = tmpl && (tmpl.variables || []).find(function(v) {
+        return v.id === state.activeTemplateVariableId;
+      });
+      if (tmplVar) {
+        renderVariablePropertiesForm(tmplVar, "template", tmpl);
+        return;
+      }
+    }
+    if (state.editingMode === "template-param") {
+      var tmpl = findTemplate(state.activeTemplateId);
+      var tmplParam = tmpl && (tmpl.params || []).find(function(p) {
+        return p.id === state.activeTemplateParamId;
+      });
+      if (tmplParam) {
+        renderTemplateParamPropertiesForm(tmplParam, tmpl);
+        return;
+      }
+    }
+    if (state.editingMode === "template-vars-group") {
+      var tmpl = findTemplate(state.activeTemplateId);
+      window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+      }).html('<i class="fa fa-tags" style="color: #0284c7;"></i> Template Variables (' + (tmpl ? tmpl.name : "Template") + ")").appendTo(state.screenFormEl);
+      window.$("<div>").css({
+        "margin-bottom": "14px",
+        padding: "10px 12px",
+        background: "#f0f9ff",
+        border: "1px solid #bae6fd",
+        "border-radius": "6px",
+        "font-size": "11px",
+        color: "#0369a1",
+        "line-height": "1.4"
+      }).html("<strong>Template Variables (" + (tmpl ? tmpl.name : "Template") + ")</strong><br>Internal variables scoped to this template. Available to all components inside this template. Click <strong>+ Add Variable</strong> to create one.").appendTo(state.screenFormEl);
+      window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ display: "inline-flex", "align-items": "center", gap: "4px" }).html('<i class="fa fa-plus"></i> Add Variable').on("click", function() {
+        if (tmpl) onScreensFlowsAction({ detail: { id: "template-vars-group:" + tmpl.id, action: "add-template-var" } });
+      }).appendTo(state.screenFormEl);
+      return;
+    }
+    if (state.editingMode === "template-params-group") {
+      var tmpl = findTemplate(state.activeTemplateId);
+      window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+      }).html('<i class="fa fa-sliders" style="color: #6366f1;"></i> Template Parameters (' + (tmpl ? tmpl.name : "Template") + ")").appendTo(state.screenFormEl);
+      window.$("<div>").css({
+        "margin-bottom": "14px",
+        padding: "10px 12px",
+        background: "#f5f3ff",
+        border: "1px solid #ddd6fe",
+        "border-radius": "6px",
+        "font-size": "11px",
+        color: "#5b21b6",
+        "line-height": "1.4"
+      }).html("<strong>Template Parameters (" + (tmpl ? tmpl.name : "Template") + ")</strong><br>Parameters exposed outward when this template is used as an instance. Click <strong>+ Add Parameter</strong> to create one.").appendTo(state.screenFormEl);
+      window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ display: "inline-flex", "align-items": "center", gap: "4px" }).html('<i class="fa fa-plus"></i> Add Parameter').on("click", function() {
+        if (tmpl) onScreensFlowsAction({ detail: { id: "template-params-group:" + tmpl.id, action: "add-template-param" } });
+      }).appendTo(state.screenFormEl);
+      return;
     }
     if (state.editingMode === "flow") {
       var flow = findFlow(state.activeFlowId);
@@ -37728,18 +38477,6 @@
     var expandCollapseGroup = window.$("<div>").css({ display: "flex", gap: "3px", "align-items": "center" }).appendTo(screenTitleRow);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Expand all" }).html("<i class='fa fa-angle-double-down'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", expandAllScreensTree).appendTo(expandCollapseGroup);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Collapse all" }).html("<i class='fa fa-angle-double-up'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", collapseAllScreensTree).appendTo(expandCollapseGroup);
-    var screenBtnGroup = window.$("<div>").css({
-      display: "flex",
-      "align-items": "center",
-      "flex-wrap": "wrap",
-      gap: "4px",
-      width: "100%"
-    }).appendTo(screenToolbar);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" }).text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" }).text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" }).text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" }).text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" }).text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" }).on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
     var screenRightCol = window.$("<div>").css({
@@ -37814,13 +38551,12 @@
     }
     if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
       window.RED.events.on("flows:loaded", function() {
-        if (!state.projectConfigNode) {
-          state.screensLoaded = false;
-          ensureScreensLoaded(function() {
-            renderScreenList();
-            renderScreenForm();
-          });
-        }
+        state.screensLoaded = false;
+        state.projectConfigNode = null;
+        ensureScreensLoaded(function() {
+          renderScreenList();
+          renderScreenForm();
+        });
       });
     }
     return container;
