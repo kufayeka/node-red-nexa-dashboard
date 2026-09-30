@@ -32,11 +32,17 @@ export function refreshSelectionVisuals(opts) {
         var comp = findComponent(state.selectedIds[0]);
         if (comp) renderSelectionHandles(comp);
     }
-    if (opts && opts.keepPanel) return;
+    if (opts && opts.keepPanel) {
+        hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
+        refreshEventsHighlight();
+        return;
+    }
     renderPropertiesPanel();
     refreshEventsHighlight();
     // the Logic canvas follows: the nodes of what is selected here
-    selectLogicForComponents(state.selectedIds);
+    if (!opts || !opts.keepLogicSelection) {
+        selectLogicForComponents(state.selectedIds);
+    }
     hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
     // (not away from the Hierarchy: selecting there — or arranging the tree —
     // must keep the tree in view)

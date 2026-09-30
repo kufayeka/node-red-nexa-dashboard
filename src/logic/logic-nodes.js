@@ -4,7 +4,7 @@ import {
 } from "../state.js";
 import { pushHistory } from "../history.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
-import { isLogicSelected, selectLogicOnly, refreshLogicSelectionVisuals } from "./logic-selection.js";
+import { isLogicSelected, selectLogicOnly, refreshLogicSelectionVisuals, syncComponentFromLogicSelection } from "./logic-selection.js";
 import { openFunctionNodeEditor } from "../dialogs/function-dialog.js";
 import { openUiUpdateNodeEditor } from "../dialogs/ui-update-dialog.js";
 import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
@@ -33,7 +33,7 @@ export function logicNodeLabel(node) {
         var comp = findComponent(node.compId);
         var typeDef = comp && window.NEXA.getComponent(comp.type);
         var typeLabel = comp ? (comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? (comp.name || "Frame") : (typeDef ? typeDef.label : comp.type)) : "?";
-        var name = typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
+        var name = (comp && comp.name) ? comp.name : (typeLabel + " #" + (comp ? comp.id.slice(-4) : "?"));
         if (node.type === "ui-event") {
             if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
                 return name + " on Sparkplug Update";
@@ -90,7 +90,7 @@ export function logicNodeLabel(node) {
     if (node.type === "layout") {
         var lScreen = getActiveScreen();
         var lf = node.container && lScreen ? Tree.find(lScreen, node.container) : null;
-        return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+        return lf ? (lf.name || ("Frame #" + lf.id.slice(-4))) : "Layout (missing frame)";
     }
     if (node.type === "teleport") return teleportNodeLabel(node);
     if (node.type === "overlay-open" || node.type === "overlay-close") {
@@ -121,12 +121,30 @@ export function logicNodeLabel(node) {
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         var vScreen = getActiveScreen();
+        var formatVarRef = function (vScope, vName) {
+            var owner = vScope && vScope !== "@app" && vScreen ? Tree.find(vScreen, vScope) : null;
+            var where = vScope === "@app" ? "App" : vScope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
+            return where + "." + vName;
+        };
+
+        if (node.type === "on-variable-change") {
+            if (Array.isArray(node.variables) && node.variables.length > 0) {
+                var deps = node.variables.map(function (v) {
+                    return v ? formatVarRef(v.scope, v.name) : "?";
+                });
+                return "Watch (" + deps.join(", ") + ")";
+            }
+            if (node.name) {
+                return "Watch " + formatVarRef(node.scope, node.name);
+            }
+            return "Watch Variable";
+        }
+
         var owner = node.scope && node.scope !== "@app" && vScreen ? Tree.find(vScreen, node.scope) : null;
         var where = node.scope === "@app" ? "App" : node.scope ? (owner ? (owner.name || owner.type) : "?") : (state.editingMode === "template" ? "template" : "screen");
         var ref = where + "." + node.name;
         if (!node.name) return kind.label;
         if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " → msg." + node.target : "");
-        if (node.type === "on-variable-change") return "On change " + ref;
         var OPS = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
         return (OPS[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " ← msg." + node.msgPath : "");
     }
@@ -134,13 +152,15 @@ export function logicNodeLabel(node) {
     if (node.type === "template-event") {
         var evComp = findComponent(node.instanceId);
         var evTemplate = evComp && findTemplate(evComp.templateId);
-        return (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?") + " on " + (node.output || "any output");
+        var evName = (evComp && evComp.name) ? evComp.name : ((evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?"));
+        return evName + " on " + (node.output || "any output");
     }
     if (node.type === "set-template-param") {
         var instComp = findComponent(node.instanceId);
         var instTemplate = instComp && findTemplate(instComp.templateId);
         var param = instTemplate && (instTemplate.params || []).find(function (p) { return p.name === node.paramName; });
-        return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " → Set " + (param ? param.label : node.paramName);
+        var instName = (instComp && instComp.name) ? instComp.name : ("Instance #" + (instComp ? instComp.id.slice(-4) : "?"));
+        return instName + " → Set " + (param ? param.label : node.paramName);
     }
     if (node.type === "switch") {
         var p = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
@@ -284,8 +304,11 @@ export function renderLogicNode(node) {
                 state.logicSelectedIds.push(node.id);
             }
             refreshLogicSelectionVisuals();
+            syncComponentFromLogicSelection();
         } else if (!isLogicSelected(node.id)) {
             selectLogicOnly(node.id);
+        } else {
+            syncComponentFromLogicSelection();
         }
     });
 

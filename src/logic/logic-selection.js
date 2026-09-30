@@ -1,6 +1,7 @@
 import { state, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen, genId, markDirty } from "../state.js";
 import { pushHistory } from "../history.js";
 import { removeLogicNodes, renderLogicCanvas, logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
+import { refreshSelectionVisuals } from "../canvas/selection.js";
 
 var logicClipboard = null; // { nodes: [], wires: [] }
 
@@ -36,19 +37,47 @@ export function isLogicSelected(id) {
     return state.logicSelectedIds.indexOf(id) !== -1;
 }
 
+/**
+ * Synchronize UI canvas selection when logic nodes are selected:
+ * Maps the selected logic nodes to their corresponding UI components,
+ * selects and outlines them on the UI canvas, and updates hierarchy highlighting.
+ */
+export function syncComponentFromLogicSelection() {
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic || !screen.logic.nodes) return;
+    var nodeMap = {};
+    (screen.logic.nodes || []).forEach(function (n) { nodeMap[n.id] = n; });
+
+    var compIds = [];
+    (state.logicSelectedIds || []).forEach(function (id) {
+        var n = nodeMap[id];
+        if (!n) return;
+        var cId = n.compId || n.instanceId || (n.type === "layout" ? n.container : null) || n.overlay || (n.type === "teleport" ? n.node : null);
+        if (cId && compIds.indexOf(cId) === -1) {
+            compIds.push(cId);
+        }
+    });
+
+    state.selectedIds = compIds;
+    refreshSelectionVisuals({ keepPanel: true, keepLogicSelection: true });
+}
+
 export function selectLogicOnly(id) {
     state.logicSelectedIds = [id];
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
 }
 
 export function selectLogicMultiple(ids) {
     state.logicSelectedIds = ids.slice();
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
 }
 
 export function deselectAllLogic() {
     state.logicSelectedIds = [];
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
 }
 
 export function copyLogicSelection(isCut) {
@@ -182,6 +211,7 @@ export function startLogicMarqueeSelect(e) {
         if (shiftHeld) {
             hits.forEach(function (id) { if (!isLogicSelected(id)) state.logicSelectedIds.push(id); });
             refreshLogicSelectionVisuals();
+            syncComponentFromLogicSelection();
         } else {
             selectLogicMultiple(hits);
         }

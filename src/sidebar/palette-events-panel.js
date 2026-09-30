@@ -459,23 +459,11 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Delay", function () { return { type: "delay", delay: 500, unit: "ms" }; }, "", "delay");
     chip(state.eventsPane, "Layer Control", function () { return { type: "layer-control", states: [] }; }, "", "layer-control");
 
-    // one chip per declared variable (screen / group / frame), plus a blank one
+    // Exactly 3 variable nodes (state management: get, set, watch with multiple dependencies)
     sectionHeader(state.eventsPane, "Variables");
     chip(state.eventsPane, "Set Variable", function () { return { type: "set-variable", scope: "", name: "", op: "set", valueSource: "payload" }; }, "", "set-variable");
     chip(state.eventsPane, "Get Variable", function () { return { type: "get-variable", scope: "", name: "", target: "payload" }; }, "", "get-variable");
-    chip(state.eventsPane, "On Variable Change", function () { return { type: "on-variable-change", scope: "", name: "" }; }, "", "on-variable-change");
-    if (screen) {
-        Scope.allDeclarations(screen, Tree.walk, getApp()).forEach(function (d) {
-            if (!Scope.NAME_RE.test(d.variable.name || "")) return;
-            var label = (d.scopeId ? d.scopeName : (state.editingMode === "template" ? "template" : "screen")) + "." + d.variable.name;
-            chip(state.eventsPane, "Set " + label, function () {
-                return { type: "set-variable", scope: d.scopeId, name: d.variable.name, op: "set", valueSource: "payload" };
-            }, "", "set-variable");
-            chip(state.eventsPane, "On change " + label, function () {
-                return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
-            }, "", "on-variable-change");
-        });
-    }
+    chip(state.eventsPane, "Watch Variable", function () { return { type: "on-variable-change", variables: [] }; }, "", "on-variable-change");
 
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function () {
@@ -489,7 +477,7 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Set colour mode (msg.payload: light / dark / system)", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "payload" }; }, "", "set-variable");
     chip(state.eventsPane, "Dark mode", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "dark" }; }, "", "set-variable");
     chip(state.eventsPane, "Light mode", function () { return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "light" }; }, "", "set-variable");
-    chip(state.eventsPane, "On colour mode change", function () { return { type: "on-variable-change", scope: "@app", name: "$colorMode" }; }, "", "on-variable-change");
+    chip(state.eventsPane, "On colour mode change", function () { return { type: "on-variable-change", variables: [{ scope: "@app", name: "$colorMode" }], scope: "@app", name: "$colorMode" }; }, "", "on-variable-change");
 
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");
@@ -541,12 +529,16 @@ export function renderEventsPanel() {
         sectionHeader(state.eventsPane, "Layouts on this screen");
         frames.forEach(function (f) {
             var kind = Layout.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid", carousel: "carousel" }[Layout.layoutOf(f).mode] : "frame";
-            chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function () {
+            var defaultKindName = { horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[Layout.layoutOf(f)?.mode] || "Frame";
+            var baseName = (f.name && f.name !== "Frame" && f.name !== "Row" && f.name !== "Column" && f.name !== "Grid") ? f.name : defaultKindName;
+            var frameDisplayName = f.name || (baseName + " #" + f.id.slice(-4));
+            var label = frameDisplayName + (Layout.hasAutoLayout(f) ? " (" + kind + ")" : "");
+            chip(state.eventsPane, label, function () {
                 return { type: "layout", container: f.id };
             }, f.id, "layout");
             // a carousel: which slide is shown (msg.index, and msg.item for a populated one)
             if (Layout.layoutOf(f).mode === "carousel") {
-                chip(state.eventsPane, (f.name || "Carousel") + " #" + f.id.slice(-4) + " → on Slide Change", function () {
+                chip(state.eventsPane, frameDisplayName + " → on Slide Change", function () {
                     return { type: "ui-event", compId: f.id, event: "slide-change" };
                 }, f.id, "ui-event");
             }
@@ -561,7 +553,8 @@ export function renderEventsPanel() {
             var shortId = comp.id.slice(-4);
             if (comp.type === "@template") {
                 var template = findTemplate(comp.templateId);
-                var instanceName = "Instance #" + shortId + (template ? (" (" + template.name + ")") : "");
+                var baseName = comp.name || (template ? template.name : "Instance");
+                var instanceName = comp.name ? comp.name : (baseName + " #" + shortId);
                 if (hasSparkplugBinding(comp)) {
                     chip(state.eventsPane, instanceName + " → on Sparkplug Update", function () {
                         return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
@@ -581,7 +574,8 @@ export function renderEventsPanel() {
                 return;
             }
             if (comp.type === "@lit-component") {
-                var litName = "Lit Component #" + shortId;
+                var litBase = comp.name || "Lit Component";
+                var litName = comp.name ? comp.name : (litBase + " #" + shortId);
                 if (hasSparkplugBinding(comp)) {
                     chip(state.eventsPane, litName + " → on Sparkplug Update", function () {
                         return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
@@ -598,7 +592,8 @@ export function renderEventsPanel() {
                 return;
             }
             var typeDef = window.NEXA.getComponent(comp.type);
-            var name = (typeDef ? typeDef.label : comp.type) + " #" + shortId;
+            var baseName = comp.name || (typeDef ? typeDef.label : comp.type);
+            var name = comp.name ? comp.name : (baseName + " #" + shortId);
             if (hasSparkplugBinding(comp)) {
                 chip(state.eventsPane, name + " → on Sparkplug Update", function () {
                     return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };

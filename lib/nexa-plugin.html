@@ -2051,7 +2051,7 @@
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
-    "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // the repeater: a container filled with a template, one card per item
@@ -28113,8 +28113,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
         var tabBar = window.$("<div>").css({
           display: "flex",
           "border-bottom": "1px solid var(--red-ui-secondary-border-color, #ddd)",
@@ -28178,8 +28178,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
         var cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" }).text("CSS \u2014 scoped to this component's shadow DOM. Target :host, button, button.active, etc.").appendTo(cssPane);
         var cssEditorContainer = window.$("<div>", { id: "nexa-comp-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
@@ -28220,8 +28220,8 @@
             window.RED.tray.close();
           } }
         ],
-        open: function(tray) {
-          var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+        open: function(tray2) {
+          var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
           var pane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
           window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #888)", "margin-bottom": "6px", "flex-shrink": "0" }).text(opts.help || CODE_TRAY_HELP[lang]).appendTo(pane);
           var holder = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0" }).appendTo(pane);
@@ -28723,21 +28723,9 @@
     chip(state.eventsPane, "Get Variable", function() {
       return { type: "get-variable", scope: "", name: "", target: "payload" };
     }, "", "get-variable");
-    chip(state.eventsPane, "On Variable Change", function() {
-      return { type: "on-variable-change", scope: "", name: "" };
+    chip(state.eventsPane, "Watch Variable", function() {
+      return { type: "on-variable-change", variables: [] };
     }, "", "on-variable-change");
-    if (screen2) {
-      scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()).forEach(function(d) {
-        if (!scope_exports.NAME_RE.test(d.variable.name || "")) return;
-        var label = (d.scopeId ? d.scopeName : state.editingMode === "template" ? "template" : "screen") + "." + d.variable.name;
-        chip(state.eventsPane, "Set " + label, function() {
-          return { type: "set-variable", scope: d.scopeId, name: d.variable.name, op: "set", valueSource: "payload" };
-        }, "", "set-variable");
-        chip(state.eventsPane, "On change " + label, function() {
-          return { type: "on-variable-change", scope: d.scopeId, name: d.variable.name };
-        }, "", "on-variable-change");
-      });
-    }
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function() {
       var first = (state.templates || []).filter(function(t2) {
@@ -28757,7 +28745,7 @@
       return { type: "set-variable", scope: "@app", name: "$colorMode", op: "set", valueSource: "static", value: "light" };
     }, "", "set-variable");
     chip(state.eventsPane, "On colour mode change", function() {
-      return { type: "on-variable-change", scope: "@app", name: "$colorMode" };
+      return { type: "on-variable-change", variables: [{ scope: "@app", name: "$colorMode" }], scope: "@app", name: "$colorMode" };
     }, "", "on-variable-change");
     sectionHeader(state.eventsPane, "Web & data");
     chip(state.eventsPane, "HTTP Request", function() {
@@ -28833,11 +28821,15 @@
       sectionHeader(state.eventsPane, "Layouts on this screen");
       frames.forEach(function(f) {
         var kind = layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid", carousel: "carousel" }[layout_exports.layoutOf(f).mode] : "frame";
-        chip(state.eventsPane, (f.name || "Frame") + " #" + f.id.slice(-4) + " (" + kind + ")", function() {
+        var defaultKindName = { horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[layout_exports.layoutOf(f)?.mode] || "Frame";
+        var baseName = f.name && f.name !== "Frame" && f.name !== "Row" && f.name !== "Column" && f.name !== "Grid" ? f.name : defaultKindName;
+        var frameDisplayName = f.name || baseName + " #" + f.id.slice(-4);
+        var label = frameDisplayName + (layout_exports.hasAutoLayout(f) ? " (" + kind + ")" : "");
+        chip(state.eventsPane, label, function() {
           return { type: "layout", container: f.id };
         }, f.id, "layout");
         if (layout_exports.layoutOf(f).mode === "carousel") {
-          chip(state.eventsPane, (f.name || "Carousel") + " #" + f.id.slice(-4) + " \u2192 on Slide Change", function() {
+          chip(state.eventsPane, frameDisplayName + " \u2192 on Slide Change", function() {
             return { type: "ui-event", compId: f.id, event: "slide-change" };
           }, f.id, "ui-event");
         }
@@ -28852,7 +28844,8 @@
         var shortId = comp.id.slice(-4);
         if (comp.type === "@template") {
           var template = findTemplate(comp.templateId);
-          var instanceName = "Instance #" + shortId + (template ? " (" + template.name + ")" : "");
+          var baseName = comp.name || (template ? template.name : "Instance");
+          var instanceName = comp.name ? comp.name : baseName + " #" + shortId;
           if (hasSparkplugBinding(comp)) {
             chip(state.eventsPane, instanceName + " \u2192 on Sparkplug Update", function() {
               return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
@@ -28871,7 +28864,8 @@
           return;
         }
         if (comp.type === "@lit-component") {
-          var litName = "Lit Component #" + shortId;
+          var litBase = comp.name || "Lit Component";
+          var litName = comp.name ? comp.name : litBase + " #" + shortId;
           if (hasSparkplugBinding(comp)) {
             chip(state.eventsPane, litName + " \u2192 on Sparkplug Update", function() {
               return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
@@ -28888,7 +28882,8 @@
           return;
         }
         var typeDef = window.NEXA.getComponent(comp.type);
-        var name2 = (typeDef ? typeDef.label : comp.type) + " #" + shortId;
+        var baseName = comp.name || (typeDef ? typeDef.label : comp.type);
+        var name2 = comp.name ? comp.name : baseName + " #" + shortId;
         if (hasSparkplugBinding(comp)) {
           chip(state.eventsPane, name2 + " \u2192 on Sparkplug Update", function() {
             return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
@@ -31121,8 +31116,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
         window.$("<div>").css({ padding: "0 0 8px 0", "font-size": "12px", color: "#888", "flex-shrink": "0" }).text("Receives msg (e.g. msg.payload from the node before this one). Return a new msg object to pass along the wire, or null to stop here.").appendTo(body);
         var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
         codeEditor = createCM6Editor({
@@ -31194,8 +31189,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         if (!comp || !typeDef && !isLitComponent) {
           window.$("<div>").text("This component no longer exists.").appendTo(body);
           return;
@@ -31329,8 +31324,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Fires on the deployed page \u2014 can emit a string, JSON object (e.g. { "text": "Hello" }), number, or timestamp.').appendTo(body);
         var typeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload Type").appendTo(typeRow);
@@ -31390,8 +31385,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Configure how the deployed page navigates. Can be overridden at runtime via msg.payload.").appendTo(body);
         var modeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Navigation Mode").appendTo(modeRow);
@@ -31451,8 +31446,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Shows, hides or removes nodes of this screen's Hierarchy (usually groups) by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.").appendTo(body);
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Visibility by node name (JSON array)").appendTo(row);
@@ -31470,11 +31465,11 @@
   }
 
   // src/dialogs/set-variable-dialog.js
-  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "On Variable Change" };
+  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "Watch Variable" };
   var HELP = {
-    "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "On Variable Change" nodes watching it fire. The message goes on unchanged.',
+    "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "Watch Variable" nodes watching it fire. The message goes on unchanged.',
     "get-variable": "Puts the variable's current value into the message and passes it on.",
-    "on-variable-change": "Starts a flow whenever the variable changes \u2014 by a Set Variable node or a Function node (vars.set). msg.payload = the new value, msg.previous = the old one."
+    "on-variable-change": "Watches one or more variables and starts a flow whenever any of them changes (like a useEffect dependency array). msg.payload = new value, msg.previous = old value, msg.variable = variable name, msg.scope = variable scope."
   };
   var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
   function openSetVariableNodeEditor(node) {
@@ -31482,7 +31477,16 @@
     var screen2 = getActiveScreen();
     var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
     var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
-    var draft = { scope: node.scope || "", name: node.name || "", op: node.op || "set", valueSource: node.valueSource || "payload", value: node.value, msgPath: node.msgPath || "payload.data", target: node.target || "payload" };
+    var draft = {
+      scope: node.scope || "",
+      name: node.name || "",
+      op: node.op || "set",
+      valueSource: node.valueSource || "payload",
+      value: node.value,
+      msgPath: node.msgPath || "payload.data",
+      target: node.target || "payload",
+      variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : node.name ? [{ scope: node.scope || "", name: node.name }] : []
+    };
     var nameSel;
     function namesIn(scopeId) {
       return decls.filter(function(d) {
@@ -31492,6 +31496,7 @@
       });
     }
     function fillNames() {
+      if (!nameSel) return;
       nameSel.empty();
       var names = namesIn(draft.scope);
       if (draft.name && names.indexOf(draft.name) === -1) names.unshift(draft.name);
@@ -31502,10 +31507,19 @@
       nameSel.val(draft.name || names[0] || "");
       draft.name = nameSel.val() || "";
     }
+    var scopes = [{ id: "@app", name: "App (every screen)" }, { id: "", name: surfaceLabel }];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) scopes.push({ id: d.scopeId, name: d.scopeName });
+    });
+    if (draft.scope && !scopes.some(function(s) {
+      return s.id === draft.scope;
+    })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
     window.RED.tray.show({
       id: "nexa-logic-variable-editor",
       title: "Configure " + TITLES[type] + " Node",
-      width: 460,
+      width: 500,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
@@ -31514,40 +31528,114 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.scope = draft.scope;
-            node.name = draft.name;
-            if (type === "set-variable") {
-              node.op = draft.op;
-              node.valueSource = draft.valueSource;
-              if (draft.valueSource === "static") node.value = draft.value;
-              else delete node.value;
-              if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
-              else delete node.msgPath;
+            if (type === "on-variable-change") {
+              var gathered = [];
+              tray.find(".red-ui-editableList-item-content").each(function() {
+                var getter = window.$(this).data("getVarData");
+                if (typeof getter === "function") {
+                  var item = getter();
+                  if (item && item.name) {
+                    if (!gathered.some(function(g) {
+                      return g.scope === item.scope && g.name === item.name;
+                    })) {
+                      gathered.push(item);
+                    }
+                  }
+                }
+              });
+              node.variables = gathered;
+              node.scope = gathered[0] ? gathered[0].scope : "";
+              node.name = gathered[0] ? gathered[0].name : "";
+            } else {
+              node.scope = draft.scope;
+              node.name = draft.name;
+              if (type === "set-variable") {
+                node.op = draft.op;
+                node.valueSource = draft.valueSource;
+                if (draft.valueSource === "static") node.value = draft.value;
+                else delete node.value;
+                if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
+                else delete node.msgPath;
+              }
+              if (type === "get-variable") node.target = draft.target || "payload";
             }
-            if (type === "get-variable") node.target = draft.target || "payload";
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP[type]).appendTo(body);
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
         var label = function(text, parent) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(parent || body);
+          return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
         };
+        if (type === "on-variable-change") {
+          label("Watched Variables (Dependencies)");
+          window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-bottom": "8px" }).text("Listen to multiple variables. Whenever any of these variables changes, this node fires.").appendTo(body);
+          var listContainer = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+          var editList = buildEditableListWidget(listContainer, {
+            addButton: "Add variable dependency",
+            removable: true,
+            addItem: function(rowContainer, index, data) {
+              var rowScope = data && data.scope !== void 0 ? data.scope : "";
+              var rowName = data && data.name !== void 0 ? data.name : "";
+              var rowFlex = window.$("<div>").css({
+                display: "flex",
+                gap: "8px",
+                "align-items": "center",
+                width: "100%"
+              }).appendTo(rowContainer);
+              var rScopeSel = window.$("<select>").css({
+                width: "45%",
+                "font-size": "12px"
+              }).appendTo(rowFlex);
+              scopes.forEach(function(s) {
+                window.$("<option>", { value: s.id }).text(s.name).appendTo(rScopeSel);
+              });
+              rScopeSel.val(rowScope);
+              var rNameSel = window.$("<select>").css({
+                flex: "1",
+                "font-size": "12px"
+              }).appendTo(rowFlex);
+              function populateRowNames() {
+                rNameSel.empty();
+                var curScope = rScopeSel.val();
+                var names = namesIn(curScope);
+                if (rowName && names.indexOf(rowName) === -1) names.unshift(rowName);
+                if (!names.length) {
+                  window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(rNameSel);
+                }
+                names.forEach(function(n) {
+                  window.$("<option>", { value: n }).text(n).appendTo(rNameSel);
+                });
+                rNameSel.val(rowName || names[0] || "");
+                rowName = rNameSel.val() || "";
+              }
+              rScopeSel.on("change", function() {
+                rowName = "";
+                populateRowNames();
+              });
+              rNameSel.on("change", function() {
+                rowName = rNameSel.val();
+              });
+              populateRowNames();
+              rowContainer.data("getVarData", function() {
+                var n = rNameSel.val();
+                if (!n) return null;
+                return { scope: rScopeSel.val(), name: n };
+              });
+            }
+          });
+          var initialVars = draft.variables && draft.variables.length ? draft.variables : [{ scope: "", name: "" }];
+          initialVars.forEach(function(v) {
+            editList.editableList("addItem", v);
+          });
+          return;
+        }
         label("Scope (where the variable is declared)");
         var scopeSel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-        var scopes = [{ id: "@app", name: "App (every screen)" }, { id: "", name: surfaceLabel }];
-        decls.forEach(function(d) {
-          if (d.scopeId && d.scopeId !== "@app" && !scopes.some(function(s) {
-            return s.id === d.scopeId;
-          })) scopes.push({ id: d.scopeId, name: d.scopeName });
-        });
-        if (draft.scope && !scopes.some(function(s) {
-          return s.id === draft.scope;
-        })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
         scopes.forEach(function(s) {
           window.$("<option>", { value: s.id }).text(s.name).appendTo(scopeSel);
         });
@@ -31641,8 +31729,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
         var label = function(text2, parent) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
@@ -31771,8 +31859,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a "Send to Host" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.').appendTo(body);
         var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
         if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
@@ -31834,8 +31922,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button \u2192 HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.").appendTo(body);
         var label = function(text) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
@@ -31948,8 +32036,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         var help = window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.5" }).appendTo(body);
         if (sending) {
           help.html("Sends the message <b>out of this template</b>, to where it is used:<br>\u2022 a copy a Populate made \u2192 out of the <b>Layout</b> node on the screen, with <code>msg.item</code> and <code>msg.index</code>;<br>\u2022 an instance placed on a screen \u2192 its <b>On Template Output</b> node there.<br><code>msg.output</code> is the name below: give each output its own (e.g. <code>open-dialog</code>, <code>delete</code>).");
@@ -32000,8 +32088,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Publishes a Sparkplug DCMD/NCMD write when this node runs, with the value taken from msg.payload. Wire a "ui-event" (e.g. a button click) into this node.').appendTo(body);
         var knownBindings = listKnownSparkplugBindings();
         if (knownBindings.length) {
@@ -32048,8 +32136,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('This node has no per-tag configuration of its own \u2014 wire a "function" node in front of it that sets msg.writes to an array, then wire that into this node:').appendTo(body);
         window.$("<pre>").css({
           "font-size": "11px",
@@ -32115,8 +32203,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text(close ? 'Closes a dialog / drawer. The Open node that opened it continues with msg.payload = the result (below), msg.closedBy = "node".' : "Opens a dialog / drawer on top of any open one. This node's output fires when it closes: msg.payload = the result (a Close node's), msg.closedBy = backdrop / esc / timer / node. The message it was opened with is in its On Open event.").appendTo(body);
         var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
         if (close) window.$("<option>", { value: "" }).text("The one on top (the last opened)").appendTo(sel);
@@ -32188,9 +32276,9 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray) {
+      open: function(tray2) {
         var $2 = window.$;
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
         $2("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text('Draws a node somewhere else on the live page: inside a frame named as a teleport target (Properties \u2192 Teleport), or on the page itself (above every frame, out of any clip). "Home" puts it back where it is in the tree. Its Logic, params and variables stay as they are. The message goes on.').appendTo(body);
         var label = function(t2) {
           return $2("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "10px 0 4px" }).text(t2).appendTo(body);
@@ -32256,8 +32344,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Pauses message execution for the specified duration before forwarding to the next node.").appendTo(body);
         var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
         var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
@@ -32302,8 +32390,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Navigates to another screen seamlessly in SPA mode, preserving active WebSocket & Sparkplug connections.").appendTo(body);
         var modeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Navigation Mode").appendTo(modeRow);
@@ -32379,8 +32467,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
         var endpointBanner = window.$("<div>").css({
           padding: "10px 12px",
@@ -32429,8 +32517,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Triggered when an incoming route under this Flow does not match any valid screen (404 catch-all). Emits route path, query, selective cookies, and error payload.").appendTo(body);
         var endpointBanner = window.$("<div>").css({
           padding: "10px 12px",
@@ -32477,8 +32565,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({
           "font-size": "12px",
           color: "var(--red-ui-secondary-text-color, #64748b)",
@@ -32538,8 +32626,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({
           "font-size": "12px",
           color: "var(--red-ui-secondary-text-color, #64748b)",
@@ -32642,8 +32730,8 @@
           }
         }
       ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray2) {
+        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Route messages based on property values and conditional rules. Each rule outputs to its corresponding output port.").appendTo(body);
         var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Name").appendTo(nameRow);
@@ -32846,7 +32934,7 @@
       var comp = findComponent(node.compId);
       var typeDef = comp && window.NEXA.getComponent(comp.type);
       var typeLabel = comp ? comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? comp.name || "Frame" : typeDef ? typeDef.label : comp.type : "?";
-      var name2 = typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
+      var name2 = comp && comp.name ? comp.name : typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
       if (node.type === "ui-event") {
         if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
           return name2 + " on Sparkplug Update";
@@ -32909,7 +32997,7 @@
     if (node.type === "layout") {
       var lScreen = getActiveScreen();
       var lf = node.container && lScreen ? tree_exports.find(lScreen, node.container) : null;
-      return lf ? (lf.name || "Frame") + " #" + lf.id.slice(-4) : "Layout (missing frame)";
+      return lf ? lf.name || "Frame #" + lf.id.slice(-4) : "Layout (missing frame)";
     }
     if (node.type === "teleport") return teleportNodeLabel(node);
     if (node.type === "overlay-open" || node.type === "overlay-close") {
@@ -32940,12 +33028,28 @@
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
       var vScreen = getActiveScreen();
+      var formatVarRef = function(vScope, vName) {
+        var owner2 = vScope && vScope !== "@app" && vScreen ? tree_exports.find(vScreen, vScope) : null;
+        var where2 = vScope === "@app" ? "App" : vScope ? owner2 ? owner2.name || owner2.type : "?" : state.editingMode === "template" ? "template" : "screen";
+        return where2 + "." + vName;
+      };
+      if (node.type === "on-variable-change") {
+        if (Array.isArray(node.variables) && node.variables.length > 0) {
+          var deps = node.variables.map(function(v) {
+            return v ? formatVarRef(v.scope, v.name) : "?";
+          });
+          return "Watch (" + deps.join(", ") + ")";
+        }
+        if (node.name) {
+          return "Watch " + formatVarRef(node.scope, node.name);
+        }
+        return "Watch Variable";
+      }
       var owner = node.scope && node.scope !== "@app" && vScreen ? tree_exports.find(vScreen, node.scope) : null;
       var where = node.scope === "@app" ? "App" : node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
       var ref = where + "." + node.name;
       if (!node.name) return kind.label;
       if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
-      if (node.type === "on-variable-change") return "On change " + ref;
       var OPS2 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
       return (OPS2[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
     }
@@ -32953,7 +33057,8 @@
     if (node.type === "template-event") {
       var evComp = findComponent(node.instanceId);
       var evTemplate = evComp && findTemplate(evComp.templateId);
-      return (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?") + " on " + (node.output || "any output");
+      var evName = evComp && evComp.name ? evComp.name : (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?");
+      return evName + " on " + (node.output || "any output");
     }
     if (node.type === "set-template-param") {
       var instComp = findComponent(node.instanceId);
@@ -32961,7 +33066,8 @@
       var param = instTemplate && (instTemplate.params || []).find(function(p2) {
         return p2.name === node.paramName;
       });
-      return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " \u2192 Set " + (param ? param.label : node.paramName);
+      var instName = instComp && instComp.name ? instComp.name : "Instance #" + (instComp ? instComp.id.slice(-4) : "?");
+      return instName + " \u2192 Set " + (param ? param.label : node.paramName);
     }
     if (node.type === "switch") {
       var p = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
@@ -33128,8 +33234,11 @@
           state.logicSelectedIds.push(node.id);
         }
         refreshLogicSelectionVisuals();
+        syncComponentFromLogicSelection();
       } else if (!isLogicSelected(node.id)) {
         selectLogicOnly(node.id);
+      } else {
+        syncComponentFromLogicSelection();
       }
     });
     if (node.type === "function") {
@@ -33448,17 +33557,39 @@
   function isLogicSelected(id2) {
     return state.logicSelectedIds.indexOf(id2) !== -1;
   }
+  function syncComponentFromLogicSelection() {
+    var screen2 = getActiveScreen();
+    if (!screen2 || !screen2.logic || !screen2.logic.nodes) return;
+    var nodeMap = {};
+    (screen2.logic.nodes || []).forEach(function(n) {
+      nodeMap[n.id] = n;
+    });
+    var compIds = [];
+    (state.logicSelectedIds || []).forEach(function(id2) {
+      var n = nodeMap[id2];
+      if (!n) return;
+      var cId = n.compId || n.instanceId || (n.type === "layout" ? n.container : null) || n.overlay || (n.type === "teleport" ? n.node : null);
+      if (cId && compIds.indexOf(cId) === -1) {
+        compIds.push(cId);
+      }
+    });
+    state.selectedIds = compIds;
+    refreshSelectionVisuals({ keepPanel: true, keepLogicSelection: true });
+  }
   function selectLogicOnly(id2) {
     state.logicSelectedIds = [id2];
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
   }
   function selectLogicMultiple(ids) {
     state.logicSelectedIds = ids.slice();
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
   }
   function deselectAllLogic() {
     state.logicSelectedIds = [];
     refreshLogicSelectionVisuals();
+    syncComponentFromLogicSelection();
   }
   function copyLogicSelection(isCut) {
     if (!state.logicSelectedIds.length) return;
@@ -33602,6 +33733,7 @@
           if (!isLogicSelected(id2)) state.logicSelectedIds.push(id2);
         });
         refreshLogicSelectionVisuals();
+        syncComponentFromLogicSelection();
       } else {
         selectLogicMultiple(hits);
       }
@@ -33629,10 +33761,21 @@
       var comp = findComponent(state.selectedIds[0]);
       if (comp) renderSelectionHandles(comp);
     }
-    if (opts && opts.keepPanel) return;
+    if (opts && opts.keepPanel) {
+      hierarchyListeners.forEach(function(fn) {
+        try {
+          fn(state.selectedIds);
+        } catch (e) {
+        }
+      });
+      refreshEventsHighlight();
+      return;
+    }
     renderPropertiesPanel();
     refreshEventsHighlight();
-    selectLogicForComponents(state.selectedIds);
+    if (!opts || !opts.keepLogicSelection) {
+      selectLogicForComponents(state.selectedIds);
+    }
     hierarchyListeners.forEach(function(fn) {
       try {
         fn(state.selectedIds);
@@ -34590,10 +34733,10 @@
             }
           }
         ],
-        open: function(tray) {
-          state.trayContent = tray.find(".red-ui-tray-body");
+        open: function(tray2) {
+          state.trayContent = tray2.find(".red-ui-tray-body");
           if (state.pagesButton) state.pagesButton.text("Close Pages Canvas");
-          buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
+          buildCanvasArea(state.trayContent, { toolbar: tray2.find(".red-ui-tray-toolbar"), footer: tray2.find(".red-ui-tray-footer") });
           ensureScreensLoaded(function() {
             renderActiveScreen();
           });

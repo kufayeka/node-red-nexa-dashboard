@@ -49,7 +49,7 @@ export const LOGIC_NODE_KINDS = {
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
-    "on-variable-change": { label: "On Variable Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
+    "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
     // the repeater: a container filled with a template, one card per item
