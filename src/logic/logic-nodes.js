@@ -24,7 +24,8 @@ import { openRouteTriggerNodeEditor } from "../dialogs/route-trigger-dialog.js";
 import { openRouteNotFoundNodeEditor } from "../dialogs/route-not-found-dialog.js";
 import { openRenderScreenNodeEditor } from "../dialogs/render-screen-dialog.js";
 import { openSendToFlowNodeEditor } from "../dialogs/send-to-flow-dialog.js";
-import { getReachableRenderScreens } from "./logic-wires.js";
+import { openSwitchNodeEditor } from "../dialogs/switch-dialog.js";
+import { getReachableRenderScreens, hasIllegalRouteFanOut } from "./logic-wires.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -141,6 +142,11 @@ export function logicNodeLabel(node) {
         var param = instTemplate && (instTemplate.params || []).find(function (p) { return p.name === node.paramName; });
         return "Instance #" + (instComp ? instComp.id.slice(-4) : "?") + " → Set " + (param ? param.label : node.paramName);
     }
+    if (node.type === "switch") {
+        var p = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
+        var nRules = (node.rules || []).length;
+        return (node.name || "Switch") + " [" + p + " : " + nRules + "]";
+    }
     return kind.label || node.type;
 }
 
@@ -181,6 +187,14 @@ export function logicNodeWidth(node) {
 
     var needed = Math.ceil(textWidth + padLeft + padRight + border + extra);
     return Math.max(LOGIC_NODE_W, needed);
+}
+
+export function logicNodeHeight(node) {
+    if (node && node.type === "switch") {
+        var numRules = (node.rules && node.rules.length) ? node.rules.length : 1;
+        return Math.max(LOGIC_NODE_H, numRules * 20 + 10);
+    }
+    return LOGIC_NODE_H;
 }
 
 export function addLogicNode(nodeData, x, y) {
@@ -239,10 +253,12 @@ export function renderLogicNode(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
     var label = logicNodeLabel(node);
     var nodeW = logicNodeWidth(node);
+    var nodeH = logicNodeHeight(node);
     node.w = nodeW;
+    node.h = nodeH;
     var box = window.$("<div>", { "class": "nexa-logic-node", "data-node-id": node.id }).css({
         position: "absolute", left: node.x + "px", top: node.y + "px",
-        width: nodeW + "px", height: LOGIC_NODE_H + "px",
+        width: nodeW + "px", height: nodeH + "px",
         background: "var(--red-ui-view-background, #fff)",
         color: "var(--red-ui-node-label-color, #333)",
         "border-radius": "4px", "font-size": "12px",
@@ -277,6 +293,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to edit code").on("dblclick", function (e) {
             e.stopPropagation();
             openFunctionNodeEditor(node);
+        });
+    }
+    if (node.type === "switch") {
+        box.attr("title", "Double-click to configure switch rules").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSwitchNodeEditor(node);
         });
     }
     if (node.type === "ui-update") {
@@ -315,8 +337,7 @@ export function renderLogicNode(node) {
             openRouteTriggerNodeEditor(node);
         });
         if (state.editingMode === "flow" && screen && screen.logic) {
-            var reachableScreens = getReachableRenderScreens(node.id, screen.logic.nodes, screen.logic.wires);
-            if (reachableScreens.length > 1) {
+            if (hasIllegalRouteFanOut(node.id, screen.logic.nodes, screen.logic.wires)) {
                 box.css("border", "2px solid #ef4444");
                 window.$("<div>").css({
                     position: "absolute", right: "-8px", top: "-8px",
@@ -325,7 +346,7 @@ export function renderLogicNode(node) {
                     "font-size": "11px", "font-weight": "bold",
                     display: "flex", "align-items": "center", "justify-content": "center",
                     cursor: "help"
-                }).text("!").attr("title", "Fan-out error: Route Trigger branches to " + reachableScreens.length + " Render Screen nodes. Only 1 Render Screen allowed per route path!").appendTo(box);
+                }).text("!").attr("title", "Fan-out error: Route Trigger branches to multiple concurrent Render Screen nodes on the same path!").appendTo(box);
             }
         }
     }
@@ -409,17 +430,35 @@ export function renderLogicNode(node) {
     }
 
     if (kind.hasOutput) {
-        var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
-            position: "absolute", right: "-4px", top: "50%", "margin-top": "-4px",
-            width: "8px", height: "8px",
-            background: "var(--red-ui-node-border, #999)", cursor: "crosshair",
-            transform: "scale(" + (1 / state.logicZoomLevel) + ")"
-        }).appendTo(box);
-        wireLogicOutputPort(outDot, node);
+        if (node.type === "switch") {
+            var rules = (node.rules && node.rules.length) ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+            var numPorts = rules.length;
+            for (var pIdx = 0; pIdx < numPorts; pIdx++) {
+                var yOffset = ((pIdx + 1) / (numPorts + 1)) * nodeH;
+                var outDot = window.$("<div>", {
+                    "class": "nexa-logic-port-out",
+                    "data-port-index": pIdx
+                }).css({
+                    position: "absolute", right: "-4px", top: yOffset + "px", "margin-top": "-4px",
+                    width: "8px", height: "8px",
+                    background: "var(--red-ui-node-border, #999)", cursor: "crosshair",
+                    transform: "scale(" + (1 / state.logicZoomLevel) + ")"
+                }).attr("title", "Port " + (pIdx + 1) + ": " + (rules[pIdx] ? (rules[pIdx].t || "rule") : "")).appendTo(box);
+                wireLogicOutputPort(outDot, node, pIdx);
+            }
+        } else {
+            var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
+                position: "absolute", right: "-4px", top: (nodeH / 2) + "px", "margin-top": "-4px",
+                width: "8px", height: "8px",
+                background: "var(--red-ui-node-border, #999)", cursor: "crosshair",
+                transform: "scale(" + (1 / state.logicZoomLevel) + ")"
+            }).appendTo(box);
+            wireLogicOutputPort(outDot, node, 0);
+        }
     }
     if (kind.hasInput) {
         window.$("<div>", { "class": "nexa-logic-port-in", "data-node-id": node.id }).css({
-            position: "absolute", left: "-4px", top: "50%", "margin-top": "-4px",
+            position: "absolute", left: "-4px", top: (nodeH / 2) + "px", "margin-top": "-4px",
             width: "8px", height: "8px",
             background: "var(--red-ui-node-border, #999)",
             transform: "scale(" + (1 / state.logicZoomLevel) + ")"
@@ -445,7 +484,7 @@ export function renderLogicNode(node) {
             var localTop = moveStart.y + (e.pageY - dragStartPage.y) / state.logicZoomLevel;
             if (!e.altKey) { localLeft = snapLogic(localLeft); localTop = snapLogic(localTop); }
             localLeft = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW));
-            localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H));
+            localTop = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - nodeH));
             ui.position.left = localLeft;
             ui.position.top = localTop;
             var dx = localLeft - node.x, dy = localTop - node.y;
@@ -466,7 +505,7 @@ export function renderLogicNode(node) {
             if (!e.altKey) { localLeft = snapLogic(localLeft); localTop = snapLogic(localTop); }
             // the others moved along by the same step (drag above): keep them there
             var ddx = Math.max(0, Math.min(localLeft, LOGIC_CANVAS_W - nodeW)) - node.x;
-            var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - LOGIC_NODE_H)) - node.y;
+            var ddy = Math.max(0, Math.min(localTop, LOGIC_CANVAS_H - nodeH)) - node.y;
             node.x += ddx;
             node.y += ddy;
             state.logicSelectedIds.forEach(function (id) {

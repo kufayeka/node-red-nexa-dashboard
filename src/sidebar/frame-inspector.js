@@ -664,6 +664,9 @@ var CONSTRAINT_META = {
  */
 export function renderConstraintsInspector(container, node, parent) {
     if (!window.NexaKit || !lit() || !Layout.hasConstraints(node, parent)) return false;
+    if (!node.constraints || (!node.constraints.h && !node.constraints.v)) {
+        node.constraints = { h: "leftRight", v: "topBottom" };
+    }
     var html = lit().html;
     var meta = Object.assign({}, CONSTRAINT_META, {
         inspector: function (o) {
@@ -676,13 +679,15 @@ export function renderConstraintsInspector(container, node, parent) {
         }
     });
     var constraintView = function (n) {
-        var c = (n && n.constraints && (n.constraints.h || n.constraints.v))
-            ? Layout.constraintsOf(n)
-            : (parent ? Layout.guessConstraints(n, parent.w || 1280, parent.h || 800) : Layout.guessConstraints(n, 1280, 800));
+        if (!n.constraints) {
+            n.constraints = { h: "leftRight", v: "topBottom" };
+        }
+        var c = Layout.constraintsOf(n);
         return Object.assign({}, c, { scrollBehavior: n.scrollBehavior || "scrolls" });
     };
     var writeConstraint = function (n, key, v) {
         if (key === "scrollBehavior") { if (v === "scrolls") delete n.scrollBehavior; else n.scrollBehavior = v; return; }
+        if (!n.constraints) n.constraints = { h: "leftRight", v: "topBottom" };
         var current = constraintView(n);
         var c = Object.assign({}, current);
         c[key] = v;

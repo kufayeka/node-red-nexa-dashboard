@@ -156,7 +156,7 @@ async function runTests() {
   assert.ok(fl1Copy.endpoint.startsWith("/app-copy"));
 
   console.log("--- 4. Fan-Out Guard on Route Trigger ---");
-  const { getReachableRenderScreens } = require("../src/logic/logic-wires.js");
+  const { getReachableRenderScreens, hasIllegalRouteFanOut } = require("../src/logic/logic-wires.js");
   var sampleNodes = [
     { id: "rt1", type: "route-trigger" },
     { id: "fn1", type: "function" },
@@ -171,6 +171,7 @@ async function runTests() {
   var reachable1 = getReachableRenderScreens("rt1", sampleNodes, wiresNormal);
   console.log("Route trigger with 1 render screen reachable count is 1?", reachable1.length === 1 && reachable1[0] === "rs1");
   assert.strictEqual(reachable1.length, 1);
+  assert.strictEqual(hasIllegalRouteFanOut("rt1", sampleNodes, wiresNormal), false);
 
   // Fan-out to 2 render screens
   var wiresFanOut = [
@@ -181,6 +182,55 @@ async function runTests() {
   var reachable2 = getReachableRenderScreens("rt1", sampleNodes, wiresFanOut);
   console.log("Fan-out detected: route trigger reaches 2 render screens?", reachable2.length === 2);
   assert.strictEqual(reachable2.length, 2);
+  assert.strictEqual(hasIllegalRouteFanOut("rt1", sampleNodes, wiresFanOut), true);
+
+  console.log("--- 5. Switch Node Exemption in Route Fan-Out ---");
+  var sampleNodesWithSwitch = [
+    { id: "rt1", type: "route-trigger" },
+    { id: "fn1", type: "function" },
+    { id: "sw1", type: "switch", rules: [{ t: "eq", v: "admin" }, { t: "else" }] },
+    { id: "rs1", type: "render-screen" },
+    { id: "rs2", type: "render-screen" }
+  ];
+  // Route Trigger -> Function -> Switch -> Port 0: Render 1, Port 1: Render 2 (ALLOWED!)
+  var wiresFnSwitch = [
+    { from: "rt1", to: "fn1" },
+    { from: "fn1", to: "sw1" },
+    { from: "sw1", to: "rs1", fromPort: 0 },
+    { from: "sw1", to: "rs2", fromPort: 1 }
+  ];
+  console.log("Route Trigger -> Function -> Switch -> multiple render is allowed?", hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresFnSwitch) === false);
+  assert.strictEqual(hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresFnSwitch), false);
+
+  // Route Trigger -> Switch -> Port 0: Render 1, Port 1: Render 2 (ALLOWED!)
+  var wiresDirectSwitch = [
+    { from: "rt1", to: "sw1" },
+    { from: "sw1", to: "rs1", fromPort: 0 },
+    { from: "sw1", to: "rs2", fromPort: 1 }
+  ];
+  console.log("Route Trigger -> Switch -> multiple render is allowed?", hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresDirectSwitch) === false);
+  assert.strictEqual(hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresDirectSwitch), false);
+
+  // Route Trigger -> Switch -> Port 0 has 2 Render Screens (BLOCKED on port 0!)
+  var wiresSwitchConflictOnSamePort = [
+    { from: "rt1", to: "sw1" },
+    { from: "sw1", to: "rs1", fromPort: 0 },
+    { from: "sw1", to: "rs2", fromPort: 0 }
+  ];
+  console.log("Switch with 2 renders on the SAME port is blocked?", hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresSwitchConflictOnSamePort) === true);
+  assert.strictEqual(hasIllegalRouteFanOut("rt1", sampleNodesWithSwitch, wiresSwitchConflictOnSamePort), true);
+
+  console.log("--- 6. Constraints Default to Left&Right and Top&Bottom ---");
+  const Layout = require("../src/model/layout.js");
+  var defaultConstraints = Layout.constraintsOf({});
+  console.log("Default constraints is { h: 'leftRight', v: 'topBottom' }?", defaultConstraints.h === "leftRight" && defaultConstraints.v === "topBottom");
+  assert.strictEqual(defaultConstraints.h, "leftRight");
+  assert.strictEqual(defaultConstraints.v, "topBottom");
+
+  var frame = Layout.makeFrame("none", 400, 300);
+  console.log("makeFrame initial constraints is leftRight and topBottom?", frame.constraints && frame.constraints.h === "leftRight" && frame.constraints.v === "topBottom");
+  assert.strictEqual(frame.constraints.h, "leftRight");
+  assert.strictEqual(frame.constraints.v, "topBottom");
 
   console.log("ALL OK");
   process.exit(0);

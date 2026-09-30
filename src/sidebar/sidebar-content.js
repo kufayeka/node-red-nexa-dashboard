@@ -86,29 +86,30 @@ export function buildSidebarContent() {
         .on("click", collapseAllScreensTree)
         .appendTo(expandCollapseGroup);
 
-    var screenBtnGroup = window.$("<div>").css({
-        display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "4px", width: "100%"
-    }).appendTo(screenToolbar);
+    // SKIP!!!
+    // var screenBtnGroup = window.$("<div>").css({
+    //     display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "4px", width: "100%"
+    // }).appendTo(screenToolbar);
 
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" })
-        .text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-        .on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
+    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" })
+    //     .text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+    //     .on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
 
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" })
-        .text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-        .on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
+    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" })
+    //     .text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+    //     .on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
 
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" })
-        .text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-        .on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
+    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" })
+    //     .text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+    //     .on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
 
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" })
-        .text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-        .on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
+    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" })
+    //     .text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+    //     .on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
 
-    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" })
-        .text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-        .on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
+    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" })
+    //     .text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
+    //     .on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
 
     var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
     state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
@@ -190,13 +191,12 @@ export function buildSidebarContent() {
 
     if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
         window.RED.events.on("flows:loaded", function () {
-            if (!state.projectConfigNode) {
-                state.screensLoaded = false;
-                ensureScreensLoaded(function () {
-                    renderScreenList();
-                    renderScreenForm();
-                });
-            }
+            state.screensLoaded = false;
+            state.projectConfigNode = null;
+            ensureScreensLoaded(function () {
+                renderScreenList();
+                renderScreenForm();
+            });
         });
     }
 

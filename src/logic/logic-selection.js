@@ -1,6 +1,6 @@
 import { state, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen, genId, markDirty } from "../state.js";
 import { pushHistory } from "../history.js";
-import { removeLogicNodes, renderLogicCanvas, logicNodeWidth } from "./logic-nodes.js";
+import { removeLogicNodes, renderLogicCanvas, logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
 
 var logicClipboard = null; // { nodes: [], wires: [] }
 
@@ -177,7 +177,7 @@ export function startLogicMarqueeSelect(e) {
         var screen = getActiveScreen();
         if (!screen || !screen.logic) return;
         var hits = (screen.logic.nodes || []).filter(function (n) {
-            return !(n.x > box.left + box.width || n.x + logicNodeWidth(n) < box.left || n.y > box.top + box.height || n.y + LOGIC_NODE_H < box.top);
+            return !(n.x > box.left + box.width || n.x + logicNodeWidth(n) < box.left || n.y > box.top + box.height || n.y + (typeof logicNodeHeight === "function" ? logicNodeHeight(n) : LOGIC_NODE_H) < box.top);
         }).map(function (n) { return n.id; });
         if (shiftHeld) {
             hits.forEach(function (id) { if (!isLogicSelected(id)) state.logicSelectedIds.push(id); });

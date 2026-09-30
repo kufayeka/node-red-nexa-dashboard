@@ -406,7 +406,7 @@ export function renderEventsPanel() {
         chip(state.eventsPane, "Goto Screen (SPA)", function () {
             return { type: "navigate", mode: "screen", screenId: "", forwardPayload: true };
         }, "", "navigate", true, "Goto Screen is disabled in Flow Logic. Use 'Render Screen' to serve views in a Flow.");
-    } else if (state.editingMode === "screen") {
+    } else if (state.editingMode === "screen" || state.editingMode === "screen-variable" || state.editingMode === "app-variable") {
         chip(state.eventsPane, "On Load", function () { return { type: "onload" }; }, "", "onload");
         chip(state.eventsPane, "On Render", function () { return { type: "onrender" }; }, "", "onrender");
         chip(state.eventsPane, "On Close", function () { return { type: "onclose" }; }, "", "onclose");
@@ -433,6 +433,8 @@ export function renderEventsPanel() {
             return { type: "render-screen" };
         }, "", "render-screen", true, "Render Screen is only used in Flow Logic.");
     } else {
+        chip(state.eventsPane, "On Load", function () { return { type: "onload" }; }, "", "onload");
+        chip(state.eventsPane, "On Render", function () { return { type: "onrender" }; }, "", "onrender");
         chip(state.eventsPane, "On Params Change", function () { return { type: "param-input" }; }, "", "param-input");
         sectionHeader(state.eventsPane, "Template");
         chip(state.eventsPane, "Send to Host", function () { return { type: "template-output", output: "out" }; }, "", "template-output");

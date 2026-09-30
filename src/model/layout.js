@@ -453,7 +453,7 @@ export var V_CONSTRAINTS = ["top", "bottom", "topBottom", "center", "scale"];
 
 export function constraintsOf(node) {
     var c = (node && node.constraints) || {};
-    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "left" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "top" : c.v };
+    return { h: H_CONSTRAINTS.indexOf(c.h) === -1 ? "leftRight" : c.h, v: V_CONSTRAINTS.indexOf(c.v) === -1 ? "topBottom" : c.v };
 }
 
 /** Whether a node's constraints apply (a frame's or the root's child, not placed by a layout). */
@@ -642,7 +642,7 @@ export function canRotate(node, parent) {
 
 /** A new frame (without id / x / y). */
 export function makeFrame(mode, w, h) {
-    var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
+    var frame = { type: "@frame", w: w || 240, h: h || 160, children: [], constraints: { h: "leftRight", v: "topBottom" }, style: { fill: "#ffffff", stroke: "#d0d0d0", strokeWidth: 1, radius: 4, clip: false } };
     if (mode === "carousel") {
         // edge to edge, clipped: the slides are the content
         frame.layout = { mode: "carousel", padding: { t: 0, r: 0, b: 0, l: 0 }, gap: 0, carousel: Object.assign({}, CAROUSEL_DEFAULT) };
