@@ -70,6 +70,7 @@ global.location = {
 global.history = {
   state: null,
   pushState(state, title, url) {
+    if (historyIndex >= 0) historyStack.splice(historyIndex + 1);
     historyStack.push({ state: state, title: title, url: url });
     historyIndex = historyStack.length - 1;
     this.state = state;
@@ -82,6 +83,26 @@ global.history = {
     this.state = state;
     global.location.pathname = url;
     global.location.href = 'http://localhost:1881' + url;
+  },
+  back() {
+    if (historyIndex > 0) {
+      historyIndex--;
+      const item = historyStack[historyIndex];
+      this.state = item.state;
+      global.location.pathname = item.url;
+      global.location.href = 'http://localhost:1881' + item.url;
+      global.dispatchEvent({ type: 'popstate', state: item.state });
+    }
+  },
+  forward() {
+    if (historyIndex < historyStack.length - 1) {
+      historyIndex++;
+      const item = historyStack[historyIndex];
+      this.state = item.state;
+      global.location.pathname = item.url;
+      global.location.href = 'http://localhost:1881' + item.url;
+      global.dispatchEvent({ type: 'popstate', state: item.state });
+    }
   }
 };
 
@@ -446,6 +467,154 @@ async function runTests() {
   let navToIsolated = global.__nexaRuntime.navigateToScreen('screen_isolated');
   assert.strictEqual(navToIsolated, false, 'navigateToScreen to unreferenced screen must be rejected');
   console.log('navigateToScreen to screen_isolated rejected? true');
+
+  console.log('--- [P2 Flow Gateway] 9. Browser History Back & Forward with Multi-Screen Flow & Send-to-Flow ---');
+  // Define screens S1, S2, S3 matching user's exact flow topology
+  const screenS1 = {
+    id: 's_s1', name: 'Screen 1', path: '/screen1', width: 800, height: 600, displayMode: 'fixed',
+    components: [],
+    logic: {
+      nodes: [
+        { id: 'btn_s1_click', type: 'ui-event', event: 'click' },
+        { id: 'stf_s1', type: 'send-to-flow', action: 'go-s3' }
+      ],
+      wires: { 'btn_s1_click': ['stf_s1'] }
+    }
+  };
+  const screenS3 = {
+    id: 's_s3', name: 'Responsive Demo', path: '/screen3', width: 1920, height: 1080, displayMode: 'fill',
+    components: [],
+    logic: {
+      nodes: [
+        { id: 'btn_s3_click', type: 'ui-event', event: 'click' },
+        { id: 'stf_s3', type: 'send-to-flow', action: 'go-s2' }
+      ],
+      wires: { 'btn_s3_click': ['stf_s3'] }
+    }
+  };
+  const screenS2 = {
+    id: 's_s2', name: 'Screen 2', path: '/screen2', width: 1024, height: 768, displayMode: 'fixed',
+    components: [],
+    logic: {
+      nodes: [
+        { id: 'btn_s2_click', type: 'ui-event', event: 'click' },
+        { id: 'stf_s2', type: 'send-to-flow', action: 'go-s1' }
+      ],
+      wires: { 'btn_s2_click': ['stf_s2'] }
+    }
+  };
+  global.__NEXA_SCREENS__.push(screenS1, screenS3, screenS2);
+
+  const flow1 = {
+    id: 'flow_user_1',
+    name: 'Flow 1',
+    endpoint: '/flow1',
+    routingPolicy: 'strict',
+    logic: {
+      nodes: [
+        { id: 'fl_trig', type: 'route-trigger' },
+        { id: 'fl_rs_s1', type: 'render-screen', screenId: 's_s1' },
+        { id: 'fl_rs_s3', type: 'render-screen', screenId: 's_s3' },
+        { id: 'fl_rs_s2', type: 'render-screen', screenId: 's_s2' }
+      ],
+      wires: [
+        { from: 'fl_trig', to: 'fl_rs_s1' },
+        { from: 'fl_rs_s1', to: 'fl_rs_s3' },
+        { from: 'fl_rs_s3', to: 'fl_rs_s2' },
+        { from: 'fl_rs_s2', to: 'fl_rs_s1' }
+      ]
+    }
+  };
+  global.__NEXA_FLOWS__.push(flow1);
+
+  // Re-read and eval runtime code
+  const freshRuntimeCode = fs.readFileSync(path.join(__dirname, '../lib/nexa-runtime-client.js'), 'utf8');
+  eval(freshRuntimeCode);
+
+  // 1. Initial entry to /flow1
+  let f1Ran = global.__nexaRuntime.matchFlowAndExecute('/flow1');
+  assert.strictEqual(f1Ran, true, 'Flow 1 initial execution should succeed');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen1', 'First screen should replace flow1 endpoint');
+  let activeRs = global.__nexaRuntime.getActiveRenderScreen();
+  assert.ok(activeRs && activeRs.flowNode.id === 'fl_rs_s1', 'Active render screen must be fl_rs_s1');
+  console.log('Flow initial entry mounts Screen 1 and activates fl_rs_s1? true');
+
+  // Helper to simulate button click leading to send-to-flow inside a screen
+  function triggerScreenSendToFlow(screenObj, sendNodeId) {
+    let effectiveScreen = {
+      id: screenObj.id,
+      name: screenObj.name,
+      logic: screenObj.logic,
+      components: [],
+      __scopes: { '@app': {}, '': {} }
+    };
+    let sendNode = (screenObj.logic.nodes || []).find(n => n.id === sendNodeId);
+    global.__nexaRuntime.runLogicGraph(effectiveScreen, sendNode, { payload: { clicked: true } });
+  }
+
+  // 2. Click button on Screen 1 -> trigger send-to-flow -> advances to Screen 3
+  triggerScreenSendToFlow(screenS1, 'stf_s1');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen3', 'Should navigate to Screen 3');
+  activeRs = global.__nexaRuntime.getActiveRenderScreen();
+  assert.ok(activeRs && activeRs.flowNode.id === 'fl_rs_s3', 'Active render screen must be fl_rs_s3');
+  console.log('Click on Screen 1 advances to Screen 3 via send-to-flow? true');
+
+  // 3. Click button on Screen 3 -> trigger send-to-flow -> advances to Screen 2
+  triggerScreenSendToFlow(screenS3, 'stf_s3');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen2', 'Should navigate to Screen 2');
+  activeRs = global.__nexaRuntime.getActiveRenderScreen();
+  assert.ok(activeRs && activeRs.flowNode.id === 'fl_rs_s2', 'Active render screen must be fl_rs_s2');
+  console.log('Click on Screen 3 advances to Screen 2 via send-to-flow? true');
+
+  // 4. User presses browser BACK: goes to Screen 3
+  global.history.back();
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen3', 'History back should return to /nexa/flow1/screen3');
+  activeRs = global.__nexaRuntime.getActiveRenderScreen();
+  assert.ok(activeRs, 'Active render screen must not be null');
+  assert.strictEqual(activeRs.flowNode.id, 'fl_rs_s3', 'Active render screen must be restored to fl_rs_s3 on history back');
+  console.log('History back restores active render screen to fl_rs_s3? true');
+
+  // 5. User clicks button on Screen 3 after going back -> send-to-flow works and advances to Screen 2!
+  triggerScreenSendToFlow(screenS3, 'stf_s3');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen2', 'Should navigate from Screen 3 to Screen 2');
+  activeRs = global.__nexaRuntime.getActiveRenderScreen();
+  assert.strictEqual(activeRs.flowNode.id, 'fl_rs_s2', 'Active render screen must advance to fl_rs_s2');
+  console.log('Send-to-flow on Screen 3 after history back successfully advances to Screen 2? true');
+
+  // 6. User presses browser BACK twice: Screen 2 -> Screen 3 -> Screen 1
+  global.history.back(); // to Screen 3
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen3', 'Back 1 returns to Screen 3');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s3');
+
+  global.history.back(); // to Screen 1
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen1', 'Back 2 returns to Screen 1');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s1');
+  console.log('Multiple history backs successfully restore to Screen 1 and fl_rs_s1? true');
+
+  // 7. User presses browser FORWARD twice: Screen 1 -> Screen 3 -> Screen 2
+  global.history.forward(); // to Screen 3
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen3', 'Forward 1 returns to Screen 3');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s3');
+
+  global.history.forward(); // to Screen 2
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen2', 'Forward 2 returns to Screen 2');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s2');
+  console.log('History forward successfully restores to Screen 2 and fl_rs_s2? true');
+
+  // 8. Click button on Screen 2 after forward -> advances to Screen 1 (completing loop)
+  triggerScreenSendToFlow(screenS2, 'stf_s2');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen1', 'Screen 2 advances to Screen 1');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s1');
+  console.log('Send-to-flow on Screen 2 works after history forward? true');
+
+  // 9. Now back up to Screen 2, then click Screen 2 button again
+  global.history.back();
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen2', 'Back returns to Screen 2');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s2');
+  triggerScreenSendToFlow(screenS2, 'stf_s2');
+  assert.strictEqual(global.location.pathname, '/nexa/flow1/screen1', 'Screen 2 advances to Screen 1');
+  assert.strictEqual(global.__nexaRuntime.getActiveRenderScreen().flowNode.id, 'fl_rs_s1');
+  console.log('Repeated back-and-forth transitions maintain flow stability? true');
 
   console.log('ALL OK');
   process.exit(0);
