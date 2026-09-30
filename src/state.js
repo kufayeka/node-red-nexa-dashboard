@@ -73,7 +73,9 @@ export const LOGIC_NODE_KINDS = {
     // timing / delay node: pauses execution for delay ms/s before continuing
     "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
     // SPA navigation: transition to a named screen, path, or history action without page reload
-    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" }
+    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
+    // public routing entrypoint for screen flows
+    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" }
 };
 
 export const state = {

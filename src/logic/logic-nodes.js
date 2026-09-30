@@ -20,6 +20,7 @@ import { openOverlayNodeEditor, overlayLabel } from "../dialogs/overlay-dialog.j
 import { openTeleportNodeEditor, teleportNodeLabel } from "../dialogs/teleport-dialog.js";
 import { openDelayNodeEditor } from "../dialogs/delay-dialog.js";
 import { openNavigateNodeEditor } from "../dialogs/navigate-dialog.js";
+import { openRouteTriggerNodeEditor } from "../dialogs/route-trigger-dialog.js";
 
 export function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -57,6 +58,9 @@ export function logicNodeLabel(node) {
         }
         var s = (state.screens || []).find(function (x) { return x.id === node.screenId; });
         return "Goto Screen (" + (s ? s.name : (node.screenId || "?")) + ")";
+    }
+    if (node.type === "route-trigger") {
+        return "Route (" + (node.path || "/") + ")";
     }
     if (node.type === "sparkplug-write") {
         var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -264,6 +268,12 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure navigation").on("dblclick", function (e) {
             e.stopPropagation();
             openNavigateNodeEditor(node);
+        });
+    }
+    if (node.type === "route-trigger") {
+        box.attr("title", "Double-click to configure route trigger").on("dblclick", function (e) {
+            e.stopPropagation();
+            openRouteTriggerNodeEditor(node);
         });
     }
     if (node.type === "layer-control") {

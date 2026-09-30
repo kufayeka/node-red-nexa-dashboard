@@ -34,6 +34,9 @@ function getLogicNodeMeta(type) {
     if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
         return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
     }
+    if (type === "route-trigger") {
+        return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
+    }
     if (type === "function") {
         return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
     }
@@ -374,11 +377,17 @@ export function renderEventsPanel() {
     }
 
     sectionHeader(state.eventsPane, "Lifecycle");
+    if (state.editingMode === "flow") {
+        chip(state.eventsPane, "Route Trigger", function () { return { type: "route-trigger", path: "/", cookies: "", includeDevice: true }; }, "", "route-trigger");
+    }
     chip(state.eventsPane, "On Load", function () { return { type: "onload" }; }, "", "onload");
     chip(state.eventsPane, "On Render", function () { return { type: "onrender" }; }, "", "onrender");
     chip(state.eventsPane, "On Close", function () { return { type: "onclose" }; }, "", "onclose");
     // the window's width crossed a breakpoint: msg.payload = "desktop" | "tablet" | "phone"
     chip(state.eventsPane, "On Breakpoint Change", function () { return { type: "on-variable-change", scope: "@app", name: "$breakpoint" }; }, "", "on-variable-change");
+    if (state.editingMode !== "flow") {
+        chip(state.eventsPane, "Route Trigger", function () { return { type: "route-trigger", path: "/", cookies: "", includeDevice: true }; }, "", "route-trigger");
+    }
     if (state.editingMode === "template") {
         chip(state.eventsPane, "On Params Change", function () { return { type: "param-input" }; }, "", "param-input");
         sectionHeader(state.eventsPane, "Template");

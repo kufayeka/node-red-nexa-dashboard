@@ -2073,7 +2073,9 @@
     // timing / delay node: pauses execution for delay ms/s before continuing
     "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
     // SPA navigation: transition to a named screen, path, or history action without page reload
-    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" }
+    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
+    // public routing entrypoint for screen flows
+    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" }
   };
   var state = {
     screens: [],
@@ -28129,6 +28131,9 @@
     if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
       return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
     }
+    if (type === "route-trigger") {
+      return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
+    }
     if (type === "function") {
       return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
     }
@@ -28458,6 +28463,11 @@
       return item;
     }
     sectionHeader(state.eventsPane, "Lifecycle");
+    if (state.editingMode === "flow") {
+      chip(state.eventsPane, "Route Trigger", function() {
+        return { type: "route-trigger", path: "/", cookies: "", includeDevice: true };
+      }, "", "route-trigger");
+    }
     chip(state.eventsPane, "On Load", function() {
       return { type: "onload" };
     }, "", "onload");
@@ -28470,6 +28480,11 @@
     chip(state.eventsPane, "On Breakpoint Change", function() {
       return { type: "on-variable-change", scope: "@app", name: "$breakpoint" };
     }, "", "on-variable-change");
+    if (state.editingMode !== "flow") {
+      chip(state.eventsPane, "Route Trigger", function() {
+        return { type: "route-trigger", path: "/", cookies: "", includeDevice: true };
+      }, "", "route-trigger");
+    }
     if (state.editingMode === "template") {
       chip(state.eventsPane, "On Params Change", function() {
         return { type: "param-input" };
@@ -32046,6 +32061,51 @@
     });
   }
 
+  // src/dialogs/route-trigger-dialog.js
+  function openRouteTriggerNodeEditor(node) {
+    var pathInput, cookiesInput, includeDeviceCheck;
+    window.RED.tray.show({
+      id: "nexa-logic-route-trigger-editor",
+      title: "Configure Route Trigger",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var p = (pathInput.val() || "").trim();
+            if (!p) p = "/";
+            if (p.charAt(0) !== "/") p = "/" + p;
+            node.path = p;
+            node.cookies = (cookiesInput.val() || "").trim();
+            node.includeDevice = includeDeviceCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
+        var pathRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Path Pattern").appendTo(pathRow);
+        pathInput = window.$("<input>", { type: "text", placeholder: "/app, /devices/:id, /dashboard" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.path || "/").appendTo(pathRow);
+        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Supports parameter tokens like :id (emitted onto msg.params.id)").appendTo(pathRow);
+        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
+        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var kind = LOGIC_NODE_KINDS[node.type] || {};
@@ -32087,6 +32147,9 @@
         return x.id === node.screenId;
       });
       return "Goto Screen (" + (s ? s.name : node.screenId || "?") + ")";
+    }
+    if (node.type === "route-trigger") {
+      return "Route (" + (node.path || "/") + ")";
     }
     if (node.type === "sparkplug-write") {
       var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
@@ -32315,6 +32378,12 @@
       box2.attr("title", "Double-click to configure navigation").on("dblclick", function(e) {
         e.stopPropagation();
         openNavigateNodeEditor(node);
+      });
+    }
+    if (node.type === "route-trigger") {
+      box2.attr("title", "Double-click to configure route trigger").on("dblclick", function(e) {
+        e.stopPropagation();
+        openRouteTriggerNodeEditor(node);
       });
     }
     if (node.type === "layer-control") {

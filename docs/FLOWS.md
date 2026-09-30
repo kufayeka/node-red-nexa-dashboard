@@ -213,13 +213,34 @@ First-class palette node for Screens, Templates, and Screen Flows:
 
 ---
 
-## 7. Testing & Verification
+## 7. SPA Screen Replacement & Persistent Live Streams
+
+Nexa Dashboard implements a seamless Single Page Application (SPA) architecture for both screen navigation and flow routing:
+
+- **Zero Page Reloads**:
+  - `dismountScreen()` cleans up previous screen components, DOM nodes, and active timers (`activeScreenTimers`), and calls the `onclose` lifecycle.
+  - `mountScreen()` sets up the next screen, resolves breakpoints/themes, binds UI components, and triggers `onload` and `onrender`.
+  - The browser URL is synchronized via `window.history.pushState` / `replaceState` without a full page refresh.
+- **Persistent WebSocket & Sparkplug Connections**:
+  - The live connection to `/_io` (WebSocket) and Sparkplug MQTT remains connected across transitions.
+  - `ioConnect` detects an already-open socket (readyState 0 or 1) and calls `ioSyncSubscription()` to refresh metric subscriptions rather than tearing down the connection.
+- **Screen Flows as Public Gateway Routers**:
+  - Public URLs (e.g. `/devices/:id`) hit the matching Screen Flow's `Route Trigger` node.
+  - The flow executes transparent scratch middleware (Functions, HTTP Request, Delay, Switch).
+  - When the flow reaches `Goto Screen (SPA)`, it mounts the target screen view and forwards `msg.payload` into its `On Load` lifecycle.
+
+---
+
+## 8. Testing & Verification
 
 - **P0/P1 Test**: `test/test-p0-p1-screens-flows.js` (Hierarchy, Folders, Duplication, Conversion, Reparenting).
-- **P2 Test Suite**: `test/test-p2-routing-pipeline.js` (Route Trigger context, Device metadata, Delay node timing, Goto Screen navigation).
+- **P2 Phase 1 Test**: `test/test-p2-spa-navigation.js` (Delay Node, SPA screen swapping, persistent WebSocket/Sparkplug, browser history popstate).
+- **P2 Phase 2 Test**: `test/test-p2-flow-routing.js` (Route Trigger context, Selective Cookies, Device detection, Flow Gateway execution, direct fallback).
 - **Run Tests**:
   ```bash
   node build.js
   node test/test-p0-p1-screens-flows.js
-  node test/mock-templates-editor.js dist/nexa-editor.bundle.js
+  node test/test-p2-spa-navigation.js
+  node test/test-p2-flow-routing.js
+  npm test
   ```
