@@ -258,10 +258,20 @@ export function buildPalette(paletteEl) {
     });
 
     if (availableTemplates.length) {
-        sectionHeader(paletteEl, "Templates");
-        availableTemplates.forEach(function (t) {
-            makeComponentChip(paletteEl, t.name, "@template:" + t.id, "Templates", "fa-clone");
-        });
+        var compTemplates = availableTemplates.filter(function (t) { return t.kind === "component"; });
+        var compositeTemplates = availableTemplates.filter(function (t) { return t.kind !== "component"; });
+        if (compositeTemplates.length) {
+            sectionHeader(paletteEl, "Composite Templates");
+            compositeTemplates.forEach(function (t) {
+                makeComponentChip(paletteEl, t.name, "@template:" + t.id, "Composite Templates", "fa-clone");
+            });
+        }
+        if (compTemplates.length) {
+            sectionHeader(paletteEl, "Component Templates");
+            compTemplates.forEach(function (t) {
+                makeComponentChip(paletteEl, t.name, "@template:" + t.id, "Component Templates", "fa-puzzle-piece");
+            });
+        }
     }
 
     sectionHeader(paletteEl, "Custom");

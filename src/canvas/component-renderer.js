@@ -1,4 +1,4 @@
-import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, snap, genId, markDirty, Tree, Layout, Scope, Types, appScope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
+import { state, getActiveScreen, findComponent, findTemplate, findTemplateByIdOrName, templateContains, getComponentTemplateTarget, snap, genId, markDirty, Tree, Layout, Scope, Types, appScope, isNodeVisible, isNodeInteractable, shouldRenderNode, isNodeLocked } from "../state.js";
 import { isSelected, selectOnly, selectMultiple, refreshSelectionVisuals, pickSelectionTarget, pickDeeperTarget } from "./selection.js";
 import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
@@ -42,6 +42,7 @@ function editorCtx(comp) {
 export function refreshComponentRender(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    if (!el || !el.length) el = state.artboardEl.find('[data-component-id="' + comp.id + '"]');
     var node = el && el.get && el.get(0);
     if (!node) return;
     var ctx = editorCtx(comp);
@@ -676,11 +677,19 @@ export function renderTemplateInstance(el, comp, namespace, visitedTemplateIds, 
     }
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
+    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
+
+    if (template.kind === "component") {
+        var targetComp = getComponentTemplateTarget(template);
+        if (targetComp) {
+            renderComponentPreview(window.$(el), targetComp, namespace + "::" + targetComp.id, innerVisited, paramState, null, null);
+        }
+        return;
+    }
+
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
     if (inner.get(0)) inner.get(0).__nexaSurface = true; // "on the screen" inside it = on the template
     layoutTemplateInner(inner, template, comp);
-    // its box is always visible (like a frame's), a name tag on hover
-    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
     // laid out by constraints: each node against the design size (the live page does the same)
     var byConstraints = !Layout.templateContentFit(template, 1, 1, comp);
     var designSize = byConstraints ? { w: template.width, h: template.height } : null;
@@ -1085,17 +1094,25 @@ export function addComponentAt(type, artboardX, artboardY) {
             }
             return;
         }
-        placeNewNode(screen, {
+        var isComp = template.kind === "component";
+        var targetComp = isComp ? getComponentTemplateTarget(template) : null;
+        var initW = (targetComp && targetComp.w !== undefined) ? targetComp.w : template.width;
+        var initH = (targetComp && targetComp.h !== undefined) ? targetComp.h : template.height;
+        var nodeToPlace = {
             id: genId(),
             type: "@template",
             templateId: templateId,
-            w: template.width,
-            h: template.height,
+            w: initW,
+            h: initH,
             rotation: 0,
             locked: false,
             props: {},
             paramValues: {} // per-instance overrides of template.params[].defaultValue — see Properties panel
-        }, artboardX, artboardY);
+        };
+        if (targetComp && targetComp.layoutChild) {
+            nodeToPlace.layoutChild = Object.assign({}, targetComp.layoutChild);
+        }
+        placeNewNode(screen, nodeToPlace, artboardX, artboardY);
         return;
     }
 

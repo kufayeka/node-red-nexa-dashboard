@@ -59,4 +59,8 @@ if (typeof window.RED !== "undefined" && window.RED.plugins) {
             });
         }
     });
+}if (typeof window.RED !== "undefined" && window.RED.events && typeof window.RED.events.on === "function") {
+    window.RED.events.on("flows:loaded", function () {
+        NexaState.state.flowsLoaded = true;
+    });
 }

@@ -191,6 +191,7 @@ export function buildSidebarContent() {
 
     if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
         window.RED.events.on("flows:loaded", function () {
+            state.flowsLoaded = true;
             state.screensLoaded = false;
             state.projectConfigNode = null;
             ensureScreensLoaded(function () {

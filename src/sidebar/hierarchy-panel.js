@@ -43,7 +43,10 @@ function iconOf(node) {
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
     if (Tree.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
     if (node.type === "@frame") return "fa fa-square-o";
-    if (node.type === "@template") return "fa fa-clone";
+    if (node.type === "@template") {
+        var t = findTemplate(node.templateId);
+        return (t && t.kind === "component") ? "fa fa-puzzle-piece" : "fa fa-clone";
+    }
     if (node.type === "@lit-component") return "fa fa-code";
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return (def && def.icon) || "fa fa-cube";

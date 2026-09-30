@@ -88,6 +88,7 @@ export const state = {
     screens: [],
     activeScreenId: null,
     screensLoaded: false,
+    flowsLoaded: false,
     screenCounter: 0,
     projectConfigNode: null,
 
@@ -372,6 +373,7 @@ export function duplicateTemplate(id) {
         gridSize: orig.gridSize,
         snap: orig.snap !== false,
         treeVersion: orig.treeVersion || TREE_VERSION,
+        kind: orig.kind || "composite",
         params: JSON.parse(JSON.stringify(orig.params || [])),
         variables: JSON.parse(JSON.stringify(orig.variables || [])),
         components: cloneSurfaceComponents(orig.components, compIdMap),
@@ -432,6 +434,7 @@ export function convertScreenToTemplate(id) {
         gridSize: screen.gridSize,
         snap: screen.snap !== false,
         treeVersion: screen.treeVersion || TREE_VERSION,
+        kind: "composite",
         params: [],
         variables: screen.variables || [],
         components: screen.components || [],
@@ -500,7 +503,8 @@ export function makeScreen(opts) {
 export function makeTemplate(opts) {
     state.templateCounter++;
     var template = makeSurfaceBase(opts);
-    template.name = (opts && opts.name) || ("Template " + state.templateCounter);
+    template.kind = (opts && opts.kind) || "composite";
+    template.name = (opts && opts.name) || ((template.kind === "component" ? "Component " : "Template ") + state.templateCounter);
     template.identifier = (opts && opts.identifier) || "";
     template.params = (opts && opts.params) || [];
     template.variables = (opts && opts.variables) || [];
@@ -524,6 +528,29 @@ export function templateContains(candidateId, targetId, seen) {
     return Tree.allNodes(candidate, { orphans: true }).some(function (c) {
         return c.type === "@template" && templateContains(c.templateId, targetId, seen);
     });
+}
+
+export function getComponentTemplateTarget(template) {
+    if (!template || !template.components || !template.components.length) return null;
+    for (var i = 0; i < template.components.length; i++) {
+        var c = template.components[i];
+        if (c.type !== "@frame" && c.type !== "@group") return c;
+    }
+    var found = null;
+    function walk(list) {
+        if (!list) return;
+        for (var j = 0; j < list.length; j++) {
+            if (found) return;
+            var node = list[j];
+            if (node.type !== "@frame" && node.type !== "@group") {
+                found = node;
+                return;
+            }
+            if (node.children && node.children.length) walk(node.children);
+        }
+    }
+    walk(template.components);
+    return found || template.components[0];
 }
 
 // The app: variables shared by every screen, kept on the project config node
@@ -554,15 +581,68 @@ export function markDirty() {
     }
 }
 
+export function areFlowsLoaded() {
+    if (typeof RED === "undefined" || !RED.nodes) return true;
+    if (state.flowsLoaded) return true;
+    if (typeof RED.nodes.originalFlow === "function") {
+        return RED.nodes.originalFlow() !== undefined;
+    }
+    if (typeof RED.nodes.getWorkspaceOrder === "function") {
+        return RED.nodes.getWorkspaceOrder().length > 0;
+    }
+    return true;
+}
+
 export function getOrCreateProjectConfigNode() {
-    var existing = null;
     if (typeof RED === "undefined" || !RED.nodes) return null;
+
+    var candidates = [];
     if (typeof RED.nodes.eachConfig === "function") {
         RED.nodes.eachConfig(function (n) {
-            if (n.type === "kufayeka-nexa-project") existing = n;
+            if (n.type === "kufayeka-nexa-project") candidates.push(n);
         });
     }
-    if (existing) return existing;
+
+    if (candidates.length > 0) {
+        // Pick the best candidate (the one with screens, templates, variables, etc.)
+        var best = candidates[0];
+        var bestScore = -1;
+        candidates.forEach(function (c) {
+            var score = (c.screens ? c.screens.length * 100 : 0) +
+                        (c.templates ? c.templates.length * 50 : 0) +
+                        (c.flows ? c.flows.length * 20 : 0) +
+                        (c.variables ? c.variables.length * 10 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                best = c;
+            }
+        });
+
+        // Deduplicate: remove extra dummy / empty candidates from RED.nodes
+        if (candidates.length > 1) {
+            var removedAny = false;
+            candidates.forEach(function (c) {
+                if (c.id !== best.id) {
+                    try {
+                        RED.nodes.remove(c.id);
+                        removedAny = true;
+                    } catch (e) {
+                        console.warn("[Nexa] Failed to remove duplicate project node", c.id, e);
+                    }
+                }
+            });
+            if (removedAny && typeof RED.nodes.dirty === "function") {
+                RED.nodes.dirty(true);
+            }
+        }
+        return best;
+    }
+
+    // If no existing project node, ONLY create one if flows have actually loaded!
+    // Never create a blank node during early boot before flows are retrieved from the server.
+    if (!areFlowsLoaded()) {
+        return null;
+    }
 
     var node_def = (typeof RED.nodes.getType === "function") ? RED.nodes.getType("kufayeka-nexa-project") : null;
     if (!node_def) {
@@ -597,19 +677,20 @@ function backfillSurface(s) {
 }
 
 export function ensureScreensLoaded(cb) {
-    if (state.screensLoaded) {
+    if (state.screensLoaded && state.projectConfigNode) {
         if (cb) cb();
         return;
     }
     if (typeof RED !== "undefined" && RED.nodes) {
-        var existing = null;
+        var hasExisting = false;
         if (typeof RED.nodes.eachConfig === "function") {
             RED.nodes.eachConfig(function (n) {
-                if (n.type === "kufayeka-nexa-project") existing = n;
+                if (n.type === "kufayeka-nexa-project") hasExisting = true;
             });
         }
-        var node_def = (typeof RED.nodes.getType === "function") ? RED.nodes.getType("kufayeka-nexa-project") : null;
-        if (!existing && !node_def) {
+        // If we don't have an existing project node AND flows haven't finished loading yet,
+        // wait for flows:loaded so we don't prematurely create an empty project node!
+        if (!hasExisting && !areFlowsLoaded()) {
             var retry = function () {
                 if (!state.screensLoaded) ensureScreensLoaded(cb);
             };

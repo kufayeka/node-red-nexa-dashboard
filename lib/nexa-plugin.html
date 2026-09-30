@@ -122,6 +122,7 @@
     ZOOM_MIN: () => ZOOM_MIN,
     ZOOM_STEP: () => ZOOM_STEP,
     appScope: () => appScope,
+    areFlowsLoaded: () => areFlowsLoaded,
     cloneLogic: () => cloneLogic,
     cloneSurfaceComponents: () => cloneSurfaceComponents,
     convertScreenToTemplate: () => convertScreenToTemplate,
@@ -142,6 +143,7 @@
     genId: () => genId,
     getActiveScreen: () => getActiveScreen,
     getApp: () => getApp,
+    getComponentTemplateTarget: () => getComponentTemplateTarget,
     getOrCreateProjectConfigNode: () => getOrCreateProjectConfigNode,
     isNodeInteractable: () => isNodeInteractable,
     isNodeLocked: () => isNodeLocked,
@@ -2087,6 +2089,7 @@
     screens: [],
     activeScreenId: null,
     screensLoaded: false,
+    flowsLoaded: false,
     screenCounter: 0,
     projectConfigNode: null,
     // Folders/Groups for organizing screens, templates, and flows
@@ -2358,6 +2361,7 @@
       gridSize: orig.gridSize,
       snap: orig.snap !== false,
       treeVersion: orig.treeVersion || TREE_VERSION,
+      kind: orig.kind || "composite",
       params: JSON.parse(JSON.stringify(orig.params || [])),
       variables: JSON.parse(JSON.stringify(orig.variables || [])),
       components: cloneSurfaceComponents(orig.components, compIdMap),
@@ -2422,6 +2426,7 @@
       gridSize: screen2.gridSize,
       snap: screen2.snap !== false,
       treeVersion: screen2.treeVersion || TREE_VERSION,
+      kind: "composite",
       params: [],
       variables: screen2.variables || [],
       components: screen2.components || [],
@@ -2483,7 +2488,8 @@
   function makeTemplate(opts) {
     state.templateCounter++;
     var template = makeSurfaceBase(opts);
-    template.name = opts && opts.name || "Template " + state.templateCounter;
+    template.kind = opts && opts.kind || "composite";
+    template.name = opts && opts.name || (template.kind === "component" ? "Component " : "Template ") + state.templateCounter;
     template.identifier = opts && opts.identifier || "";
     template.params = opts && opts.params || [];
     template.variables = opts && opts.variables || [];
@@ -2500,6 +2506,28 @@
     return allNodes(candidate, { orphans: true }).some(function(c) {
       return c.type === "@template" && templateContains(c.templateId, targetId, seen);
     });
+  }
+  function getComponentTemplateTarget(template) {
+    if (!template || !template.components || !template.components.length) return null;
+    for (var i2 = 0; i2 < template.components.length; i2++) {
+      var c = template.components[i2];
+      if (c.type !== "@frame" && c.type !== "@group") return c;
+    }
+    var found = null;
+    function walk2(list) {
+      if (!list) return;
+      for (var j = 0; j < list.length; j++) {
+        if (found) return;
+        var node = list[j];
+        if (node.type !== "@frame" && node.type !== "@group") {
+          found = node;
+          return;
+        }
+        if (node.children && node.children.length) walk2(node.children);
+      }
+    }
+    walk2(template.components);
+    return found || template.components[0];
   }
   function getApp() {
     var p = state.projectConfigNode;
@@ -2524,15 +2552,56 @@
       RED.nodes.dirty(true);
     }
   }
+  function areFlowsLoaded() {
+    if (typeof RED === "undefined" || !RED.nodes) return true;
+    if (state.flowsLoaded) return true;
+    if (typeof RED.nodes.originalFlow === "function") {
+      return RED.nodes.originalFlow() !== void 0;
+    }
+    if (typeof RED.nodes.getWorkspaceOrder === "function") {
+      return RED.nodes.getWorkspaceOrder().length > 0;
+    }
+    return true;
+  }
   function getOrCreateProjectConfigNode() {
-    var existing = null;
     if (typeof RED === "undefined" || !RED.nodes) return null;
+    var candidates = [];
     if (typeof RED.nodes.eachConfig === "function") {
       RED.nodes.eachConfig(function(n) {
-        if (n.type === "kufayeka-nexa-project") existing = n;
+        if (n.type === "kufayeka-nexa-project") candidates.push(n);
       });
     }
-    if (existing) return existing;
+    if (candidates.length > 0) {
+      var best = candidates[0];
+      var bestScore = -1;
+      candidates.forEach(function(c) {
+        var score2 = (c.screens ? c.screens.length * 100 : 0) + (c.templates ? c.templates.length * 50 : 0) + (c.flows ? c.flows.length * 20 : 0) + (c.variables ? c.variables.length * 10 : 0);
+        if (score2 > bestScore) {
+          bestScore = score2;
+          best = c;
+        }
+      });
+      if (candidates.length > 1) {
+        var removedAny = false;
+        candidates.forEach(function(c) {
+          if (c.id !== best.id) {
+            try {
+              RED.nodes.remove(c.id);
+              removedAny = true;
+            } catch (e) {
+              console.warn("[Nexa] Failed to remove duplicate project node", c.id, e);
+            }
+          }
+        });
+        if (removedAny && typeof RED.nodes.dirty === "function") {
+          RED.nodes.dirty(true);
+        }
+      }
+      return best;
+    }
+    if (!areFlowsLoaded()) {
+      return null;
+    }
     var node_def = typeof RED.nodes.getType === "function" ? RED.nodes.getType("kufayeka-nexa-project") : null;
     if (!node_def) {
       var coreReady = typeof RED.nodes.getType === "function" && (RED.nodes.getType("inject") || RED.nodes.getType("debug"));
@@ -2563,19 +2632,18 @@
     migrateSurface(s, genId);
   }
   function ensureScreensLoaded(cb) {
-    if (state.screensLoaded) {
+    if (state.screensLoaded && state.projectConfigNode) {
       if (cb) cb();
       return;
     }
     if (typeof RED !== "undefined" && RED.nodes) {
-      var existing = null;
+      var hasExisting = false;
       if (typeof RED.nodes.eachConfig === "function") {
         RED.nodes.eachConfig(function(n) {
-          if (n.type === "kufayeka-nexa-project") existing = n;
+          if (n.type === "kufayeka-nexa-project") hasExisting = true;
         });
       }
-      var node_def = typeof RED.nodes.getType === "function" ? RED.nodes.getType("kufayeka-nexa-project") : null;
-      if (!existing && !node_def) {
+      if (!hasExisting && !areFlowsLoaded()) {
         var retry = function() {
           if (!state.screensLoaded) ensureScreensLoaded(cb);
         };
@@ -3515,6 +3583,7 @@
   function refreshComponentRender(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
+    if (!el || !el.length) el = state.artboardEl.find('[data-component-id="' + comp.id + '"]');
     var node = el && el.get && el.get(0);
     if (!node) return;
     var ctx = editorCtx(comp);
@@ -3980,10 +4049,17 @@
     }
     var innerVisited = visitedTemplateIds.concat([comp.templateId]);
     var paramState = resolveInstanceParamState(comp, template, enclosingParamState);
+    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
+    if (template.kind === "component") {
+      var targetComp = getComponentTemplateTarget(template);
+      if (targetComp) {
+        renderComponentPreview(window.$(el), targetComp, namespace + "::" + targetComp.id, innerVisited, paramState, null, null);
+      }
+      return;
+    }
     var inner = window.$("<div>", { "class": "nexa-template-instance-inner" }).appendTo(el);
     if (inner.get(0)) inner.get(0).__nexaSurface = true;
     layoutTemplateInner(inner, template, comp);
-    if (!visitedTemplateIds.length) window.$(el).css({ outline: "1px dashed rgba(13, 153, 255, 0.55)", "outline-offset": "-1px" });
     var byConstraints = !layout_exports.templateContentFit(template, 1, 1, comp);
     var designSize = byConstraints ? { w: template.width, h: template.height } : null;
     (template.components || []).forEach(function(innerComp) {
@@ -4368,18 +4444,26 @@
         }
         return;
       }
-      placeNewNode(screen2, {
+      var isComp = template.kind === "component";
+      var targetComp = isComp ? getComponentTemplateTarget(template) : null;
+      var initW = targetComp && targetComp.w !== void 0 ? targetComp.w : template.width;
+      var initH = targetComp && targetComp.h !== void 0 ? targetComp.h : template.height;
+      var nodeToPlace = {
         id: genId(),
         type: "@template",
         templateId,
-        w: template.width,
-        h: template.height,
+        w: initW,
+        h: initH,
         rotation: 0,
         locked: false,
         props: {},
         paramValues: {}
         // per-instance overrides of template.params[].defaultValue — see Properties panel
-      }, artboardX, artboardY);
+      };
+      if (targetComp && targetComp.layoutChild) {
+        nodeToPlace.layoutChild = Object.assign({}, targetComp.layoutChild);
+      }
+      placeNewNode(screen2, nodeToPlace, artboardX, artboardY);
       return;
     }
     if (typeof type === "string" && type.indexOf("@asset:") === 0) {
@@ -28397,10 +28481,24 @@
       });
     });
     if (availableTemplates.length) {
-      sectionHeader(paletteEl, "Templates");
-      availableTemplates.forEach(function(t2) {
-        makeComponentChip(paletteEl, t2.name, "@template:" + t2.id, "Templates", "fa-clone");
+      var compTemplates = availableTemplates.filter(function(t2) {
+        return t2.kind === "component";
       });
+      var compositeTemplates = availableTemplates.filter(function(t2) {
+        return t2.kind !== "component";
+      });
+      if (compositeTemplates.length) {
+        sectionHeader(paletteEl, "Composite Templates");
+        compositeTemplates.forEach(function(t2) {
+          makeComponentChip(paletteEl, t2.name, "@template:" + t2.id, "Composite Templates", "fa-clone");
+        });
+      }
+      if (compTemplates.length) {
+        sectionHeader(paletteEl, "Component Templates");
+        compTemplates.forEach(function(t2) {
+          makeComponentChip(paletteEl, t2.name, "@template:" + t2.id, "Component Templates", "fa-puzzle-piece");
+        });
+      }
     }
     sectionHeader(paletteEl, "Custom");
     makeComponentChip(paletteEl, "Lit Component", "@lit-component", "Custom", "fa-code");
@@ -31760,7 +31858,7 @@
         };
         label("Template (one copy per item)");
         select("template", templates.length ? templates.map(function(t2) {
-          return [t2.id, t2.name];
+          return [t2.id, t2.name + (t2.kind === "component" ? " (Component)" : "")];
         }) : [["", "(no templates yet)"]], function() {
           d.itemParam = void 0;
           fillParams2();
@@ -34586,7 +34684,10 @@
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
     if (tree_exports.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
     if (node.type === "@frame") return "fa fa-square-o";
-    if (node.type === "@template") return "fa fa-clone";
+    if (node.type === "@template") {
+      var t2 = findTemplate(node.templateId);
+      return t2 && t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone";
+    }
     if (node.type === "@lit-component") return "fa fa-code";
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return def && def.icon || "fa fa-cube";
@@ -34883,7 +34984,7 @@
         gap: "4px",
         transition: "all 0.15s ease"
       }).appendTo(state.templateListEl);
-      window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
+      window.$("<i>", { class: t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone", style: (t2.kind === "component" ? "color: #10b981;" : "color: #f59e0b;") + " font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
       window.$("<span>", {
         style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222); font-weight: 600; cursor: pointer;"
       }).text(t2.name).on("click", function() {
@@ -34989,7 +35090,13 @@
         exitTemplateEditing();
       }).appendTo(editBarEl);
     }
-    editBarEl.find(".nexa-template-edit-label").text("Editing Template: " + (template ? template.name : "?"));
+    var isComp = template && template.kind === "component";
+    editBarEl.css({
+      background: isComp ? "#f0fdf4" : "#fff3e0",
+      "border-bottom": isComp ? "1px solid #bbf7d0" : "1px solid #ffcc80"
+    });
+    var labelHtml = isComp ? '<i class="fa fa-puzzle-piece" style="color: #16a34a; margin-right: 5px;"></i><strong>Editing Component Template (Preview Stage):</strong> ' + (template ? template.name : "?") : '<i class="fa fa-clone" style="color: #f59e0b; margin-right: 5px;"></i><strong>Editing Template:</strong> ' + (template ? template.name : "?");
+    editBarEl.find(".nexa-template-edit-label").html(labelHtml);
     editBarEl.show();
   }
   function hideEditBar() {
@@ -35005,6 +35112,7 @@
     }
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
+    var isComp = template.kind === "component";
     var header = window.$("<div>").css({
       "font-weight": "bold",
       "font-size": "13px",
@@ -35015,7 +35123,35 @@
       display: "flex",
       "align-items": "center",
       gap: "6px"
-    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(formEl);
+    }).html(
+      isComp ? '<i class="fa fa-puzzle-piece" style="color: #10b981;"></i> Component Template Properties' : '<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties'
+    ).appendTo(formEl);
+    if (isComp) {
+      window.$("<div>").css({
+        background: "#f0fdf4",
+        border: "1px solid #bbf7d0",
+        "border-radius": "6px",
+        padding: "8px 12px",
+        "margin-bottom": "12px",
+        "font-size": "11px",
+        color: "#166534",
+        "line-height": "1.4"
+      }).html('<strong><i class="fa fa-info-circle"></i> Component Template</strong><br>This canvas is an isolated preview stage for a single component. When populated or rendered into a container, only the single component inside is rendered directly without extra canvas wrapper frames.').appendTo(formEl);
+    }
+    var kindRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Template Type").appendTo(kindRow);
+    var kindSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(kindRow);
+    window.$("<option>", { value: "composite" }).text("Composite Template (Full layout)").appendTo(kindSelect);
+    window.$("<option>", { value: "component" }).text("Component Template (Single component preview)").appendTo(kindSelect);
+    kindSelect.val(template.kind || "composite");
+    kindSelect.on("change", function() {
+      template.kind = kindSelect.val();
+      markDirty();
+      renderTemplateList();
+      if (typeof window.__refreshScreensFlowsTree === "function") window.__refreshScreensFlowsTree();
+      renderTemplateForm(targetEl);
+      showEditBar();
+    });
     function row(label, field, value, type) {
       var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);
       window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text(label).appendTo(r);
@@ -35256,6 +35392,37 @@
       ],
       children: []
     };
+    var compositeTemplates = state.templates.filter(function(t2) {
+      return t2.kind !== "component";
+    });
+    var componentTemplates = state.templates.filter(function(t2) {
+      return t2.kind === "component";
+    });
+    var compositeGroup = {
+      id: "section:composite-templates",
+      label: "Composite Templates",
+      icon: "fa fa-cubes",
+      container: true,
+      type: "template-category",
+      badge: String(compositeTemplates.length),
+      actions: [
+        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+        { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    var componentGroup = {
+      id: "section:component-templates",
+      label: "Component Templates",
+      icon: "fa fa-puzzle-piece",
+      container: true,
+      type: "template-category",
+      badge: String(componentTemplates.length),
+      actions: [
+        { id: "add-component-template", icon: "fa fa-plus", title: "Add Component Template" }
+      ],
+      children: []
+    };
     var templatesSection = {
       id: "section:templates",
       label: "Templates",
@@ -35264,10 +35431,10 @@
       type: "section",
       badge: String(state.templates.length),
       actions: [
-        { id: "add-template", icon: "fa fa-plus", title: "Add Template" },
-        { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+        { id: "add-component-template", icon: "fa fa-puzzle-piece", title: "Add Component Template" }
       ],
-      children: []
+      children: [compositeGroup, componentGroup]
     };
     var flowsSection = {
       id: "section:flows",
@@ -35289,11 +35456,13 @@
         screensSection.children.push(itemNode);
       }
     }
-    function placeInTemplate(itemNode, parentId) {
+    function placeInTemplate(itemNode, parentId, kind) {
       if (parentId && folderNodes[parentId]) {
         folderNodes[parentId].children.push(itemNode);
+      } else if (kind === "component") {
+        componentGroup.children.push(itemNode);
       } else {
-        templatesSection.children.push(itemNode);
+        compositeGroup.children.push(itemNode);
       }
     }
     function placeInFlow(itemNode, parentId) {
@@ -35391,7 +35560,7 @@
         id: t2.id,
         label: t2.name,
         title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
-        icon: "fa fa-clone",
+        icon: t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
         type: "template",
         container: true,
         children: [varsGroup, paramsGroup],
@@ -35401,7 +35570,7 @@
           { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
         ]
       };
-      placeInTemplate(node, t2.parentId);
+      placeInTemplate(node, t2.parentId, t2.kind);
     });
     state.flows.forEach(function(fl) {
       var isDef = !!fl.isDefault;
@@ -35487,9 +35656,19 @@
   }
   function onScreensFlowsSelect(e) {
     var id2 = e.detail.id;
-    if (id2 === "section:screens" || id2 === "section:templates" || id2 === "section:flows" || id2 === "section:app-variables") {
+    if (id2 === "section:screens" || id2 === "section:templates" || id2 === "section:flows" || id2 === "section:app-variables" || id2 === "section:composite-templates" || id2 === "section:component-templates") {
       if (id2 === "section:screens" && state.editingMode !== "screen" && state.screens.length) {
         selectScreenFromSidebar(state.activeScreenId || state.screens[0].id);
+      } else if (id2 === "section:composite-templates") {
+        var compT = state.templates.find(function(t2) {
+          return t2.kind !== "component";
+        });
+        if (compT) selectTemplateFromScreensPanel(compT.id);
+      } else if (id2 === "section:component-templates") {
+        var cT = state.templates.find(function(t2) {
+          return t2.kind === "component";
+        });
+        if (cT) selectTemplateFromScreensPanel(cT.id);
       } else if (id2 === "section:templates" && state.editingMode !== "template" && state.templates.length) {
         selectTemplateFromScreensPanel(state.activeTemplateId || state.templates[0].id);
       } else if (id2 === "section:flows" && state.editingMode !== "flow" && state.flows.length) {
@@ -35619,8 +35798,12 @@
       addScreenFromSidebar({ parentId: null });
       return;
     }
-    if (action === "add-template") {
-      addTemplateFromScreensPanel({ parentId: null });
+    if (action === "add-template" || action === "add-composite-template") {
+      addTemplateFromScreensPanel({ parentId: null, kind: "composite" });
+      return;
+    }
+    if (action === "add-component-template") {
+      addTemplateFromScreensPanel({ parentId: null, kind: "component" });
       return;
     }
     if (action === "add-flow") {
@@ -35981,15 +36164,21 @@
           item.parentId = null;
           item.category = "screen";
         }
-      } else if (d.targetId === "section:templates") {
+      } else if (d.targetId === "section:templates" || d.targetId === "section:composite-templates" || d.targetId === "section:component-templates") {
         if (item.type === "screen") {
           var tmpl = convertScreenToTemplate(item.id);
           tmpl.parentId = null;
+          if (d.targetId === "section:component-templates") tmpl.kind = "component";
+          else tmpl.kind = "composite";
           markDirty();
           selectTemplateFromScreensPanel(tmpl.id);
           return;
         } else if (item.type === "template") {
           item.parentId = null;
+          if (d.targetId === "section:component-templates") item.kind = "component";
+          else if (d.targetId === "section:composite-templates") item.kind = "composite";
+          markDirty();
+          renderScreenList();
         } else if (item.type === "folder") {
           item.parentId = null;
           item.category = "template";
@@ -38551,6 +38740,7 @@
     }
     if (window.RED && window.RED.events && typeof window.RED.events.on === "function") {
       window.RED.events.on("flows:loaded", function() {
+        state.flowsLoaded = true;
         state.screensLoaded = false;
         state.projectConfigNode = null;
         ensureScreensLoaded(function() {
@@ -38594,6 +38784,11 @@
           }
         });
       }
+    });
+  }
+  if (typeof window.RED !== "undefined" && window.RED.events && typeof window.RED.events.on === "function") {
+    window.RED.events.on("flows:loaded", function() {
+      state.flowsLoaded = true;
     });
   }
 })();

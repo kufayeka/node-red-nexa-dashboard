@@ -331,7 +331,8 @@ const appVarsSection = treeNodes[3];
 const groupANode = screensSection.children.find(n => n.id === groupA.id);
 console.log('Group A node is container in screensSection?', groupANode && groupANode.container === true);
 console.log('Group A contains screen1 as child in treeNodes?', groupANode && groupANode.children.some(c => c.id === screen1.id));
-console.log('Templates section contains template1?', templatesSection.children.some(n => n.id === template1.id));
+const templateFound = templatesSection.children.some(n => n.id === template1.id || (n.children && n.children.some(c => c.id === template1.id)));
+console.log('Templates section contains template1?', templateFound);
 console.log('Flows section contains flow1?', flowsSection.children.some(n => n.id === flow1.id));
 
 const screenTreeNode = groupANode.children.find(c => c.id === screen1.id);

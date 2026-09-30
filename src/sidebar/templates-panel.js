@@ -63,7 +63,7 @@ export function renderTemplateList() {
 
         // --- ROW 1: Icon + Template Name + Identifier ---
         // Icon
-        window.$("<i>", { class: "fa fa-clone", style: "color: #f59e0b; font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
+        window.$("<i>", { class: t.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone", style: (t.kind === "component" ? "color: #10b981;" : "color: #f59e0b;") + " font-size: 11px; margin-right: 4px; flex: 0 0 auto;" }).appendTo(row);
 
         // Name
         window.$("<span>", {
@@ -186,7 +186,15 @@ export function showEditBar() {
         window.$("<a>", { href: "#" }).text("← Back to Screens").css({ "margin-left": "auto" })
             .on("click", function (e) { e.preventDefault(); exitTemplateEditing(); }).appendTo(editBarEl);
     }
-    editBarEl.find(".nexa-template-edit-label").text("Editing Template: " + (template ? template.name : "?"));
+    var isComp = template && template.kind === "component";
+    editBarEl.css({
+        background: isComp ? "#f0fdf4" : "#fff3e0",
+        "border-bottom": isComp ? "1px solid #bbf7d0" : "1px solid #ffcc80"
+    });
+    var labelHtml = isComp
+        ? '<i class="fa fa-puzzle-piece" style="color: #16a34a; margin-right: 5px;"></i><strong>Editing Component Template (Preview Stage):</strong> ' + (template ? template.name : "?")
+        : '<i class="fa fa-clone" style="color: #f59e0b; margin-right: 5px;"></i><strong>Editing Template:</strong> ' + (template ? template.name : "?");
+    editBarEl.find(".nexa-template-edit-label").html(labelHtml);
     editBarEl.show();
 }
 
@@ -207,6 +215,7 @@ export function renderTemplateForm(targetEl) {
     var template = findTemplate(state.activeTemplateId);
     if (!template) return;
 
+    var isComp = template.kind === "component";
     var header = window.$("<div>").css({
         "font-weight": "bold",
         "font-size": "13px",
@@ -217,7 +226,39 @@ export function renderTemplateForm(targetEl) {
         display: "flex",
         "align-items": "center",
         gap: "6px"
-    }).html('<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties').appendTo(formEl);
+    }).html(isComp
+        ? '<i class="fa fa-puzzle-piece" style="color: #10b981;"></i> Component Template Properties'
+        : '<i class="fa fa-sliders" style="color: #f59e0b;"></i> Template Properties'
+    ).appendTo(formEl);
+
+    if (isComp) {
+        window.$("<div>").css({
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            "border-radius": "6px",
+            padding: "8px 12px",
+            "margin-bottom": "12px",
+            "font-size": "11px",
+            color: "#166534",
+            "line-height": "1.4"
+        }).html('<strong><i class="fa fa-info-circle"></i> Component Template</strong><br>This canvas is an isolated preview stage for a single component. When populated or rendered into a container, only the single component inside is rendered directly without extra canvas wrapper frames.').appendTo(formEl);
+    }
+
+    // Template Kind Selector
+    var kindRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Template Type").appendTo(kindRow);
+    var kindSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(kindRow);
+    window.$("<option>", { value: "composite" }).text("Composite Template (Full layout)").appendTo(kindSelect);
+    window.$("<option>", { value: "component" }).text("Component Template (Single component preview)").appendTo(kindSelect);
+    kindSelect.val(template.kind || "composite");
+    kindSelect.on("change", function () {
+        template.kind = kindSelect.val();
+        markDirty();
+        renderTemplateList();
+        if (typeof window.__refreshScreensFlowsTree === "function") window.__refreshScreensFlowsTree();
+        renderTemplateForm(targetEl);
+        showEditBar();
+    });
 
     function row(label, field, value, type) {
         var r = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(formEl);

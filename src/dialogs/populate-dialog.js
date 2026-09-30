@@ -86,7 +86,7 @@ export function openPopulateNodeEditor(node) {
                 return sel;
             };
             label("Template (one copy per item)");
-            select("template", templates.length ? templates.map(function (t) { return [t.id, t.name]; }) : [["", "(no templates yet)"]], function () { d.itemParam = undefined; fillParams(); });
+            select("template", templates.length ? templates.map(function (t) { return [t.id, t.name + (t.kind === "component" ? " (Component)" : "")]; }) : [["", "(no templates yet)"]], function () { d.itemParam = undefined; fillParams(); });
             label("Pass each item into the template's param");
             var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function () { d.itemParam = paramSel.val(); });
             var paramHint = window.$("<div>").css({ "font-size": "11px", color: "#b00", "margin-top": "4px" }).appendTo(body);

@@ -133,6 +133,36 @@ export function buildScreensFlowsTreeNodes() {
         children: []
     };
 
+    var compositeTemplates = state.templates.filter(function (t) { return t.kind !== "component"; });
+    var componentTemplates = state.templates.filter(function (t) { return t.kind === "component"; });
+
+    var compositeGroup = {
+        id: "section:composite-templates",
+        label: "Composite Templates",
+        icon: "fa fa-cubes",
+        container: true,
+        type: "template-category",
+        badge: String(compositeTemplates.length),
+        actions: [
+            { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+            { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+        ],
+        children: []
+    };
+
+    var componentGroup = {
+        id: "section:component-templates",
+        label: "Component Templates",
+        icon: "fa fa-puzzle-piece",
+        container: true,
+        type: "template-category",
+        badge: String(componentTemplates.length),
+        actions: [
+            { id: "add-component-template", icon: "fa fa-plus", title: "Add Component Template" }
+        ],
+        children: []
+    };
+
     var templatesSection = {
         id: "section:templates",
         label: "Templates",
@@ -141,10 +171,10 @@ export function buildScreensFlowsTreeNodes() {
         type: "section",
         badge: String(state.templates.length),
         actions: [
-            { id: "add-template", icon: "fa fa-plus", title: "Add Template" },
-            { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+            { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+            { id: "add-component-template", icon: "fa fa-puzzle-piece", title: "Add Component Template" }
         ],
-        children: []
+        children: [compositeGroup, componentGroup]
     };
 
     var flowsSection = {
@@ -169,11 +199,13 @@ export function buildScreensFlowsTreeNodes() {
         }
     }
 
-    function placeInTemplate(itemNode, parentId) {
+    function placeInTemplate(itemNode, parentId, kind) {
         if (parentId && folderNodes[parentId]) {
             folderNodes[parentId].children.push(itemNode);
+        } else if (kind === "component") {
+            componentGroup.children.push(itemNode);
         } else {
-            templatesSection.children.push(itemNode);
+            compositeGroup.children.push(itemNode);
         }
     }
 
@@ -282,7 +314,7 @@ export function buildScreensFlowsTreeNodes() {
             id: t.id,
             label: t.name,
             title: t.name + (t.identifier ? " (@" + t.identifier + ")" : ""),
-            icon: "fa fa-clone",
+            icon: t.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
             type: "template",
             container: true,
             children: [varsGroup, paramsGroup],
@@ -292,7 +324,7 @@ export function buildScreensFlowsTreeNodes() {
                 { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
             ]
         };
-        placeInTemplate(node, t.parentId);
+        placeInTemplate(node, t.parentId, t.kind);
     });
 
     // Flows
@@ -386,9 +418,15 @@ export function buildScreensFlowsTreeNodes() {
 
 function onScreensFlowsSelect(e) {
     var id = e.detail.id;
-    if (id === "section:screens" || id === "section:templates" || id === "section:flows" || id === "section:app-variables") {
+    if (id === "section:screens" || id === "section:templates" || id === "section:flows" || id === "section:app-variables" || id === "section:composite-templates" || id === "section:component-templates") {
         if (id === "section:screens" && state.editingMode !== "screen" && state.screens.length) {
             selectScreenFromSidebar(state.activeScreenId || state.screens[0].id);
+        } else if (id === "section:composite-templates") {
+            var compT = state.templates.find(function (t) { return t.kind !== "component"; });
+            if (compT) selectTemplateFromScreensPanel(compT.id);
+        } else if (id === "section:component-templates") {
+            var cT = state.templates.find(function (t) { return t.kind === "component"; });
+            if (cT) selectTemplateFromScreensPanel(cT.id);
         } else if (id === "section:templates" && state.editingMode !== "template" && state.templates.length) {
             selectTemplateFromScreensPanel(state.activeTemplateId || state.templates[0].id);
         } else if (id === "section:flows" && state.editingMode !== "flow" && state.flows.length) {
@@ -505,8 +543,12 @@ function onScreensFlowsAction(e) {
         addScreenFromSidebar({ parentId: null });
         return;
     }
-    if (action === "add-template") {
-        addTemplateFromScreensPanel({ parentId: null });
+    if (action === "add-template" || action === "add-composite-template") {
+        addTemplateFromScreensPanel({ parentId: null, kind: "composite" });
+        return;
+    }
+    if (action === "add-component-template") {
+        addTemplateFromScreensPanel({ parentId: null, kind: "component" });
         return;
     }
     if (action === "add-flow") {
@@ -837,15 +879,21 @@ function onScreensFlowsMove(e) {
                 item.parentId = null;
                 item.category = "screen";
             }
-        } else if (d.targetId === "section:templates") {
+        } else if (d.targetId === "section:templates" || d.targetId === "section:composite-templates" || d.targetId === "section:component-templates") {
             if (item.type === "screen") {
                 var tmpl = convertScreenToTemplate(item.id);
                 tmpl.parentId = null;
+                if (d.targetId === "section:component-templates") tmpl.kind = "component";
+                else tmpl.kind = "composite";
                 markDirty();
                 selectTemplateFromScreensPanel(tmpl.id);
                 return;
             } else if (item.type === "template") {
                 item.parentId = null;
+                if (d.targetId === "section:component-templates") item.kind = "component";
+                else if (d.targetId === "section:composite-templates") item.kind = "composite";
+                markDirty();
+                renderScreenList();
             } else if (item.type === "folder") {
                 item.parentId = null;
                 item.category = "template";

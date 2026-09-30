@@ -318,7 +318,15 @@ state.templates = [tmpl1];
 
 const updatedNodes = api.buildScreensFlowsTreeNodes();
 const tmplSec = updatedNodes[1];
-const tmplNode = tmplSec.children.find(c => c.id === tmpl1.id);
+let tmplNode = tmplSec.children.find(c => c.id === tmpl1.id);
+if (!tmplNode) {
+  for (const group of tmplSec.children) {
+    if (group.children) {
+      const found = group.children.find(c => c.id === tmpl1.id);
+      if (found) { tmplNode = found; break; }
+    }
+  }
+}
 console.log('Template node is container with 2 children (Variables & Parameters)?', tmplNode && tmplNode.container && tmplNode.children.length === 2);
 const tmplVarsGroup = tmplNode.children[0];
 const tmplParamsGroup = tmplNode.children[1];

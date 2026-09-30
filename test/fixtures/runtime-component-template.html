@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>component-template</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Component template: a template whose kind="component" that holds a single text component.
+     Used in:
+       1. A static @template instance on the screen (direct render).
+       2. A Populate node (mountRepeated) to prove items populate correctly.
+     test/runtime-component-template-browser.test.js -->
+<div id="nexa-runtime-artboard" style="width:800px;height:600px;"></div>
+<script src="/lib/nexa-registry-client.js"></script>
+<script>
+// Context map — btn component writes here so the test can call ctx.emit
+window.__ctx = {};
+
+// A simple text component: renders its "text" prop as textContent.
+NEXA.registerComponent("text", {
+    render: function (el, p) { el.textContent = String(p.text || ""); }
+});
+
+// A trigger button — saves its context so the test can fire events via ctx.emit
+NEXA.registerComponent("btn", {
+    render: function (el, p, ctx) {
+        window.__ctx[el.getAttribute("data-id")] = ctx;
+        el.textContent = p.label || "";
+    }
+});
+
+// ── Templates ──────────────────────────────────────────────────────────────
+// A component template: kind="component", single text child.
+// When populated, only the text element is injected — no canvas wrapper div.
+// itemParam="row" → each item object goes into param "row" → text uses {row.name}
+window.__NEXA_TEMPLATES__ = [
+    {
+        id: "TXT",
+        name: "TextLabel",
+        kind: "component",
+        width: 200, height: 30,
+        params: [
+            { id: "tp", name: "row", label: "Row", type: "object", defaultValue: {} }
+        ],
+        components: [
+            { id: "lbl", type: "text", x: 0, y: 0, w: 200, h: 30,
+              props: { text: "{row.name}" } }
+        ],
+        logic: { nodes: [], wires: [] }
+    }
+];
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+// - "static":  a direct @template instance with a fixed param value
+// - "list":    a vertical frame populated via Populate node
+// - "ctl":     a hidden btn whose ctx.emit fires the Populate logic
+window.__NEXA_SCREEN__ = {
+    id: "s", width: 800, height: 600, treeVersion: 1, orphans: [],
+    components: [
+        // static instance: should directly render "Hello Nexa"
+        // paramValues.row is an object whose .name field is interpolated as {row.name}
+        { id: "static", type: "@template", templateId: "TXT",
+          x: 10, y: 10, w: 200, h: 30,
+          paramValues: { row: { name: "Hello Nexa" } } },
+        // container frame for the Populate node
+        { id: "list", type: "@frame", name: "List",
+          x: 10, y: 60, w: 400, h: 400,
+          layout: { mode: "vertical", gap: 4 },
+          children: [] },
+        // invisible trigger button — the test calls window.__ctx["ctl"].emit(...)
+        { id: "ctl", type: "btn", x: 700, y: 0, w: 1, h: 1, props: { label: "" } }
+    ],
+    logic: {
+        nodes: [
+            { id: "ev",  type: "ui-event",  compId: "ctl", event: "populate" },
+            { id: "pop", type: "populate",
+              container: "list", template: "TXT",
+              itemParam: "row", key: "id",
+              mode: "replace", valueSource: "payload" }
+        ],
+        wires: [{ id: "w1", from: "ev", to: "pop" }]
+    }
+};
+</script>
+<script src="/lib/nexa-model-client.js"></script>
+<script src="/lib/nexa-runtime-client.js"></script>
+</body></html>
