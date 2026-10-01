@@ -258,8 +258,10 @@ console.log('Shared Variables section exists with id section:shared-variables?',
 const screenNode = screensSec.children.find(c => c.id === screen1.id);
 console.log('Screen has no redundant badge?', screenNode.badge === undefined);
 console.log('Screen has no open action?', !screenNode.actions.some(a => a.id === 'open'));
-console.log('Screen has add-screen-var action?', screenNode.actions.some(a => a.id === 'add-screen-var'));
-console.log('Screen has screen variable as child in tree?', screenNode.children.some(c => c.id === 'screen-var:' + screen1.id + ':sv1'));
+const varsGroupNode = screenNode.children.find(c => c.id === 'screen-vars-group:' + screen1.id);
+console.log('Screen has Variables group node as child in tree?', !!varsGroupNode);
+console.log('Screen Variables group node has add-screen-var action?', varsGroupNode && varsGroupNode.actions.some(a => a.id === 'add-screen-var'));
+console.log('Screen Variables group contains screen variable as child?', varsGroupNode && varsGroupNode.children.some(c => c.id === 'screen-var:' + screen1.id + ':sv1'));
 
 const flowNode = flowsSec.children.find(c => c.id === flow1.id);
 console.log('Flow has no redundant badge?', flowNode.badge === undefined);

@@ -35692,6 +35692,18 @@
           ]
         };
       });
+      var varsGroup = {
+        id: "screen-vars-group:" + s.id,
+        label: "Variables",
+        icon: "fa fa-tags",
+        type: "screen-vars-group",
+        container: true,
+        badge: String(screenVars.length),
+        actions: [
+          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" }
+        ],
+        children: screenVars
+      };
       var node = {
         id: s.id,
         label: s.name,
@@ -35699,7 +35711,7 @@
         icon: "fa fa-desktop",
         type: "screen",
         container: true,
-        children: screenVars,
+        children: [varsGroup],
         muted: !!s.disabled,
         actions: [
           { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
@@ -35946,6 +35958,25 @@
       renderScreenForm();
       return;
     }
+    if (id2.startsWith("screen-vars-group:")) {
+      var sId = id2.substring("screen-vars-group:".length);
+      var scr = state.screens.find(function(s) {
+        return s.id === sId;
+      });
+      if (state.activeScreenId !== sId) {
+        selectScreenFromSidebar(sId);
+      }
+      if (scr && scr.variables && scr.variables.length) {
+        state.editingMode = "screen-variable";
+        state.activeScreenVariableId = scr.variables[0].id;
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["screen-var:" + sId + ":" + scr.variables[0].id];
+      } else {
+        state.editingMode = "screen-vars-group";
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
+      }
+      renderScreenForm();
+      return;
+    }
     if (id2.startsWith("template-vars-group:")) {
       var tId = id2.substring("template-vars-group:".length);
       var tmpl = findTemplate(tId);
@@ -36077,8 +36108,9 @@
       return;
     }
     if (action === "add-screen-var") {
+      var sId = id2.startsWith("screen-vars-group:") ? id2.substring("screen-vars-group:".length) : id2;
       var s = state.screens.find(function(sc2) {
-        return sc2.id === id2;
+        return sc2.id === sId;
       });
       if (s) {
         s.variables = s.variables || [];
@@ -36577,7 +36609,7 @@
       treeHost.get(0).appendChild(treeEl2);
       var nodes = buildScreensFlowsTreeNodes();
       treeEl2.nodes = nodes;
-      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
       treeEl2.selected = activeId ? [activeId] : [];
       state.screensFlowsTreeEl = treeEl2;
     }
@@ -37128,6 +37160,36 @@
         renderTemplateParamPropertiesForm(tmplParam, tmpl);
         return;
       }
+    }
+    if (state.editingMode === "screen-vars-group") {
+      var scr = state.screens.find(function(s) {
+        return s.id === state.activeScreenId;
+      });
+      window.$("<div>").css({
+        "font-weight": "bold",
+        "font-size": "13px",
+        "margin-bottom": "14px",
+        "padding-bottom": "8px",
+        "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        color: "var(--red-ui-primary-text-color, #1e293b)",
+        display: "flex",
+        "align-items": "center",
+        gap: "6px"
+      }).html('<i class="fa fa-tags" style="color: #0284c7;"></i> Screen Variables (' + (scr ? scr.name : "Screen") + ")").appendTo(state.screenFormEl);
+      window.$("<div>").css({
+        "margin-bottom": "14px",
+        padding: "10px 12px",
+        background: "#f0f9ff",
+        border: "1px solid #bae6fd",
+        "border-radius": "6px",
+        "font-size": "11px",
+        color: "#0369a1",
+        "line-height": "1.4"
+      }).html("<strong>Screen Variables (" + (scr ? scr.name : "Screen") + ")</strong><br>Variables scoped to this screen. Available to all components on this screen. Click <strong>+ Add Variable</strong> to create one.").appendTo(state.screenFormEl);
+      window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ display: "inline-flex", "align-items": "center", gap: "4px" }).html('<i class="fa fa-plus"></i> Add Variable').on("click", function() {
+        if (scr) onScreensFlowsAction({ detail: { id: "screen-vars-group:" + scr.id, action: "add-screen-var" } });
+      }).appendTo(state.screenFormEl);
+      return;
     }
     if (state.editingMode === "template-vars-group") {
       var tmpl = findTemplate(state.activeTemplateId);

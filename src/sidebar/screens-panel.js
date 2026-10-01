@@ -247,6 +247,19 @@ export function buildScreensFlowsTreeNodes() {
             };
         });
 
+        var varsGroup = {
+            id: "screen-vars-group:" + s.id,
+            label: "Variables",
+            icon: "fa fa-tags",
+            type: "screen-vars-group",
+            container: true,
+            badge: String(screenVars.length),
+            actions: [
+                { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" }
+            ],
+            children: screenVars
+        };
+
         var node = {
             id: s.id,
             label: s.name,
@@ -254,7 +267,7 @@ export function buildScreensFlowsTreeNodes() {
             icon: "fa fa-desktop",
             type: "screen",
             container: true,
-            children: screenVars,
+            children: [varsGroup],
             muted: !!s.disabled,
             actions: [
                 { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
@@ -514,6 +527,23 @@ function onScreensFlowsSelect(e) {
         renderScreenForm();
         return;
     }
+    if (id.startsWith("screen-vars-group:")) {
+        var sId = id.substring("screen-vars-group:".length);
+        var scr = state.screens.find(function (s) { return s.id === sId; });
+        if (state.activeScreenId !== sId) {
+            selectScreenFromSidebar(sId);
+        }
+        if (scr && scr.variables && scr.variables.length) {
+            state.editingMode = "screen-variable";
+            state.activeScreenVariableId = scr.variables[0].id;
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = ["screen-var:" + sId + ":" + scr.variables[0].id];
+        } else {
+            state.editingMode = "screen-vars-group";
+            if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        }
+        renderScreenForm();
+        return;
+    }
     if (id.startsWith("template-vars-group:")) {
         var tId = id.substring("template-vars-group:".length);
         var tmpl = findTemplate(tId);
@@ -632,7 +662,8 @@ function onScreensFlowsAction(e) {
         return;
     }
     if (action === "add-screen-var") {
-        var s = state.screens.find(function (sc) { return sc.id === id; });
+        var sId = id.startsWith("screen-vars-group:") ? id.substring("screen-vars-group:".length) : id;
+        var s = state.screens.find(function (sc) { return sc.id === sId; });
         if (s) {
             s.variables = s.variables || [];
             var newVar = { id: genId(), name: "var" + (s.variables.length + 1), type: "string", defaultValue: "" };
@@ -1110,6 +1141,7 @@ export function renderScreenList() {
         var activeId = state.editingMode === "app-variable" ? ("app-var:" + state.activeAppVariableId)
             : state.editingMode === "shared-variable" ? ("shared-var:" + state.activeSharedVariableId)
             : state.editingMode === "screen-variable" ? ("screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId)
+            : state.editingMode === "screen-vars-group" ? ("screen-vars-group:" + state.activeScreenId)
             : state.editingMode === "template-variable" ? ("template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId)
             : state.editingMode === "template-param" ? ("template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId)
             : state.editingMode === "flow" ? state.activeFlowId
@@ -1737,6 +1769,28 @@ export function renderScreenForm() {
             renderTemplateParamPropertiesForm(tmplParam, tmpl);
             return;
         }
+    }
+
+    if (state.editingMode === "screen-vars-group") {
+        var scr = state.screens.find(function (s) { return s.id === state.activeScreenId; });
+        window.$("<div>").css({
+            "font-weight": "bold", "font-size": "13px", "margin-bottom": "14px", "padding-bottom": "8px",
+            "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+            color: "var(--red-ui-primary-text-color, #1e293b)", display: "flex", "align-items": "center", gap: "6px"
+        }).html('<i class="fa fa-tags" style="color: #0284c7;"></i> Screen Variables (' + (scr ? scr.name : "Screen") + ')').appendTo(state.screenFormEl);
+
+        window.$("<div>").css({
+            "margin-bottom": "14px", padding: "10px 12px", background: "#f0f9ff", border: "1px solid #bae6fd",
+            "border-radius": "6px", "font-size": "11px", color: "#0369a1", "line-height": "1.4"
+        }).html('<strong>Screen Variables (' + (scr ? scr.name : "Screen") + ')</strong><br>Variables scoped to this screen. Available to all components on this screen. Click <strong>+ Add Variable</strong> to create one.').appendTo(state.screenFormEl);
+
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" })
+            .css({ display: "inline-flex", "align-items": "center", gap: "4px" })
+            .html('<i class="fa fa-plus"></i> Add Variable')
+            .on("click", function () {
+                if (scr) onScreensFlowsAction({ detail: { id: "screen-vars-group:" + scr.id, action: "add-screen-var" } });
+            }).appendTo(state.screenFormEl);
+        return;
     }
 
     if (state.editingMode === "template-vars-group") {

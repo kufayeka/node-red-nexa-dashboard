@@ -17,7 +17,7 @@ const project = {
 };
 const surface = { id: "s1", name: "Screen 1", variables: [] };
 
-const decls = allDeclarations(surface, function () {}, project);
+const decls = allDeclarations(surface, function () { }, project);
 const sharedDecl = decls.find(d => d.scopeId === "@shared" && d.variable.name === "systemState");
 assert(sharedDecl, "systemState should be visible with scopeId: '@shared'");
 console.log("-> @shared declarations exposed in allDeclarations: PASS");
@@ -53,13 +53,13 @@ const clientAFrames = [];
 const clientBFrames = [];
 
 const clientA = hub.addClient({
-    sendText() {},
+    sendText() { },
     sendBinary(b) { clientAFrames.push(b); },
     bufferedAmount() { return 0; }
 });
 
 const clientB = hub.addClient({
-    sendText() {},
+    sendText() { },
     sendBinary(b) { clientBFrames.push(b); },
     bufferedAmount() { return 0; }
 });
