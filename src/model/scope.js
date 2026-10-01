@@ -76,12 +76,14 @@ export function visibleVariables(surface, ancestors, isTemplate, self, app) {
     if (isTemplate) add(surface.params, { id: surface.id, name: surface.name || "template", kind: "template" }, "defaultValue");
     add(surface.variables, { id: surface.id, name: isTemplate ? (surface.name || "template") : "screen", kind: isTemplate ? "template" : "screen" }, "defaultValue");
     if (app) add(app.variables, { id: "@app", name: "App", kind: "app" }, "defaultValue");
+    if (app && app.sharedVariables) add(app.sharedVariables, { id: "@shared", name: "Shared / Server", kind: "shared" }, "defaultValue");
     return out;
 }
 
 /** Every variable declaration of a surface: [{ scopeId ("" = the surface), scopeName, variable }]. */
 export function allDeclarations(surface, walk, app) {
     var out = [];
+    if (app && app.sharedVariables) (app.sharedVariables || []).forEach(function (v) { out.push({ scopeId: "@shared", scopeName: "Shared / Server", variable: v }); });
     if (app) (app.variables || []).forEach(function (v) { out.push({ scopeId: "@app", scopeName: "App", variable: v }); });
     // a template's params: its Logic reads them like variables ({param1}, Get Variable, vars.get)
     (surface.params || []).forEach(function (p) { if (p && p.name) out.push({ scopeId: "", scopeName: "Template", variable: { id: p.id, name: p.name, type: p.type, defaultValue: p.defaultValue }, param: true }); });

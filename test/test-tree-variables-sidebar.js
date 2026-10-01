@@ -244,14 +244,16 @@ screen1.variables = [
 ];
 
 const nodes = api.buildScreensFlowsTreeNodes();
-console.log('Root sections count is 4?', nodes.length === 4);
+console.log('Root sections count is 5?', nodes.length === 5);
 const screensSec = nodes[0];
 const templatesSec = nodes[1];
 const flowsSec = nodes[2];
 const appVarsSec = nodes[3];
+const sharedVarsSec = nodes[4];
 
 console.log('Screens section exists with id section:screens?', screensSec.id === 'section:screens');
 console.log('App Variables section exists with id section:app-variables?', appVarsSec.id === 'section:app-variables');
+console.log('Shared Variables section exists with id section:shared-variables?', sharedVarsSec.id === 'section:shared-variables');
 
 const screenNode = screensSec.children.find(c => c.id === screen1.id);
 console.log('Screen has no redundant badge?', screenNode.badge === undefined);

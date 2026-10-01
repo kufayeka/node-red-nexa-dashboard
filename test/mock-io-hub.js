@@ -131,6 +131,21 @@ const cm = { transport: fakeTransport(), keys: new Set(), dirty: new Set(), inde
 hubM._subscribe(cm, ['G::E::D::a', 'G2::E2::D::b']);
 check('onMissing gets only the tags not in the cache', JSON.stringify(missing) === '["G2::E2::D::b"]', missing);
 
+// shared variables: set-var message updates cache and is dispatched in next frame
+const hubS = new IoHub();
+const ts = fakeTransport(); const cs = hubS.addClient(ts);
+hubS.setSharedVar('room_temp', 24.5);
+hubS.handleText(cs, { t: 'open', rpi: 20, keys: [] });
+clearInterval(cs.timer);
+const layoutMsg = ts.texts.find(t => t.t === 'layout');
+const roomTempIdx = layoutMsg && (layoutMsg.add.find(a => a[1] === '@shared::room_temp') || [])[0];
+check('initial frame contains @shared::room_temp', ts.frames[0].entries.some(e => e.idx === roomTempIdx && e.value === 24.5), ts.frames[0].entries);
+hubS.handleText(cs, { t: 'set-var', name: 'room_temp', value: 28 });
+hubS.tick(cs);
+const updatedEntry = ts.frames[1] && ts.frames[1].entries.find(e => e.idx === roomTempIdx);
+check('shared var update produces binary frame with new value', updatedEntry && updatedEntry.value === 28, updatedEntry);
+hubS.close();
+
 hub.close(); hubW.close(); hubM.close();
 if (!failures) console.log('ALL OK');
 process.exit(failures ? 1 : 0);

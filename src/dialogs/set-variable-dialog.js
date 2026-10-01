@@ -47,8 +47,12 @@ export function openSetVariableNodeEditor(node) {
         draft.name = nameSel.val() || "";
     }
 
-    var scopes = [{ id: "@app", name: "App (every screen)" }, { id: "", name: surfaceLabel }];
-    decls.forEach(function (d) { if (d.scopeId && d.scopeId !== "@app" && !scopes.some(function (s) { return s.id === d.scopeId; })) scopes.push({ id: d.scopeId, name: d.scopeName }); });
+    var scopes = [
+        { id: "@shared", name: "Shared / Server (Realtime across all devices)" },
+        { id: "@app", name: "App (every screen)" },
+        { id: "", name: surfaceLabel }
+    ];
+    decls.forEach(function (d) { if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function (s) { return s.id === d.scopeId; })) scopes.push({ id: d.scopeId, name: d.scopeName }); });
     if (draft.scope && !scopes.some(function (s) { return s.id === draft.scope; })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
 
     window.RED.tray.show({

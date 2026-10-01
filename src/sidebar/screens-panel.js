@@ -75,6 +75,21 @@ export function addAppVariableFromSidebar() {
     }
 }
 
+export function addSharedVariableFromSidebar() {
+    var app = getApp();
+    app.sharedVariables = app.sharedVariables || [];
+    var newVar = { id: genId(), name: "sharedVar" + (app.sharedVariables.length + 1), type: "string", defaultValue: "" };
+    app.sharedVariables.push(newVar);
+    state.editingMode = "shared-variable";
+    state.activeSharedVariableId = newVar.id;
+    markDirty();
+    renderScreenList();
+    renderScreenForm();
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+        state.screensFlowsTreeEl.reveal("shared-var:" + newVar.id);
+    }
+}
+
 function reorderInArray(arr, itemId, targetId, position) {
     var fromIdx = arr.findIndex(function (x) { return x.id === itemId; });
     if (fromIdx === -1) return false;
@@ -372,6 +387,32 @@ export function buildScreensFlowsTreeNodes() {
         })
     };
 
+    // Shared Variables Root Section (Server-synced realtime)
+    var sharedVars = app.sharedVariables || [];
+    var sharedVarsSection = {
+        id: "section:shared-variables",
+        label: "Shared Variables (Realtime Server)",
+        icon: "fa fa-refresh",
+        container: true,
+        type: "section",
+        badge: String(sharedVars.length),
+        actions: [
+            { id: "add-shared-var", icon: "fa fa-plus", title: "Add Shared Variable" }
+        ],
+        children: sharedVars.map(function (v) {
+            return {
+                id: "shared-var:" + v.id,
+                label: v.name,
+                title: v.name + " (" + (v.type || "string") + " [realtime server sync])",
+                icon: "fa fa-database",
+                type: "shared-variable",
+                actions: [
+                    { id: "delete-shared-var", icon: "fa fa-trash-o", title: "Delete variable" }
+                ]
+            };
+        })
+    };
+
     // Folders placement into their section or parent folder (preserving folders order)
     var screenFolderList = [], templateFolderList = [], flowFolderList = [];
     state.folders.forEach(function (f) {
@@ -413,12 +454,12 @@ export function buildScreensFlowsTreeNodes() {
     templatesSection.badge = String(state.templates.length);
     flowsSection.badge = String(state.flows.length);
 
-    return [screensSection, templatesSection, flowsSection, appVarsSection];
+    return [screensSection, templatesSection, flowsSection, appVarsSection, sharedVarsSection];
 }
 
 function onScreensFlowsSelect(e) {
     var id = e.detail.id;
-    if (id === "section:screens" || id === "section:templates" || id === "section:flows" || id === "section:app-variables" || id === "section:composite-templates" || id === "section:component-templates") {
+    if (id === "section:screens" || id === "section:templates" || id === "section:flows" || id === "section:app-variables" || id === "section:shared-variables" || id === "section:composite-templates" || id === "section:component-templates") {
         if (id === "section:screens" && state.editingMode !== "screen" && state.screens.length) {
             selectScreenFromSidebar(state.activeScreenId || state.screens[0].id);
         } else if (id === "section:composite-templates") {
@@ -439,12 +480,27 @@ function onScreensFlowsSelect(e) {
                 if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
                 renderScreenForm();
             }
+        } else if (id === "section:shared-variables") {
+            var app = getApp();
+            if (app.sharedVariables && app.sharedVariables.length) {
+                state.editingMode = "shared-variable";
+                state.activeSharedVariableId = app.sharedVariables[0].id;
+                if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+                renderScreenForm();
+            }
         }
         return;
     }
     if (id.startsWith("app-var:")) {
         state.editingMode = "app-variable";
         state.activeAppVariableId = id.substring("app-var:".length);
+        if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
+        renderScreenForm();
+        return;
+    }
+    if (id.startsWith("shared-var:")) {
+        state.editingMode = "shared-variable";
+        state.activeSharedVariableId = id.substring("shared-var:".length);
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
         return;
@@ -571,6 +627,10 @@ function onScreensFlowsAction(e) {
         addAppVariableFromSidebar();
         return;
     }
+    if (action === "add-shared-var") {
+        addSharedVariableFromSidebar();
+        return;
+    }
     if (action === "add-screen-var") {
         var s = state.screens.find(function (sc) { return sc.id === id; });
         if (s) {
@@ -669,6 +729,21 @@ function onScreensFlowsAction(e) {
             app.variables = app.variables.filter(function (v) { return v.id !== varId; });
             if (state.activeAppVariableId === varId) {
                 state.activeAppVariableId = null;
+                state.editingMode = "screen";
+            }
+            markDirty();
+            renderScreenList();
+            renderScreenForm();
+            return;
+        }
+    }
+    if (action === "delete-shared-var") {
+        var varId = id.startsWith("shared-var:") ? id.substring("shared-var:".length) : id;
+        var app = getApp();
+        if (app && app.sharedVariables) {
+            app.sharedVariables = app.sharedVariables.filter(function (v) { return v.id !== varId; });
+            if (state.activeSharedVariableId === varId) {
+                state.activeSharedVariableId = null;
                 state.editingMode = "screen";
             }
             markDirty();
@@ -918,7 +993,7 @@ function onScreensFlowsMove(e) {
             }
         }
     } else {
-        if (d.targetId === "section:screens" || d.targetId === "section:templates" || d.targetId === "section:flows" || d.targetId === "section:app-variables") {
+        if (d.targetId === "section:screens" || d.targetId === "section:templates" || d.targetId === "section:flows" || d.targetId === "section:app-variables" || d.targetId === "section:shared-variables") {
             return;
         }
 
@@ -926,6 +1001,13 @@ function onScreensFlowsMove(e) {
         if (d.id.startsWith("app-var:") && d.targetId.startsWith("app-var:")) {
             var app = getApp();
             reorderInArray(app.variables || [], d.id.substring("app-var:".length), d.targetId.substring("app-var:".length), d.position);
+            markDirty();
+            renderScreenList();
+            return;
+        }
+        if (d.id.startsWith("shared-var:") && d.targetId.startsWith("shared-var:")) {
+            var app = getApp();
+            reorderInArray(app.sharedVariables || [], d.id.substring("shared-var:".length), d.targetId.substring("shared-var:".length), d.position);
             markDirty();
             renderScreenList();
             return;
@@ -1026,6 +1108,7 @@ export function renderScreenList() {
         var nodes = buildScreensFlowsTreeNodes();
         treeEl.nodes = nodes;
         var activeId = state.editingMode === "app-variable" ? ("app-var:" + state.activeAppVariableId)
+            : state.editingMode === "shared-variable" ? ("shared-var:" + state.activeSharedVariableId)
             : state.editingMode === "screen-variable" ? ("screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId)
             : state.editingMode === "template-variable" ? ("template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId)
             : state.editingMode === "template-param" ? ("template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId)
@@ -1310,6 +1393,7 @@ function renderFolderForm(folder) {
 function renderVariablePropertiesForm(variable, isApp, surface) {
     var isTmpl = isApp === "template";
     var isAppVar = isApp === true;
+    var isSharedVar = isApp === "shared";
     var header = window.$("<div>").css({
         "font-weight": "bold",
         "font-size": "13px",
@@ -1320,28 +1404,32 @@ function renderVariablePropertiesForm(variable, isApp, surface) {
         display: "flex",
         "align-items": "center",
         gap: "6px"
-    }).html(isAppVar
-        ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties'
-        : isTmpl
-            ? '<i class="fa fa-tag" style="color: #0284c7;"></i> Template Variable Properties (' + (surface ? surface.name : "Template") + ')'
-            : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (surface ? surface.name : "Screen") + ')'
+    }).html(isSharedVar
+        ? '<i class="fa fa-refresh" style="color: #059669;"></i> Shared Variable Properties (Server Realtime)'
+        : isAppVar
+            ? '<i class="fa fa-globe" style="color: #6366f1;"></i> App Variable Properties'
+            : isTmpl
+                ? '<i class="fa fa-tag" style="color: #0284c7;"></i> Template Variable Properties (' + (surface ? surface.name : "Template") + ')'
+                : '<i class="fa fa-tag" style="color: #0284c7;"></i> Screen Variable Properties (' + (surface ? surface.name : "Screen") + ')'
     ).appendTo(state.screenFormEl);
 
     // Context / info box
     window.$("<div>").css({
         "margin-bottom": "14px",
         padding: "8px 12px",
-        background: isAppVar ? "#f5f3ff" : "#f0f9ff",
-        border: "1px solid " + (isAppVar ? "#ddd6fe" : "#bae6fd"),
+        background: isSharedVar ? "#ecfdf5" : isAppVar ? "#f5f3ff" : "#f0f9ff",
+        border: "1px solid " + (isSharedVar ? "#a7f3d0" : isAppVar ? "#ddd6fe" : "#bae6fd"),
         "border-radius": "6px",
         "font-size": "11px",
-        color: isAppVar ? "#5b21b6" : "#0369a1",
+        color: isSharedVar ? "#065f46" : isAppVar ? "#5b21b6" : "#0369a1",
         "line-height": "1.4"
-    }).html(isAppVar
-        ? '<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.'
-        : isTmpl
-            ? '<strong>Template-Scoped Variable (' + (surface ? surface.name : "Template") + ')</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
-            : '<strong>Screen-Scoped Variable (' + (surface ? surface.name : "Screen") + ')</strong><br>Available to all components on this screen. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
+    }).html(isSharedVar
+        ? '<strong>Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the Nexa EtherNet/IP WebSocket IO system. Bind using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".'
+        : isAppVar
+            ? '<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.'
+            : isTmpl
+                ? '<strong>Template-Scoped Variable (' + (surface ? surface.name : "Template") + ')</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
+                : '<strong>Screen-Scoped Variable (' + (surface ? surface.name : "Screen") + ')</strong><br>Available to all components on this screen. Bind in components using <code>{' + (variable.name || "var") + '}</code>.'
     ).appendTo(state.screenFormEl);
 
     // Variable Name Row
@@ -1439,7 +1527,12 @@ function renderVariablePropertiesForm(variable, isApp, surface) {
         .css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" })
         .html('<i class="fa fa-trash"></i> Delete Variable')
         .on("click", function () {
-            if (isAppVar) {
+            if (isSharedVar) {
+                var app = getApp();
+                app.sharedVariables = (app.sharedVariables || []).filter(function (v) { return v.id !== variable.id; });
+                state.activeSharedVariableId = null;
+                state.editingMode = "screen";
+            } else if (isAppVar) {
                 var app = getApp();
                 app.variables = (app.variables || []).filter(function (v) { return v.id !== variable.id; });
                 state.activeAppVariableId = null;
@@ -1606,6 +1699,15 @@ export function renderScreenForm() {
         var appVar = (app.variables || []).find(function (v) { return v.id === state.activeAppVariableId; });
         if (appVar) {
             renderVariablePropertiesForm(appVar, true, null);
+            return;
+        }
+    }
+
+    if (state.editingMode === "shared-variable") {
+        var app = getApp();
+        var sharedVar = (app.sharedVariables || []).find(function (v) { return v.id === state.activeSharedVariableId; });
+        if (sharedVar) {
+            renderVariablePropertiesForm(sharedVar, "shared", null);
             return;
         }
     }
@@ -1938,6 +2040,7 @@ if (typeof window !== "undefined") {
         addFlowFromSidebar: addFlowFromSidebar,
         addGroupFromSidebar: addGroupFromSidebar,
         addAppVariableFromSidebar: addAppVariableFromSidebar,
+        addSharedVariableFromSidebar: addSharedVariableFromSidebar,
         expandAllScreensTree: expandAllScreensTree,
         collapseAllScreensTree: collapseAllScreensTree,
         removeScreen: removeScreen

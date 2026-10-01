@@ -558,13 +558,16 @@ export function getComponentTemplateTarget(template) {
 export function getApp() {
     var p = state.projectConfigNode;
     if (p && !Array.isArray(p.variables)) p.variables = [];
+    if (p && !Array.isArray(p.sharedVariables)) p.sharedVariables = [];
     if (p && !Array.isArray(p.types)) p.types = [];
-    var app = p || { variables: [], types: [] };
+    var app = p || { variables: [], sharedVariables: [], types: [] };
     Types.setTypes(app.types);   // the types (UDT) instances are built from
     return app;
 }
 export function appScope() {
-    return Scope.makeScope(null, getApp().variables);
+    var app = getApp();
+    var shared = Scope.makeScope(null, app.sharedVariables || []);
+    return Scope.makeScope(shared, app.variables);
 }
 
 export function markDirty() {

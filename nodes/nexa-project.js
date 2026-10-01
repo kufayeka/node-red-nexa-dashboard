@@ -21,6 +21,7 @@ module.exports = function (RED) {
     this.folders = Array.isArray(config.folders) ? config.folders : [];
     this.flows = Array.isArray(config.flows) ? config.flows : [];
     this.variables = Array.isArray(config.variables) ? config.variables : [];
+    this.sharedVariables = Array.isArray(config.sharedVariables) ? config.sharedVariables : [];
     this.types = Array.isArray(config.types) ? config.types : [];
     this.breakpoints = Array.isArray(config.breakpoints) ? config.breakpoints : [];
     this.theme = config.theme && typeof config.theme === "object" ? config.theme : null;
