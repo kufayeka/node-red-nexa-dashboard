@@ -166,14 +166,14 @@ export function buildSidebarContent() {
 
     state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
-    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
-    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
-    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
+    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
+    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
         window.NEXA.onRegister(function (id) {

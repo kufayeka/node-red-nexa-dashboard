@@ -22,6 +22,7 @@ export const {
     defineComponent, NexaElement, FieldController,
     LitElement, html, css, svg, nothing, unsafeCSS,
     bind, defineInspectorWidget,
+    kit, NexaKit, KitElement,
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
     defineCodec, getCodec, format, isUnknown,
     assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange,

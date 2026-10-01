@@ -251,6 +251,7 @@ export function buildPalette(paletteEl) {
     makeComponentChip(paletteEl, "Grid", "@frame:grid", "Layout", "fa-th");
     makeComponentChip(paletteEl, "Carousel", "@frame:carousel", "Layout", "fa-film");
 
+    // SDK Layout Components (if any registered under "Layout", e.g. Row, Column, Grid, Card)
     // Group components by category
     var categories = {};
     components.forEach(function (def) {
@@ -259,7 +260,14 @@ export function buildPalette(paletteEl) {
         categories[cat].push(def);
     });
 
+    if (categories["Layout"]) {
+        categories["Layout"].forEach(function (def) {
+            makeComponentChip(paletteEl, def.label || def.name, def.id, def.category, def.icon);
+        });
+    }
+
     Object.keys(categories).forEach(function (catName) {
+        if (catName === "Layout") return;
         sectionHeader(paletteEl, catName);
         categories[catName].forEach(function (def) {
             makeComponentChip(paletteEl, def.label, def.id, def.category, def.icon);

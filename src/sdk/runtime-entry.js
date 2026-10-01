@@ -35,10 +35,13 @@ if (!window.NexaSDK) {
         FieldController: FieldController,
         // Lit
         LitElement: LitElement, html: html, css: css, svg: svg, nothing: nothing, unsafeCSS: unsafeCSS,
-        // inspector
+        // inspector & kit
         bind: bind,
         defineInspectorWidget: defineInspectorWidget,
         _withInspector: withInspector,
+        get kit() { return window.NexaKit; },
+        get NexaKit() { return window.NexaKit; },
+        get KitElement() { return window.NexaKit && window.NexaKit.KitElement; },
         // tags
         defineTagProvider: defineTagProvider, extendTagProvider: extendTagProvider, getTagProvider: getTagProvider,
         listTagProviders: listTagProviders, parseTag: parseTag, makeTag: makeTag, isTag: isTag,
