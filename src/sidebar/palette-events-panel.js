@@ -46,6 +46,9 @@ function getLogicNodeMeta(type) {
     if (type === "function") {
         return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
     }
+    if (type === "switch") {
+        return { color: "#e2d96e", icon: "fa-filter", portOut: true, portIn: true };
+    }
     if (type === "debug") {
         return { color: "#87a980", icon: "fa-bug", portOut: false, portIn: true };
     }
@@ -452,6 +455,17 @@ export function renderEventsPanel() {
 
     sectionHeader(state.eventsPane, "Utility");
     chip(state.eventsPane, "Function", function () { return { type: "function", code: "return msg;" }; }, "", "function");
+    chip(state.eventsPane, "Switch", function () {
+        return {
+            type: "switch",
+            name: "",
+            property: "payload",
+            propertyType: "msg",
+            rules: [{ t: "eq", v: "", vt: "str" }],
+            checkall: "true",
+            outputs: 1
+        };
+    }, "", "switch");
     chip(state.eventsPane, "Debug", function () { return { type: "debug" }; }, "", "debug");
     chip(state.eventsPane, "Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; }, "", "inject");
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");

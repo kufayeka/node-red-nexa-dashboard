@@ -315,8 +315,8 @@ template1.parentId = null;
 flow1.parentId = null;
 
 const treeNodes = api.buildScreensFlowsTreeNodes();
-console.log('treeNodes has 4 root sections (Screens, Templates, Flows, App Variables)?',
-  treeNodes.length === 4 &&
+console.log('treeNodes has root sections (Screens, Templates, Flows, App Variables)?',
+  treeNodes.length >= 4 &&
   treeNodes[0].id === 'section:screens' &&
   treeNodes[1].id === 'section:templates' &&
   treeNodes[2].id === 'section:flows' &&

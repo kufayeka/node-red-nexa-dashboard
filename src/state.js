@@ -28,6 +28,7 @@ export const LOGIC_NODE_KINDS = {
     "ui-event": { hasInput: false, hasOutput: true, color: "#3a6fb0" },
     "ui-update": { hasInput: true, hasOutput: false, color: "#b0663a" },
     "function": { label: "Function", hasInput: true, hasOutput: true, color: "#7a5aa8" },
+    "switch": { label: "Switch", hasInput: true, hasOutput: true, color: "#e2d96e" },
     "debug": { label: "Debug", hasInput: true, hasOutput: false, color: "#777" },
     "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
     "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
