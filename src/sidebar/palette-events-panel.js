@@ -76,8 +76,14 @@ function getLogicNodeMeta(type) {
     if (type === "set-variable" || type === "get-variable") {
         return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
     }
+    if (type === "set-variable-multi" || type === "get-variable-multi") {
+        return { color: "#dac8ee", icon: "fa-tags", portOut: true, portIn: true };
+    }
     if (type === "on-variable-change") {
         return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
+    }
+    if (type === "join") {
+        return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
@@ -466,6 +472,7 @@ export function renderEventsPanel() {
             outputs: 1
         };
     }, "", "switch");
+    chip(state.eventsPane, "Join", function () { return { type: "join", mode: "wait-all", slots: [], outputFormat: "object", timeout: 0 }; }, "", "join");
     chip(state.eventsPane, "Debug", function () { return { type: "debug" }; }, "", "debug");
     chip(state.eventsPane, "Inject", function () { return { type: "inject", intervalMs: 5000, payloadType: "json", payload: '{"text":"Hello World"}', once: false }; }, "", "inject");
     chip(state.eventsPane, "Reload Page", function () { return { type: "reload" }; }, "", "reload");
@@ -478,6 +485,8 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Set Variable", function () { return { type: "set-variable", scope: "", name: "", op: "set", valueSource: "payload" }; }, "", "set-variable");
     chip(state.eventsPane, "Get Variable", function () { return { type: "get-variable", scope: "", name: "", target: "payload" }; }, "", "get-variable");
     chip(state.eventsPane, "Watch Variable", function () { return { type: "on-variable-change", variables: [] }; }, "", "on-variable-change");
+    chip(state.eventsPane, "Set Variables (multi)", function () { return { type: "set-variable-multi", assignments: [] }; }, "", "set-variable-multi");
+    chip(state.eventsPane, "Get Variables (multi)", function () { return { type: "get-variable-multi", reads: [] }; }, "", "get-variable-multi");
 
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function () {

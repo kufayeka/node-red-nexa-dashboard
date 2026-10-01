@@ -2055,6 +2055,9 @@
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    // multi-variable variants: apply / read several variables in one node
+    "set-variable-multi": { label: "Set Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "get-variable-multi": { label: "Get Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
     "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
@@ -2079,6 +2082,8 @@
     "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
     // timing / delay node: pauses execution for delay ms/s before continuing
     "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
+    // join: collects messages from multiple upstream channels before emitting
+    "join": { label: "Join", hasInput: true, hasOutput: true, color: "#c8a03a" },
     // SPA navigation: transition to a named screen, path, or history action without page reload
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows
@@ -28121,8 +28126,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
         var tabBar = window.$("<div>").css({
           display: "flex",
           "border-bottom": "1px solid var(--red-ui-secondary-border-color, #ddd)",
@@ -28186,8 +28191,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
         var cssPane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "6px", "flex-shrink": "0" }).text("CSS \u2014 scoped to this component's shadow DOM. Target :host, button, button.active, etc.").appendTo(cssPane);
         var cssEditorContainer = window.$("<div>", { id: "nexa-comp-css-editor" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(cssPane);
@@ -28228,8 +28233,8 @@
             window.RED.tray.close();
           } }
         ],
-        open: function(tray2) {
-          var body = tray2.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
+        open: function(tray) {
+          var body = tray.find(".red-ui-tray-body").css({ padding: "0", height: "100%", display: "flex", "flex-direction": "column" });
           var pane = window.$("<div>").css({ flex: "1 1 auto", height: "480px", padding: "8px 12px", display: "flex", "flex-direction": "column", "box-sizing": "border-box" }).appendTo(body);
           window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #888)", "margin-bottom": "6px", "flex-shrink": "0" }).text(opts.help || CODE_TRAY_HELP[lang]).appendTo(pane);
           var holder = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0" }).appendTo(pane);
@@ -28325,8 +28330,14 @@
     if (type === "set-variable" || type === "get-variable") {
       return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
     }
+    if (type === "set-variable-multi" || type === "get-variable-multi") {
+      return { color: "#dac8ee", icon: "fa-tags", portOut: true, portIn: true };
+    }
     if (type === "on-variable-change") {
       return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
+    }
+    if (type === "join") {
+      return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
@@ -28720,6 +28731,9 @@
         outputs: 1
       };
     }, "", "switch");
+    chip(state.eventsPane, "Join", function() {
+      return { type: "join", mode: "wait-all", slots: [], outputFormat: "object", timeout: 0 };
+    }, "", "join");
     chip(state.eventsPane, "Debug", function() {
       return { type: "debug" };
     }, "", "debug");
@@ -28748,6 +28762,12 @@
     chip(state.eventsPane, "Watch Variable", function() {
       return { type: "on-variable-change", variables: [] };
     }, "", "on-variable-change");
+    chip(state.eventsPane, "Set Variables (multi)", function() {
+      return { type: "set-variable-multi", assignments: [] };
+    }, "", "set-variable-multi");
+    chip(state.eventsPane, "Get Variables (multi)", function() {
+      return { type: "get-variable-multi", reads: [] };
+    }, "", "get-variable-multi");
     sectionHeader(state.eventsPane, "Lists");
     chip(state.eventsPane, "Populate (repeat a template)", function() {
       var first = (state.templates || []).filter(function(t2) {
@@ -31138,8 +31158,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
         window.$("<div>").css({ padding: "0 0 8px 0", "font-size": "12px", color: "#888", "flex-shrink": "0" }).text("Receives msg (e.g. msg.payload from the node before this one). Return a new msg object to pass along the wire, or null to stop here.").appendTo(body);
         var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
         codeEditor = createCM6Editor({
@@ -31211,8 +31231,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         if (!comp || !typeDef && !isLitComponent) {
           window.$("<div>").text("This component no longer exists.").appendTo(body);
           return;
@@ -31346,8 +31366,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Fires on the deployed page \u2014 can emit a string, JSON object (e.g. { "text": "Hello" }), number, or timestamp.').appendTo(body);
         var typeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload Type").appendTo(typeRow);
@@ -31407,8 +31427,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Configure how the deployed page navigates. Can be overridden at runtime via msg.payload.").appendTo(body);
         var modeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Navigation Mode").appendTo(modeRow);
@@ -31468,8 +31488,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Shows, hides or removes nodes of this screen's Hierarchy (usually groups) by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.").appendTo(body);
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Visibility by node name (JSON array)").appendTo(row);
@@ -31510,6 +31530,7 @@
       variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : node.name ? [{ scope: node.scope || "", name: node.name }] : []
     };
     var nameSel;
+    var trayEl = null;
     function namesIn(scopeId) {
       return decls.filter(function(d) {
         return d.scopeId === scopeId;
@@ -31556,7 +31577,7 @@
           click: function() {
             if (type === "on-variable-change") {
               var gathered = [];
-              var nxListInst = tray.find("nx-list").get(0);
+              var nxListInst = trayEl && trayEl.find("nx-list").get(0);
               var rawItems = nxListInst && (nxListInst.items || nxListInst.value) || draft.variables || [];
               rawItems.forEach(function(item) {
                 if (item && item.name) {
@@ -31589,8 +31610,9 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        trayEl = tray;
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
         var label = function(text, parent) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
@@ -31762,6 +31784,521 @@
     });
   }
 
+  // src/dialogs/set-variable-multi-dialog.js
+  var OPS2 = [
+    ["set", "Set to value"],
+    ["merge", "Merge into (object)"],
+    ["append", "Append to (array)"],
+    ["remove", "Remove from (array / object key)"],
+    ["toggle", "Toggle (boolean)"],
+    ["increment", "Increment by (number, default 1)"]
+  ];
+  var CSS_SEL = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "4px 6px",
+    "border-radius": "3px",
+    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
+    "font-size": "12px",
+    background: "var(--red-ui-secondary-background,#fff)",
+    color: "var(--red-ui-primary-text-color,#333)"
+  };
+  var CSS_LABEL = {
+    display: "block",
+    "font-size": "11px",
+    "font-weight": "600",
+    color: "var(--red-ui-secondary-text-color,#475569)",
+    "margin-bottom": "3px"
+  };
+  function openSetVariableMultiNodeEditor(node) {
+    var screen2 = getActiveScreen();
+    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
+    var surface = state.editingMode === "template" ? "This template" : "This screen";
+    var scopes = [
+      { id: "@shared", name: "Shared / Server (realtime)" },
+      { id: "@app", name: "App (every screen)" },
+      { id: "", name: surface }
+    ];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) {
+        scopes.push({ id: d.scopeId, name: d.scopeName });
+      }
+    });
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    var listEl = null;
+    window.RED.tray.show({
+      id: "nexa-logic-set-variable-multi-editor",
+      title: "Configure Set Variables Node",
+      width: 640,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (!listEl) {
+              window.RED.tray.close();
+              return;
+            }
+            var assignments = [];
+            listEl.editableList("items").each(function() {
+              var d = window.$(this).data("nexaRow");
+              if (!d || !d.name) return;
+              var out = { scope: d.scope || "", name: d.name, op: d.op || "set" };
+              var t2 = d.valueType, v = d.valueRaw;
+              if (t2 === "msg") {
+                out.valueSource = "msg";
+                out.msgPath = v || "payload";
+              } else {
+                out.valueSource = "static";
+                out.staticType = t2;
+                if (t2 === "num") {
+                  out.value = parseFloat(v);
+                  if (isNaN(out.value)) out.value = 0;
+                } else if (t2 === "bool") {
+                  out.value = v === "true" || v === true;
+                } else if (t2 === "json") {
+                  try {
+                    out.value = JSON.parse(v);
+                  } catch (_) {
+                    out.value = v;
+                  }
+                } else {
+                  out.value = v;
+                }
+              }
+              assignments.push(out);
+            });
+            node.assignments = assignments;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color,#64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).text(
+          "Each row sets one variable when a message arrives. Choose the target variable, the operation, and the value \u2014 either a message property (msg) or a static value (string, number, boolean, JSON object/array). The message is passed on unchanged after all assignments."
+        ).appendTo(body);
+        listEl = window.$("<ol>").appendTo(body);
+        listEl.editableList({
+          addLabel: "Add assignment",
+          sortable: true,
+          removable: true,
+          height: "auto",
+          addItem: function(container, _i, data) {
+            var defScope = scopes[0] ? scopes[0].id : "";
+            var defNames = namesIn(defScope);
+            var row = {
+              scope: data.scope !== void 0 ? data.scope : defScope,
+              name: data.name !== void 0 ? data.name : defNames[0] || "",
+              op: data.op || "set",
+              valueType: data.valueSource === "msg" ? "msg" : data.staticType || "str",
+              valueRaw: data.valueSource === "msg" ? data.msgPath || "payload" : data.value !== void 0 ? String(data.value) : ""
+            };
+            container.data("nexaRow", row);
+            var grid = window.$("<div>").css({
+              display: "grid",
+              "grid-template-columns": "1fr 1fr",
+              gap: "8px"
+            }).appendTo(container);
+            var scopeWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Scope").appendTo(scopeWrap);
+            var scopeSel = window.$("<select>").css(CSS_SEL).appendTo(scopeWrap);
+            scopes.forEach(function(s) {
+              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
+            });
+            var varWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Variable").appendTo(varWrap);
+            var varSel = window.$("<select>").css(CSS_SEL).appendTo(varWrap);
+            function fillVarSel(scope, current2) {
+              varSel.empty();
+              var names = namesIn(scope);
+              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
+              if (!names.length) {
+                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
+              }
+              names.forEach(function(n) {
+                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
+              });
+              row.name = varSel.val() || "";
+            }
+            fillVarSel(row.scope, row.name);
+            var opWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Operation").appendTo(opWrap);
+            var opSel = window.$("<select>").css(CSS_SEL).appendTo(opWrap);
+            OPS2.forEach(function(o) {
+              window.$("<option>", { value: o[0] }).text(o[1]).prop("selected", o[0] === row.op).appendTo(opSel);
+            });
+            var valWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Value").appendTo(valWrap);
+            var valInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(valWrap);
+            if (typeof valInput.typedInput === "function") {
+              valInput.typedInput({
+                types: ["msg", "str", "num", "bool", "json"],
+                width: "100%"
+              });
+              valInput.typedInput("type", row.valueType);
+              valInput.typedInput("value", row.valueRaw);
+              valInput.on("change", function() {
+                row.valueType = valInput.typedInput("type");
+                row.valueRaw = valInput.typedInput("value");
+              });
+            } else {
+              valInput.css(CSS_SEL).val(row.valueRaw);
+              valInput.on("change input", function() {
+                row.valueRaw = valInput.val();
+              });
+            }
+            scopeSel.on("change", function() {
+              row.scope = scopeSel.val();
+              row.name = "";
+              fillVarSel(row.scope, "");
+            });
+            varSel.on("change", function() {
+              row.name = varSel.val();
+            });
+            opSel.on("change", function() {
+              row.op = opSel.val();
+            });
+          }
+        });
+        var existing = Array.isArray(node.assignments) ? node.assignments : [];
+        if (existing.length) {
+          existing.forEach(function(a) {
+            listEl.editableList("addItem", a);
+          });
+        } else {
+          listEl.editableList("addItem", {});
+        }
+      }
+    });
+  }
+
+  // src/dialogs/get-variable-multi-dialog.js
+  var CSS_SEL2 = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "4px 6px",
+    "border-radius": "3px",
+    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
+    "font-size": "12px",
+    background: "var(--red-ui-secondary-background,#fff)",
+    color: "var(--red-ui-primary-text-color,#333)"
+  };
+  var CSS_LABEL2 = {
+    display: "block",
+    "font-size": "11px",
+    "font-weight": "600",
+    color: "var(--red-ui-secondary-text-color,#475569)",
+    "margin-bottom": "3px"
+  };
+  function openGetVariableMultiNodeEditor(node) {
+    var screen2 = getActiveScreen();
+    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
+    var surface = state.editingMode === "template" ? "This template" : "This screen";
+    var scopes = [
+      { id: "@shared", name: "Shared / Server (realtime)" },
+      { id: "@app", name: "App (every screen)" },
+      { id: "", name: surface }
+    ];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) {
+        scopes.push({ id: d.scopeId, name: d.scopeName });
+      }
+    });
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    var listEl = null;
+    window.RED.tray.show({
+      id: "nexa-logic-get-variable-multi-editor",
+      title: "Configure Get Variables Node",
+      width: 580,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (!listEl) {
+              window.RED.tray.close();
+              return;
+            }
+            var reads = [];
+            listEl.editableList("items").each(function() {
+              var d = window.$(this).data("nexaRow");
+              if (!d || !d.name) return;
+              reads.push({
+                scope: d.scope || "",
+                name: d.name,
+                target: d.target || "payload"
+              });
+            });
+            node.reads = reads;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color,#64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).text(
+          "Reads multiple variables and injects their values into the outgoing message. Each row: pick the variable and the msg property it should be written into. The enriched message is passed on."
+        ).appendTo(body);
+        listEl = window.$("<ol>").appendTo(body);
+        listEl.editableList({
+          addLabel: "Add variable read",
+          sortable: true,
+          removable: true,
+          height: "auto",
+          addItem: function(container, _i, data) {
+            var defScope = scopes[0] ? scopes[0].id : "";
+            var defNames = namesIn(defScope);
+            var row = {
+              scope: data.scope !== void 0 ? data.scope : defScope,
+              name: data.name !== void 0 ? data.name : defNames[0] || "",
+              target: data.target !== void 0 ? data.target : "payload"
+            };
+            container.data("nexaRow", row);
+            var grid = window.$("<div>").css({
+              display: "grid",
+              "grid-template-columns": "1fr 1fr 1fr",
+              gap: "8px",
+              "align-items": "end"
+            }).appendTo(container);
+            var scopeWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Scope").appendTo(scopeWrap);
+            var scopeSel = window.$("<select>").css(CSS_SEL2).appendTo(scopeWrap);
+            scopes.forEach(function(s) {
+              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
+            });
+            var varWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Variable").appendTo(varWrap);
+            var varSel = window.$("<select>").css(CSS_SEL2).appendTo(varWrap);
+            function fillVarSel(scope, current2) {
+              varSel.empty();
+              var names = namesIn(scope);
+              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
+              if (!names.length) {
+                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
+              }
+              names.forEach(function(n) {
+                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
+              });
+              row.name = varSel.val() || "";
+            }
+            fillVarSel(row.scope, row.name);
+            var targetWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Into msg.\u2026").appendTo(targetWrap);
+            var targetInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(targetWrap);
+            if (typeof targetInput.typedInput === "function") {
+              targetInput.typedInput({ types: ["msg"], width: "100%" });
+              targetInput.typedInput("value", row.target || "payload");
+              targetInput.on("change", function() {
+                row.target = targetInput.typedInput("value") || "payload";
+              });
+            } else {
+              targetInput.css(CSS_SEL2).val(row.target || "payload");
+              targetInput.on("change input", function() {
+                row.target = targetInput.val() || "payload";
+              });
+            }
+            scopeSel.on("change", function() {
+              row.scope = scopeSel.val();
+              row.name = "";
+              fillVarSel(row.scope, "");
+            });
+            varSel.on("change", function() {
+              row.name = varSel.val();
+            });
+          }
+        });
+        var existing = Array.isArray(node.reads) ? node.reads : [];
+        if (existing.length) {
+          existing.forEach(function(r) {
+            listEl.editableList("addItem", r);
+          });
+        } else {
+          listEl.editableList("addItem", {});
+        }
+      }
+    });
+  }
+
+  // src/dialogs/join-dialog.js
+  function openJoinNodeEditor(node) {
+    var trayEl = null;
+    var draft = {
+      mode: node.mode || "wait-all",
+      slots: Array.isArray(node.slots) ? JSON.parse(JSON.stringify(node.slots)) : [],
+      count: typeof node.count === "number" ? node.count : 2,
+      outputFormat: node.outputFormat || "object",
+      timeout: typeof node.timeout === "number" ? node.timeout : 0
+    };
+    var MODE_HELP = {
+      "wait-all": "Waits until every configured slot has received at least one message, then emits the combined result and resets. Great for parallel async operations (HTTP + timer, etc.).",
+      "combine-latest": "Stores the latest message for each slot. Emits every time any slot fires, always including the most-recent value from all slots. Great for watching several variables together.",
+      "sequence-n": "Collects N consecutive messages (from any source) and emits them as an array every N messages. Great for batching events."
+    };
+    var OUTPUT_OPTIONS = [
+      { value: "object", label: "Object \u2013 { [topic]: msg }" },
+      { value: "array", label: "Array  \u2013 [ msg0, msg1, \u2026 ] (slot order)" },
+      { value: "forward", label: "Forward first msg + .join \u2013 pass triggering msg, attach .join with all values" }
+    ];
+    function buildBody(tray) {
+      trayEl = tray;
+      var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      var helpDiv = window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color,#64748b)", "margin-bottom": "14px", "line-height": "1.4" }).appendTo(body);
+      function label(text, parent) {
+        return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color,#475569)", margin: "12px 0 4px" }).text(text).appendTo(parent || body);
+      }
+      if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") window.NexaKit.ensureStyles();
+      label("Mode");
+      var modeWrap = window.$("<div>").css({ display: "flex", gap: "8px", "flex-wrap": "wrap", "margin-bottom": "6px" }).appendTo(body);
+      ["wait-all", "combine-latest", "sequence-n"].forEach(function(m) {
+        var mLabel = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Sequence N" }[m];
+        var btn = window.$("<button>", { type: "button" }).css({
+          padding: "4px 12px",
+          "border-radius": "4px",
+          "font-size": "12px",
+          cursor: "pointer",
+          border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)",
+          background: draft.mode === m ? "var(--red-ui-primary-background,#1d4ed8)" : "var(--red-ui-secondary-background,#f8fafc)",
+          color: draft.mode === m ? "#fff" : "var(--red-ui-primary-text-color,#333)"
+        }).text(mLabel).appendTo(modeWrap);
+        btn.on("click", function() {
+          draft.mode = m;
+          body.empty();
+          buildBody(tray);
+        });
+      });
+      helpDiv.text(MODE_HELP[draft.mode]);
+      if (draft.mode !== "sequence-n") {
+        label("Slots (upstream channels)");
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-bottom": "6px" }).text("Add one slot per upstream branch. Set msg.topic = the slot topic in each upstream node so the Join can route it.").appendTo(body);
+        var listContainer = window.$("<div>", { "class": "nx-kit" }).css({ "margin-bottom": "8px" }).appendTo(body);
+        var html = window.NEXA_LIT && window.NEXA_LIT.html || function() {
+          return "";
+        };
+        var nxList = document.createElement("nx-list");
+        nxList.setAttribute("add-label", "Add slot");
+        nxList.setAttribute("empty-text", "No slots configured. Add at least 2 slots.");
+        nxList.sortable = true;
+        nxList.value = draft.slots.length ? JSON.parse(JSON.stringify(draft.slots)) : [];
+        nxList.newItem = function() {
+          return { topic: "slot" + Date.now() % 1e3, label: "Slot" };
+        };
+        nxList.renderItem = function(item, _idx, setItem) {
+          var curTopic = item ? item.topic || "" : "";
+          var curLabel = item ? item.label || "" : "";
+          return html`
+                    <nx-row cols="2" style="width:100%;gap:8px;">
+                        <nx-input label="Topic (msg.topic value)"  .value="${curTopic}"
+                            @nx-change="${function(e) {
+            e.stopPropagation();
+            setItem(Object.assign({}, item, { topic: e.detail.value }));
+          }}">
+                        </nx-input>
+                        <nx-input label="Label (for output key in object mode)" .value="${curLabel}"
+                            @nx-change="${function(e) {
+            e.stopPropagation();
+            setItem(Object.assign({}, item, { label: e.detail.value }));
+          }}">
+                        </nx-input>
+                    </nx-row>
+                `;
+        };
+        listContainer.append(nxList);
+      }
+      if (draft.mode === "sequence-n") {
+        label("Collect N messages");
+        var countInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 2, max: 100 }).val(draft.count).on("change", function() {
+          draft.count = Math.max(2, parseInt(this.value, 10) || 2);
+        }).appendTo(body);
+      }
+      label("Output format");
+      var fmtSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).appendTo(body);
+      OUTPUT_OPTIONS.forEach(function(o) {
+        window.$("<option>", { value: o.value }).text(o.label).prop("selected", draft.outputFormat === o.value).appendTo(fmtSel);
+      });
+      fmtSel.on("change", function() {
+        draft.outputFormat = fmtSel.val();
+      });
+      if (draft.mode === "wait-all") {
+        label("Timeout (ms, 0 = wait forever)");
+        window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 0 }).val(draft.timeout).on("change", function() {
+          draft.timeout = Math.max(0, parseInt(this.value, 10) || 0);
+        }).appendTo(body);
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-top": "4px" }).text("If all slots do not arrive within this time the node emits partial results (missing slots get null).").appendTo(body);
+      }
+    }
+    window.RED.tray.show({
+      id: "nexa-logic-join-editor",
+      title: "Configure Join Node",
+      width: 560,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.mode = draft.mode;
+            node.outputFormat = draft.outputFormat;
+            node.timeout = draft.timeout;
+            if (draft.mode === "sequence-n") {
+              node.count = draft.count;
+              delete node.slots;
+            } else {
+              var nxListEl = trayEl && trayEl.find("nx-list").get(0);
+              var rawSlots = nxListEl && (nxListEl.items || nxListEl.value) || draft.slots || [];
+              node.slots = rawSlots.filter(function(s) {
+                return s && s.topic;
+              });
+              delete node.count;
+            }
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: buildBody
+    });
+  }
+
   // src/dialogs/web-io-dialog.js
   var TITLES2 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
   var HELP2 = {
@@ -31793,8 +32330,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
         var label = function(text2, parent) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
@@ -31923,8 +32460,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a "Send to Host" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.').appendTo(body);
         var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
         if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
@@ -31986,8 +32523,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button \u2192 HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.").appendTo(body);
         var label = function(text) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
@@ -32100,8 +32637,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         var help = window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.5" }).appendTo(body);
         if (sending) {
           help.html("Sends the message <b>out of this template</b>, to where it is used:<br>\u2022 a copy a Populate made \u2192 out of the <b>Layout</b> node on the screen, with <code>msg.item</code> and <code>msg.index</code>;<br>\u2022 an instance placed on a screen \u2192 its <b>On Template Output</b> node there.<br><code>msg.output</code> is the name below: give each output its own (e.g. <code>open-dialog</code>, <code>delete</code>).");
@@ -32152,8 +32689,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Publishes a Sparkplug DCMD/NCMD write when this node runs, with the value taken from msg.payload. Wire a "ui-event" (e.g. a button click) into this node.').appendTo(body);
         var knownBindings = listKnownSparkplugBindings();
         if (knownBindings.length) {
@@ -32200,8 +32737,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('This node has no per-tag configuration of its own \u2014 wire a "function" node in front of it that sets msg.writes to an array, then wire that into this node:').appendTo(body);
         window.$("<pre>").css({
           "font-size": "11px",
@@ -32267,8 +32804,8 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text(close ? 'Closes a dialog / drawer. The Open node that opened it continues with msg.payload = the result (below), msg.closedBy = "node".' : "Opens a dialog / drawer on top of any open one. This node's output fires when it closes: msg.payload = the result (a Close node's), msg.closedBy = backdrop / esc / timer / node. The message it was opened with is in its On Open event.").appendTo(body);
         var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
         if (close) window.$("<option>", { value: "" }).text("The one on top (the last opened)").appendTo(sel);
@@ -32340,9 +32877,9 @@
           window.RED.tray.close();
         } }
       ],
-      open: function(tray2) {
+      open: function(tray) {
         var $2 = window.$;
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "12px" });
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         $2("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text('Draws a node somewhere else on the live page: inside a frame named as a teleport target (Properties \u2192 Teleport), or on the page itself (above every frame, out of any clip). "Home" puts it back where it is in the tree. Its Logic, params and variables stay as they are. The message goes on.').appendTo(body);
         var label = function(t2) {
           return $2("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "10px 0 4px" }).text(t2).appendTo(body);
@@ -32408,8 +32945,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Pauses message execution for the specified duration before forwarding to the next node.").appendTo(body);
         var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
         var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
@@ -32454,8 +32991,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Navigates to another screen seamlessly in SPA mode, preserving active WebSocket & Sparkplug connections.").appendTo(body);
         var modeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Navigation Mode").appendTo(modeRow);
@@ -32531,8 +33068,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
         var endpointBanner = window.$("<div>").css({
           padding: "10px 12px",
@@ -32581,8 +33118,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Triggered when an incoming route under this Flow does not match any valid screen (404 catch-all). Emits route path, query, selective cookies, and error payload.").appendTo(body);
         var endpointBanner = window.$("<div>").css({
           padding: "10px 12px",
@@ -32629,8 +33166,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({
           "font-size": "12px",
           color: "var(--red-ui-secondary-text-color, #64748b)",
@@ -32690,8 +33227,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({
           "font-size": "12px",
           color: "var(--red-ui-secondary-text-color, #64748b)",
@@ -32794,8 +33331,8 @@
           }
         }
       ],
-      open: function(tray2) {
-        var body = tray2.find(".red-ui-tray-body").css({ padding: "14px" });
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Route messages based on property values and conditional rules. Each rule outputs to its corresponding output port.").appendTo(body);
         var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Name").appendTo(nameRow);
@@ -33090,6 +33627,20 @@
       var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
       return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
     }
+    if (node.type === "set-variable-multi") {
+      var n = (node.assignments || []).length;
+      return "Set Variables" + (n ? " (" + n + ")" : "");
+    }
+    if (node.type === "get-variable-multi") {
+      var n = (node.reads || []).length;
+      return "Get Variables" + (n ? " (" + n + ")" : "");
+    }
+    if (node.type === "join") {
+      var modeLabels = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Seq " + (node.count || 2) };
+      var mLabel = modeLabels[node.mode || "wait-all"] || "Join";
+      var sCount = (node.slots || []).length;
+      return "Join [" + mLabel + (sCount ? ": " + sCount : "") + "]";
+    }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
       var vScreen = getActiveScreen();
       var formatVarRef = function(vScope, vName) {
@@ -33114,8 +33665,8 @@
       var ref = where + "." + node.name;
       if (!node.name) return kind.label;
       if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
-      var OPS2 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
-      return (OPS2[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
+      var OPS3 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
+      return (OPS3[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
     }
     if (node.type === "template-output") return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
     if (node.type === "template-event") {
@@ -33438,6 +33989,24 @@
       box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         openSetVariableNodeEditor(node);
+      });
+    }
+    if (node.type === "set-variable-multi") {
+      box2.attr("title", "Double-click to configure variable assignments").on("dblclick", function(e) {
+        e.stopPropagation();
+        openSetVariableMultiNodeEditor(node);
+      });
+    }
+    if (node.type === "get-variable-multi") {
+      box2.attr("title", "Double-click to configure variable reads").on("dblclick", function(e) {
+        e.stopPropagation();
+        openGetVariableMultiNodeEditor(node);
+      });
+    }
+    if (node.type === "join") {
+      box2.attr("title", "Double-click to configure join mode and slots").on("dblclick", function(e) {
+        e.stopPropagation();
+        openJoinNodeEditor(node);
       });
     }
     if (node.type === "sparkplug-write") {
@@ -34797,10 +35366,10 @@
             }
           }
         ],
-        open: function(tray2) {
-          state.trayContent = tray2.find(".red-ui-tray-body");
-          if (state.pagesButton) state.pagesButton.text("Close Pages Canvas");
-          buildCanvasArea(state.trayContent, { toolbar: tray2.find(".red-ui-tray-toolbar"), footer: tray2.find(".red-ui-tray-footer") });
+        open: function(tray) {
+          state.trayContent = tray.find(".red-ui-tray-body");
+          if (state.pagesButton) state.pagesButton.text("Close Canvas");
+          buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
           ensureScreensLoaded(function() {
             renderActiveScreen();
           });
@@ -34813,7 +35382,7 @@
         close: function() {
           window.$(document).off("keydown.nexa");
           state.trayContent = null;
-          if (state.pagesButton) state.pagesButton.text("Open Pages Canvas");
+          if (state.pagesButton) state.pagesButton.text("Open Canvas");
           state.artboardEl = null;
           state.stageEl = null;
           state.sizerEl = null;
@@ -38987,7 +39556,7 @@
   // src/sidebar/sidebar-content.js
   function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
-    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Pages Canvas" : "Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" }).on("click", function() {
+    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Canvas" : "Open Canvas").css({ margin: "8px", width: "calc(100% - 16px)" }).on("click", function() {
       if (state.trayContent) window.RED.tray.close();
       else window.RED.actions.invoke("nexa:open-pages-editor");
     }).appendTo(container);
@@ -39074,9 +39643,9 @@
           });
         }
         if (tab.id === "components") buildPalette(state.componentsPane);
-        if (tab.id === "hierarchy") renderHierarchyPanel();
         if (tab.id === "events") renderEventsPanel();
         if (tab.id === "properties") renderPropertiesPanel();
+        if (tab.id === "hierarchy") renderHierarchyPanel();
         if (tab.id === "theme") renderThemePanel();
         if (tab.id === "types") renderTypesPanel();
         if (tab.id === "assets") renderAssetsPanel();
@@ -39086,14 +39655,14 @@
     });
     state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
-    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
+    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
+    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
-    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
-    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
       window.NEXA.onRegister(function(id2) {
         if (state.componentsPane) {
@@ -39129,7 +39698,7 @@
   function widenSidebar(share) {
     var $2 = window.$, sb = $2 && $2("#red-ui-sidebar");
     if (!sb || !sb.length) return;
-    var want = Math.min(800, Math.round(window.innerWidth * share));
+    var want = Math.min(900, Math.round(window.innerWidth * share));
     if (sb.width() >= want) return;
     sb.width(want);
     if (window.RED.events) window.RED.events.emit("sidebar:resize");

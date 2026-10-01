@@ -49,6 +49,9 @@ export const LOGIC_NODE_KINDS = {
     // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
     "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    // multi-variable variants: apply / read several variables in one node
+    "set-variable-multi": { label: "Set Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
+    "get-variable-multi": { label: "Get Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
     // a source: fires when the variable it watches changes (payload = new, previous = old)
     "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
@@ -73,6 +76,8 @@ export const LOGIC_NODE_KINDS = {
     "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
     // timing / delay node: pauses execution for delay ms/s before continuing
     "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
+    // join: collects messages from multiple upstream channels before emitting
+    "join": { label: "Join", hasInput: true, hasOutput: true, color: "#c8a03a" },
     // SPA navigation: transition to a named screen, path, or history action without page reload
     "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
     // public routing entrypoint for screen flows

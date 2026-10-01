@@ -389,7 +389,7 @@ export function registerPagesEditorAction() {
             ],
             open: function (tray) {
                 state.trayContent = tray.find(".red-ui-tray-body");
-                if (state.pagesButton) state.pagesButton.text("Close Pages Canvas");
+                if (state.pagesButton) state.pagesButton.text("Close Canvas");
                 buildCanvasArea(state.trayContent, { toolbar: tray.find(".red-ui-tray-toolbar"), footer: tray.find(".red-ui-tray-footer") });
                 ensureScreensLoaded(function () { renderActiveScreen(); });
                 if (state.componentsPane) buildPalette(state.componentsPane);
@@ -401,7 +401,7 @@ export function registerPagesEditorAction() {
             close: function () {
                 window.$(document).off("keydown.nexa");
                 state.trayContent = null;
-                if (state.pagesButton) state.pagesButton.text("Open Pages Canvas");
+                if (state.pagesButton) state.pagesButton.text("Open Canvas");
                 state.artboardEl = null;
                 state.stageEl = null;
                 state.sizerEl = null;
@@ -419,7 +419,7 @@ export function registerPagesEditorAction() {
                 state.redoStack = [];
                 // Closing the tray without explicitly clicking "Back to
                 // Screens" should still leave template-editing mode — reopening
-                // via the sidebar's "Open Pages Canvas" button should show
+                // via the sidebar's "Open  Canvas" button should show
                 // screens, not silently resume editing whatever template was
                 // last open.
                 state.editingMode = "screen";

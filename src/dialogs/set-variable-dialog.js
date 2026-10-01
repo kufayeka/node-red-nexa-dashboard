@@ -32,6 +32,7 @@ export function openSetVariableNodeEditor(node) {
         variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : (node.name ? [{ scope: node.scope || "", name: node.name }] : [])
     };
     var nameSel;
+    var trayEl = null; // FIX: capture tray so button click handler can access it
 
     function namesIn(scopeId) {
         return decls.filter(function (d) { return d.scopeId === scopeId; }).map(function (d) { return d.variable.name; });
@@ -66,7 +67,7 @@ export function openSetVariableNodeEditor(node) {
                 click: function () {
                     if (type === "on-variable-change") {
                         var gathered = [];
-                        var nxListInst = tray.find("nx-list").get(0);
+                        var nxListInst = trayEl && trayEl.find("nx-list").get(0);
                         var rawItems = (nxListInst && (nxListInst.items || nxListInst.value)) || draft.variables || [];
                         rawItems.forEach(function (item) {
                             if (item && item.name) {
@@ -96,6 +97,7 @@ export function openSetVariableNodeEditor(node) {
             }
         ],
         open: function (tray) {
+            trayEl = tray; // FIX: capture so Save button can find nx-list
             var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
             window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
             var label = function (text, parent) { return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body); };

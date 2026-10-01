@@ -11,6 +11,9 @@ import { openInjectNodeEditor } from "../dialogs/inject-dialog.js";
 import { openOpenUrlNodeEditor } from "../dialogs/open-url-dialog.js";
 import { openLayerControlNodeEditor } from "../dialogs/layer-control-dialog.js";
 import { openSetVariableNodeEditor } from "../dialogs/set-variable-dialog.js";
+import { openSetVariableMultiNodeEditor } from "../dialogs/set-variable-multi-dialog.js";
+import { openGetVariableMultiNodeEditor } from "../dialogs/get-variable-multi-dialog.js";
+import { openJoinNodeEditor } from "../dialogs/join-dialog.js";
 import { openWebIoNodeEditor } from "../dialogs/web-io-dialog.js";
 import { openPopulateNodeEditor, openLayoutNodeEditor } from "../dialogs/populate-dialog.js";
 import { openTemplateOutputNodeEditor } from "../dialogs/template-output-dialog.js";
@@ -118,6 +121,20 @@ export function logicNodeLabel(node) {
     if (node.type === "storage" || node.type === "cookie") {
         var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
         return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
+    }
+    if (node.type === "set-variable-multi") {
+        var n = (node.assignments || []).length;
+        return "Set Variables" + (n ? " (" + n + ")" : "");
+    }
+    if (node.type === "get-variable-multi") {
+        var n = (node.reads || []).length;
+        return "Get Variables" + (n ? " (" + n + ")" : "");
+    }
+    if (node.type === "join") {
+        var modeLabels = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Seq " + (node.count || 2) };
+        var mLabel = modeLabels[node.mode || "wait-all"] || "Join";
+        var sCount = (node.slots || []).length;
+        return "Join [" + mLabel + (sCount ? ": " + sCount : "") + "]";
     }
     if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
         var vScreen = getActiveScreen();
@@ -437,6 +454,24 @@ export function renderLogicNode(node) {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             openSetVariableNodeEditor(node);
+        });
+    }
+    if (node.type === "set-variable-multi") {
+        box.attr("title", "Double-click to configure variable assignments").on("dblclick", function (e) {
+            e.stopPropagation();
+            openSetVariableMultiNodeEditor(node);
+        });
+    }
+    if (node.type === "get-variable-multi") {
+        box.attr("title", "Double-click to configure variable reads").on("dblclick", function (e) {
+            e.stopPropagation();
+            openGetVariableMultiNodeEditor(node);
+        });
+    }
+    if (node.type === "join") {
+        box.attr("title", "Double-click to configure join mode and slots").on("dblclick", function (e) {
+            e.stopPropagation();
+            openJoinNodeEditor(node);
         });
     }
     if (node.type === "sparkplug-write") {

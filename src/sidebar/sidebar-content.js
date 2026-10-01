@@ -19,7 +19,7 @@ export function buildSidebarContent() {
     var container = window.$("<div>").css({ height: "100%", display: "flex", "flex-direction": "column" });
 
     // one canvas: the button opens it, or closes it when it is open
-    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Pages Canvas" : "Open Pages Canvas").css({ margin: "8px", width: "calc(100% - 16px)" })
+    state.pagesButton = window.$("<button>", { type: "button", "class": "nexa-pages-toggle" }).text(state.trayContent ? "Close Canvas" : "Open Canvas").css({ margin: "8px", width: "calc(100% - 16px)" })
         .on("click", function () {
             if (state.trayContent) window.RED.tray.close();
             else window.RED.actions.invoke("nexa:open-pages-editor");
@@ -153,9 +153,9 @@ export function buildSidebarContent() {
                 });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);
-            if (tab.id === "hierarchy") renderHierarchyPanel();
             if (tab.id === "events") renderEventsPanel();
             if (tab.id === "properties") renderPropertiesPanel();
+            if (tab.id === "hierarchy") renderHierarchyPanel();
             if (tab.id === "theme") renderThemePanel();
             if (tab.id === "types") renderTypesPanel();
             if (tab.id === "assets") renderAssetsPanel();
@@ -163,16 +163,17 @@ export function buildSidebarContent() {
             if (tab.id === "sparkplug") renderSparkplugPanel();
         }
     });
+
     state.sidebarTabs.addTab({ id: "screens", label: "Screens & Flows" });
     state.sidebarTabs.addTab({ id: "components", label: "Components" });
-    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
     state.sidebarTabs.addTab({ id: "events", label: "Events" });
     state.sidebarTabs.addTab({ id: "properties", label: "Properties" });
+    state.sidebarTabs.addTab({ id: "hierarchy", label: "Hierarchy" });
+    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
+    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
     state.sidebarTabs.addTab({ id: "theme", label: "Theme" });
     state.sidebarTabs.addTab({ id: "types", label: "Types" });
-    state.sidebarTabs.addTab({ id: "assets", label: "Assets" });
     state.sidebarTabs.addTab({ id: "breakpoints", label: "Breakpoints" });
-    state.sidebarTabs.addTab({ id: "sparkplug", label: "MQTT Sparkplug" });
 
     if (window.NEXA && typeof window.NEXA.onRegister === "function") {
         window.NEXA.onRegister(function (id) {

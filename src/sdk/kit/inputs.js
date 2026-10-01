@@ -201,12 +201,19 @@ export class NxCheckbox extends KitElement {
             ?disabled="${this.disabled || this.readonly}" @change="${(e) => this.change(e.target.checked)}">`;
     }
     render() {
-        return html`<div class="nx-field">
-            <div class="nx-inline">
-                <label class="nx-check ${this.disabled ? "nx-disabled" : ""}" style="flex: 1 1 auto; min-width: 0;">${this._control()}<span>${icon(this.icon)} ${this.label || ""}</span></label>
-                ${this.modified ? html`<span class="nx-dot" title="Changed from the default"></span>` : nothing}
-                ${this.actions || nothing}
-            </div>
+        if (this.binding !== undefined && this.binding !== null) {
+            return this.frame(html`<label class="nx-check ${this.disabled ? "nx-disabled" : ""}">${this._control()}<span>${icon(this.icon)} ${this.label || ""}</span></label>`);
+        }
+        var inline = html`<div class="nx-inline">
+            <label class="nx-check ${this.disabled ? "nx-disabled" : ""}" style="flex: 1 1 auto; min-width: 0;">${this._control()}<span>${icon(this.icon)} ${this.label || ""}</span></label>
+            ${this.modified ? html`<span class="nx-dot" title="Changed from the default"></span>` : nothing}
+            ${this._tokenButton()}
+            ${this.actions || nothing}
+        </div>`;
+        return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">
+            ${inline}
+            ${this._tokenPanel()}
+            ${this._chips()}
             ${this._foot()}
         </div>`;
     }

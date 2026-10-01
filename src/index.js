@@ -12,12 +12,12 @@ if (typeof window !== "undefined") {
     window.__nexaEditorApi = Object.assign({}, NexaState, NexaScreens);
 }
 
-// The Node-RED sidebar, at least `share` of the window (up to its 800 px): no dragging it
+// The Node-RED sidebar, at least `share` of the window (up to its 900 px): no dragging it
 // wider each time the Nexa tab is opened. Narrower is left as the user made it wider.
 function widenSidebar(share) {
     var $ = window.$, sb = $ && $("#red-ui-sidebar");
     if (!sb || !sb.length) return;
-    var want = Math.min(800, Math.round(window.innerWidth * share));
+    var want = Math.min(900, Math.round(window.innerWidth * share));
     if (sb.width() >= want) return;
     sb.width(want);
     if (window.RED.events) window.RED.events.emit("sidebar:resize");
@@ -59,7 +59,7 @@ if (typeof window.RED !== "undefined" && window.RED.plugins) {
             });
         }
     });
-}if (typeof window.RED !== "undefined" && window.RED.events && typeof window.RED.events.on === "function") {
+} if (typeof window.RED !== "undefined" && window.RED.events && typeof window.RED.events.on === "function") {
     window.RED.events.on("flows:loaded", function () {
         NexaState.state.flowsLoaded = true;
     });

@@ -508,6 +508,95 @@ async function main() {
             assert.deepStrictEqual(r.calls, [['setAt', 'gap', 'md', 4], ['set', 'gap', 12], ['clearAt', 'gap', 'md']]);
         });
 
+        await ok('nx-checkbox: ⛓ bind button opens nx-binding with Message source, fallback edits boolean, and 📱 opens breakpoint chips', async () => {
+            const r = await js(`(async function () {
+                var root = document.createElement("div"); document.body.appendChild(root);
+                var props = { disabled: false }, calls = [];
+                var meta = { id: "btn", stateList: [], inputs: [], outputs: [], props: {
+                    disabled: { key: "disabled", type: "boolean", label: "Disabled", default: false, bindable: true }
+                } };
+                var over = {};
+                var responsive = {
+                    canVary: function () { return true; },
+                    list: function () { return [{ id: "xl", name: "xl" }, { id: "md", name: "md" }, { id: "sm", name: "sm" }]; },
+                    active: function () { return "xl"; },
+                    has: function (k, id) { return !!(over[id] && k in over[id]); },
+                    valueAt: function (k, id) { return over[id] && over[id][k] !== undefined ? over[id][k] : props[k]; },
+                    setAt: function (k, id, v) { calls.push(["setAt", k, id, v]); over[id] = Object.assign({}, over[id], { [k]: v }); },
+                    clearAt: function (k, id) { calls.push(["clearAt", k, id]); if (over[id]) delete over[id][k]; }
+                };
+                var h = NexaKit.renderInspector(root, {
+                    meta: meta, props: props, responsive: responsive,
+                    set: function (k, v) { calls.push(["set", k, v]); props[k] = v; }
+                });
+                await NexaTest.wait();
+                var cb = root.querySelector("nx-checkbox");
+                var out = {};
+
+                // 1. Responsive button (📱)
+                var bpBtn = cb.querySelector(".nx-bp-toggle");
+                out.hasBpBtn = !!bpBtn;
+                bpBtn.click(); await NexaTest.wait();
+                out.bpChips = Array.from(cb.querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp"); });
+
+                // 2. Bind button (⛓)
+                var bindBtn = cb.querySelector("[title^='Bind']");
+                out.hasBindBtn = !!bindBtn;
+                bindBtn.click(); await NexaTest.wait();
+
+                // Has nx-binding rendered now?
+                var bindingWidget = cb.querySelector("nx-binding");
+                out.hasBindingWidget = !!bindingWidget;
+
+                // Pick "msg" source
+                var msgBtn = Array.from(bindingWidget.querySelectorAll(".nx-seg-item")).find(function (b) { return b.textContent.indexOf("Message") !== -1; });
+                out.hasMsgSource = !!msgBtn;
+                if (msgBtn) { msgBtn.click(); await NexaTest.wait(); }
+
+                // Type msg path: "disabled"
+                var msgInput = bindingWidget.querySelector("nx-text input");
+                if (msgInput) {
+                    msgInput.focus();
+                    msgInput.value = "disabled";
+                    msgInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    msgInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                    await NexaTest.wait();
+                }
+                out.propAfterBind = props.disabled;
+
+                // 3. Fallback checkbox
+                var fallbackBox = cb.querySelector(".nx-fallback input[type=checkbox]");
+                out.hasFallbackBox = !!fallbackBox;
+                if (fallbackBox) {
+                    fallbackBox.click();
+                    await NexaTest.wait();
+                }
+                out.fallbackValue = props.__fallback ? props.__fallback.disabled : undefined;
+
+                // 4. Unbind
+                var unbindBtn = cb.querySelector("[title*='Bound']");
+                if (unbindBtn) {
+                    unbindBtn.click();
+                    await NexaTest.wait();
+                }
+                out.propAfterUnbind = props.disabled;
+                out.isInlineAgain = !!cb.querySelector(".nx-inline") && !cb.querySelector("nx-binding");
+
+                h.destroy(); root.remove();
+                return out;
+            })()`);
+            assert.strictEqual(r.hasBpBtn, true, 'has 📱 responsive button');
+            assert.deepStrictEqual(r.bpChips, ['xl', 'md', 'sm'], 'clicking 📱 reveals breakpoint chips on nx-checkbox');
+            assert.strictEqual(r.hasBindBtn, true, 'has ⛓ bind button');
+            assert.strictEqual(r.hasBindingWidget, true, 'clicking ⛓ reveals nx-binding editor');
+            assert.strictEqual(r.hasMsgSource, true, 'nx-binding has Message source');
+            assert.strictEqual(r.propAfterBind, '{msg.disabled}', 'binding path sets {msg.disabled}');
+            assert.strictEqual(r.hasFallbackBox, true, 'shows fallback checkbox below nx-binding');
+            assert.strictEqual(r.fallbackValue, true, 'clicking fallback checkbox sets __fallback.disabled');
+            assert.strictEqual(r.propAfterUnbind, false, 'unbinding resets prop to default');
+            assert.strictEqual(r.isInlineAgain, true, 'returns to inline checkbox after unbinding');
+        });
+
         await ok('fallback: a bound field (⛓) and a tag input edit their fallback (props.__fallback) below the binding', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
