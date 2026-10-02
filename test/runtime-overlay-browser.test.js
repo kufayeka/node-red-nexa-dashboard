@@ -3,7 +3,7 @@
 // Dialogs and drawers on a deployed page, in headless Chrome: hidden until a Logic "Open"
 // node runs; a dialog centred on the page over a backdrop, a drawer along the right side
 // of the frame it is in; closed by a button inside (a "Close" node, with a result — the
-// "Open" node continues with it), the backdrop, Esc (the top one of a stack first), a
+// "Open" node continues with it, and only then), the backdrop, Esc (the top one of a stack first), a
 // timer; its On Open event; dragged, kept inside its scope.
 // Needs `npm run build`.   node test/runtime-overlay-browser.test.js   (skipped without Chrome)
 
@@ -35,6 +35,7 @@ async function main() {
                 assert.deepStrictEqual(await rect('[data-id="dlg"]'), [350, 200, 300, 200], '1000 × 600 window: centred');
                 assert.deepStrictEqual(await rect('[data-overlay="dlg"] .nexa-overlay-backdrop'), [0, 0, 1000, 600]);
                 assert.strictEqual(await text('ow'), 'hello');
+                assert.strictEqual(await text('res'), '', 'the Open node passes nothing on while the dialog is open');
             });
             await ok('a button inside -> Close with msg.payload: the Open node continues with the result, closedBy "node"', async () => {
                 await emit('ok', 'click');

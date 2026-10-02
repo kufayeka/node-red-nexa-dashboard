@@ -4112,12 +4112,11 @@
         return msg;
       }
     },
-    // its output fires when the overlay closes (with the result) — and, as before the registry, also right away
+    // its output fires once, when the overlay closes (msg.payload = the result): Open -> confirm -> act
     "overlay-open": {
       run: function(node, msg, ctx) {
         const ns = namespaceOf(node) + node.overlay;
         if (!openOverlay(ctx.screen, ns, msg, ctx.next)) logicTrace("overlay-open: no overlay", ns);
-        return msg;
       }
     },
     "overlay-close": {
