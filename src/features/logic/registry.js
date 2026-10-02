@@ -6,10 +6,31 @@
 //   runtime.js  what it does on the page: run(node, msg, ctx).
 // The editor bundle loads ./editor.js, the page bundle ./runtime.js; both load ./meta.js.
 // Adding a node type = its entries in those three files. Nothing else switches on node.type.
+// A plugin adds its own with the SDK's defineLogicNode (src/sdk/logic-node.js), into the same registry.
+//
+// The editor bundle, the page bundle and the SDK bundle each carry a copy of this module: the
+// maps live on window so the three see one registry.
 
-const metas = new Map();
-const editors = new Map();
-const runtimes = new Map();
+const store = (function () {
+    const fresh = function () { return { metas: new Map(), editors: new Map(), runtimes: new Map(), listeners: [] }; };
+    if (typeof window === "undefined") return fresh();
+    return window.__nexaLogicRegistry || (window.__nexaLogicRegistry = fresh());
+})();
+const metas = store.metas;
+const editors = store.editors;
+const runtimes = store.runtimes;
+
+function changed(type) {
+    store.listeners.slice().forEach(function (fn) {
+        try { fn(type); } catch (e) { console.error("[nexa-logic] a registry listener threw:", e); }
+    });
+}
+
+/** fn(type) after a node type is added or changed (a plugin that loaded late). Returns the unsubscribe. */
+export function onLogicTypesChange(fn) {
+    store.listeners.push(fn);
+    return function () { const i = store.listeners.indexOf(fn); if (i !== -1) store.listeners.splice(i, 1); };
+}
 
 const FALLBACK_META = Object.freeze({ type: "?", label: "", color: "#607d8b", icon: "fa-cube", chipColor: "#e0e7ff", inputs: 1, outputs: 1 });
 
@@ -21,6 +42,7 @@ export function defineLogicNodes(list) {
     list.forEach(function (m) {
         if (!m || !m.type) throw new Error("defineLogicNodes: a node needs a type");
         metas.set(m.type, Object.freeze(Object.assign({}, FALLBACK_META, m)));
+        changed(m.type);
     });
 }
 
@@ -38,7 +60,7 @@ export function defineLogicEditors(parts) {
  * @param {object} parts  {type: {run(node, msg, ctx)}}
  */
 export function defineLogicRuntimes(parts) {
-    Object.keys(parts).forEach(function (type) { runtimes.set(type, parts[type]); });
+    Object.keys(parts).forEach(function (type) { runtimes.set(type, parts[type]); changed(type); });
 }
 
 export function logicMeta(type) { return metas.get(type) || FALLBACK_META; }

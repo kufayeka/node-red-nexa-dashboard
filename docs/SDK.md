@@ -1,8 +1,9 @@
 # Nexa Component SDK
 
-The Nexa Component SDK is how you write a component for Nexa Dashboard.
+The Nexa Component SDK is how you write a component, or a Logic node, for Nexa Dashboard.
 
-- Each component is **one declaration** covering properties, inputs, outputs, events, actions, the property panel and the view.
+- Each component is **one declaration** (`defineComponent`) covering properties, inputs, outputs, events, actions, the property panel and the view.
+- Each Logic node is **one declaration** too (`defineLogicNode`, [§12b](#12b-logic-nodes-definelogicnode)): its palette entry, its fields (the dialog is built from them) and what it does on the page.
 - The view is a **Lit** component.
 - The property panel is built from **`<nx-*>`** widgets. Every plugin therefore looks and behaves the same in the editor.
 - Tags are **generic**. Sparkplug B is the first tag provider; OPC UA, SQL and UDT tags plug in later, and components need no changes.
@@ -12,6 +13,7 @@ The Nexa Component SDK is how you write a component for Nexa Dashboard.
 > - `@kufayeka/nexa-component-buttons`: a boolean control; per-state CSS; migration.
 > - `@kufayeka/nexa-component-basic-shapes`: simple components with the automatic inspector.
 > - `test/fixtures/sdk-plugin/plugin.js`: every advanced feature in one file.
+> - `test/fixtures/sdk-logic-plugin/plugin.js`: a Logic node.
 >
 > For a new plugin, start from `sdk/template/`.
 
@@ -26,11 +28,12 @@ The Nexa Component SDK is how you write a component for Nexa Dashboard.
 5. [Inputs, outputs and generic tags](#5-inputs-outputs-and-generic-tags)
 6. [Events and actions](#6-events-and-actions)
 7. [The view (`NexaElement`)](#7-the-view-nexaelement)
-8. [States and per-state CSS](#8-states-and-per-state-css)
+8. [States, parts and Custom CSS](#8-states-parts-and-custom-css)
 9. [The inspector](#9-the-inspector)
 10. [The `<nx-*>` widget catalog](#10-the-nx--widget-catalog)
 11. [Fields: `FieldController` and codecs](#11-fields-fieldcontroller-and-codecs)
 12. [Tag providers](#12-tag-providers)
+12b. [Logic nodes: `defineLogicNode`](#12b-logic-nodes-definelogicnode)
 13. [Lifecycle: versions and migrations](#13-lifecycle-versions-and-migrations)
 14. [Testing with the testkit](#14-testing-with-the-testkit)
 15. [Rules and limits](#15-rules-and-limits)
@@ -153,8 +156,7 @@ If your plugin bundles itself, alias the bare name `nexa-component-sdk.js` to th
 | `properties` | object | [§4](#4-properties) |
 | `inputs` / `outputs` | object | [§5](#5-inputs-outputs-and-generic-tags) |
 | `events` / `actions` | object | [§6](#6-events-and-actions) |
-| `states`, `parts`, `css` | object, object, string | [§8](#8-states-and-per-state-css) |
-| `cssGroup` | string | The inspector group (tab) the CSS props go in, e.g. `"Custom CSS"`. Default `"Style"`. |
+| `states`, `parts`, `css` | object, object, string | [§8](#8-states-parts-and-custom-css). They declare selectors and the component's own CSS; Custom CSS **fields** come only from `properties` (`cssFields`). |
 | `state` | object | Internal reactive fields of the view (`this.<name>`), not saved. |
 | `inspector` | `({ p, ui, bind }) => TemplateResult` | [§9](#9-the-inspector). Optional; the default is an automatic panel. |
 | `view` | class extending `NexaElement` | [§7](#7-the-view-nexaelement), **required** |
@@ -285,24 +287,30 @@ Also:
 
 ---
 
-## 8. States and per-state CSS
+## 8. States, parts and Custom CSS
 
 ```js
-css: "button { border-radius: 4px; }",
+css: "button { border-radius: 4px; }",                 // the component's own CSS, always applied
 states: {
     false: { label: "State 0", selector: "button.state-false", css: "",                   color: "#94a3b8" },
     true:  { label: "State 1", selector: "button.state-true",  css: "background: green;", color: "#22c55e" },
     hover: { label: "Hover",   selector: "button:hover",       css: "filter: brightness(.95)", preview: false }
+},
+parts: { label: { label: "Field label", selector: ".x-label", css: "font-weight: 600;" } },
+properties: {
+    // Custom CSS fields: only if the component offers them (the SDK adds none on its own)
+    ...cssFields({ base: true, parts, states, group: "Custom CSS" })
 }
 ```
 
-- `css` becomes the `css` prop (the base stylesheet, editable in the panel).
-- **Parts** are pieces of the view with their own CSS, a label or a helper line for example:
-  `parts: { label: { label: "Field label", selector: ".x-label", css: "font-weight: 600;" } }`
-  gives a `cssLabel` prop that works like a state's (declarations wrapped in the selector) and is always applied.
-  The stylesheet order is base, parts, then states, so a state can still restyle a part.
-- Each state with a `selector` gets a `css<State>` prop (`cssTrue`, `cssHover` …). The user writes declarations, and the SDK wraps them in the selector, or uses the block as-is when it contains `{`.
-- The result is injected into the component's shadow root, base first.
+- `css` is the component's own stylesheet. It is always applied, base first, in the component's shadow root.
+- `states` and `parts` declare **selectors**. A state's selector styles that state; a part is a piece of the view (a label, a helper line).
+- **Custom CSS fields are the component's choice.** The SDK does not add them. A component that wants them declares `type: "css"` properties:
+  - with no target: the base field. The user's text replaces `css` when they fill it in.
+  - with `part: "<name>"`, `state: "<name>"`, or `selector: "<css selector>"`: that piece. The user writes declarations and the SDK wraps them in the selector (a block holding `{` is used as-is).
+- `cssFields({ base, parts, states, group })` writes those fields for you, with the keys screens already use: `css`, `css<Part>` (`cssLabel`), `css<State>` (`cssTrue`, `cssHover`). `base` is `true` (an empty "Base CSS" field), a default text, or `false` (no base field).
+- A CSS field that targets a part or a state the component doesn't declare is refused.
+- Stylesheet order: base, then parts / selectors, then states, so a state can still restyle a part.
 - States with `preview !== false` appear in the inspector's preview switcher (`ui.stateSwitcher()`). The view reads `this.previewState` to show that state in the editor.
 
 ---
@@ -527,6 +535,50 @@ defineTagProvider("opcua", {
 - Value *resolution* on a deployed page is a host concern: Sparkplug is built into the dashboard, and a new provider's live values need its host side.
 
 ---
+
+## 12b. Logic nodes: `defineLogicNode`
+
+A plugin adds nodes to the Events (Logic) palette the same way it adds components, from the same module, in the same package (§2):
+
+```js
+import { defineLogicNode } from "../../nexa-sdk/nexa-component-sdk.js";
+
+export const modbusRead = defineLogicNode({
+    type: "acme-modbus-read",              // required, unique: lower-case words joined by "-", your prefix first
+    label: "Modbus Read",                  // the palette chip, and the canvas label by default
+    help: "Reads a holding register.",     // shown at the top of its dialog
+    palette: { section: "Industrial", icon: "fa-plug", color: "#2f6f8f", chipColor: "#d9e8f0" },
+    inputs: 1,                             // 0 = a source (it starts chains); default 1
+    outputs: 2, outputLabels: ["value", "error"], exclusivePorts: true,
+    properties: {                          // the node's dialog is built from these (§4 property types)
+        address: { type: "number", default: 40001 },
+        unit:    { type: "string", default: "{msg.payload.unit}", label: "Unit (a binding is fine)" }
+    },
+    nodeLabel: (node) => "Read " + node.props.address,     // optional: the label on the canvas
+    run(node, msg, ctx) {                  // on the page
+        const unit = ctx.resolve(node.props.unit, msg);
+        readRegister(node.props.address, unit).then(
+            (v) => ctx.nextPort(0, { ...msg, payload: v }),
+            (e) => ctx.nextPort(1, { ...msg, error: e.message }));
+    }
+});
+```
+
+- **Settings live in `node.props`**, the same as every built-in node: `{ id, type, x, y, props: {...} }`.
+- **The editor** puts a chip in `palette.section` (default "Plugins"). A new node starts with the fields' defaults. Double-click opens a dialog built from `properties` with the property kit, the same widgets as a component's inspector. A field can hold a value or a binding: Variable, Message or Expression (Tag bindings aren't offered: the page doesn't subscribe tags for a Logic node).
+- **`run(node, msg, ctx)`**: return a msg to pass it on through output 1. Or return nothing, and call `ctx.next(msg)` / `ctx.nextPort(port, msg)` when ready (async). Return nothing and call neither for a sink. `ctx` gives you:
+
+| | |
+|---|---|
+| `ctx.next(msg)` | pass `msg` on through output 1 |
+| `ctx.nextPort(port, msg)` | through output `port` (0-based) |
+| `ctx.resolve(text, msg)` | a field's bindings filled in: `{variable}`, `{msg.payload.id}`, `{$route.params.id}`, text mixing them |
+| `ctx.vars.get(name, scope?)` / `ctx.vars.set(name, value, scope?, op?)` | variables, as a Function node sees them |
+| `ctx.log(...)` | the console, tagged with the node |
+
+- **Loading.** The module loads in the editor and on every deployed page, like a component plugin. On the page it runs after the runtime started: a chain that reaches the node before the plugin registered waits for it (up to 10 s), then runs it. A type nobody registers (the plugin isn't installed) is reported in the console and stops the chain there.
+- **Refused:** a `type` without a prefix or not in lower case, a built-in type, a missing `run`, a `nodeLabel` that isn't a function.
+- Tests: `test/sdk-logic-node.test.js` (definition), `test/runtime-logic-plugin-browser.test.js` (a plugin module on a page), and the fixture `test/fixtures/sdk-logic-plugin/plugin.js` as an example.
 
 ## 13. Lifecycle: versions and migrations
 

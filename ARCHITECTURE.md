@@ -7,7 +7,7 @@ Read this first. It says where the code for a thing is, how data moves, and wher
 - **The project JSON is the truth.** Screens, templates, flows, variables, types, and theme live on the `kufayeka-nexa-project` config node. Node-RED's Deploy saves them.
 - **Functional core:** pure functions read and change that JSON (`src/model/`). They have no DOM, no sockets, and no globals, and are tested in plain Node.
 - **Imperative shell, kept thin:** the editor (jQuery + Lit in Node-RED's editor), the page runtime (the browser), and the server (Node-RED plugin + worker threads) do the I/O around that core.
-- **Registries, not `if` chains:** anything with many kinds is registered. That covers Logic nodes (`src/features/logic/`), components (SDK `defineComponent`), and tag providers (`defineTagProvider`).
+- **Registries, not `if` chains:** anything with many kinds is registered. That covers Logic nodes (`src/features/logic/`, and plugins' with SDK `defineLogicNode`), components (SDK `defineComponent`), and tag providers (`defineTagProvider`).
 
 ## 2. Where the code runs
 
@@ -81,6 +81,10 @@ Without a port, the old path still works: `write-request` → `plugin.js` → `w
 | `sparkplug/` | sparkplug-write, sparkplug-write-multi |
 | `link/` | link-request, link-send, link-receive |
 
+A Logic node is `{ id, type, x, y, w, h, props: {...} }`: its settings are in `props`. Older projects are migrated on load (`src/model/migrate-logic.js`), or on disk with `node scripts/migrate-project.js <flows.json>`.
+
+A plugin adds node types with the SDK's `defineLogicNode` (`src/sdk/logic-node.js`, docs/SDK.md §12b) into the same registry. The registry lives on `window`, shared by the editor, page and SDK bundles. The editor puts plugin types in the palette under their section and builds their dialog from their fields (`src/logic/logic-fields-dialog.js`). On the page, a chain that reaches a plugin type before its module registered waits for it (`runtime/logic/runner.js`).
+
 Each family has three files:
 - `meta.js`: label, colours, icon, ports. Read by both bundles.
 - `editor.js`: `label(node)`, `edit(node)` (its dialog, in the same folder), `hint`, `canAdd`, `onAdd`, `decorate`, `portTitle`.
@@ -112,7 +116,8 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 
 | To add | Do |
 | --- | --- |
-| A Logic node type | An entry in its family's `meta.js`, `editor.js`, `runtime.js` (a new family: a folder plus a line in `features/logic/meta.js`, `editor.js`, `runtime.js`). A palette chip in `palette-events-panel.js`. Nothing else. |
+| A Logic node from a plugin | `defineLogicNode` in the plugin's module (docs/SDK.md §12b). |
+| A Logic node type (built in) | An entry in its family's `meta.js`, `editor.js`, `runtime.js` (a new family: a folder plus a line in `features/logic/meta.js`, `editor.js`, `runtime.js`). A palette chip in `palette-events-panel.js`. Nothing else. |
 | A component | A plugin package with the SDK (`docs/SDK.md`). Not inside this package. |
 | A tag provider | `defineTagProvider` (SDK). |
 | Something between threads | A wire format in `src/shared/<name>/` (one file, used by both sides), a test without sockets, then the worker. |

@@ -176,6 +176,17 @@ export function buildMeta(def) {
     return meta;
 }
 
+/**
+ * The fields of a Logic node a plugin defines (defineLogicNode's `properties`), normalized like a
+ * component's, in the shape the property kit's inspector takes: the editor builds the node's
+ * dialog from it.
+ */
+export function buildFieldsMeta(id, properties) {
+    var meta = { id: id, props: {}, inputs: [], outputs: [], stateList: [], partList: [], eventList: [], actionList: [] };
+    Object.keys(properties || {}).forEach(function (k) { meta.props[k] = normalizeProp(k, properties[k]); });
+    return meta;
+}
+
 export function defaultValues(meta) {
     var out = {};
     Object.keys(meta.props).forEach(function (k) { out[k] = clone(meta.props[k].default); });

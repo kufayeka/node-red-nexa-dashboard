@@ -2074,6 +2074,11 @@ nx-tab[hidden] { display: none !important; }
   function sdk() {
     return window.NexaSDK || null;
   }
+  function messageHelp(path) {
+    var h = getHost();
+    if (typeof h.messageHelp === "function") return h.messageHelp(path);
+    return 'Set by the Logic flow: an "Update Component" node sends a message to this component; this prop takes msg.' + path + " from it.";
+  }
   function bindingSource(v) {
     v = str(v).trim();
     if (!v) return null;
@@ -2111,9 +2116,13 @@ nx-tab[hidden] { display: none !important; }
       this._source = null;
     }
     get sources() {
-      return this.access === "write" ? SOURCES.filter(function(s) {
-        return s.value === "var" || s.value === "tag";
+      var allowed = getHost().bindingSources;
+      var list = Array.isArray(allowed) ? SOURCES.filter(function(s) {
+        return allowed.indexOf(s.value) !== -1;
       }) : SOURCES;
+      return this.access === "write" ? list.filter(function(s) {
+        return s.value === "var" || s.value === "tag";
+      }) : list;
     }
     get source() {
       var s = this._source || bindingSource(this.value) || this.defaultSource || "var";
@@ -2194,13 +2203,15 @@ nx-tab[hidden] { display: none !important; }
           var p = str(e.detail.value).trim().replace(/^msg\.?/, "");
           this._emit(p ? "{msg." + p + "}" : "");
         }}"></nx-text>
-                <div class="nx-help">Set by the Logic flow: an "Update Component" node sends a message to this component; this prop takes msg.${path || "\u2026"} from it.</div>`;
+                <div class="nx-help">${messageHelp(path || "\u2026")}</div>`;
       }
       var inserts = variables().map(function(x) {
         return { value: "{" + x.name + "}", label: "{" + x.name + "}  \xB7 " + (x.owner ? x.owner.name : "") };
-      }).concat([{ value: "{msg.payload}", label: "{msg.payload}  \xB7 message" }]).concat(knownTags().slice(0, 200).map(function(t) {
+      }).concat([{ value: "{msg.payload}", label: "{msg.payload}  \xB7 message" }]).concat(this.sources.some(function(s) {
+        return s.value === "tag";
+      }) ? knownTags().slice(0, 200).map(function(t) {
         return { value: t.value, label: t.label + "  \xB7 " + t.detail };
-      }));
+      }) : []);
       return html`<div class="nx-binding-expr">
             <textarea class="nx-control nx-mono" rows="2" spellcheck="false" .value="${v}" placeholder="Line {line}: {sparkplug:G::N::D::Speed} rpm"
                 @keyup="${(e) => {

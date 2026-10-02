@@ -3,22 +3,24 @@
 // this file only walks the graph, guards against loops, and fires the sources.
 
 import { LOGIC_MAX_STEPS } from "../state.js";
-import { cloneMsg, logicTrace } from "./context.js";
+import { cloneMsg, logicTrace, varsFor } from "./context.js";
 import { cloneValue, resolveBindableValue, writeVariable } from "../state/variable.js";
-import { makeRoute, ownerOf } from "../state/scope.js";
+import { makeRoute, ownerOf, resolveScope } from "../state/scope.js";
 import { findLogicNode, isStructural } from "../mounting/slots.js";
 import { refreshComponentRender, propsMention } from "../mounting/render.js";
 import { sendSparkplugWrite } from "../io/client.js";
 import { parseSparkplugBindingPath } from "../io/sparkplug.js";
-import { logicRuntime } from "../../features/logic/registry.js";
+import { logicRuntime, hasLogicType, onLogicTypesChange } from "../../features/logic/registry.js";
 import "../../features/logic/runtime.js";
 
 /**
- * What a node's run(node, msg, ctx) gets:
- *   screen, budget       the screen it runs on, the step budget of this chain
+ * What a node's run(node, msg, ctx) gets. For every node, plugins included (docs/SDK.md):
  *   next(msg)            pass msg on through output 1 (later, for an async node)
  *   nextPort(port, msg)  pass msg on through output `port` (0-based)
- *   continuePropagation / runLogicGraph   the engine itself, for nodes that route by hand (Switch, Send to Flow)
+ *   resolve(text, msg)   a field's bindings filled in: {variable}, {msg.payload.id}, {$route.params.id}
+ *   vars                 vars.get(name, scope?) / vars.set(name, value, scope?, op?)
+ *   log(...)             to the console, tagged with the node
+ * Built-in nodes also use: screen, budget, continuePropagation / runLogicGraph (the engine itself).
  */
 function runCtx(screen, node, budget) {
     return {
@@ -26,9 +28,37 @@ function runCtx(screen, node, budget) {
         budget: budget,
         next: function (m) { continuePropagation(screen, node, m, budget); },
         nextPort: function (port, m) { continueFromPort(screen, node, m, port, budget); },
+        resolve: function (text, m) {
+            if (typeof text !== "string" || text.indexOf("{") === -1) return text;
+            var scope = Object.create(resolveScope(screen, "", node.id) || null);
+            scope.msg = m || {};
+            return resolveBindableValue(text, scope);
+        },
+        vars: varsFor(screen, node),
+        log: function () { console.log.apply(console, ["[nexa-logic " + node.type + " " + node.id + "]"].concat(Array.prototype.slice.call(arguments))); },
         continuePropagation: continuePropagation,
         runLogicGraph: runLogicGraph
     };
+}
+
+// A plugin's Logic node: its module loads after the page started, so a chain can reach the node
+// before its type is registered. Wait for it (a while), then run; never run it as something else.
+var PLUGIN_WAIT_MS = 10000;
+function whenRegistered(screen, node, msg, budget) {
+    var done = false;
+    var stop = onLogicTypesChange(function (type) {
+        if (done || type !== node.type || !logicRuntime(type)) return;
+        done = true;
+        stop();
+        clearTimeout(timer);
+        runLogicGraph(screen, node, msg, budget);
+    });
+    var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        stop();
+        console.error("[nexa-logic] no Logic node type \"" + node.type + "\" (node " + node.id + "): is the plugin that defines it installed?");
+    }, PLUGIN_WAIT_MS);
 }
 
 export function runLogicGraph(screen, node, msg, budget) {
@@ -43,8 +73,11 @@ export function runLogicGraph(screen, node, msg, budget) {
     }
     logicTrace("running", node.type, node.id, "with msg =", msg);
     var rt = logicRuntime(node.type);
-    // an unknown type (a newer project, a removed node type): pass the message on, as before
-    if (!rt) { continuePropagation(screen, node, msg, budget); return; }
+    if (!rt) {
+        if (!hasLogicType(node.type)) { whenRegistered(screen, node, msg, budget); return; }
+        continuePropagation(screen, node, msg, budget); // known but nothing to do on the page: pass it on
+        return;
+    }
     var out;
     try {
         out = rt.run(node, msg, runCtx(screen, node, budget));

@@ -23,6 +23,14 @@ var SOURCES = [
 
 function sdk() { return window.NexaSDK || null; }
 
+// what "the message" is where this field is edited: a component's prop (default) or a Logic node's
+// field (the host says so: setHost({ messageHelp: (path) => text }))
+function messageHelp(path) {
+    var h = getHost();
+    if (typeof h.messageHelp === "function") return h.messageHelp(path);
+    return "Set by the Logic flow: an \"Update Component\" node sends a message to this component; this prop takes msg." + path + " from it.";
+}
+
 /** Which source a binding string is. */
 export function bindingSource(v) {
     v = str(v).trim();
@@ -60,7 +68,12 @@ export class NxBinding extends KitElement {
 
     constructor() { super(); this._source = null; }
 
-    get sources() { return this.access === "write" ? SOURCES.filter(function (s) { return s.value === "var" || s.value === "tag"; }) : SOURCES; }
+    get sources() {
+        // the host may narrow them (a Logic node's dialog: no tags, the page doesn't subscribe them for a node)
+        var allowed = getHost().bindingSources;
+        var list = Array.isArray(allowed) ? SOURCES.filter(function (s) { return allowed.indexOf(s.value) !== -1; }) : SOURCES;
+        return this.access === "write" ? list.filter(function (s) { return s.value === "var" || s.value === "tag"; }) : list;
+    }
 
     get source() {
         var s = this._source || bindingSource(this.value) || this.defaultSource || "var";
@@ -120,12 +133,12 @@ export class NxBinding extends KitElement {
             var path = mine ? v.slice(1, -1).replace(/^msg\.?/, "") : "";
             return html`<nx-text mono addon-before="msg." .value="${path}" placeholder="payload.speed"
                 @nx-change="${(e) => { e.stopPropagation(); var p = str(e.detail.value).trim().replace(/^msg\.?/, ""); this._emit(p ? "{msg." + p + "}" : ""); }}"></nx-text>
-                <div class="nx-help">Set by the Logic flow: an "Update Component" node sends a message to this component; this prop takes msg.${path || "…"} from it.</div>`;
+                <div class="nx-help">${messageHelp(path || "…")}</div>`;
         }
         // expression: free text with bindings of every kind
         var inserts = variables().map(function (x) { return { value: "{" + x.name + "}", label: "{" + x.name + "}  · " + (x.owner ? x.owner.name : "") }; })
             .concat([{ value: "{msg.payload}", label: "{msg.payload}  · message" }])
-            .concat(knownTags().slice(0, 200).map(function (t) { return { value: t.value, label: t.label + "  · " + t.detail }; }));
+            .concat(this.sources.some(function (s) { return s.value === "tag"; }) ? knownTags().slice(0, 200).map(function (t) { return { value: t.value, label: t.label + "  · " + t.detail }; }) : []);
         return html`<div class="nx-binding-expr">
             <textarea class="nx-control nx-mono" rows="2" spellcheck="false" .value="${v}" placeholder="Line {line}: {sparkplug:G::N::D::Speed} rpm"
                 @keyup="${(e) => { this._caret = e.target.selectionStart; }}" @click="${(e) => { this._caret = e.target.selectionStart; }}"

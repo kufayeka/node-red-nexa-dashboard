@@ -6,6 +6,7 @@ import {
 } from "../state.js";
 import { logicMeta, logicEditor, logicOutputCount } from "../features/logic/registry.js";
 import "../features/logic/editor.js";
+import { hasFieldsDialog, openLogicFieldsDialog } from "./logic-fields-dialog.js";
 import { pushHistory } from "../history.js";
 import { migrateLogicNode } from "../model/migrate-logic.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
@@ -146,6 +147,12 @@ export function renderLogicNode(node) {
         box.attr("title", ed.hint || "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
             ed.edit(node);
+        });
+    } else if (hasFieldsDialog(node.type)) {
+        // a plugin node: its dialog is built from its fields
+        box.attr("title", ed.hint || "Double-click to configure").on("dblclick", function (e) {
+            e.stopPropagation();
+            openLogicFieldsDialog(node, renderLogicCanvas);
         });
     }
     if (typeof ed.decorate === "function") ed.decorate(box, node, getActiveScreen());

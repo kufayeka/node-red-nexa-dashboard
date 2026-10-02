@@ -218,10 +218,10 @@
   }
   function syncSlots(node, slots, genId2) {
     if (!node || CONTAINER_TYPES[node.type]) return false;
-    var changed3 = false;
+    var changed4 = false;
     if (node.slots !== true) {
       node.slots = true;
-      changed3 = true;
+      changed4 = true;
     }
     var list = node.children || (node.children = []);
     var byName = {};
@@ -235,16 +235,16 @@
       var f = byName[name2];
       if (!f) {
         f = slotFrame({ name: name2, label: slot.label, layout: slot.layout }, genId2);
-        changed3 = true;
+        changed4 = true;
       }
       var label = slot.label || name2;
       if (f.slotLabel !== label) {
         f.slotLabel = label;
-        changed3 = true;
+        changed4 = true;
       }
       if (f.slotUnused) {
         delete f.slotUnused;
-        changed3 = true;
+        changed4 = true;
       }
       delete byName[name2];
       ordered.push(f);
@@ -253,15 +253,15 @@
       if (ordered.indexOf(c) !== -1) return;
       if (isSlotFrame(c) && !c.slotUnused) {
         c.slotUnused = true;
-        changed3 = true;
+        changed4 = true;
       }
       ordered.push(c);
     });
     if (ordered.length !== list.length || ordered.some(function(c, i2) {
       return c !== list[i2];
-    })) changed3 = true;
+    })) changed4 = true;
     node.children = ordered;
-    return changed3;
+    return changed4;
   }
   function slotOf(node, name2) {
     return kids(node).filter(function(c) {
@@ -2031,13 +2031,38 @@
   }
 
   // src/features/logic/registry.js
-  var metas = /* @__PURE__ */ new Map();
-  var editors = /* @__PURE__ */ new Map();
+  var store = (function() {
+    const fresh = function() {
+      return { metas: /* @__PURE__ */ new Map(), editors: /* @__PURE__ */ new Map(), runtimes: /* @__PURE__ */ new Map(), listeners: [] };
+    };
+    if (typeof window === "undefined") return fresh();
+    return window.__nexaLogicRegistry || (window.__nexaLogicRegistry = fresh());
+  })();
+  var metas = store.metas;
+  var editors = store.editors;
+  var runtimes = store.runtimes;
+  function changed(type) {
+    store.listeners.slice().forEach(function(fn) {
+      try {
+        fn(type);
+      } catch (e) {
+        console.error("[nexa-logic] a registry listener threw:", e);
+      }
+    });
+  }
+  function onLogicTypesChange(fn) {
+    store.listeners.push(fn);
+    return function() {
+      const i2 = store.listeners.indexOf(fn);
+      if (i2 !== -1) store.listeners.splice(i2, 1);
+    };
+  }
   var FALLBACK_META = Object.freeze({ type: "?", label: "", color: "#607d8b", icon: "fa-cube", chipColor: "#e0e7ff", inputs: 1, outputs: 1 });
   function defineLogicNodes(list) {
     list.forEach(function(m) {
       if (!m || !m.type) throw new Error("defineLogicNodes: a node needs a type");
       metas.set(m.type, Object.freeze(Object.assign({}, FALLBACK_META, m)));
+      changed(m.type);
     });
   }
   function defineLogicEditors(parts) {
@@ -3066,8 +3091,8 @@
     return out;
   }
   function applyConstraints(parent, list, oldInner, newInner, orig) {
-    var changed3 = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed3;
+    var changed4 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed4;
     orig = orig || snapshotBoxes(list);
     list.forEach(function(c) {
       if (!layout_exports.hasConstraints(c, parent)) return;
@@ -3084,12 +3109,12 @@
       c.y = nb.y;
       c.w = nb.w;
       c.h = nb.h;
-      changed3.push(c.id);
+      changed4.push(c.id);
       if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed3 = changed3.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+        changed4 = changed4.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
       }
     });
-    return changed3;
+    return changed4;
   }
   function constrainFrameChildren(frame, oldBox, orig) {
     if (!frame || frame.type !== "@frame") return [];
@@ -3104,9 +3129,9 @@
   }
   function readbackLayout(screen) {
     screen = screen || getActiveScreen();
-    var changed3 = [];
+    var changed4 = [];
     var redraw = false;
-    if (!screen) return changed3;
+    if (!screen) return changed4;
     tree_exports.walk(screen, function(node, parent) {
       if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
         if (node.slotUnused) return false;
@@ -3122,11 +3147,11 @@
           node.y = sb.y;
           node.w = sb.w;
           node.h = sb.h;
-          changed3.push(node.id);
+          changed4.push(node.id);
           var shifted = constrainFrameChildren(node, was);
           if (shifted.length) {
             redraw = true;
-            changed3 = changed3.concat(shifted);
+            changed4 = changed4.concat(shifted);
           }
         }
         return;
@@ -3150,22 +3175,22 @@
         node.y = box2.y;
         node.w = box2.w;
         node.h = box2.h;
-        changed3.push(node.id);
+        changed4.push(node.id);
         var moved = constrainFrameChildren(node, old);
         if (moved.length) {
           redraw = true;
-          changed3 = changed3.concat(moved);
+          changed4 = changed4.concat(moved);
         }
       }
     });
-    changed3.forEach(function(id2) {
+    changed4.forEach(function(id2) {
       if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
       tree_exports.refitGroupsUp(screen, id2);
     });
-    changed3.redraw = redraw;
-    return changed3;
+    changed4.redraw = redraw;
+    return changed4;
   }
 
   // src/canvas/drop-target.js
@@ -3404,7 +3429,7 @@
   }
   function applyDelta(delta) {
     if (!delta) return;
-    var changed3 = [];
+    var changed4 = [];
     var edgeNode = ensureRawEdgeNode(delta.groupId, delta.edgeNodeId);
     var metricsTarget;
     if (delta.type === "death") {
@@ -3419,7 +3444,7 @@
         if (devicePrefix ? key.indexOf(devicePrefix) !== 0 : key.indexOf(nodePrefix) !== 0) return;
         if (liveCache[key].online) {
           liveCache[key] = Object.assign({}, liveCache[key], { online: false });
-          changed3.push(key);
+          changed4.push(key);
         }
       });
     } else {
@@ -3463,10 +3488,10 @@
           isHistorical: !!m.isHistorical,
           isTransient: !!m.isTransient
         };
-        changed3.push(key);
+        changed4.push(key);
       });
     }
-    if (changed3.length) notify(changed3);
+    if (changed4.length) notify(changed4);
   }
   function getSparkplugEntry(ref) {
     return liveCache[refKey(ref)];
@@ -6828,11 +6853,11 @@
     return true;
   }
   function ensureAll(state2, addrs) {
-    let changed3 = false;
+    let changed4 = false;
     for (let addr of addrs)
       if (ensureAddr(state2, addr) & 1)
-        changed3 = true;
-    return changed3;
+        changed4 = true;
+    return changed4;
   }
   function dynamicFacetSlot(addresses, facet, providers) {
     let providerAddrs = providers.map((p) => addresses[p.id]);
@@ -7153,8 +7178,8 @@
     if (status & 2)
       return status;
     state2.status[idx] = 4;
-    let changed3 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
-    return state2.status[idx] = 2 | changed3;
+    let changed4 = state2.computeSlot(state2, state2.config.dynamicSlots[idx]);
+    return state2.status[idx] = 2 | changed4;
   }
   function getAddr(state2, addr) {
     return addr & 1 ? state2.config.staticValues[addr >> 1] : state2.values[addr >> 1];
@@ -9000,11 +9025,11 @@
     }
   }
   function updateAttrs(dom, prev, attrs) {
-    let changed3 = false;
+    let changed4 = false;
     if (prev) {
       for (let name2 in prev)
         if (!(attrs && name2 in attrs)) {
-          changed3 = true;
+          changed4 = true;
           if (name2 == "style")
             dom.style.cssText = "";
           else
@@ -9014,14 +9039,14 @@
     if (attrs) {
       for (let name2 in attrs)
         if (!(prev && prev[name2] == attrs[name2])) {
-          changed3 = true;
+          changed4 = true;
           if (name2 == "style")
             dom.style.cssText = attrs[name2];
           else
             dom.setAttribute(name2, attrs[name2]);
         }
     }
-    return changed3;
+    return changed4;
   }
   function getAttrs(dom) {
     let attrs = /* @__PURE__ */ Object.create(null);
@@ -13846,13 +13871,13 @@
     }
     refresh(whiteSpace, lineHeight, charWidth, textHeight, lineLength, knownHeights) {
       let lineWrapping = wrappingWhiteSpace.indexOf(whiteSpace) > -1;
-      let changed3 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
+      let changed4 = Math.abs(lineHeight - this.lineHeight) > 0.3 || this.lineWrapping != lineWrapping;
       this.lineWrapping = lineWrapping;
       this.lineHeight = lineHeight;
       this.charWidth = charWidth;
       this.textHeight = textHeight;
       this.lineLength = lineLength;
-      if (changed3) {
+      if (changed4) {
         this.heightSamples = {};
         for (let i2 = 0; i2 < knownHeights.length; i2++) {
           let h = knownHeights[i2];
@@ -13862,7 +13887,7 @@
             this.heightSamples[Math.floor(h * 10)] = true;
         }
       }
-      return changed3;
+      return changed4;
     }
   };
   var MeasuredHeights = class {
@@ -14986,21 +15011,21 @@
         point() {
         }
       }, 20);
-      let changed3 = 0;
+      let changed4 = 0;
       if (ranges.length != this.visibleRanges.length) {
-        changed3 = 8 | 4;
+        changed4 = 8 | 4;
       } else {
-        for (let i2 = 0; i2 < ranges.length && !(changed3 & 8); i2++) {
+        for (let i2 = 0; i2 < ranges.length && !(changed4 & 8); i2++) {
           let old = this.visibleRanges[i2], nw = ranges[i2];
           if (old.from != nw.from || old.to != nw.to) {
-            changed3 |= 4;
+            changed4 |= 4;
             if (!(changes && changes.mapPos(old.from, -1) == nw.from && changes.mapPos(old.to, 1) == nw.to))
-              changed3 |= 8;
+              changed4 |= 8;
           }
         }
       }
       this.visibleRanges = ranges;
-      return changed3;
+      return changed4;
     }
     lineBlockAt(pos) {
       return pos >= this.viewport.from && pos <= this.viewport.to && this.viewportLines.find((b) => b.from <= pos && b.to >= pos) || scaleBlock(this.heightMap.lineAt(pos, QueryType.ByPos, this.heightOracle, 0, 0), this.scaler);
@@ -15629,15 +15654,15 @@
     }
     listenForScroll() {
       this.parentCheck = -1;
-      let i2 = 0, changed3 = null;
+      let i2 = 0, changed4 = null;
       for (let dom = this.dom; dom; ) {
         if (dom.nodeType == 1) {
-          if (!changed3 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
+          if (!changed4 && i2 < this.scrollTargets.length && this.scrollTargets[i2] == dom)
             i2++;
-          else if (!changed3)
-            changed3 = this.scrollTargets.slice(0, i2);
-          if (changed3)
-            changed3.push(dom);
+          else if (!changed4)
+            changed4 = this.scrollTargets.slice(0, i2);
+          if (changed4)
+            changed4.push(dom);
           dom = dom.assignedSlot || dom.parentNode;
         } else if (dom.nodeType == 11) {
           dom = dom.host;
@@ -15645,12 +15670,12 @@
           break;
         }
       }
-      if (i2 < this.scrollTargets.length && !changed3)
-        changed3 = this.scrollTargets.slice(0, i2);
-      if (changed3) {
+      if (i2 < this.scrollTargets.length && !changed4)
+        changed4 = this.scrollTargets.slice(0, i2);
+      if (changed4) {
         for (let dom of this.scrollTargets)
           dom.removeEventListener("scroll", this.onScroll);
-        for (let dom of this.scrollTargets = changed3)
+        for (let dom of this.scrollTargets = changed4)
           dom.addEventListener("scroll", this.onScroll);
       }
     }
@@ -16434,15 +16459,15 @@
             scrollScale = this.viewState.scaleY;
           }
           this.updateState = 1;
-          let changed3 = this.viewState.measure();
-          if (!changed3 && !this.measureRequests.length && this.viewState.scrollTarget == null)
+          let changed4 = this.viewState.measure();
+          if (!changed4 && !this.measureRequests.length && this.viewState.scrollTarget == null)
             break;
           if (i2 > 5) {
             console.warn(this.measureRequests.length ? "Measure loop restarted more than 5 times" : "Viewport failed to stabilize");
             break;
           }
           let measuring = [];
-          if (!(changed3 & 4))
+          if (!(changed4 & 4))
             [this.measureRequests, measuring] = [measuring, this.measureRequests];
           let measured = measuring.map((m) => {
             try {
@@ -16453,11 +16478,11 @@
             }
           });
           let update = ViewUpdate.create(this, this.state, []), redrawn = false;
-          update.flags |= changed3;
+          update.flags |= changed4;
           if (!updated)
             updated = update;
           else
-            updated.flags |= changed3;
+            updated.flags |= changed4;
           this.updateState = 2;
           if (!update.empty) {
             this.updatePlugins(update);
@@ -16538,14 +16563,14 @@
       if (this.state.readOnly)
         contentAttrs["aria-readonly"] = "true";
       attrsFromFacet(this, contentAttributes, contentAttrs);
-      let changed3 = this.observer.ignore(() => {
+      let changed4 = this.observer.ignore(() => {
         let changedContent = updateAttrs(this.contentDOM, this.contentAttrs, contentAttrs);
         let changedEditor = updateAttrs(this.dom, this.editorAttrs, editorAttrs);
         return changedContent || changedEditor;
       });
       this.editorAttrs = editorAttrs;
       this.contentAttrs = contentAttrs;
-      return changed3;
+      return changed4;
     }
     showAnnouncements(trs) {
       let first = true;
@@ -28351,6 +28376,14 @@
   }
 
   // src/sidebar/palette-events-panel.js
+  var pluginRedraw = null;
+  onLogicTypesChange(function(type) {
+    if (!logicMeta(type).plugin || !state.eventsPane || pluginRedraw) return;
+    pluginRedraw = setTimeout(function() {
+      pluginRedraw = null;
+      renderEventsPanel();
+    }, 50);
+  });
   function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
     if (typeId && typeId.indexOf("@template") === 0) return "#fef9c3";
@@ -28844,6 +28877,20 @@
     chip(state.eventsPane, "From Node-RED", function() {
       return { type: "link-receive", channel: "" };
     }, "", "link-receive");
+    var bySection = {};
+    logicTypes().map(logicMeta).filter(function(m) {
+      return m.plugin;
+    }).forEach(function(m) {
+      (bySection[m.palette.section] = bySection[m.palette.section] || []).push(m);
+    });
+    Object.keys(bySection).sort().forEach(function(section) {
+      sectionHeader(state.eventsPane, section);
+      bySection[section].forEach(function(m) {
+        chip(state.eventsPane, m.palette.label, function() {
+          return Object.assign({ type: m.type }, JSON.parse(JSON.stringify(m.defaults || {})));
+        }, "", m.type);
+      });
+    });
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function() {
       return { type: "sparkplug-write", tag: "" };
@@ -34010,6 +34057,75 @@
   var part = { label: linkNodeLabel, edit: openLinkNodeEditor, hint: "Double-click to choose the channel" };
   defineLogicEditors({ "link-request": part, "link-send": part, "link-receive": part });
 
+  // src/logic/logic-fields-dialog.js
+  function hasFieldsDialog(type) {
+    const m = logicMeta(type);
+    return !!(m.plugin && m.fields && Object.keys(m.fields.props).length);
+  }
+  function openLogicFieldsDialog(node, onSaved) {
+    const meta2 = logicMeta(node.type);
+    const draft = JSON.parse(JSON.stringify(node.props || {}));
+    Object.keys(meta2.fields.props).forEach(function(k) {
+      if (!(k in draft)) draft[k] = JSON.parse(JSON.stringify(meta2.fields.props[k].default === void 0 ? null : meta2.fields.props[k].default));
+    });
+    const kit = window.NexaKit;
+    if (kit && typeof kit.setHost === "function") {
+      kit.setHost({
+        messageHelp: function(path) {
+          return "The message that reaches this node: msg." + path + " when it runs.";
+        },
+        // what ctx.resolve fills in: variables, the message, text mixing them (not tags)
+        bindingSources: ["var", "msg", "expr"]
+      });
+    }
+    window.RED.tray.show({
+      id: "nexa-logic-fields-editor",
+      title: "Configure " + meta2.label + " Node",
+      width: 520,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.props = draft;
+            markDirty();
+            if (typeof onSaved === "function") onSaved();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      close: function() {
+        if (kit && typeof kit.setHost === "function") kit.setHost({ messageHelp: null, bindingSources: null });
+      },
+      open: function(tray) {
+        const body = tray.find(".red-ui-tray-body").css({ padding: "12px" }).get(0);
+        if (meta2.help) {
+          const help = document.createElement("div");
+          help.style.cssText = "font-size:12px;color:#888;margin-bottom:10px";
+          help.textContent = meta2.help;
+          body.appendChild(help);
+        }
+        if (!kit || typeof kit.renderInspector !== "function") {
+          body.appendChild(document.createTextNode("The property kit isn't loaded."));
+          return;
+        }
+        kit.renderInspector(body, {
+          meta: meta2.fields,
+          props: draft,
+          persistKey: "logic:" + node.type,
+          // a field holds a value or a binding the node resolves itself (ctx.resolve): no fallback values
+          fallbacks: false,
+          set: function(key, value) {
+            draft[key] = value;
+          }
+        });
+      }
+    });
+  }
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
     var ed = logicEditor(node.type);
@@ -34163,6 +34279,11 @@
       box2.attr("title", ed.hint || "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
         ed.edit(node);
+      });
+    } else if (hasFieldsDialog(node.type)) {
+      box2.attr("title", ed.hint || "Double-click to configure").on("dblclick", function(e) {
+        e.stopPropagation();
+        openLogicFieldsDialog(node, renderLogicCanvas);
       });
     }
     if (typeof ed.decorate === "function") ed.decorate(box2, node, getActiveScreen());
@@ -34633,16 +34754,16 @@
   }
   function setLockedForSelection(locked, idsOverride) {
     var ids = idsOverride || state.selectedIds.slice();
-    var changed3 = false;
+    var changed4 = false;
     ids.forEach(function(id2) {
       var c = findComponent(id2);
       if (c && !!c.locked !== locked) {
         pushHistory({ t: "node", screenId: getActiveScreen().id, id: id2, key: "locked", from: c.locked, to: locked });
         c.locked = locked;
-        changed3 = true;
+        changed4 = true;
       }
     });
-    if (!changed3) return;
+    if (!changed4) return;
     markDirty();
     renderActiveScreen();
     selectMultiple(ids);
@@ -34822,8 +34943,8 @@
     screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed3 = readbackLayout(screen);
-    if (changed3.redraw && !renderActiveScreen._again) {
+    var changed4 = readbackLayout(screen);
+    if (changed4.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
         renderActiveScreen(opts);
@@ -34849,9 +34970,9 @@
       slotReadbackQueued = false;
       var screen = getActiveScreen();
       if (!screen || !state.artboardEl) return;
-      var changed3 = readbackLayout(screen);
-      if (changed3.redraw) redrawCanvas();
-      else if (changed3.length) refreshSelectionVisuals({ keepPanel: true });
+      var changed4 = readbackLayout(screen);
+      if (changed4.redraw) redrawCanvas();
+      else if (changed4.length) refreshSelectionVisuals({ keepPanel: true });
     });
   }
   function redrawCanvas() {
@@ -40684,7 +40805,7 @@
     })) name2 = base2 + ++n;
     return name2;
   }
-  function changed() {
+  function changed2() {
     markDirty();
     redrawCanvas();
   }
@@ -40720,7 +40841,7 @@
       var t2 = { id: genId(), name: uniqueName("Motor", types2), params: [{ id: genId(), name: "Device", defaultValue: "" }], members: [] };
       types2.push(t2);
       selectedId = t2.id;
-      changed();
+      changed2();
       renderTypesPanel();
     });
     if (type) {
@@ -40730,7 +40851,7 @@
         }).length;
         if (users && !window.confirm(type.name + " has " + users + " app instance(s). Delete the type anyway? (The instances stay, without a type.)")) return;
         types2.splice(types2.indexOf(type), 1);
-        changed();
+        changed2();
         renderTypesPanel();
       });
     }
@@ -40840,7 +40961,7 @@
         });
         Object.assign(current2, view());
         handle.update();
-        changed();
+        changed2();
         if (key === "name") sel.find('option[value="' + type.id + '"]').text(type.name);
         if (key === "params") renderInstances();
       }
@@ -40905,7 +41026,7 @@
           });
           Object.assign(icurrent, iview());
           ih.update();
-          changed();
+          changed2();
         }
       });
     }
@@ -41205,7 +41326,7 @@
                     ${o.ui.action("Reset to the defaults", function() {
           if (app2.breakpoints && app2.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 \xB7 sm 640 \xB7 md 768 \xB7 lg 1024 \xB7 xl 1280 \xB7 2xl 1536 \xB7 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
           app2.breakpoints = [];
-          changed3(true);
+          changed4(true);
         }, { icon: "fa fa-undo" })}
                 </div>
                 <div class="nx-help" style="margin-top:10px">On the live page: {$breakpoint} is the band in use ("md", …); an On Breakpoint Change event fires when it changes.</div>`;
@@ -41253,7 +41374,7 @@
           return a.min - b.min;
         })[0].min = 0;
         app2.breakpoints = next;
-        changed3(false);
+        changed4(false);
         Object.keys(current2).forEach(function(k) {
           delete current2[k];
         });
@@ -41261,7 +41382,7 @@
         handle.update();
       }
     });
-    function changed3(rebuild) {
+    function changed4(rebuild) {
       leaveBreakpoint();
       markDirty();
       renderActiveScreen();
@@ -41290,7 +41411,7 @@
     if (!app2.theme || typeof app2.theme !== "object") app2.theme = {};
     return app2.theme;
   }
-  function changed2() {
+  function changed3() {
     markDirty();
     applyEditorTheme();
     renderActiveScreen({ keepPanel: true });
@@ -41422,7 +41543,7 @@
                 <div style="margin-top:10px">${o.ui.action("Reset the theme to the defaults", function() {
           if (!window.confirm("Go back to the default theme? Your palettes, semantic colours and scales are replaced by the defaults.")) return;
           getApp().theme = null;
-          changed2();
+          changed3();
           renderThemePanel();
         }, { icon: "fa fa-undo" })}</div>`;
       }
@@ -41441,7 +41562,7 @@
           renderActiveScreen({ keepPanel: true });
         } else if (key === "defaultMode" || key === "primary") {
           own[key] = v;
-          changed2();
+          changed3();
         } else if (key === "palettes") {
           var next = {};
           (v || []).forEach(function(r, i2) {
@@ -41452,7 +41573,7 @@
           if (!Object.keys(next).length) return;
           own.palettes = next;
           if (!next[own.primary || t2.primary]) own.primary = Object.keys(next)[0];
-          changed2();
+          changed3();
         } else if (key === "semantic") {
           var sem2 = {};
           (v || []).forEach(function(r) {
@@ -41460,7 +41581,7 @@
             if (n) sem2[n] = { light: r.light, dark: r.dark === "" ? r.light : r.dark };
           });
           own.semantic = sem2;
-          changed2();
+          changed3();
         } else {
           var sc = SCALES.filter(function(x) {
             return x.key === key;
@@ -41472,7 +41593,7 @@
             if (n) out[n] = sc.number ? Number(r.value) || 0 : String(r.value || "");
           });
           own[key] = out;
-          changed2();
+          changed3();
         }
         Object.keys(current2).forEach(function(k) {
           delete current2[k];

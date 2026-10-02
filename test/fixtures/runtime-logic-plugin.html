@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>logic plugin</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- A plugin's Logic node on a deployed page (test/runtime-logic-plugin-browser.test.js): the
+     plugin is an ES module, so it registers "acme-scale" after the runtime started and the
+     onload chains already reached it. -->
+<div id="nexa-runtime-artboard" style="width:400px;height:200px;"></div>
+<script src="/dist/nexa-registry-client.js"></script>
+<script src="/dist/nexa-sdk.bundle.js"></script>
+<script type="module" src="/fx/sdk-logic-plugin/plugin.js"></script>
+<script>
+window.__out = [];
+window.__err = [];
+var W = function (a, b, port) { return { id: "w-" + a + "-" + b, from: a, to: b, fromPort: port || 0 }; };
+window.__NEXA_APP__ = { variables: [] };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 200, treeVersion: 1, orphans: [], components: [],
+  logic: { nodes: [
+    { id: "l", type: "onload" },
+    { id: "good", type: "function", code: "msg.payload = { v: 4, k: 3 }; return msg;" },
+    { id: "bad", type: "function", code: "msg.payload = { v: 'x' }; return msg;" },
+    // the plugin node, saved the new way (props); factor: a binding
+    { id: "sc", type: "acme-scale", props: { field: "v", factor: "{msg.payload.k}" } },
+    { id: "ok", type: "function", code: "window.__out.push(msg.payload); return null;" },
+    { id: "er", type: "function", code: "window.__err.push(msg.error); return null;" }
+  ], wires: [W("l", "good"), W("l", "bad"), W("good", "sc"), W("bad", "sc"), W("sc", "ok", 0), W("sc", "er", 1)] } };
+</script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
+</body></html>

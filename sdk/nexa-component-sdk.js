@@ -1,6 +1,6 @@
 // nexa-component-sdk.js — THE module a Nexa component plugin imports.
 //
-//   import { defineComponent, NexaElement, html, css, bind } from "../../nexa-sdk/nexa-component-sdk.js";
+//   import { defineComponent, defineLogicNode, NexaElement, html, css, bind } from "../../nexa-sdk/nexa-component-sdk.js";
 //
 // Served by @kufayeka/node-red-nexa-dashboard at <root>/nexa-sdk/ on BOTH the
 // editor (httpAdmin) and deployed pages (httpNode), so a plugin whose files
@@ -20,6 +20,7 @@ const SDK = window.NexaSDK || await new Promise(function (resolve) {
 export const {
     version,
     defineComponent, NexaElement, FieldController, cssFields,
+    defineLogicNode,
     LitElement, html, css, svg, nothing, unsafeCSS,
     bind, defineInspectorWidget,
     kit, NexaKit, KitElement,

@@ -1,5 +1,12 @@
 import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope, Layout, getApp } from "../state.js";
-import { logicMeta } from "../features/logic/registry.js";
+import { logicMeta, logicTypes, onLogicTypesChange } from "../features/logic/registry.js";
+
+// a plugin that registers its Logic nodes after the panel was drawn: draw it again
+var pluginRedraw = null;
+onLogicTypesChange(function (type) {
+    if (!logicMeta(type).plugin || !state.eventsPane || pluginRedraw) return;
+    pluginRedraw = setTimeout(function () { pluginRedraw = null; renderEventsPanel(); }, 50);
+});
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -456,6 +463,18 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "Request (wait for the flow's answer)", function () { return { type: "link-request", channel: "" }; }, "", "link-request");
     chip(state.eventsPane, "To Node-RED", function () { return { type: "link-send", channel: "" }; }, "", "link-send");
     chip(state.eventsPane, "From Node-RED", function () { return { type: "link-receive", channel: "" }; }, "", "link-receive");
+
+    // Logic nodes from plugins (the SDK's defineLogicNode), in the sections they ask for
+    var bySection = {};
+    logicTypes().map(logicMeta).filter(function (m) { return m.plugin; }).forEach(function (m) {
+        (bySection[m.palette.section] = bySection[m.palette.section] || []).push(m);
+    });
+    Object.keys(bySection).sort().forEach(function (section) {
+        sectionHeader(state.eventsPane, section);
+        bySection[section].forEach(function (m) {
+            chip(state.eventsPane, m.palette.label, function () { return Object.assign({ type: m.type }, JSON.parse(JSON.stringify(m.defaults || {}))); }, "", m.type);
+        });
+    });
 
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function () { return { type: "sparkplug-write", tag: "" }; }, "", "sparkplug-write");

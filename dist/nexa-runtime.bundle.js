@@ -650,19 +650,48 @@
   }
 
   // src/features/logic/registry.js
-  var metas = /* @__PURE__ */ new Map();
-  var runtimes = /* @__PURE__ */ new Map();
+  var store = (function() {
+    const fresh = function() {
+      return { metas: /* @__PURE__ */ new Map(), editors: /* @__PURE__ */ new Map(), runtimes: /* @__PURE__ */ new Map(), listeners: [] };
+    };
+    if (typeof window === "undefined") return fresh();
+    return window.__nexaLogicRegistry || (window.__nexaLogicRegistry = fresh());
+  })();
+  var metas = store.metas;
+  var editors = store.editors;
+  var runtimes = store.runtimes;
+  function changed(type) {
+    store.listeners.slice().forEach(function(fn) {
+      try {
+        fn(type);
+      } catch (e) {
+        console.error("[nexa-logic] a registry listener threw:", e);
+      }
+    });
+  }
+  function onLogicTypesChange(fn) {
+    store.listeners.push(fn);
+    return function() {
+      const i = store.listeners.indexOf(fn);
+      if (i !== -1) store.listeners.splice(i, 1);
+    };
+  }
   var FALLBACK_META = Object.freeze({ type: "?", label: "", color: "#607d8b", icon: "fa-cube", chipColor: "#e0e7ff", inputs: 1, outputs: 1 });
   function defineLogicNodes(list) {
     list.forEach(function(m) {
       if (!m || !m.type) throw new Error("defineLogicNodes: a node needs a type");
       metas.set(m.type, Object.freeze(Object.assign({}, FALLBACK_META, m)));
+      changed(m.type);
     });
   }
   function defineLogicRuntimes(parts) {
     Object.keys(parts).forEach(function(type) {
       runtimes.set(type, parts[type]);
+      changed(type);
     });
+  }
+  function hasLogicType(type) {
+    return metas.has(type);
   }
   function logicRuntime(type) {
     return runtimes.get(type) || null;
@@ -4713,13 +4742,13 @@
     });
   }
   function runStorageNode(screen2, node, msg) {
-    const store = BROWSER_API.storage[node.props.store === "session" ? "session" : "local"];
+    const store2 = BROWSER_API.storage[node.props.store === "session" ? "session" : "local"];
     const key = String(bindText(screen2, node, msg, node.props.key || ""));
     const out = cloneMsg(msg || {});
     if (!key) return out;
-    if (node.props.action === "set") store.set(key, node.props.valueSource === "static" ? node.props.value : msg && msg.payload);
-    else if (node.props.action === "remove") store.remove(key);
-    else setMsgPath(out, node.props.target || "payload", store.get(key));
+    if (node.props.action === "set") store2.set(key, node.props.valueSource === "static" ? node.props.value : msg && msg.payload);
+    else if (node.props.action === "remove") store2.remove(key);
+    else setMsgPath(out, node.props.target || "payload", store2.get(key));
     return out;
   }
   function runCookieNode(screen2, node, msg) {
@@ -4844,9 +4873,36 @@
       nextPort: function(port, m) {
         continueFromPort(screen2, node, m, port, budget);
       },
+      resolve: function(text, m) {
+        if (typeof text !== "string" || text.indexOf("{") === -1) return text;
+        var scope = Object.create(resolveScope(screen2, "", node.id) || null);
+        scope.msg = m || {};
+        return resolveBindableValue(text, scope);
+      },
+      vars: varsFor(screen2, node),
+      log: function() {
+        console.log.apply(console, ["[nexa-logic " + node.type + " " + node.id + "]"].concat(Array.prototype.slice.call(arguments)));
+      },
       continuePropagation,
       runLogicGraph
     };
+  }
+  var PLUGIN_WAIT_MS = 1e4;
+  function whenRegistered(screen2, node, msg, budget) {
+    var done = false;
+    var stop = onLogicTypesChange(function(type) {
+      if (done || type !== node.type || !logicRuntime(type)) return;
+      done = true;
+      stop();
+      clearTimeout(timer);
+      runLogicGraph(screen2, node, msg, budget);
+    });
+    var timer = setTimeout(function() {
+      if (done) return;
+      done = true;
+      stop();
+      console.error('[nexa-logic] no Logic node type "' + node.type + '" (node ' + node.id + "): is the plugin that defines it installed?");
+    }, PLUGIN_WAIT_MS);
   }
   function runLogicGraph(screen2, node, msg, budget) {
     budget = budget || { steps: 0 };
@@ -4861,6 +4917,10 @@
     logicTrace("running", node.type, node.id, "with msg =", msg);
     var rt = logicRuntime(node.type);
     if (!rt) {
+      if (!hasLogicType(node.type)) {
+        whenRegistered(screen2, node, msg, budget);
+        return;
+      }
       continuePropagation(screen2, node, msg, budget);
       return;
     }
@@ -5663,17 +5723,17 @@
   function applyLayerControlUpdates(effectiveScreen, updates) {
     const tree = effectiveScreen.__tree;
     if (!tree || !Array.isArray(updates)) return;
-    let changed = false;
+    let changed2 = false;
     updates.forEach(function(u) {
       if (!u || typeof u.name !== "string" || ["show", "hide", "remove"].indexOf(u.state) === -1) return;
       walkNodes(tree.components, function(n) {
         if (n.name !== u.name || (n.visibility || "show") === u.state) return;
         if (u.state === "show") delete n.visibility;
         else n.visibility = u.state;
-        changed = true;
+        changed2 = true;
       });
     });
-    if (changed) reconcileVisibility(effectiveScreen);
+    if (changed2) reconcileVisibility(effectiveScreen);
   }
   function reconcileVisibility(effectiveScreen) {
     const artboard2 = document.getElementById("nexa-runtime-artboard");
@@ -5807,14 +5867,14 @@
       } catch (e) {
       }
     }
-    var changed = THEME.mode !== mode;
+    var changed2 = THEME.mode !== mode;
     THEME.mode = mode;
     if (document.documentElement && typeof document.documentElement.setAttribute === "function") {
       document.documentElement.setAttribute("data-nexa-mode", mode);
     }
     if (window.NexaSDK && window.NexaSDK.setTheme) window.NexaSDK.setTheme(THEME.theme, mode);
     if (state.currentAppScope && !keep) state.currentAppScope.$colorMode = mode;
-    if (changed && screen2 && screen2.components) {
+    if (changed2 && screen2 && screen2.components) {
       walkNodes(screen2.components, function(c) {
         if (c.props && propsMention(c.props, "{token:")) refreshComponentRender(screen2, c);
       });
@@ -6093,7 +6153,7 @@
     }
     if (!decoded) return;
     const entries = decoded.entries || decoded.records || [];
-    const changed = [];
+    const changed2 = [];
     for (let i = 0; i < entries.length; i++) {
       const rec = entries[i];
       const L = state.io.layout[rec.idx];
@@ -6126,13 +6186,13 @@
         metadata: L.metadata,
         engUnit: L.engUnit
       };
-      changed.push(L.key);
+      changed2.push(L.key);
     }
     if (decoded.full && state.sparkplugConnectionLost) {
       state.sparkplugConnectionLost = false;
       refreshAllSparkplugBoundComponents();
     }
-    markSparkplugKeysDirty(changed);
+    markSparkplugKeysDirty(changed2);
   }
 
   // src/runtime/io/client.js
