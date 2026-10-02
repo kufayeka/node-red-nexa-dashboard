@@ -21,6 +21,8 @@
 //                   {type:"sparkplug-snapshot", snapshot, resync}
 //                   {type:"write-result", requestId, ok}
 //                   {type:"link-port", port}                 -- where Nexa Link listens (null: not running)
+//                   {type:"sparkplug-port", port}            -- a MessagePort to the Sparkplug worker (null: none):
+//                        snapshot + deltas come on it, and tag writes go out on it, without the main thread
 //   worker -> main: {type:"listening", port}
 //                   {type:"write-request", requestId, groupId, edgeNodeId, deviceId, metrics}
 //
@@ -67,6 +69,50 @@ var linkPort = workerData.linkPort || null;
 var sseClients = []; // [{res, keepAlive}]
 var pendingWrites = new Map(); // requestId -> {res} (HTTP POST) | {io: {client, id}} (Nexa IO explicit write)
 var writeRequestSeq = 0;
+// set by the plugin when the Sparkplug worker talks to us directly (see wireSparkplugSubscription)
+var sparkplugPort = null;
+
+// a tag write: to the Sparkplug worker directly when we have its port, else through the main thread
+function requestWrite(requestId, w) {
+    var msg = { requestId: requestId, groupId: w.groupId, edgeNodeId: w.edgeNodeId, deviceId: w.deviceId, metrics: w.metrics };
+    if (sparkplugPort) sparkplugPort.postMessage(Object.assign({ type: "write" }, msg));
+    else parentPort.postMessage(Object.assign({ type: "write-request" }, msg));
+}
+
+function finishWrite(requestId, ok) {
+    var pending = pendingWrites.get(requestId);
+    if (!pending) return;
+    pendingWrites.delete(requestId);
+    if (pending.io) {
+        pending.io.client.transport.sendText(JSON.stringify({ t: "ack", id: pending.io.id, ok: Boolean(ok), err: ok ? undefined : "not published (Nexa Sparkplug connection not connected?)" }));
+    } else {
+        sendJson(pending.res, 200, { ok: ok });
+    }
+}
+
+function applySparkplugDelta(serialized) {
+    sseClients.forEach(function (c) { c.res.write("data: " + serialized + "\n\n"); });
+    try { ioHub.applyDelta(JSON.parse(serialized)); } catch (e) { /* malformed delta: SSE clients got it verbatim, IO skips it */ }
+}
+
+// a new tree (another connection, or the worker's first snapshot): every page starts over from it
+function resyncSparkplug(snapshot) {
+    sparkplugSnapshot = snapshot || {};
+    ioHub.absorbSnapshot(sparkplugSnapshot);
+    sseClients.forEach(function (c) { c.res.write("event: resync\ndata: {}\n\n"); });
+}
+
+function setSparkplugPort(port) {
+    if (sparkplugPort) { try { sparkplugPort.close(); } catch (e) { /* closed already */ } }
+    sparkplugPort = port || null;
+    if (!sparkplugPort) return;
+    sparkplugPort.on("message", function (msg) {
+        if (!msg) return;
+        if (msg.type === "delta") applySparkplugDelta(msg.serialized);
+        else if (msg.type === "snapshot") resyncSparkplug(msg.snapshot);
+        else if (msg.type === "write-result") finishWrite(msg.requestId, msg.ok);
+    });
+}
 
 // Nexa IO (lib/io/ioProtocol.js): one WebSocket per deployed page at
 // RUNTIME_PREFIX + "/_io" — cyclic "implicit" binary frames out, "explicit"
@@ -91,10 +137,8 @@ var ioHub = new IoHub({
         }
         var requestId = "w" + (++writeRequestSeq);
         pendingWrites.set(requestId, { io: { client: client, id: msg.id } });
-        parentPort.postMessage({
-            type: "write-request", requestId: requestId,
-            groupId: String(msg.g), edgeNodeId: String(msg.e),
-            deviceId: msg.d ? String(msg.d) : null,
+        requestWrite(requestId, {
+            groupId: String(msg.g), edgeNodeId: String(msg.e), deviceId: msg.d ? String(msg.d) : null,
             metrics: metrics.map(function (m) { return { name: String(m.n), value: m.v }; })
         });
     }
@@ -320,10 +364,8 @@ function handleSparkplugWrite(req, res) {
         }
         var requestId = "w" + (++writeRequestSeq);
         pendingWrites.set(requestId, { res: res });
-        parentPort.postMessage({
-            type: "write-request", requestId: requestId,
-            groupId: String(body.groupId), edgeNodeId: String(body.edgeNodeId),
-            deviceId: body.deviceId ? String(body.deviceId) : null,
+        requestWrite(requestId, {
+            groupId: String(body.groupId), edgeNodeId: String(body.edgeNodeId), deviceId: body.deviceId ? String(body.deviceId) : null,
             metrics: metrics.map(function (m) { return { name: String(m.name), value: m.value }; })
         });
     });
@@ -604,34 +646,15 @@ parentPort.on("message", function (msg) {
         linkPort = msg.port || null;
         return;
     }
-    if (msg.type === "sparkplug-delta") {
-        sseClients.forEach(function (c) { c.res.write("data: " + msg.serialized + "\n\n"); });
-        try { ioHub.applyDelta(JSON.parse(msg.serialized)); } catch (e) { /* malformed delta: SSE clients got it verbatim, IO skips it */ }
-        return;
-    }
+    if (msg.type === "sparkplug-port") { setSparkplugPort(msg.port); return; }
+    if (msg.type === "sparkplug-delta") { applySparkplugDelta(msg.serialized); return; }
     if (msg.type === "sparkplug-snapshot") {
-        sparkplugSnapshot = msg.snapshot || {};
-        // The periodic (non-resync) refresh only keeps the GET snapshot fresh; the IO
-        // cache is already current from every delta. A resync = new connection node
-        // with a different tree -> rebuild, and every IO client gets a full frame.
-        if (msg.resync) ioHub.absorbSnapshot(sparkplugSnapshot);
-        if (msg.resync) {
-            sseClients.forEach(function (c) { c.res.write("event: resync\ndata: {}\n\n"); });
-        }
+        // resync = a new connection node with a different tree; otherwise it only keeps the GET snapshot fresh
+        if (msg.resync) resyncSparkplug(msg.snapshot);
+        else sparkplugSnapshot = msg.snapshot || {};
         return;
     }
-    if (msg.type === "write-result") {
-        var pending = pendingWrites.get(msg.requestId);
-        if (pending) {
-            pendingWrites.delete(msg.requestId);
-            if (pending.io) {
-                pending.io.client.transport.sendText(JSON.stringify({ t: "ack", id: pending.io.id, ok: Boolean(msg.ok), err: msg.ok ? undefined : "not published (Nexa Sparkplug connection not connected?)" }));
-            } else {
-                sendJson(pending.res, 200, { ok: msg.ok });
-            }
-        }
-        return;
-    }
+    if (msg.type === "write-result") { finishWrite(msg.requestId, msg.ok); return; }
     if (msg.type === "close") {
         sseClients.forEach(function (c) { c.res.end(); });
         ioHub.close();

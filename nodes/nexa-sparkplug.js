@@ -149,6 +149,13 @@ module.exports = function (RED) {
         node.isConnected = function () {
             return connected;
         };
+        // a MessagePort to the screen worker: the worker sends it tag deltas and takes tag writes
+        // there directly, so the deployed pages don't wait for this (main) thread. False: no worker.
+        node.attachScreenPort = function (port) {
+            if (!worker) return false;
+            worker.postMessage({ type: "screen-port", port: port }, [port]);
+            return true;
+        };
 
         // [tck-id-payloads-ncmd-qos]: MUST be QoS 0, not retained — matches
         // @kufayeka/node-red-asset-engine's own sparkplug-out.js, which

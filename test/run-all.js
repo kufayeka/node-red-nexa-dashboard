@@ -41,6 +41,8 @@ const STANDALONE_TESTS = [
     "mock-nexa-plugin-screen-worker-relay.js", "mock-sparkplug-worker.js", "mock-sparkplug-worker-integration.js",
     "mock-screen-worker.js", "mock-screen-worker-integration.js", "mock-delta-batcher.js",
     "mock-io-hub.js", "mock-io-worker-integration.js", "mock-assets.js",
+    // tags straight from the Sparkplug worker to the screen worker (no main thread)
+    "sparkplug-direct-path.test.js",
     // Nexa Link (page <-> Node-RED flow): frame + hub without sockets, then the real worker + nodes + a WebSocket
     "link-hub.test.js", "link-worker-integration.test.js",
     // the Logic node registry: every type complete, no type switches outside src/features/logic/

@@ -1,29 +1,26 @@
-// Worker-thread entry for Nexa Dashboard's Sparkplug MQTT connection.
-// Deliberately NOT run on Node-RED's main thread: this owns the actual
-// `mqtt.connect()` socket (keepalive, reconnect) and Protobuf encode/decode,
-// so neither can ever be starved by whatever else the main thread is doing
-// (heavy flow execution elsewhere) — the concrete risk that motivated this
-// split was a false NDEATH-equivalent: if the process handling MQTT keepalive
-// is busy, a broker can decide the connection is dead. Standard Node.js
-// `worker_threads` only — nothing here touches Node's runtime/kernel or
-// Node-RED core.
+// Worker-thread entry for Nexa Dashboard's Sparkplug MQTT connection: the MQTT
+// socket (keepalive, reconnect) and the Protobuf codec, off Node-RED's main thread
+// (a busy main thread must not make the broker think we're dead).
 //
-// Protocol with the main thread (nodes/nexa-sparkplug.js), all via
-// parentPort.postMessage/on("message"):
-//   main -> worker: {type:"publish", groupId, edgeNodeId, deviceId, metrics}
-//                   {type:"close"}
-//   worker -> main: {type:"status", status:"connecting"|"connected"|"reconnecting"|"disconnected"|"error", detail}
-//                   {type:"message", topic, payload}   -- one already-decoded Sparkplug payload
-//                   {type:"decode-error", topic, error}
-//                   {type:"closed"}
+// It also keeps its own copy of the live value tree (src/server/sparkplug/sparkplugTree.js)
+// and, once the plugin hands it a port to the screen worker, sends the tag deltas
+// and takes tag writes THERE directly, so a busy main thread no longer delays tags.
+// The main thread still builds its own tree from the same messages (editor sidebar,
+// rebirth decisions): nodes/nexa-sparkplug.js is unchanged.
 //
-// All Sparkplug protocol decisions (the live value tree, rebirth tracking,
-// when to ask for a rebirth) stay on the main thread exactly as before —
-// this worker is a transport + codec boundary, not a place to move business
-// logic into.
+// main -> worker (parentPort): {type:"publish", groupId, edgeNodeId, deviceId, metrics}
+//                              {type:"screen-port", port}   a MessagePort to the screen worker (transferred)
+//                              {type:"close"}
+// worker -> main:              {type:"status", status, detail} / {type:"message", topic, payload} (decoded)
+//                              {type:"decode-error", topic, error} / {type:"closed"}
+// worker -> screen (port):     {type:"snapshot", snapshot}  first, the whole tree
+//                              {type:"delta", serialized}   then every change, in order
+//                              {type:"write-result", requestId, ok}
+// screen -> worker (port):     {type:"write", requestId, groupId, edgeNodeId, deviceId, metrics}
 const { parentPort, workerData } = require("worker_threads");
 const mqtt = require("mqtt");
 const sparkplug = require("../sparkplug/sparkplugCodec");
+const tree = require("../sparkplug/sparkplugTree");
 
 const NAMESPACE = "spBv1.0";
 
@@ -49,6 +46,56 @@ function status(status, detail) {
 }
 
 var client = null;
+var dataTree = {};
+var screenPort = null;
+
+// the worker's copy of the tree; a change goes straight to the screen worker
+function applyToTree(topic, payload) {
+    var parts = topic.split("/");
+    if (parts[0] !== NAMESPACE) return;
+    var delta = tree.applyMessage(dataTree, parts[1], parts[2], parts[3], parts[4], payload);
+    if (delta && screenPort) {
+        var serialized;
+        try { serialized = JSON.stringify(delta); } catch (e) { return; }
+        screenPort.postMessage({ type: "delta", serialized: serialized });
+    }
+}
+
+/** Publishes a DCMD (deviceId) / NCMD; false when not connected or the request is incomplete. */
+function publish(msg) {
+    if (!client || !client.connected) return false;
+    if (!msg.groupId || !msg.edgeNodeId || !Array.isArray(msg.metrics) || !msg.metrics.length) return false;
+    var topic = msg.deviceId
+        ? NAMESPACE + "/" + msg.groupId + "/DCMD/" + msg.edgeNodeId + "/" + msg.deviceId
+        : NAMESPACE + "/" + msg.groupId + "/NCMD/" + msg.edgeNodeId;
+    var payload;
+    try {
+        payload = sparkplug.encodePayload({
+            timestamp: Date.now(),
+            metrics: msg.metrics.map(function (m) {
+                return { name: m.name, type: m.type || inferMetricType(m.value), value: m.value };
+            })
+        });
+    } catch (e) {
+        status("error", "failed to encode a publish for \"" + topic + "\": " + describeError(e));
+        return false;
+    }
+    client.publish(topic, payload, { qos: 0, retain: false }, function (err) {
+        if (err) status("error", "failed to publish to \"" + topic + "\": " + describeError(err));
+    });
+    return true;
+}
+
+function attachScreenPort(port) {
+    if (screenPort) { try { screenPort.close(); } catch (e) { /* already closed */ } }
+    screenPort = port;
+    port.on("message", function (msg) {
+        if (msg && msg.type === "write") {
+            port.postMessage({ type: "write-result", requestId: msg.requestId, ok: publish(msg) });
+        }
+    });
+    port.postMessage({ type: "snapshot", snapshot: dataTree });
+}
 
 function connect() {
     status("connecting");
@@ -82,7 +129,9 @@ function connect() {
             parentPort.postMessage({ type: "decode-error", topic: topic, error: describeError(e) });
             return;
         }
+        // to main first (postMessage copies it now), then into this worker's own tree
         parentPort.postMessage({ type: "message", topic: topic, payload: payload });
+        applyToTree(topic, payload);
     });
     client.on("reconnect", function () { status("reconnecting"); });
     client.on("close", function () { status("disconnected"); });
@@ -91,28 +140,8 @@ function connect() {
 
 parentPort.on("message", function (msg) {
     if (!msg) return;
-    if (msg.type === "publish") {
-        if (!client || !client.connected) return;
-        var topic = msg.deviceId
-            ? NAMESPACE + "/" + msg.groupId + "/DCMD/" + msg.edgeNodeId + "/" + msg.deviceId
-            : NAMESPACE + "/" + msg.groupId + "/NCMD/" + msg.edgeNodeId;
-        var payload;
-        try {
-            payload = sparkplug.encodePayload({
-                timestamp: Date.now(),
-                metrics: msg.metrics.map(function (m) {
-                    return { name: m.name, type: m.type || inferMetricType(m.value), value: m.value };
-                })
-            });
-        } catch (e) {
-            status("error", "failed to encode a publish for \"" + topic + "\": " + describeError(e));
-            return;
-        }
-        client.publish(topic, payload, { qos: 0, retain: false }, function (err) {
-            if (err) status("error", "failed to publish to \"" + topic + "\": " + describeError(err));
-        });
-        return;
-    }
+    if (msg.type === "publish") { publish(msg); return; }
+    if (msg.type === "screen-port" && msg.port) { attachScreenPort(msg.port); return; }
     if (msg.type === "close") {
         if (!client) { parentPort.postMessage({ type: "closed" }); return; }
         client.end(true, {}, function () { parentPort.postMessage({ type: "closed" }); });

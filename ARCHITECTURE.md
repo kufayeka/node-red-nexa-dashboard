@@ -17,7 +17,7 @@ dist/nexa-plugin.html                dist/nexa-runtime.bundle.js            dist
   src/index.js                         src/runtime/index.js                   main thread: plugin, nodes/*.js, the flows
   src/editor-tray.js, canvas/,         features/, mounting/, logic/,          worker: screen-worker (pages, /_io tags)
   sidebar/, logic/, dialogs/           io/ (client.js tags, link.js)          worker: link-worker   (/_link, Nexa Link)
-                                                                              worker: sparkplug-worker (MQTT + codec)
+                                                                              worker: sparkplug-worker (MQTT, codec, tag tree)
             └──────────── both use: src/model/ (pure), src/features/logic/ (registry), src/shared/ (wire formats) ────────────┘
 ```
 
@@ -39,21 +39,25 @@ dist/nexa-plugin.html                dist/nexa-runtime.bundle.js            dist
 
 **A page opens.** The browser requests `GET :1881/nexa/<flow>/<screen>`. The screen worker resolves the route (`handleScreenRequest`) and renders HTML with the project embedded. It also serves `_runtime.js`, `_model.js`, and `_sdk.js`. Then `runtime/index.js` calls `mountScreen` (`features/navigation.js`), which mounts the tree (`mounting/`) and fires the onload / onrender Logic nodes (`logic/runner.js`).
 
-**A tag value arrives.** The path is:
-1. MQTT goes into `sparkplug-worker` (decode).
-2. The **main thread** `nodes/nexa-sparkplug.js` updates the tree (`server/sparkplug/sparkplugTree.js`) and emits a delta.
-3. `plugin.js` posts it to the screen worker.
-4. `IoHub` (`server/io/`) sends binary frames every RPI over `/_io`.
-5. The page receives them in `runtime/io/client.js` and `frame.js`, which update the bound components.
+**A tag value arrives.** The main thread is not on this path:
+1. MQTT goes into `sparkplug-worker`, which decodes it and updates **its own** tree (`server/sparkplug/sparkplugTree.js`).
+2. The worker sends the delta over a `MessageChannel` straight to the screen worker. `plugin.js` sets the channel up in `wireSparkplugSubscription`; the worker sends its snapshot first, then every delta, in order.
+3. `IoHub` (`server/io/`) sends binary frames every RPI over `/_io`.
+4. The page receives them in `runtime/io/client.js` and `frame.js`, which update the bound components.
 
-Known limit: step 2 is on the main thread, so a busy flow delays tags (measured: about 500 ms for a 500 ms block).
+Separately, the worker also posts each decoded message to the **main thread**. There `nodes/nexa-sparkplug.js` builds its own tree, for the editor's Sparkplug sidebar, rebirth decisions and `getSnapshot`. A busy flow delays only that part.
 
-**A tag write.** The path is:
+Measured by `test/link-e2e.test.js`: while a flow blocks the main thread for 500 ms, the worst tag gap is about 54 ms (it was about 490 ms when the deltas went through main).
+
+If a Sparkplug node has no worker (some tests), `plugin.js` falls back to relaying the main thread's deltas.
+
+**A tag write.** The main thread is not on this path either:
 1. A component, or a Sparkplug Write node.
 2. `sendSparkplugWrite` (`runtime/io/client.js`) sends `{t:"w"}` over `/_io`.
-3. The screen worker turns it into a `write-request`.
-4. `plugin.js` calls `writeMetrics`.
-5. The worker publishes a DCMD / NCMD and acks back.
+3. The screen worker's `requestWrite` sends a `write` over the port to `sparkplug-worker`, which publishes a DCMD / NCMD.
+4. The worker answers `write-result`, and the page gets its ack.
+
+Without a port, the old path still works: `write-request` → `plugin.js` → `writeMetrics`.
 
 **A Nexa Link request** ([docs/LINK.md](docs/LINK.md)). The path is:
 1. A Request node, through `runtime/io/link.js`.
@@ -90,8 +94,9 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 
 | Problem | Start here |
 | --- | --- |
-| A tag shows `???` / never updates | `runtime/io/client.js` (subscribed keys: `window.__nexaRuntime.subscribedTags()`), then `server/io/ioHub.js`, then `nodes/nexa-sparkplug.js` (the tree), then the broker |
-| A tag write does nothing | `runtime/io/client.js` `sendSparkplugWrite`, then `screen-worker.js` `onWrite`, then `plugin.js` `write-request`, then `nexa-sparkplug.js` `writeMetrics` |
+| A tag shows `???` / never updates | `runtime/io/client.js` (subscribed keys: `window.__nexaRuntime.subscribedTags()`), then `server/io/ioHub.js`, then `screen-worker.js` `setSparkplugPort` / `applySparkplugDelta`, then `sparkplug-worker.js` `applyToTree`, then the broker |
+| A tag write does nothing | `runtime/io/client.js` `sendSparkplugWrite`, then `screen-worker.js` `requestWrite` / `finishWrite`, then `sparkplug-worker.js` `publish` |
+| The editor's Sparkplug sidebar is stale | `nodes/nexa-sparkplug.js` (the main thread's tree), `plugin.js` `editorBatcher` |
 | A Logic node misbehaves on the page | `src/features/logic/<family>/runtime.js`; the engine: `runtime/logic/runner.js` |
 | A Logic node's label / dialog / palette chip | `src/features/logic/<family>/editor.js`, `meta.js` |
 | A page 404 / wrong screen for a URL | `server/workers/screen-worker.js` `handleScreenRequest`; on the page: `runtime/features/navigation.js` |
@@ -115,7 +120,6 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 ## 7. Not done yet (structure backlog)
 
 These are known and listed in the order they pay off:
-- The tag path off the main thread: the Sparkplug tree into a worker, deltas worker → worker.
 - Split `server/workers/screen-worker.js` (routing, HTML, SSE, IO) and `sidebar/screens-panel.js` (2484 lines).
 - `hierarchy-panel.js` and `screens-panel.js` carry the same tree label / icon functions: move them to one module.
 - One IO wire format: encoder `server/io/ioProtocol.js` (CJS) and decoder `shared/io/protocol.js` (ESM) duplicate the constants. Do it like `shared/link/frame.js`.

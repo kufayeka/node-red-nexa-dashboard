@@ -6,8 +6,8 @@
 //   - From Node-RED: a flow pushes 20 MB (binary) to the page
 //   - the tag frames (/_io) are timed in the page the whole time: their gaps must stay
 //     normal while the 20 MB go through the link (own socket, own thread)
-//   - and, reported (not a pass/fail): what a flow that blocks Node-RED's main thread for
-//     500 ms does to the tags today (the tag path still goes through the main thread)
+//   - and while a flow blocks Node-RED's main thread for 500 ms: the tags come straight from
+//     the Sparkplug worker to the screen worker, so they must keep their pace too
 //   node test/link-e2e.test.js     (needs Chrome, the dashboard built, ports 1899 / 1898 / 1897 / 1893 free)
 const path = require('path');
 const fs = require('fs');
@@ -173,13 +173,14 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('20 MB arrive in under 2 s each', windows.every((w) => w > 0 && w < 2000), windows);
             check('tags keep their pace while 20 MB go through the link (worst gap no worse than the idle worst + 50 ms)', during.gaps > 20 && during.max <= base.max + 50, { during: during.max, idle: base.max });
 
-            // a flow that blocks the main thread (reported)
+            // a flow that blocks the main thread: the tags must not care
             const k0 = await js('performance.now()');
             await fetch('http://127.0.0.1:' + PORTS.editor + '/block');
             await wait(300);
             const k1 = await js('performance.now()');
             const blocked = gaps(await js('window.__io'), k0, k1);
-            console.log('     tag frames, main thread busy 500 ms: ' + JSON.stringify(blocked) + '   <- the tag path still goes through the main thread (next stage)');
+            console.log('     tag frames, main thread busy 500 ms: ' + JSON.stringify(blocked));
+            check('tags keep their pace while a flow blocks the main thread for 500 ms (worst gap no worse than the idle worst + 50 ms)', blocked.frames > 10 && blocked.max <= base.max + 50, { blocked: blocked.max, idle: base.max });
 
             const errs = logs.filter((l) => !/favicon/.test(l));
             check('no page errors', errs.length === 0, errs);

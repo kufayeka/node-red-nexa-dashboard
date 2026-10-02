@@ -58,7 +58,7 @@ Browser ──WS /nexa/_link ──▶ link worker     (own thread, own port)
 
 **What is still shared:** the network, and the browser's main thread (parsing a huge JSON). For tens of MB, page the data (send `page` / `limit` in the Request) or send binary.
 
-**Known limit (next stage):** tag values still pass through Node-RED's main thread (the Sparkplug tree is built there). A flow that blocks the main thread for 500 ms delays the tags by about 500 ms. This was measured by `test/link-e2e.test.js`, and it is not caused by the link.
+**The tags don't wait for the main thread either.** Since 2026-10-03 they go straight from the Sparkplug worker to the screen worker (ARCHITECTURE.md §3). While a flow blocks the main thread for 500 ms, the worst tag gap stays about 54 ms. `test/link-e2e.test.js` checks this.
 
 ## Tests
 
@@ -66,4 +66,4 @@ Browser ──WS /nexa/_link ──▶ link worker     (own thread, own port)
 | --- | --- |
 | `test/link-hub.test.js` | Frame codec, reassembly, limits, and the hub (requests, timeout, retain, latest, queue, pacing, round robin, compression), without sockets. In `run-all.js`. |
 | `test/link-worker-integration.test.js` | The real worker, the real nodes under a fake RED, and a real WebSocket: token / Origin, 10 000 products, error answer, timeout, binary, push, retain, compression, redeploy, stop. In `run-all.js`. |
-| `test/link-e2e.test.js` | A live page of an isolated Node-RED (1899 / 1898 / 1897), a broker, and an edge with a 20 ms tag: Request, a 20 MB push, and the tag frame gaps measured in the page. Run by hand. |
+| `test/link-e2e.test.js` | A live page of an isolated Node-RED (1899 / 1898 / 1897), a broker, and an edge with a 20 ms tag: Request, a 20 MB push, and the tag frame gaps measured in the page, idle, during the 20 MB, and while a flow blocks the main thread for 500 ms. Run by hand. |

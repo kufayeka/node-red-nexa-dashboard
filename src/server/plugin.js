@@ -1,6 +1,6 @@
 const { createDeltaBatcher } = require("./sparkplug/deltaBatcher.js");
 const { getCurrentProject } = require("../../nodes/nexa-project.js");
-const { Worker } = require("worker_threads");
+const { Worker, MessageChannel } = require("worker_threads");
 const path = require("path");
 const { createAssetStore, assetHeaders, MAX_BYTES: ASSET_MAX_BYTES, WARN_BYTES: ASSET_WARN_BYTES, WARN_PX: ASSET_WARN_PX } = require("./assets.js");
 // Nexa Link (page <-> flow messages): its own worker + port, see src/server/link/bridge.js
@@ -117,17 +117,25 @@ module.exports = function(RED) {
           sparkplugUnsubscribe = null;
         }
         wiredSparkplugNode = sparkplugNode;
-        // Tell the screen worker about the swap regardless of whether a new
-        // node exists (an empty {} snapshot is correct too) — `resync:true`
-        // makes it push an "event: resync" to every already-open SSE
-        // client, the same recovery an already-open deployed screen needs
-        // across a redeploy that swaps the connection (see the resync
-        // comment this replaced, previously duplicated per-SSE-connection).
+        // Tags to the pages: straight from the Sparkplug worker to the screen worker over
+        // a MessageChannel (it sends its snapshot first, then the deltas, in order), so a
+        // busy main thread doesn't delay them. Without that (a node with no worker), the
+        // old way: this thread relays every delta below.
+        let direct = false;
+        if (screenWorker && sparkplugNode && typeof sparkplugNode.attachScreenPort === "function") {
+          const channel = new MessageChannel();
+          if (sparkplugNode.attachScreenPort(channel.port1)) {
+            screenWorker.postMessage({ type: "sparkplug-port", port: channel.port2 }, [channel.port2]);
+            direct = true;
+          }
+        }
         if (screenWorker) {
+          if (!direct) screenWorker.postMessage({ type: "sparkplug-port", port: null });
+          // resync: the open pages start over from this snapshot (direct: the worker's own snapshot does that)
           screenWorker.postMessage({
             type: "sparkplug-snapshot",
             snapshot: sparkplugNode ? sparkplugNode.getSnapshot() : {},
-            resync: true
+            resync: !direct
           });
         }
         if (!sparkplugNode) return;
@@ -139,7 +147,7 @@ module.exports = function(RED) {
         }, EDITOR_DELTA_BATCH_MS);
         const unsubscribeTree = sparkplugNode.subscribeTree(function (delta, serialized) {
           editorBatcher.push(delta);
-          if (screenWorker) {
+          if (screenWorker && !direct) {
             screenWorker.postMessage({ type: "sparkplug-delta", serialized: serialized });
           }
           snapshotDirty = true;
