@@ -37,7 +37,8 @@ const { WebSocketServer } = require("ws");
 const { IoHub } = require("../io/ioHub");
 // Generated from src/model/ by build.js: a project saved before the node tree
 // (flat components + layers) is migrated here, so the page only knows the tree.
-const { migrateProject } = require("../../../dist/nexa-model.js");
+const { migrateProject, resolveScreenRoute, flowScreenIds } = require("../../../dist/nexa-model.js");
+const { renderScreenHtml, safeJsonForScript } = require("../screens/render-html.js");
 
 const RUNTIME_PREFIX = "/nexa";
 
@@ -185,129 +186,13 @@ wss.on("connection", function (ws) {
     ws.on("error", function () { /* "close" follows */ });
 });
 
-// --- Copied verbatim from lib/nexa-plugin.js (the code this worker took
-// over) — see that file's own comments for why each of these looks the way
-// it does; not reproduced here to keep this file scannable.
-function matchScreenPath(pattern, actualPath) {
-    var patternParts = pattern.split("/").filter(Boolean);
-    var actualParts = actualPath.split("/").filter(Boolean);
-    if (patternParts.length !== actualParts.length) return null;
-    var params = {};
-    for (var i = 0; i < patternParts.length; i++) {
-        if (patternParts[i].charAt(0) === ":") {
-            params[patternParts[i].slice(1)] = decodeURIComponent(actualParts[i]);
-        } else if (patternParts[i] !== actualParts[i]) {
-            return null;
-        }
-    }
-    return params;
-}
-function escapeHtml(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-}
-function safeJsonForScript(value) {
-    return JSON.stringify(value).replace(/</g, "\\u003c");
-}
+// project.templates as a script literal, once per deployed project (every page embeds it)
 function getCachedTemplatesJson() {
     if (templatesJsonCache.forProject !== project) {
         templatesJsonCache.forProject = project;
         templatesJsonCache.json = safeJsonForScript(project.templates || []);
     }
     return templatesJsonCache.json;
-}
-function getFlowAllowedScreenIds(flow, allScreens) {
-    if (!flow || !flow.logic || !Array.isArray(flow.logic.nodes)) return [];
-    var screens = allScreens || (project && project.screens) || [];
-    var ids = [];
-
-    function addId(id) {
-        if (!id) return;
-        var sid = String(id).trim();
-        if (sid && ids.indexOf(sid) === -1) {
-            ids.push(sid);
-            // Recursively discover screens reachable via Goto Screen within this screen's logic
-            var scr = screens.find(function (s) { return s.id === sid; });
-            if (scr && scr.logic && Array.isArray(scr.logic.nodes)) {
-                scr.logic.nodes.forEach(function (sn) {
-                    if (sn && sn.type === "navigate" && sn.screenId) {
-                        addId(sn.screenId);
-                    }
-                });
-            }
-        }
-    }
-
-    flow.logic.nodes.forEach(function (n) {
-        if (!n) return;
-        if ((n.type === "render-screen" || n.type === "navigate") && n.screenId) {
-            addId(n.screenId);
-        }
-    });
-
-    return ids;
-}
-
-function renderScreenHtml(screen, flow, params, query, requestHostname, clientIp) {
-    var allowedIds = flow ? getFlowAllowedScreenIds(flow, project.screens) : [];
-    var flowScreens = flow ? (project.screens || []).filter(function (s) {
-        return allowedIds.indexOf(s.id) !== -1;
-    }) : (project.screens || []);
-
-    var componentScripts = componentScriptSrcs.map(function (entry) {
-        // An entry is a src string (classic script) or { src, module: true }
-        // (an SDK plugin: an ES module importing nexa-component-sdk.js).
-        var src = typeof entry === "string" ? entry : (entry && entry.src) || "";
-        var isModule = !!(entry && typeof entry === "object" && entry.module);
-        // Root-relative ("/foo/bar.js") -> rewrite to Node-RED's real port,
-        // same hostname the browser used to reach this worker. Anything
-        // already absolute (an http(s):// URL a package chose to declare
-        // itself) is left untouched. (Cross-origin modules need CORS: the
-        // SDK's package helper serves plugin files with it.)
-        var resolvedSrc = src.charAt(0) === "/" ? "http://" + requestHostname + ":" + nodeRedPort + src : src;
-        return '<script ' + (isModule ? 'type="module" crossorigin ' : '') + 'src="' + escapeHtml(resolvedSrc) + '"></script>';
-    });
-    var displayMode = screen.displayMode || "fixed";
-    var bodyClass = "nexa-mode-" + displayMode;
-    var artboardStyle = "width:" + screen.width + "px;height:" + screen.height + "px;";
-    if (displayMode === "fill") {
-        var sf = Number(screen.scaleFactor) || 1;
-        if (sf !== 1) {
-            artboardStyle = "width:" + (100 / sf) + "vw;height:" + (100 / sf) + "vh;transform-origin:0 0;transform:scale(" + sf + ");margin:0;box-shadow:none;";
-        } else {
-            artboardStyle = "width:100vw;height:100vh;margin:0;box-shadow:none;";
-        }
-    }
-
-    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
-        "<title>" + escapeHtml(screen.name || (flow && flow.name) || "Nexa Dashboard") + "</title>" +
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
-        "<style>html,body{margin:0;padding:0;background:#ccc;}" +
-        "#nexa-runtime-artboard{position:relative;background:var(--nexa-colors-bg,#fff);margin:20px auto;" +
-        "box-shadow:0 4px 12px rgba(0,0,0,0.2);}" +
-        "body.nexa-mode-fill #nexa-runtime-artboard{margin:0;box-shadow:none;}" +
-        "body.nexa-mode-fill{overflow:hidden;}" +
-        "</style>" +
-        "</head><body class=\"" + bodyClass + "\">" +
-        '<div id="nexa-runtime-artboard" style="' + artboardStyle + '"></div>' +
-        '<script src="' + RUNTIME_PREFIX + '/_registry.js"></script>' +
-        '<script src="' + RUNTIME_PREFIX + '/_sdk.js"></script>' +
-        componentScripts.join("") +
-        "<script>window.__NEXA_SCREEN__ = " + safeJsonForScript(screen) + ";" +
-        "window.__NEXA_SCREENS__ = " + safeJsonForScript(flowScreens) + ";" +
-        "window.__NEXA_FLOWS__ = " + safeJsonForScript(project.flows || []) + ";" +
-        "window.__NEXA_CURRENT_FLOW__ = " + safeJsonForScript(flow ? flow.id : null) + ";" +
-        "window.__NEXA_CLIENT_IP__ = " + safeJsonForScript(clientIp || "") + ";" +
-        "window.__NEXA_TEMPLATES__ = " + getCachedTemplatesJson() + ";" +
-        "window.__NEXA_APP__ = " + safeJsonForScript({ variables: project.variables || [], sharedVariables: project.sharedVariables || [], types: project.types || [], breakpoints: project.breakpoints || [], theme: project.theme || null }) + ";" +
-        "window.__NEXA_ASSETS__ = " + safeJsonForScript((assetStore ? assetStore.list() : []).map(function (a) { return { name: a.name, url: RUNTIME_PREFIX + "/_assets/" + a.file, type: a.type, w: a.w, h: a.h }; })) + ";" +
-        "window.__NEXA_PARAMS__ = " + safeJsonForScript(params) + ";" +
-        "window.__NEXA_QUERY__ = " + safeJsonForScript(query) + ";" +
-        "window.__NEXA_RUNTIME_PREFIX__ = " + safeJsonForScript(RUNTIME_PREFIX) + ";</script>" +
-        '<script src="' + RUNTIME_PREFIX + '/_model.js"></script>' +
-        '<script src="' + RUNTIME_PREFIX + '/_runtime.js"></script>' +
-        "</body></html>";
 }
 
 function sendJson(res, status, obj) {
@@ -371,182 +256,29 @@ function handleSparkplugWrite(req, res) {
     });
 }
 
-function handleScreenRequest(req, res, subPath, query) {
-    if (!subPath || subPath === "") subPath = "/";
-    if (subPath.charAt(0) !== "/") subPath = "/" + subPath;
-
-    var flows = project.flows || [];
-    var matchedFlow = null;
-    var matchedScreen = null;
-    var matchedParams = {};
-
-    // Fallback for legacy standalone projects or integration test fixtures without flows
-    if (!flows.length) {
-        for (var si = 0; si < (project.screens || []).length; si++) {
-            var scr = project.screens[si];
-            var sm = matchScreenPath(scr.path || ("/" + scr.id), subPath);
-            if (sm) { matchedScreen = scr; matchedParams = sm; break; }
-        }
-        if (matchedScreen) {
-            if (matchedScreen.disabled) { sendText(res, 404, "Nexa screen is disabled: " + subPath); return; }
-            var hh = req.headers.host || "localhost";
-            var rh = hh.split(":")[0];
-            var rip = req.headers["x-forwarded-for"] || (req.socket && req.socket.remoteAddress) || "";
-            var cip = String(rip).split(",")[0].trim();
-            var h = renderScreenHtml(matchedScreen, null, matchedParams, query, rh, cip);
-            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": Buffer.byteLength(h) });
-            res.end(h);
-            return;
-        }
-    }
-
-    // If root path requested, redirect to default flow if available
-    if (subPath === "/" || subPath === "") {
-        var defaultFlow = flows.find(function (f) { return !f.disabled && f.isDefault; }) ||
-                          flows.find(function (f) { return !f.disabled; });
-        if (defaultFlow) {
-            var defEp = (defaultFlow.endpoint || "").trim();
-            if (!defEp) defEp = "/flow1";
-            if (defEp.charAt(0) !== "/") defEp = "/" + defEp;
-            var redirectUrl = RUNTIME_PREFIX + defEp;
-            var queryKeys = Object.keys(query || {});
-            if (queryKeys.length) {
-                var qs = new URLSearchParams(query).toString();
-                if (qs) redirectUrl += "?" + qs;
-            }
-            res.writeHead(302, { "Location": redirectUrl });
-            res.end();
-            return;
-        }
-    }
-
-    // Standalone screens cannot be accessed directly without a Flow gateway!
-    // Every valid route must match a Flow endpoint (/nexa/<flow-endpoint> or /nexa/<flow-endpoint>/<screen-path>)
-    for (var f = 0; f < flows.length; f++) {
-        var flow = flows[f];
-        if (flow.disabled) continue;
-        var ep = (flow.endpoint || "").trim();
-        if (!ep) ep = "/flow" + (f + 1);
-        if (ep.charAt(0) !== "/") ep = "/" + ep;
-        ep = ep.replace(/\/+$/, "");
-
-        var allowedIds = getFlowAllowedScreenIds(flow, project.screens);
-
-        // 1. Exact match on flow endpoint: e.g. /flow1 or /flow1/
-        if (subPath === ep || subPath === ep + "/") {
-            matchedFlow = flow;
-            matchedParams = {};
-            if (allowedIds.length === 0) {
-                sendText(res, 404, "No accessible screens defined in Flow: " + (flow.name || flow.id) + ". Please add a 'Render Screen' node to define accessible screens.");
-                return;
-            }
-
-            // Find the entry screen in the flow logic
-            var nodes = (flow.logic && flow.logic.nodes) || [];
-            var triggerNode = nodes.find(function (n) { return n.type === "route-trigger"; });
-            var entryScreen = null;
-            if (triggerNode) {
-                var wires = (flow.logic && flow.logic.wires) || [];
-                var triggerWires = wires.filter(function (w) { return w.from === triggerNode.id; });
-                var directRenderTargets = triggerWires.map(function (w) {
-                    return nodes.find(function (n) { return n.id === w.to && (n.type === "render-screen" || n.type === "navigate"); });
-                }).filter(Boolean);
-                if (directRenderTargets.length > 1) {
-                    console.warn("[screen-worker] Route Trigger fan-out warning in Flow '" + (flow.name || flow.id) + "': connected to " + directRenderTargets.length + " render targets. Ambiguous entry screen.");
-                }
-                var nextWire = triggerWires[0];
-                if (nextWire) {
-                    var targetNode = nodes.find(function (n) { return n.id === nextWire.to; });
-                    if (targetNode && (targetNode.type === "render-screen" || targetNode.type === "navigate") && targetNode.screenId && allowedIds.indexOf(targetNode.screenId) !== -1) {
-                        entryScreen = (project.screens || []).find(function (s) { return s.id === targetNode.screenId && !s.disabled; });
-                    }
-                }
-            }
-            if (!entryScreen) {
-                // Look for any screen referenced in flow render-screen or navigate nodes
-                for (var ni = 0; ni < nodes.length; ni++) {
-                    if ((nodes[ni].type === "render-screen" || nodes[ni].type === "navigate") && nodes[ni].screenId && allowedIds.indexOf(nodes[ni].screenId) !== -1) {
-                        entryScreen = (project.screens || []).find(function (s) { return s.id === nodes[ni].screenId && !s.disabled; });
-                        if (entryScreen) break;
-                    }
-                }
-            }
-            if (!entryScreen && allowedIds.length > 0) {
-                entryScreen = (project.screens || []).find(function (s) { return s.id === allowedIds[0] && !s.disabled; });
-            }
-
-            if (!entryScreen) {
-                sendText(res, 404, "None of the screens defined in Flow '" + (flow.name || flow.id) + "' are available or enabled.");
-                return;
-            }
-
-            matchedScreen = entryScreen;
-            break;
-        }
-
-        // 2. Match on flow sub-path: e.g. /flow1/<screen-path>
-        if (subPath.indexOf(ep + "/") === 0) {
-            matchedFlow = flow;
-            var scrPath = subPath.slice(ep.length); // e.g. "/test", "/overview"
-            if (scrPath.charAt(0) !== "/") scrPath = "/" + scrPath;
-
-            var targetScreen = (project.screens || []).find(function (s) {
-                if (s.disabled) return false;
-                var sp = (s.path || ("/" + s.id)).trim();
-                if (sp.charAt(0) !== "/") sp = "/" + sp;
-                return sp === scrPath || matchScreenPath(sp, scrPath);
-            });
-
-            if (!targetScreen) {
-                // Check if flow defines a 'route-not-found' handler
-                var nodes = (flow.logic && flow.logic.nodes) || [];
-                var notFoundNode = nodes.find(function (n) { return n.type === "route-not-found"; });
-                if (notFoundNode) {
-                    var wires = (flow.logic && flow.logic.wires) || [];
-                    var notFoundScreen = null;
-                    var nextWire = wires.find(function (w) { return w.from === notFoundNode.id; });
-                    if (nextWire) {
-                        var targetNode = nodes.find(function (n) { return n.id === nextWire.to; });
-                        if (targetNode && (targetNode.type === "render-screen" || targetNode.type === "navigate") && targetNode.screenId && allowedIds.indexOf(targetNode.screenId) !== -1) {
-                            notFoundScreen = (project.screens || []).find(function (s) { return s.id === targetNode.screenId && !s.disabled; });
-                        }
-                    }
-                    if (!notFoundScreen && allowedIds.length > 0) {
-                        notFoundScreen = (project.screens || []).find(function (s) { return s.id === allowedIds[0] && !s.disabled; });
-                    }
-                    if (notFoundScreen) {
-                        matchedScreen = notFoundScreen;
-                        matchedParams = { path: scrPath, notFound: true };
-                        break;
-                    }
-                }
-
-                sendText(res, 404, "Screen '" + scrPath + "' not found in Flow: " + (flow.name || flow.id));
-                return;
-            }
-
-            if (allowedIds.indexOf(targetScreen.id) === -1) {
-                sendText(res, 404, "Screen '" + scrPath + "' is not accessible in Flow: " + (flow.name || flow.id) + ". Only screens defined via 'Render Screen' or 'Goto Screen' in this flow are accessible.");
-                return;
-            }
-
-            matchedScreen = targetScreen;
-            matchedParams = matchScreenPath(targetScreen.path || ("/" + targetScreen.id), scrPath) || {};
-            break;
-        }
-    }
-
-    if (!matchedFlow || !matchedScreen) {
-        sendText(res, 404, "No Nexa flow found for path: " + subPath + ". Direct screen access is disabled — all routes must go through a Flow gateway (e.g. /nexa" + ((flows[0] && flows[0].endpoint) || "/flow1") + ").");
-        return;
-    }
-    if (matchedScreen.disabled) { sendText(res, 404, "Nexa screen is disabled: " + subPath); return; }
-
-    var hostHeader = req.headers.host || "localhost";
-    var requestHostname = hostHeader.split(":")[0];
+// GET /nexa/<flow>[/<screen>]: resolve the route (src/model/routes.js), then render the page
+function handleScreenRequest(req, res, subPath, url) {
+    var route = resolveScreenRoute(project, subPath, { prefix: RUNTIME_PREFIX, search: url.search });
+    (route.warnings || []).forEach(function (w) { console.warn("[screen-worker] " + w); });
+    if (route.kind === "redirect") { res.writeHead(302, { "Location": route.location }); res.end(); return; }
+    if (route.kind !== "screen") { sendText(res, 404, route.text); return; }
+    var allowed = route.flow ? flowScreenIds(route.flow, project.screens) : null;
     var rawIp = req.headers["x-forwarded-for"] || (req.socket && req.socket.remoteAddress) || "";
-    var clientIp = String(rawIp).split(",")[0].trim();
-    var html = renderScreenHtml(matchedScreen, matchedFlow, matchedParams, query, requestHostname, clientIp);
+    var html = renderScreenHtml({
+        project: project,
+        screen: route.screen,
+        flow: route.flow,
+        flowScreens: (project.screens || []).filter(function (s) { return !allowed || allowed.indexOf(s.id) !== -1; }),
+        params: route.params,
+        query: Object.fromEntries(url.searchParams),
+        hostname: (req.headers.host || "localhost").split(":")[0],
+        clientIp: String(rawIp).split(",")[0].trim(),
+        prefix: RUNTIME_PREFIX,
+        componentScriptSrcs: componentScriptSrcs,
+        nodeRedPort: nodeRedPort,
+        templatesJson: getCachedTemplatesJson(),
+        assets: assetStore ? assetStore.list() : []
+    });
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Length": Buffer.byteLength(html) });
     res.end(html);
 }
@@ -599,24 +331,10 @@ var server = http.createServer(function (req, res) {
         handleSparkplugStream(req, res); return;
     }
     if (req.method === "GET" && (pathname === "/" || pathname === RUNTIME_PREFIX || pathname === RUNTIME_PREFIX + "/")) {
-        var flows = project.flows || [];
-        var defaultFlow = flows.find(function (f) { return !f.disabled && f.isDefault; }) ||
-                          flows.find(function (f) { return !f.disabled; });
-        if (defaultFlow) {
-            var defEp = (defaultFlow.endpoint || "").trim();
-            if (!defEp) defEp = "/flow1";
-            if (defEp.charAt(0) !== "/") defEp = "/" + defEp;
-            var redirectUrl = RUNTIME_PREFIX + defEp;
-            var queryStr = url.search || "";
-            if (queryStr) redirectUrl += queryStr;
-            res.writeHead(302, { "Location": redirectUrl });
-            res.end();
-            return;
-        }
-        handleScreenRequest(req, res, "/", Object.fromEntries(url.searchParams)); return;
+        handleScreenRequest(req, res, "/", url); return;
     }
     if (req.method === "GET" && pathname.indexOf(RUNTIME_PREFIX + "/") === 0) {
-        handleScreenRequest(req, res, pathname.slice(RUNTIME_PREFIX.length), Object.fromEntries(url.searchParams)); return;
+        handleScreenRequest(req, res, pathname.slice(RUNTIME_PREFIX.length), url); return;
     }
     sendText(res, 404, "Not found.");
 });

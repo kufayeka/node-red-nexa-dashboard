@@ -22,6 +22,7 @@ import { makeCtx, fireLifecycle, runLogicGraph } from "../logic/runner.js";
 import { registerSparkplugBoundComponentsFrom } from "../io/sparkplug.js";
 import { setUpSparkplugLiveBinding } from "../io/client.js";
 import { syncLinkSubscriptions } from "../../features/logic/link/link-ops.js";
+import { matchScreenPath, flowScreenIds } from "../../model/routes.js";
 import { cloneMsg } from "../logic/context.js";
 import { startBreakpoints } from "./breakpoints.js";
 import { startTheme } from "./theme.js";
@@ -43,34 +44,9 @@ export function getActiveFlowScreen() { return CURRENT_ACTIVE_FLOW_SCREEN; }
 export function getActiveFlow() { return CURRENT_ACTIVE_FLOW; }
 export function getEffectiveScreen() { return CURRENT_EFFECTIVE_SCREEN; }
 
+// the same rules as the screen worker (src/model/routes.js), on the screens this page got
 export function getFlowAllowedScreenIds(flow) {
-    if (!flow || !flow.logic || !Array.isArray(flow.logic.nodes)) return [];
-    var ids = [];
-    var screens = window.__NEXA_SCREENS__ || [];
-
-    function addId(id) {
-        if (!id) return;
-        var sid = String(id).trim();
-        if (sid && ids.indexOf(sid) === -1) {
-            ids.push(sid);
-            var scr = screens.find(function (s) { return s.id === sid; });
-            if (scr && scr.logic && Array.isArray(scr.logic.nodes)) {
-                scr.logic.nodes.forEach(function (sn) {
-                    if (sn && sn.type === "navigate" && sn.screenId) {
-                        addId(sn.screenId);
-                    }
-                });
-            }
-        }
-    }
-
-    flow.logic.nodes.forEach(function (n) {
-        if (!n) return;
-        if ((n.type === "render-screen" || n.type === "navigate") && n.screenId) {
-            addId(n.screenId);
-        }
-    });
-    return ids;
+    return flowScreenIds(flow, window.__NEXA_SCREENS__ || []);
 }
 
 export function findFlowForRoute(targetPath) {
@@ -846,21 +822,7 @@ function endLateMount(effectiveScreen, before) {
     });
 }
 
-export function matchScreenPath(pattern, actualPath) {
-    if (!pattern || !actualPath) return null;
-    var patternParts = pattern.split("/").filter(Boolean);
-    var actualParts = actualPath.split("/").filter(Boolean);
-    if (patternParts.length !== actualParts.length) return null;
-    var params = {};
-    for (var i = 0; i < patternParts.length; i++) {
-        if (patternParts[i].charAt(0) === ":") {
-            params[patternParts[i].slice(1)] = decodeURIComponent(actualParts[i]);
-        } else if (patternParts[i] !== actualParts[i]) {
-            return null;
-        }
-    }
-    return params;
-}
+export { matchScreenPath };
 
 export function extractDeviceContext() {
     var w = (typeof window !== "undefined" && window.innerWidth) || 1024;

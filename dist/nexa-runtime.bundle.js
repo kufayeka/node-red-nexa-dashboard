@@ -2645,6 +2645,40 @@
     linkSetSubscriptions(ids, onPush);
   }
 
+  // src/model/routes.js
+  function matchScreenPath(pattern, actualPath) {
+    if (!pattern || !actualPath) return null;
+    const patternParts = pattern.split("/").filter(Boolean);
+    const actualParts = actualPath.split("/").filter(Boolean);
+    if (patternParts.length !== actualParts.length) return null;
+    const params = {};
+    for (let i = 0; i < patternParts.length; i++) {
+      if (patternParts[i].charAt(0) === ":") params[patternParts[i].slice(1)] = decodeURIComponent(actualParts[i]);
+      else if (patternParts[i] !== actualParts[i]) return null;
+    }
+    return params;
+  }
+  function flowScreenIds(flow, screens) {
+    if (!flow || !flow.logic || !Array.isArray(flow.logic.nodes)) return [];
+    const all = screens || [];
+    const ids = [];
+    function add(id) {
+      const sid = id ? String(id).trim() : "";
+      if (!sid || ids.indexOf(sid) !== -1) return;
+      ids.push(sid);
+      const scr = all.find(function(s) {
+        return s.id === sid;
+      });
+      (scr && scr.logic && scr.logic.nodes || []).forEach(function(n) {
+        if (n && n.type === "navigate" && n.screenId) add(n.screenId);
+      });
+    }
+    flow.logic.nodes.forEach(function(n) {
+      if (n && (n.type === "render-screen" || n.type === "navigate") && n.screenId) add(n.screenId);
+    });
+    return ids;
+  }
+
   // src/runtime/features/breakpoints.js
   var ACTIVE_BREAKPOINT_RESIZE = null;
   function appBreakpoints() {
@@ -2762,33 +2796,7 @@
     return CURRENT_EFFECTIVE_SCREEN;
   }
   function getFlowAllowedScreenIds(flow) {
-    if (!flow || !flow.logic || !Array.isArray(flow.logic.nodes)) return [];
-    var ids = [];
-    var screens = window.__NEXA_SCREENS__ || [];
-    function addId(id) {
-      if (!id) return;
-      var sid = String(id).trim();
-      if (sid && ids.indexOf(sid) === -1) {
-        ids.push(sid);
-        var scr = screens.find(function(s) {
-          return s.id === sid;
-        });
-        if (scr && scr.logic && Array.isArray(scr.logic.nodes)) {
-          scr.logic.nodes.forEach(function(sn) {
-            if (sn && sn.type === "navigate" && sn.screenId) {
-              addId(sn.screenId);
-            }
-          });
-        }
-      }
-    }
-    flow.logic.nodes.forEach(function(n) {
-      if (!n) return;
-      if ((n.type === "render-screen" || n.type === "navigate") && n.screenId) {
-        addId(n.screenId);
-      }
-    });
-    return ids;
+    return flowScreenIds(flow, window.__NEXA_SCREENS__ || []);
   }
   function findFlowForRoute(targetPath) {
     if (!targetPath) return null;
@@ -3551,21 +3559,6 @@
         runLogicGraph(effectiveScreen, n, cloneMsg({ payload: null }));
       });
     });
-  }
-  function matchScreenPath(pattern, actualPath) {
-    if (!pattern || !actualPath) return null;
-    var patternParts = pattern.split("/").filter(Boolean);
-    var actualParts = actualPath.split("/").filter(Boolean);
-    if (patternParts.length !== actualParts.length) return null;
-    var params = {};
-    for (var i = 0; i < patternParts.length; i++) {
-      if (patternParts[i].charAt(0) === ":") {
-        params[patternParts[i].slice(1)] = decodeURIComponent(actualParts[i]);
-      } else if (patternParts[i] !== actualParts[i]) {
-        return null;
-      }
-    }
-    return params;
   }
   function extractDeviceContext() {
     var w = typeof window !== "undefined" && window.innerWidth || 1024;
