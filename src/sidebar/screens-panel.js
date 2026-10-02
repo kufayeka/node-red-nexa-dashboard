@@ -8,6 +8,7 @@ import {
 } from "../state.js";
 import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { applyConstraints } from "../canvas/constraints.js";
+import * as BP from "../model/breakpoints.js";
 import { renderLogicCanvas } from "../logic/logic-nodes.js";
 import { renderTemplateForm, showEditBar, hideEditBar } from "./templates-panel.js";
 import { updateCanvasTabsVisibility } from "../editor-tray.js";
@@ -2218,7 +2219,8 @@ export function renderScreenForm() {
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("On the live page").appendTo(modeRow);
     var modeSel = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
     [["fixed", "Exact size (this device), centred"], ["fit", "Scale to fit the window (keep proportions)"],
-    ["fitWidth", "Scale to the window width (scroll down)"], ["fill", "Fill the window (responsive, by constraints)"]]
+    ["fitWidth", "Scale to the window width (scroll down)"],
+    ["fill", "Fill the window (responsive, by constraints)"]]
         .forEach(function (o) { window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel); });
     modeSel.val(screen.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
@@ -2226,15 +2228,91 @@ export function renderScreenForm() {
         fixed: function () { return "Shown at exactly " + screen.width + " × " + screen.height + " px — for a known panel / device."; },
         fit: "Everything scales together so the whole screen fits any window.",
         fitWidth: "Scales to the window's width; taller content scrolls — good for web pages.",
-        fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale…) on top-level items and use frames with auto layout."
+        fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale…) on top-level items and use frames with auto layout. Customize scale per breakpoint below."
     };
     var syncHelp = function () { var h = HELP[modeSel.val()]; modeHelp.text(typeof h === "function" ? h() : (h || "")); };
     syncHelp();
     modeSel.on("change", function () {
         if (modeSel.val() === "fixed") delete screen.displayMode; else screen.displayMode = modeSel.val();
+        if (modeSel.val() !== "fill") {
+            delete screen.scaleFactor;
+            delete screen.breakpointScales;
+        }
         syncHelp();
+        syncScaleVis();
         markDirty();
     });
+
+    // Scale factor section (only visible for fill mode)
+    var scaleRow = window.$("<div>").css({ "margin-bottom": "12px", display: "none" }).appendTo(state.screenFormEl);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Base scale factor").appendTo(scaleRow);
+    var scaleWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(scaleRow);
+    var scaleRange = window.$("<input>", { type: "range", min: "0.25", max: "3", step: "0.05" }).css({ flex: "1" }).val(screen.scaleFactor || 1).appendTo(scaleWrap);
+    var scaleNum = window.$("<input>", { type: "number", min: "0.1", max: "5", step: "0.05" }).css({ width: "55px", "text-align": "center" }).val(screen.scaleFactor || 1).appendTo(scaleWrap);
+    window.$("<div>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-top": "2px", "margin-bottom": "8px" }).text("Default scale across all screens (1.0 = 100%)").appendTo(scaleRow);
+
+    function syncScaleVis() {
+        scaleRow.css("display", modeSel.val() === "fill" ? "block" : "none");
+    }
+    syncScaleVis();
+
+    scaleRange.on("input change", function () {
+        screen.scaleFactor = parseFloat(scaleRange.val()) || 1;
+        scaleNum.val(screen.scaleFactor);
+        markDirty();
+    });
+    scaleNum.on("input change", function () {
+        screen.scaleFactor = parseFloat(scaleNum.val()) || 1;
+        scaleRange.val(screen.scaleFactor);
+        markDirty();
+    });
+
+    // Breakpoint scales list
+    window.$("<div>").css({ "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", "margin-bottom": "2px" }).text("Scale per breakpoint").appendTo(scaleRow);
+    window.$("<div>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-bottom": "6px" }).text("Set custom scale for specific screen sizes (leave blank to inherit base scale)").appendTo(scaleRow);
+    var bpListEl = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "4px" }).appendTo(scaleRow);
+
+    function renderBpScales() {
+        bpListEl.empty();
+        if (!screen.breakpointScales) screen.breakpointScales = {};
+        var app = getApp();
+        var bps = BP.breakpointsOf(app);
+        bps.forEach(function (bp) {
+            var row = window.$("<div>").css({
+                display: "flex", "align-items": "center", "justify-content": "space-between",
+                padding: "3px 6px", background: "var(--red-ui-secondary-background, #f8fafc)",
+                "border-radius": "4px", border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)"
+            }).appendTo(bpListEl);
+
+            var labelWrap = window.$("<div>").appendTo(row);
+            window.$("<span>").css({ "font-weight": "600", "font-size": "11px", color: "var(--red-ui-primary-text-color, #334155)" }).text(bp.id).appendTo(labelWrap);
+            var range = BP.rangeOf(app, bp.id);
+            var info = (bp.device ? bp.device + " · " : "") + range;
+            window.$("<span>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-left": "6px" }).text(info).appendTo(labelWrap);
+
+            var inputWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "4px" }).appendTo(row);
+            var curVal = screen.breakpointScales[bp.id];
+            var inp = window.$("<input>", { type: "number", step: "0.05", min: "0.1", max: "5", placeholder: "Base" })
+                .css({ width: "55px", "text-align": "center", height: "22px", "font-size": "11px" })
+                .val(curVal !== undefined && curVal !== null ? curVal : "")
+                .appendTo(inputWrap);
+            window.$("<span>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #94a3b8)" }).text("x").appendTo(inputWrap);
+
+            inp.on("change input", function () {
+                var v = inp.val().trim();
+                if (v === "") {
+                    delete screen.breakpointScales[bp.id];
+                } else {
+                    var n = parseFloat(v);
+                    if (isFinite(n) && n > 0) screen.breakpointScales[bp.id] = n;
+                    else delete screen.breakpointScales[bp.id];
+                }
+                if (Object.keys(screen.breakpointScales).length === 0) delete screen.breakpointScales;
+                markDirty();
+            });
+        });
+    }
+    renderBpScales();
     row("Grid size (px)", "gridSize", screen.gridSize, "number");
 
     var checksWrap = window.$("<div>").css({

@@ -10,7 +10,10 @@
 NEXA.registerComponent("box", { render: function (el) { el.style.background = "#0af"; } });
 function box(id, w, h, extra) { return Object.assign({ id: id, type: "box", x: 0, y: 0, w: w, h: h, props: {} }, extra || {}); }
 var mode = (location.search.match(/mode=(\w+)/) || [])[1];
-window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 300, treeVersion: 1, orphans: [], logic: { nodes: [], wires: [] }, displayMode: mode,
+var sf = (location.search.match(/scale=([\d.]+)/) || [])[1];
+var bpMatch = location.search.match(/bpScales=([^&]+)/);
+var bpScales = bpMatch ? JSON.parse(decodeURIComponent(bpMatch[1])) : undefined;
+window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 300, treeVersion: 1, orphans: [], logic: { nodes: [], wires: [] }, displayMode: mode, scaleFactor: sf ? parseFloat(sf) : undefined, breakpointScales: bpScales,
   components: [
     box("tl", 20, 20, { x: 0, y: 0 }),
     box("br", 20, 20, { x: 380, y: 280, constraints: { h: "right", v: "bottom" } }),

@@ -47,6 +47,20 @@ async function main() {
                 assert.deepStrictEqual(await js(RECT('br')), [780, 430, 20, 20], 'right / bottom: 0 from the window edges');
             });
         });
+        await page('fill&scale=0.5', async ({ js }) => {
+            await ok('fill with scaleFactor=0.5: artboard virtual size is doubled, scaled by 0.5 to fill window', async () => {
+                assert.deepStrictEqual(await js(RECT('nexa-runtime-artboard')), [0, 0, 800, 450]);
+                const tr = await js('document.getElementById("nexa-runtime-artboard").style.transform');
+                assert.strictEqual(tr, 'scale(0.5)');
+            });
+        });
+        await page('fill&bpScales=' + encodeURIComponent(JSON.stringify({ md: 0.8, xs: 0.5 })), async ({ js }) => {
+            await ok('fill with dynamic breakpointScales: 800px window matches md breakpoint and uses scale 0.8', async () => {
+                assert.deepStrictEqual(await js(RECT('nexa-runtime-artboard')), [0, 0, 800, 450]);
+                const tr = await js('document.getElementById("nexa-runtime-artboard").style.transform');
+                assert.strictEqual(tr, 'scale(0.8)');
+            });
+        });
     } finally {
         await server.close();
     }

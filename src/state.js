@@ -355,6 +355,8 @@ export function duplicateScreen(id) {
         treeVersion: orig.treeVersion || TREE_VERSION,
         disabled: !!orig.disabled,
         displayMode: orig.displayMode,
+        scaleFactor: orig.scaleFactor,
+        breakpointScales: orig.breakpointScales ? JSON.parse(JSON.stringify(orig.breakpointScales)) : undefined,
         variables: JSON.parse(JSON.stringify(orig.variables || [])),
         components: cloneSurfaceComponents(orig.components, compIdMap),
         orphans: cloneSurfaceComponents(orig.orphans, compIdMap),

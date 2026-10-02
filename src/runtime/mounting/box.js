@@ -94,6 +94,38 @@ export function templateContentHost(boxEl, template, instance) {
 
 export var ACTIVE_DISPLAY_MODE_RESIZE = null;
 
+export function resolveScreenScale(screen, width) {
+    if (!screen) return 1;
+    var w = width !== undefined ? width : (typeof window !== "undefined" && (window.innerWidth || (document.documentElement && document.documentElement.clientWidth))) || (screen.width || 1024);
+    var M = typeof window !== "undefined" ? window.NexaModel : null;
+    var app = (typeof window !== "undefined" && window.__NEXA_APP__) || {};
+    var bpId = null;
+
+    if (M && typeof M.bandOf === "function") {
+        bpId = M.bandOf(app, w);
+    } else {
+        var bps = (app && Array.isArray(app.breakpoints) && app.breakpoints.length) ? app.breakpoints : null;
+        if (bps) {
+            var list = bps.filter(function (b) { return b && b.id && isFinite(Number(b.min)); })
+                .map(function (b) { return { id: b.id, min: Math.max(0, Number(b.min)) }; })
+                .sort(function (a, b) { return a.min - b.min; });
+            if (list.length) {
+                bpId = list[0].id;
+                list.forEach(function (b) { if (w >= b.min) bpId = b.id; });
+            }
+        }
+    }
+
+    if (screen.breakpointScales && typeof screen.breakpointScales === "object") {
+        var bpVal = screen.breakpointScales[bpId];
+        if (bpVal !== undefined && bpVal !== null && bpVal !== "") {
+            var n = Number(bpVal);
+            if (isFinite(n) && n > 0) return n;
+        }
+    }
+    return Number(screen.scaleFactor) || 1;
+}
+
 export function resetScreenStyles(artboard) {
     if (ACTIVE_DISPLAY_MODE_RESIZE && typeof window !== "undefined" && window.removeEventListener) {
         window.removeEventListener("resize", ACTIVE_DISPLAY_MODE_RESIZE);
@@ -112,6 +144,7 @@ export function resetScreenStyles(artboard) {
             body.style.overflowX = "";
             body.style.overflowY = "";
             body.style.height = "";
+            body.style.minHeight = "";
         }
     }
 
@@ -143,16 +176,43 @@ export function applyDisplayMode(screen, artboard) {
 
     if (mode === "fill") {
         st.position = "relative";
-        st.width = "100vw";
-        st.height = "100vh";
         st.margin = "0";
         st.boxShadow = "none";
-        st.transform = "none";
         st.left = "";
         st.top = "";
-        if (body) {
-            body.style.overflow = "hidden";
-            body.style.height = "100vh";
+
+        function applyFillScale() {
+            var sf = resolveScreenScale(screen);
+            if (sf === 1) {
+                st.width = "100vw";
+                st.height = "100vh";
+                st.transform = "none";
+                st.transformOrigin = "";
+                if (body) {
+                    body.style.overflow = "hidden";
+                    body.style.overflowX = "hidden";
+                    body.style.overflowY = "hidden";
+                    body.style.height = "100vh";
+                    body.style.minHeight = "";
+                }
+            } else {
+                st.width = (100 / sf) + "vw";
+                st.height = (100 / sf) + "vh";
+                st.transformOrigin = "0 0";
+                st.transform = "scale(" + sf + ")";
+                if (body) {
+                    body.style.overflowX = "hidden";
+                    body.style.overflowY = "auto";
+                    body.style.minHeight = "100vh";
+                    body.style.height = "auto";
+                }
+            }
+        }
+        applyFillScale();
+
+        if (typeof window !== "undefined" && window.addEventListener) {
+            ACTIVE_DISPLAY_MODE_RESIZE = applyFillScale;
+            window.addEventListener("resize", applyFillScale);
         }
         return;
     }

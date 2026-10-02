@@ -822,6 +822,41 @@
     return layer;
   }
   var ACTIVE_DISPLAY_MODE_RESIZE = null;
+  function resolveScreenScale(screen2, width) {
+    if (!screen2) return 1;
+    var w = width !== void 0 ? width : typeof window !== "undefined" && (window.innerWidth || document.documentElement && document.documentElement.clientWidth) || (screen2.width || 1024);
+    var M = typeof window !== "undefined" ? window.NexaModel : null;
+    var app = typeof window !== "undefined" && window.__NEXA_APP__ || {};
+    var bpId = null;
+    if (M && typeof M.bandOf === "function") {
+      bpId = M.bandOf(app, w);
+    } else {
+      var bps = app && Array.isArray(app.breakpoints) && app.breakpoints.length ? app.breakpoints : null;
+      if (bps) {
+        var list = bps.filter(function(b) {
+          return b && b.id && isFinite(Number(b.min));
+        }).map(function(b) {
+          return { id: b.id, min: Math.max(0, Number(b.min)) };
+        }).sort(function(a, b) {
+          return a.min - b.min;
+        });
+        if (list.length) {
+          bpId = list[0].id;
+          list.forEach(function(b) {
+            if (w >= b.min) bpId = b.id;
+          });
+        }
+      }
+    }
+    if (screen2.breakpointScales && typeof screen2.breakpointScales === "object") {
+      var bpVal = screen2.breakpointScales[bpId];
+      if (bpVal !== void 0 && bpVal !== null && bpVal !== "") {
+        var n = Number(bpVal);
+        if (isFinite(n) && n > 0) return n;
+      }
+    }
+    return Number(screen2.scaleFactor) || 1;
+  }
   function resetScreenStyles(artboard2) {
     if (ACTIVE_DISPLAY_MODE_RESIZE && typeof window !== "undefined" && window.removeEventListener) {
       window.removeEventListener("resize", ACTIVE_DISPLAY_MODE_RESIZE);
@@ -839,6 +874,7 @@
         body.style.overflowX = "";
         body.style.overflowY = "";
         body.style.height = "";
+        body.style.minHeight = "";
       }
     }
     if (artboard2 && artboard2.style) {
@@ -864,17 +900,42 @@
     var h = Number(screen2.height) || 768;
     var st = artboard2.style;
     if (mode === "fill") {
+      let applyFillScale = function() {
+        var sf = resolveScreenScale(screen2);
+        if (sf === 1) {
+          st.width = "100vw";
+          st.height = "100vh";
+          st.transform = "none";
+          st.transformOrigin = "";
+          if (body) {
+            body.style.overflow = "hidden";
+            body.style.overflowX = "hidden";
+            body.style.overflowY = "hidden";
+            body.style.height = "100vh";
+            body.style.minHeight = "";
+          }
+        } else {
+          st.width = 100 / sf + "vw";
+          st.height = 100 / sf + "vh";
+          st.transformOrigin = "0 0";
+          st.transform = "scale(" + sf + ")";
+          if (body) {
+            body.style.overflowX = "hidden";
+            body.style.overflowY = "auto";
+            body.style.minHeight = "100vh";
+            body.style.height = "auto";
+          }
+        }
+      };
       st.position = "relative";
-      st.width = "100vw";
-      st.height = "100vh";
       st.margin = "0";
       st.boxShadow = "none";
-      st.transform = "none";
       st.left = "";
       st.top = "";
-      if (body) {
-        body.style.overflow = "hidden";
-        body.style.height = "100vh";
+      applyFillScale();
+      if (typeof window !== "undefined" && window.addEventListener) {
+        ACTIVE_DISPLAY_MODE_RESIZE = applyFillScale;
+        window.addEventListener("resize", applyFillScale);
       }
       return;
     }

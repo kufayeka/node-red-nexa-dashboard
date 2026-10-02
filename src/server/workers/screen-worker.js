@@ -222,15 +222,21 @@ function renderScreenHtml(screen, flow, params, query, requestHostname, clientIp
     var bodyClass = "nexa-mode-" + displayMode;
     var artboardStyle = "width:" + screen.width + "px;height:" + screen.height + "px;";
     if (displayMode === "fill") {
-        artboardStyle = "width:100vw;height:100vh;margin:0;box-shadow:none;";
+        var sf = Number(screen.scaleFactor) || 1;
+        if (sf !== 1) {
+            artboardStyle = "width:" + (100 / sf) + "vw;height:" + (100 / sf) + "vh;transform-origin:0 0;transform:scale(" + sf + ");margin:0;box-shadow:none;";
+        } else {
+            artboardStyle = "width:100vw;height:100vh;margin:0;box-shadow:none;";
+        }
     }
 
     return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
         "<title>" + escapeHtml(screen.name || (flow && flow.name) || "Nexa Dashboard") + "</title>" +
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
         "<style>html,body{margin:0;padding:0;background:#ccc;}" +
         "#nexa-runtime-artboard{position:relative;background:var(--nexa-colors-bg,#fff);margin:20px auto;" +
         "box-shadow:0 4px 12px rgba(0,0,0,0.2);}" +
-        "body.nexa-mode-fill #nexa-runtime-artboard{margin:0;box-shadow:none;width:100vw;height:100vh;}" +
+        "body.nexa-mode-fill #nexa-runtime-artboard{margin:0;box-shadow:none;}" +
         "body.nexa-mode-fill{overflow:hidden;}" +
         "</style>" +
         "</head><body class=\"" + bodyClass + "\">" +
