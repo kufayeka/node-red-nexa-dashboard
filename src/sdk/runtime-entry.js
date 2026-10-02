@@ -14,6 +14,7 @@ import { ensureRegistry } from "./registry.js";
 import { defineComponent, defineInspectorWidget } from "./component.js";
 import { NexaElement, isUnknown } from "./element.js";
 import { FieldController } from "./field/controller.js";
+import { cssFields } from "./schema.js";
 import { defineCodec, getCodec } from "./field/codecs.js";
 import { bind, withInspector } from "./bind.js";
 import { defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag } from "./tags.js";
@@ -33,6 +34,8 @@ if (!window.NexaSDK) {
         defineComponent: defineComponent,
         NexaElement: NexaElement,
         FieldController: FieldController,
+        // Custom CSS fields a component offers in its inspector (none are added on their own)
+        cssFields: cssFields,
         // Lit
         LitElement: LitElement, html: html, css: css, svg: svg, nothing: nothing, unsafeCSS: unsafeCSS,
         // inspector & kit

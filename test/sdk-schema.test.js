@@ -33,10 +33,13 @@ const DEF = {
     state: { zoom: 1 },
     view: function () {}
 };
+// the same component, offering Custom CSS fields (the SDK adds none on its own)
+const DEF_CSS = Object.assign({}, DEF, { properties: Object.assign({}, DEF.properties, S.cssFields({ base: DEF.css, states: DEF.states })) });
 
-ok('inputs / outputs become tag props (default names, `prop` override, `multiple` = a list), then properties, then CSS', () => {
+ok('inputs / outputs become tag props (default names, `prop` override, `multiple` = a list), then properties; no CSS field of its own', () => {
     const m = S.buildMeta(DEF);
-    assert.deepStrictEqual(Object.keys(m.props), ['inputValue', 'inputPens', 'readTag', 'outputValue', 'align', 'opacity', 'steps', 'names', 'css', 'cssFocus']);
+    assert.deepStrictEqual(Object.keys(m.props), ['inputValue', 'inputPens', 'readTag', 'outputValue', 'align', 'opacity', 'steps', 'names']);
+    assert.deepStrictEqual(Object.keys(S.buildMeta(DEF_CSS).props).slice(-2), ['css', 'cssFocus'], 'declared: cssFields()');
     assert.deepStrictEqual([m.props.inputValue.type, m.props.inputValue.access, m.props.inputValue.bindable], ['tag', 'read', false]);
     assert.deepStrictEqual([m.props.inputPens.type, m.props.inputPens.item.type, m.props.inputPens.default], ['list', 'tag', []]);
     assert.deepStrictEqual([m.props.outputValue.access, m.outputs[0].fallbackKey], ['write', 'inputValue']);
@@ -45,12 +48,12 @@ ok('inputs / outputs become tag props (default names, `prop` override, `multiple
     assert.ok(m.hideSparkplugWatch, 'a component with tags hides the generic Tag Watch');
 });
 
-ok('props: type inferred from the default, labels humanized, enum options normalized, css / state CSS props', () => {
-    const m = S.buildMeta(DEF);
+ok('props: type inferred from the default, labels humanized, enum options normalized, css / state CSS fields (cssFields)', () => {
+    const m = S.buildMeta(DEF_CSS);
     assert.deepStrictEqual([m.props.steps.type, m.props.steps.label, m.props.names.type], ['number', 'Steps', 'list']);
     assert.deepStrictEqual(m.props.align.options, [{ value: 'left', label: 'left' }, { value: 'right', label: 'Right!', icon: undefined }]);
     assert.deepStrictEqual([m.props.css.default, m.props.cssFocus.default, m.props.cssFocus.state], ['.box { color: red; }', 'outline: 1px solid blue;', 'focus']);
-    assert.strictEqual(m.props.cssNormal, undefined, 'a state without a selector has no CSS prop');
+    assert.strictEqual(m.props.cssNormal, undefined, 'a state without a selector has no CSS field');
 });
 
 ok('events, actions, states, version, internal state', () => {
@@ -67,23 +70,27 @@ ok('a property colliding with an input / output prop is refused; `id` is require
 });
 
 ok('legacy defaults / default values / stylesheet / migrateProps', () => {
-    const m = S.buildMeta(DEF);
+    const m = S.buildMeta(DEF_CSS);
     assert.deepStrictEqual(S.legacyDefaults(m).opacity, { value: 1, type: 'number' });
     assert.deepStrictEqual(S.legacyDefaults(m).cssFocus, { value: 'outline: 1px solid blue;', type: 'css' });
     const v = S.defaultValues(m);
     assert.strictEqual(S.buildStylesheet(m, v), '.box { color: red; }\n.box.focused {\noutline: 1px solid blue;\n}');
     assert.strictEqual(S.buildStylesheet(m, Object.assign({}, v, { cssFocus: '.x { a: b }', css: '' })), '.box { color: red; }\n.x { a: b }');
     assert.deepStrictEqual(S.migrateProps(m, { color: 'red' }), { barColor: 'red', __v: 2 });
+    assert.strictEqual(S.buildStylesheet(S.buildMeta(DEF), { css: 'ignored' }), '.box { color: red; }', 'no base field declared: its own css only');
     const current = { barColor: 'blue', __v: 2 };
     assert.strictEqual(S.migrateProps(m, current), current, 'already current: untouched');
 });
 
-ok('parts: each gets a css<Part> prop; the stylesheet is base, parts, then states; collisions refused', () => {
-    const m = S.buildMeta(Object.assign({}, DEF, { parts: { label: { selector: '.lbl', css: 'font-weight: 600;' } } }));
+ok('parts: cssFields gives each a css<Part> field; the stylesheet is base, parts, then states; mistakes refused', () => {
+    const parts = { label: { selector: '.lbl', css: 'font-weight: 600;' } };
+    const m = S.buildMeta(Object.assign({}, DEF, { parts, properties: Object.assign({}, DEF.properties, S.cssFields({ base: DEF.css, parts, states: DEF.states })) }));
     assert.deepStrictEqual([m.props.cssLabel.type, m.props.cssLabel.part, m.props.cssLabel.label], ['css', 'label', 'Label CSS']);
     assert.strictEqual(S.buildStylesheet(m, S.defaultValues(m)), '.box { color: red; }\n.lbl {\nfont-weight: 600;\n}\n.box.focused {\noutline: 1px solid blue;\n}');
-    assert.throws(() => S.buildMeta({ id: 'x', properties: { cssLabel: {} }, parts: { label: { selector: '.l' } } }), /collides/);
-    assert.throws(() => S.buildMeta({ id: 'x', parts: { focus: { selector: '.l' } }, states: { focus: { selector: '.f' } } }), /share the CSS prop/);
+    assert.strictEqual(S.buildMeta(Object.assign({}, DEF, { parts })).props.cssLabel, undefined, 'parts alone add no field');
+    assert.throws(() => S.buildMeta({ id: 'x', properties: { cssX: { type: 'css', part: 'nope' } } }), /doesn't declare/);
+    assert.throws(() => S.buildMeta({ id: 'x', properties: { cssX: { type: 'css', state: 'nope' } } }), /doesn't declare/);
+    assert.throws(() => S.cssFields({ parts: { focus: { selector: '.l' } }, states: { focus: { selector: '.f' } } }), /share the key/);
     assert.throws(() => S.buildMeta({ id: 'x', parts: { label: {} } }), /needs a selector/);
 });
 

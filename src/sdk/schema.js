@@ -1,8 +1,9 @@
 // --- defineComponent({...}) -> normalized metadata ---------------------------
 // Everything a component declares is normalized here once, and the result
 // (def.nexa) is what the editor, the property kit and the runtime read:
-//   meta.props        every stored prop: `properties` + one tag prop per input /
-//                     output + the base `css` + one CSS prop per state
+//   meta.props        every stored prop: `properties` + one tag prop per input / output.
+//                     Custom CSS fields only when the component declares them (type "css",
+//                     optionally `part` / `state` / `selector`; cssFields() writes them for you).
 //   meta.inputs       [{ name, key, label, multiple, throttle, providers, type }]
 //   meta.outputs      [{ name, key, label, fallback (an input's key), providers, type }]
 //   meta.eventList / meta.actionList / meta.stateList / meta.partList
@@ -152,22 +153,12 @@ export function buildMeta(def) {
         if (!pt.selector) throw new Error("[nexa] " + def.id + ": part \"" + name + "\" needs a selector");
         return { name: name, label: pt.label || humanize(name), selector: pt.selector, css: pt.css || "" };
     });
-    var styleable = def.css !== undefined || meta.partList.length > 0 || meta.stateList.some(function (s) { return s.selector; });
-    // the tab / section the CSS props go in (def.cssGroup, e.g. "Custom CSS")
-    var cssGroup = def.cssGroup || "Style";
-    if (styleable && !props.css) {
-        props.css = { type: "css", default: def.css || "", group: cssGroup, label: "Base CSS", help: "Scoped to this component. Shared layout, font, border." };
-    }
-    meta.partList.forEach(function (pt) {
-        var key = stateCssKey(pt.name);
-        if (props[key]) throw new Error("[nexa] " + def.id + ": part \"" + pt.name + "\" collides with the property \"" + key + "\"");
-        props[key] = { type: "css", default: pt.css, group: cssGroup, label: pt.label + " CSS", part: pt.name };
-    });
-    meta.stateList.forEach(function (s) {
-        if (!s.selector) return;
-        var key = stateCssKey(s.name);
-        if (props[key] && props[key].part) throw new Error("[nexa] " + def.id + ": state \"" + s.name + "\" and a part share the CSS prop \"" + key + "\"");
-        if (!props[key]) props[key] = { type: "css", default: s.css, group: cssGroup, label: s.label + " CSS", state: s.name };
+    // a declared CSS field may target a part / a state: check it exists
+    Object.keys(props).forEach(function (k) {
+        var pr = props[k];
+        if (!pr || pr.type !== "css") return;
+        if (pr.part && !meta.partList.some(function (pt) { return pt.name === pr.part; })) throw new Error("[nexa] " + def.id + ": CSS field \"" + k + "\" targets the part \"" + pr.part + "\", which `parts` doesn't declare");
+        if (pr.state && !meta.stateList.some(function (st) { return st.name === pr.state && st.selector; })) throw new Error("[nexa] " + def.id + ": CSS field \"" + k + "\" targets the state \"" + pr.state + "\", which `states` doesn't declare (with a selector)");
     });
 
     meta.props = {};
@@ -201,21 +192,65 @@ export function legacyDefaults(meta) {
 }
 
 /**
- * Base CSS, then every part's CSS, then every state's CSS (so states win a
- * tie) — each wrapped in its selector, or used as-is if it holds "{".
+ * The component's stylesheet: its own `css` (or the base CSS field when the user filled it),
+ * then each declared part / selector CSS field, then each state CSS field (states win a tie).
+ * A field's text is wrapped in its selector, or used as-is when it holds "{".
  */
 export function buildStylesheet(meta, props) {
-    var base = props.css !== undefined && props.css !== "" ? props.css : (meta.css || "");
-    var out = [base];
-    var add = function (name, selector) {
-        var block = props[stateCssKey(name)];
+    var base = null, scoped = [], states = [];
+    Object.keys(meta.props).forEach(function (k) {
+        var pr = meta.props[k];
+        if (pr.type !== "css") return;
+        if (pr.state) states.push(pr);
+        else if (pr.part || pr.selector) scoped.push(pr);
+        else if (!base) base = pr;
+    });
+    var baseText = base && props[base.key] !== undefined && props[base.key] !== "" ? props[base.key] : (meta.css || "");
+    var out = [baseText];
+    var selectorOf = function (pr) {
+        if (pr.selector) return pr.selector;
+        if (pr.part) { var pt = (meta.partList || []).filter(function (x) { return x.name === pr.part; })[0]; return pt && pt.selector; }
+        var st = meta.stateList.filter(function (x) { return x.name === pr.state; })[0];
+        return st && st.selector;
+    };
+    scoped.concat(states).forEach(function (pr) {
+        var block = props[pr.key];
         if (block === undefined || block === null || String(block).trim() === "") return;
         block = String(block);
-        out.push(block.indexOf("{") !== -1 ? block : selector + " {\n" + block + "\n}");
-    };
-    (meta.partList || []).forEach(function (pt) { add(pt.name, pt.selector); });
-    meta.stateList.forEach(function (s) { if (s.selector) add(s.name, s.selector); });
+        var sel = selectorOf(pr);
+        out.push(block.indexOf("{") !== -1 || !sel ? block : sel + " {\n" + block + "\n}");
+    });
     return out.join("\n");
+}
+
+/**
+ * Custom CSS fields, for a component that wants them in its inspector (they are not added
+ * on their own any more): spread them into `properties`.
+ *   properties: { ...cssFields({ parts: PARTS, group: "Custom CSS" }) }
+ * opts: base (true | false | default text; true = a "Base CSS" field), parts / states (the same
+ * maps as the component's `parts` / `states`), group, keys stay css / css<Part> / css<State>
+ * (what screens saved before kept).
+ */
+export function cssFields(opts) {
+    opts = opts || {};
+    var group = opts.group || "Style";
+    var out = {};
+    if (opts.base !== false) {
+        out.css = { type: "css", default: typeof opts.base === "string" ? opts.base : "", group: group, label: "Base CSS",
+            help: "Scoped to this component. Shared layout, font, border." };
+    }
+    Object.keys(opts.parts || {}).forEach(function (name) {
+        var pt = opts.parts[name] || {};
+        out[stateCssKey(name)] = { type: "css", default: pt.css || "", group: group, label: (pt.label || humanize(name)) + " CSS", part: name };
+    });
+    Object.keys(opts.states || {}).forEach(function (name) {
+        var st = opts.states[name] || {};
+        if (!st.selector) return;
+        var key = stateCssKey(name);
+        if (out[key]) throw new Error("[nexa] cssFields: state \"" + name + "\" and a part share the key \"" + key + "\"");
+        out[key] = { type: "css", default: st.css || "", group: group, label: (st.label || humanize(name)) + " CSS", state: name };
+    });
+    return out;
 }
 
 /** Props saved by an older version of the component, brought up to meta.version. */

@@ -19,7 +19,7 @@ const SDK = window.NexaSDK || await new Promise(function (resolve) {
 
 export const {
     version,
-    defineComponent, NexaElement, FieldController,
+    defineComponent, NexaElement, FieldController, cssFields,
     LitElement, html, css, svg, nothing, unsafeCSS,
     bind, defineInspectorWidget,
     kit, NexaKit, KitElement,

@@ -1,7 +1,7 @@
 // FIXTURE for test/sdk-kit-browser.test.js — a component plugin that uses
 // every SDK feature at once, written the way a real plugin is.
 import {
-    defineComponent, NexaElement, html, css, nothing, bind,
+    defineComponent, cssFields, NexaElement, html, css, nothing, bind,
     defineTagProvider, defineInspectorWidget, makeTag
 } from "../../nexa-sdk/nexa-component-sdk.js";
 
@@ -28,6 +28,9 @@ defineInspectorWidget("acme-stepper", ({ KitElement, html }) => class extends Ki
     }
 });
 
+const GAUGE_STATES = { normal: { label: "Normal" }, alarm: { label: "Alarm", selector: ".g.alarm", css: "background: red;" } };
+const GAUGE_CSS = ".g { border: 1px solid #999; }";
+
 export const gauge = defineComponent({
     id: "acme-gauge",
     label: "Test Gauge", category: "Test", icon: "fa fa-tachometer",
@@ -45,7 +48,9 @@ export const gauge = defineComponent({
         barColor: { type: "color", default: "#16a34a", group: "Style" },
         showPens: { type: "boolean", default: true, group: "Style" },
         mode: { type: "enum", default: "bar", group: "Style", options: [{ value: "bar", label: "Bar" }, { value: "needle", label: "Needle" }] },
-        unitsFrom: { type: "enum", default: "none", group: "Scale", options: [] }
+        unitsFrom: { type: "enum", default: "none", group: "Scale", options: [] },
+        // its Custom CSS fields (the inspector binds them): the base and the alarm state
+        ...cssFields({ base: GAUGE_CSS, states: GAUGE_STATES, group: "Style" })
     },
 
     inputs: {
@@ -59,8 +64,8 @@ export const gauge = defineComponent({
     events: { overMax: { label: "On Over Max", payload: { value: "number" } }, tick: { label: "On Tick" } },
     actions: { reset: { label: "Reset peak" }, bump: { label: "Bump", params: { by: "number" } } },
 
-    states: { normal: { label: "Normal" }, alarm: { label: "Alarm", selector: ".g.alarm", css: "background: red;" } },
-    css: ".g { border: 1px solid #999; }",
+    states: GAUGE_STATES,
+    css: GAUGE_CSS,
 
     state: { peak: 0, ticks: 0 },
     preview: { inputs: { value: 42 } },
