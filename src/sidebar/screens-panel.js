@@ -12,7 +12,8 @@ import { renderLogicCanvas } from "../logic/logic-nodes.js";
 import { renderTemplateForm, showEditBar, hideEditBar } from "./templates-panel.js";
 import { updateCanvasTabsVisibility } from "../editor-tray.js";
 import { buildTypedInputWidget, mapParamTypeToTypedInputType } from "../param-types.js";
-import { selectOnly } from "../canvas/selection.js";
+import { selectOnly, selectMultiple, isSelected } from "../canvas/selection.js";
+import { revealSlotsOf } from "../canvas/component-renderer.js";
 import { openScreenPropertiesDialog } from "../dialogs/screen-dialog.js";
 import { openScreenVariablePropertiesDialog } from "../dialogs/screen-variable-dialog.js";
 import { openTemplatePropertiesDialog } from "../dialogs/template-dialog.js";
@@ -69,6 +70,7 @@ function buildComponentTreeRows(surface, list, orphan) {
             container: isCont,
             badge: isCont ? String(kids.length) : "",
             muted: eff !== "show" || !!node.slotUnused,
+            renamable: false,
             children: isCont ? buildComponentTreeRows(surface, kids, orphan) : []
         };
     });
@@ -121,8 +123,69 @@ export function collapseAllScreensTree() {
     }
 }
 
+export function selectComponentFromTree(surfId, compId, additive) {
+    var scr = state.screens.find(function (s) { return s.id === surfId; });
+    var tmpl = !scr && findTemplate(surfId);
+    if (!scr && !tmpl) return;
+
+    // 1. If Pages editor tray is not open, open it
+    if (!state.trayContent && window.RED && window.RED.actions) {
+        window.RED.actions.invoke("nexa:open-pages-editor");
+    }
+
+    // 2. Switch to active screen or template
+    if (scr) {
+        if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
+            selectScreenFromSidebar(surfId);
+        }
+    } else {
+        if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
+            selectTemplateFromScreensPanel(surfId);
+        }
+    }
+
+    // 3. Switch tray canvas tabs to "ui"
+    if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+        state.canvasTabs.activateTab("ui");
+    }
+
+    // 4. Hierarchy-style selection on screen
+    var screen = getActiveScreen();
+    var loc = screen && Tree.locate(screen, compId);
+    if (loc && !loc.orphan) {
+        var hidden = Tree.ancestors(screen, compId).concat([loc.node]).filter(function (n) {
+            return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
+        });
+        if (hidden.length) {
+            hidden.forEach(function (n) { state.overlayPreview[n.id] = true; });
+            renderActiveScreen({ keepPanel: true });
+        }
+        if (typeof revealSlotsOf === "function") {
+            revealSlotsOf(compId);
+        }
+        if (additive) {
+            if (isSelected(compId)) selectMultiple(state.selectedIds.filter(function (cid) { return cid !== compId; }), { keepSidebarTab: true });
+            else selectMultiple(state.selectedIds.concat([compId]), { keepSidebarTab: true });
+        } else {
+            selectOnly(compId, { keepSidebarTab: true });
+        }
+    }
+
+    // 5. Keep the tree node selected in Screens & Flows tree
+    if (state.screensFlowsTreeEl) {
+        state.screensFlowsTreeEl.selected = ["screen-comp:" + surfId + ":" + compId];
+    }
+}
+
 export function openPropertiesDialogForId(id) {
     if (!id) return;
+    if (id.startsWith("screen-comp:")) {
+        var parts = id.split(":");
+        var surfId = parts[1];
+        var compId = parts[2];
+        selectComponentFromTree(surfId, compId, false);
+        return;
+    }
     if (id.startsWith("screen-var:")) {
         var parts = id.split(":");
         var sId = parts[1];
@@ -695,24 +758,7 @@ function onScreensFlowsSelect(e) {
         var parts = id.split(":");
         var surfId = parts[1];
         var compId = parts[2];
-        var scr = state.screens.find(function (s) { return s.id === surfId; });
-        if (scr) {
-            if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
-                selectScreenFromSidebar(surfId);
-            }
-            selectOnly(compId);
-            renderActiveScreen();
-            return;
-        }
-        var tmpl = findTemplate(surfId);
-        if (tmpl) {
-            if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
-                selectTemplateFromScreensPanel(surfId);
-            }
-            selectOnly(compId);
-            renderActiveScreen();
-            return;
-        }
+        selectComponentFromTree(surfId, compId, e && e.detail && e.detail.additive);
         return;
     }
     if (id.startsWith("screen-comps-group:") || id.startsWith("screen-unplaced-group:")) {
@@ -1350,9 +1396,28 @@ function onScreensFlowsMove(e) {
 
 export function renderScreenList() {
     if (!state.screenListEl) return;
-    state.screenListEl.empty();
 
     var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || (window.customElements && window.customElements.get("nx-tree")));
+
+    // --- Fast-path: reuse existing tree to preserve scroll position ---
+    if (hasNexaKit && state.screensFlowsTreeEl && state.screensFlowsTreeEl.isConnected) {
+        var nodes = buildScreensFlowsTreeNodes();
+        state.screensFlowsTreeEl.nodes = nodes;
+        var activeId = state.editingMode === "app-variable" ? ("app-var:" + state.activeAppVariableId)
+            : state.editingMode === "shared-variable" ? ("shared-var:" + state.activeSharedVariableId)
+            : state.editingMode === "screen-variable" ? ("screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId)
+            : state.editingMode === "screen-vars-group" ? ("screen-vars-group:" + state.activeScreenId)
+            : state.editingMode === "template-variable" ? ("template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId)
+            : state.editingMode === "template-param" ? ("template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId)
+            : state.editingMode === "flow" ? state.activeFlowId
+            : state.editingMode === "template" ? state.activeTemplateId
+            : (state.selectedFolderId || state.activeScreenId);
+        state.screensFlowsTreeEl.selected = activeId ? [activeId] : [];
+        return;
+    }
+
+    // --- Full rebuild (first render or tree detached) ---
+    state.screenListEl.empty();
 
     if (hasNexaKit) {
         var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
@@ -1362,6 +1427,8 @@ export function renderScreenList() {
         var treeEl = document.createElement("nx-tree");
         treeEl.setAttribute("empty-text", "No items yet — click + Add Screen, Template or Flow");
         treeEl.setAttribute("persist-key", "screens-flows:tree");
+        treeEl.setAttribute("no-rename", "");
+        treeEl.renamable = false;
         treeEl.addEventListener("nx-tree-select", onScreensFlowsSelect);
         treeEl.addEventListener("nx-tree-open", onScreensFlowsOpen);
         treeEl.addEventListener("nx-tree-move", onScreensFlowsMove);

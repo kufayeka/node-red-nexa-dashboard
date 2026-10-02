@@ -218,7 +218,7 @@ const r = await http.get("/api/orders");   // { ok, status, data, headers } — 
 
 - **Scopes are plain objects** whose prototype is the enclosing scope
   (`src/model/scope.js`), so `scope[name]` walks the whole chain.
-- **One write path.** `writeVariable` in `lib/nexa-runtime-client.js` sets
+- **One write path.** `writeVariable` in `src/runtime/state/variable.js` (bundled into `dist/nexa-runtime.bundle.js`) sets
   the value on the declaring scope, re-renders what sees it, persists, and
   notifies watchers.
 - **App variables** travel on the project config node (`variables`) to the

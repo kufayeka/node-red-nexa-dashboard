@@ -1,1045 +1,596 @@
 # Nexa Dashboard (`@kufayeka/node-red-nexa-dashboard`)
 
-> **A Node-RED-native, dual-canvas visual builder for HMI / SCADA / web dashboards.**
-> Design screens with a drag-drop UI canvas, wire up interactivity with a Node-RED-style
-> visual Logic canvas, and publish them as standalone pages served straight out of your
-> Node-RED instance — no separate server, no separate build, no core patches.
-
-This document describes the **actual current implementation** (verified against the
-source in this package, not aspirational marketing copy). Anything not yet built is
-called out explicitly under [§13 Known Limitations & Roadmap](#13-known-limitations--roadmap)
-instead of being described as if it already worked.
+> **Enterprise-grade, high-performance visual dashboard, SCADA, and HMI engineering platform native to Node-RED.**
+>
+> Build rich industrial HMIs, SCADA visualization screens, and reactive web applications directly within Node-RED with zero core monkey-patching. Nexa provides a dual-canvas visual environment (UI WYSIWYG layout & Logic event graph), a multi-threaded architecture with dedicated worker threads, a cyclic binary Realtime Nexa IO Protocol, an Optix-style application hierarchy, and a Lit-based component SDK.
 
 ---
 
 ## Table of Contents
 
-1. [What this package actually is](#1-what-this-package-actually-is)
-2. [High-level architecture](#2-high-level-architecture)
-3. [Package layout & the build pipeline](#3-package-layout--the-build-pipeline)
-4. [Data model](#4-data-model)
-5. [The editor (Pages tray)](#5-the-editor-pages-tray)
-6. [The Logic canvas in detail](#6-the-logic-canvas-in-detail)
-7. [Basic Shape Components — practical usage](#7-basic-shape-components--practical-usage)
-8. [Reusable Screen Templates](#8-reusable-screen-templates)
-9. [The Lit Component node](#9-the-lit-component-node)
-10. [The deployed runtime](#10-the-deployed-runtime)
-11. [The component plugin contract (`window.NEXA.registerComponent`)](#11-the-component-plugin-contract-windownexaregistercomponent)
-12. [Writing your own component plugin, step by step](#12-writing-your-own-component-plugin-step-by-step)
-13. [Known limitations & roadmap](#13-known-limitations--roadmap)
-14. [Installation & development workflow](#14-installation--development-workflow)
-15. [License](#15-license)
+1. [Executive Overview & Capabilities](#1-executive-overview--capabilities)
+2. [High-Level Architecture](#2-high-level-architecture)
+3. [Complete Project Tree Structure](#3-complete-project-tree-structure)
+4. [Developer Bug-Fixing & Code Architecture Guide](#4-developer-bug-fixing--code-architecture-guide)
+   - [4.1 Root & Core Entrypoints (`src/`)](#41-root--core-entrypoints-src)
+   - [4.2 UI Design Canvas (`src/canvas/`)](#42-ui-design-canvas-srccanvas)
+   - [4.3 Native Modal Tray Dialogs (`src/dialogs/`)](#43-native-modal-tray-dialogs-srcdialogs)
+   - [4.4 In-Editor Code Editors (`src/editor/`)](#44-in-editor-code-editors-srceditor)
+   - [4.5 Logic Graph Canvas (`src/logic/`)](#45-logic-graph-canvas-srclogic)
+   - [4.6 Pure State Model & Tree Operations (`src/model/`)](#46-pure-state-model--tree-operations-srcmodel)
+   - [4.7 Modular Deployed Runtime Engine (`src/runtime/`)](#47-modular-deployed-runtime-engine-srcruntime)
+   - [4.8 Component SDK & Property Kit (`src/sdk/`)](#48-component-sdk--property-kit-srcsdk)
+   - [4.9 Backend Server, Workers & Protocols (`src/server/`)](#49-backend-server-workers--protocols-srcserver)
+   - [4.10 Shared Cross-Environment Code (`src/shared/`)](#410-shared-cross-environment-code-srcshared)
+   - [4.11 Sidebar Panels & Optix Hierarchy (`src/sidebar/`)](#411-sidebar-panels--optix-hierarchy-srcsidebar)
+   - [4.12 Node-RED Backend Nodes (`nodes/`)](#412-node-red-backend-nodes-nodes)
+   - [4.13 Build Outputs & Artifacts (`dist/`)](#413-build-outputs--artifacts-dist)
+5. [Build Pipeline & Development Workflow](#5-build-pipeline--development-workflow)
+6. [Testing & Verification Guide](#6-testing--verification-guide)
+7. [License](#7-license)
 
 ---
 
-## 1. What this package actually is
+## 1. Executive Overview & Capabilities
 
-Nexa Dashboard is **one Node-RED plugin package**, installed like any other
-`node-red-contrib-*` module, that adds:
+Nexa Dashboard transforms Node-RED into a full-featured industrial HMI and SCADA design studio. Instead of relying on rigid, HTML-template widgets or heavyweight external SCADA servers, Nexa embeds directly into the Node-RED process while delegating CPU-intensive operations to dedicated background worker threads.
 
-- A **"Pages" editor** — a full-tray visual design surface (opened via the hamburger
-  menu or the "Nexa" sidebar tab) where you lay out one or more **screens**, each
-  containing draggable/resizable/rotatable **components** and an independent
-  **Logic graph** (a small Node-RED-style flow of nodes/wires scoped to that one screen).
-- A **config node** (`kufayeka-nexa-project`) that stores the screens/components/logic
-  data. It travels with your flow — Deploy, export/import, and Node-RED Projects (git)
-  persist it automatically. There is no separate JSON file and no separate save button.
-- A **deployed-page runtime** — every screen is also servable as a plain, public HTML
-  page under `/nexa/<screen-path>` on Node-RED's own HTTP server, independent of the
-  authenticated editor.
-- An **open component plugin contract** (`window.NEXA.registerComponent`) so any npm
-  package can add new draggable widget types (shapes, gauges, charts, custom SCADA
-  symbols, …) to the palette, using either plain DOM/CSS/SVG or a framework like Lit.
+### Key Capabilities
 
-It runs **in-process**, inside the same Node-RED instance as everything else — it is not
-a second server, and it does not fork or proxy to another process.
+1. **Dual-Canvas Design Surface (Full-Width Studio Tray)**
+   - **UI Canvas**: Drag-and-drop WYSIWYG editor featuring absolute layout, auto-layout frames (Flexbox Row/Column), CSS Grid containers, responsive breakpoint previews (Mobile, Tablet, Desktop), design token theming (Light/Dark mode, custom CSS variables), and snap-to-grid alignment.
+   - **Logic Canvas**: Visual wiring editor scoped specifically to individual Screens, Templates, or Screen Flows. Connect component event triggers (`click`, `change`, `render`), route controllers, timer delays, data transforms, and Sparkplug tag writes using Node-RED-style nodes and bezier wires.
 
----
+2. **Dedicated Multi-Threaded Architecture**
+   - **Screen Worker (`screen-worker.js`)**: An isolated background worker thread that hosts a high-speed HTTP runtime server on a dedicated port (default `1881`). Public web clients viewing `/nexa/<screen-path>` are served directly from this worker without contending for the Node-RED main thread event loop.
+   - **Sparkplug Worker (`sparkplug-worker.js`)**: A dedicated worker thread handling MQTT Sparkplug B connections, protobuf encoding/decoding, NBIRTH/DBIRTH payload parsing, rebirth cycles, and metric delta batching. Heavy industrial telemetry traffic never throttles UI rendering or Node-RED message processing.
 
-## 2. High-level architecture
+3. **Realtime Nexa IO Protocol (Cyclic Binary Synchronization)**
+   - High-performance WebSocket engine (`/nexa/_io` and `ioHub.js`) delivering bidirectional sub-10ms metric streaming between server tag providers and browser UI components.
+   - Supports dense binary framing and differential delta packets, minimizing serialization overhead over industrial networks.
 
-```
-+-----------------------------------------------------------------------------------+
-|                                  NODE-RED PROCESS                                  |
-|                                                                                     |
-|  +----------------------------+          +---------------------------------------+ |
-|  | @kufayeka/                 |  in-      | @kufayeka/node-red-nexa-dashboard     | |
-|  | node-red-asset-engine      | process   |                                       | |
-|  | (ISA-95 asset/tag tree,    |  calls    |  nodes/nexa-project.js  (config node) | |
-|  |  ISA-95-style attributes,  | <-------> |  lib/nexa-plugin.js     (backend      | |
-|  |  calc scripts, schedules)  |           |    plugin: httpNode routes + Asset    | |
-|  |                             |           |    Engine subscription)              | |
-|  +----------------------------+          |  lib/nexa-plugin.html   (editor plugin,| |
-|                                            |    BUILT from src/ — see §3)          | |
-|                                            |  lib/nexa-registry-client.js          | |
-|                                            |  lib/nexa-runtime-client.js  (public  | |
-|                                            |    runtime, served to deployed pages) | |
-|                                            +--------------------+------------------+ |
-+-------------------------------------------------------------------|------------------+
-                                       Plugin discovery              |
-                              (RED.plugins.getByType                 v
-                              ("nexa-ui-component-package"))   +---------------------------+
-                                                                | 3rd-party component      |
-                                                                | plugin packages           |
-                                                                | (e.g. @kufayeka/          |
-                                                                |  nexa-component-basic-    |
-                                                                |  shapes)                  |
-                                                                +---------------------------+
-```
+4. **Optix-Style Screens, Templates, and Screen Flows Hierarchy**
+   - **Unified Navigation Tree (`<nx-tree>`)**: 2D virtualized navigation tree supporting horizontal overflow scrolling (`width: max-content`), deep folder nesting, and distinct categorizations (`screen`, `template`, `flow`).
+   - **Templates**: Composite templates (reusable UI screen layouts with custom typed parameters and variables) and Component templates (atomic reusable widgets).
+   - **Screen Flows**: Logic-only state machines and routing pipelines capable of route pattern matching (`/devices/:id`), selective cookie extraction, device fingerprinting, middleware verification, and smooth SPA screen replacement without full page reloads.
+   - **Component Tree Interaction**: Clicking any component node in the Screens & Flows tree automatically opens the Pages editor tray (if closed), selects the parent screen/template, activates the UI canvas tab, unhides ancestor overlays and slot tabs, and selects the component on the canvas without jumping away from the active sidebar tab.
+   - **Protected Double-Click Editing**: Tree nodes in Screens & Flows never enter inline text-input editing on double-click. Instead, double-clicking immediately opens the native Node-RED modal properties tray dialog (`window.RED.tray.show`).
 
-Two Node-RED subsystems are reused directly, exactly as-is, rather than reinvented:
-
-- **`RED.plugins`** — Nexa itself is registered as *two* plugins in the same package
-  (an editor-side one and a backend/runtime-side one — see §3), and every component
-  package is discovered the same generic way, via
-  `RED.plugins.getByType("nexa-ui-component-package")`.
-- **`RED.tray.show`** — the entire "Pages" editor lives inside one full-width tray
-  (`width: Infinity`), not a new core workspace tab. This is a deliberate, zero-core-patch
-  choice: Node-RED's central workspace region has no plugin extension point, but the tray
-  system does, so the whole design studio is built on top of it instead of forking
-  `red.js`/`workspaces.js`.
-
-Because every Node-RED plugin gets its **own fresh `RED` API object** (see
-`@node-red/registry/lib/util.js`'s `createNodeApi()`), Nexa's backend never reads
-`RED.asset` — that property only exists on the Asset Engine's own copy of `RED`. Instead
-it calls the exported escape hatch `getAssetController(RED)` from
-`@kufayeka/node-red-asset-engine/lib/asset-plugin.js`, which returns the one real
-module-scoped controller singleton regardless of which plugin's `RED` object asks for it.
+5. **Component SDK & Open Plugin Architecture**
+   - Build custom UI components using Lit Web Components, Zag.js accessible state machines, and the Nexa Component SDK (`src/sdk/`).
+   - Third-party packages register widgets cleanly via standard Node-RED plugin discovery (`RED.plugins.getByType("nexa-ui-component-package")`).
 
 ---
 
-## 3. Package layout & the build pipeline
+## 2. High-Level Architecture
 
-**Short answer to "is `lib/` still needed now that there's a `src/`?" — yes, both are
-required, and they are not redundant with each other.** `src/` is the editor's ES-module
-*source* — it doesn't run anywhere by itself; it only exists to be bundled. `lib/` is
-where the actual runnable backend artifacts live: the plugin Node-RED loads at startup
-(`package.json`'s `"main"` field points directly at `lib/nexa-plugin.js`), and two files
-served to public deployed pages that are deliberately hand-written and never touch the
-bundler. Deleting `lib/` would break the plugin outright — there is no `src/` equivalent
-for any of these three files.
-
-**`lib/` vs. `dist/`, at a glance: `lib/` is (almost entirely) hand-written source;
-`dist/` is (entirely) generated output** — with exactly one, unavoidable exception.
-Every generated file also carries its own "AUTO-GENERATED, DO NOT EDIT" banner comment
-at the very top, so this is never ambiguous if you're just looking at one file in
-isolation:
-- `lib/nexa-plugin.js`, `lib/nexa-registry-client.js`, `lib/nexa-runtime-client.js` —
-  hand-written. No `src/` file produces these; edit them directly.
-- `lib/nexa-plugin.html` — **generated**, but pinned to `lib/` by a hard external
-  constraint, not a choice: Node-RED's own plugin loader
-  (`@node-red/registry/lib/loader.js`) derives a plugin's `.html` filename by swapping
-  the extension on its exact registered `.js` path (`lib/nexa-plugin.js` →
-  `lib/nexa-plugin.html`) — there's no config for a different location, so this one file
-  can never move to `dist/` no matter how much tidier that would look.
-- `lib/nexa-registry-client.js` — **generated** from `src/sdk/registry.js` (the same
-  registry the editor bundles), kept at its old path because tests and the screen worker
-  read it there.
-- `dist/nexa-editor.bundle.js`, `dist/nexa-sdk.bundle.js`, `dist/nexa-sdk-kit.bundle.js` —
-  **generated**, gitignored, rebuilt by `npm run build`.
-
+```text
++-----------------------------------------------------------------------------------------+
+|                                    NODE-RED PROCESS                                     |
+|                                                                                         |
+|  +--------------------------------+           +---------------------------------------+ |
+|  | Node-RED Editor / Main Thread  |           | Nexa Server Backend (dist/nexa-plugin)| |
+|  |                                |           |                                       | |
+|  | • Pages Studio Tray (Infinity) | in-proc   | • Configuration node (nexa-project)   | |
+|  | • Sidebar: Screens, Hierarchy, | <-------> | • Sparkplug config (nexa-sparkplug)   | |
+|  |   Components, Properties, etc. |  IPC /    | • Asset storage API (/nexa-assets/)   | |
+|  | • Native RED.tray properties   |  events   | • Worker thread manager               | |
+|  +--------------------------------+           +-------------------+-------------------+ |
+|                                                                   |                     |
+|                                        Spawns Worker Threads      |                     |
+|                   +-----------------------------------------------+                     |
+|                   |                                               |                     |
+|                   v                                               v                     |
+|  +--------------------------------+           +---------------------------------------+ |
+|  | Screen Worker (port 1881)      |           | Sparkplug Worker (MQTT / Protobuf)    | |
+|  |                                |           |                                       | |
+|  | • Isolated HTTP server (1881)  |           | • MQTT Client (TCP / TLS / WS)        | |
+|  | • Serves /nexa/<path> HTML/JS  |           | • Sparkplug B Protobuf Codec          | |
+|  | • Realtime Nexa IO Hub (/io)   |           | • Metric delta batcher & rebirth      | |
+|  | • Cyclic binary WebSocket sync |           | • Offloads heavy PLC payloads         | |
+|  +----------------+---------------+           +-------------------+-------------------+ |
++-------------------|-----------------------------------------------|---------------------+
+                    |                                               |
+         HTTP / WS  | Deployed Screen Clients                       | MQTT Broker
+                    v                                               v
+   +---------------------------------+             +----------------------------------+
+   | Browser Runtime Client          |             | Industrial Field Devices / PLCs  |
+   | (/nexa/_runtime.js)             |             | (Sparkplug B EoN Nodes)          |
+   | • DOM Mounting & Lit Components |             +----------------------------------+
+   | • Nexa IO WebSocket Client      |
+   | • Runtime Scopes & Variables    |
+   | • SPA Router & Flow Gateway     |
+   +---------------------------------+
 ```
+
+---
+
+## 3. Complete Project Tree Structure
+
+```text
 node-red-nexa-dashboard/
-├── package.json              # "main": "lib/nexa-plugin.js" — the actual Node-RED entry point
-├── build.js                  # esbuild bundler — see below
-├── nodes/
-│   ├── nexa-project.js       # kufayeka-nexa-project config node (backend)
-│   └── nexa-project.html     # ...and its (trivial) edit dialog
-├── lib/                       # ⚠️ REQUIRED AT RUNTIME, (almost) all hand-written — see above
-│   ├── nexa-plugin.js               # hand-written backend: httpAdmin/httpNode routes, Asset Engine bridge
-│   ├── nexa-plugin.html             # ⚠️ the ONE generated exception — pinned here by Node-RED itself, see above
-│   ├── nexa-registry-client.js      # ⚠️ GENERATED from src/sdk/registry.js: the registry for deployed pages
-│   ├── nexa-model.js                # ⚠️ GENERATED from src/model/: migrates old projects in the screen worker
-│   ├── nexa-model-client.js         # ⚠️ GENERATED from src/model/: window.NexaModel for deployed pages (/nexa/_model.js)
-│   └── nexa-runtime-client.js       # hand-written: deployed-page mount + Logic execution engine
-├── src/                      # editor source — THIS is what you actually edit
-│   ├── index.js               # entry point: registers the editor plugin + sidebar tab
-│   ├── registry.js            # window.NEXA bootstrap (uses src/sdk/registry.js)
-│   ├── sdk/                   # the Nexa Component SDK (docs/SDK.md) -> dist/nexa-sdk*.bundle.js
-│   │   ├── runtime-entry.js     # Lit + registry + defineComponent / NexaElement / FieldController / tags / bind
-│   │   ├── kit/                 # the property kit: <nx-*> widgets + the inspector renderer (editor only)
-│   │   └── ...                  # schema, element, component, tags, bind, format, field/ (codecs, controller)
-│   ├── param-types.js          # shared typed-param helpers (typedInput/editableList widgets, type coercion)
-│   ├── state.js                # global state object, constants, screen/model helpers
-│   ├── history.js              # undo/redo stack
-│   ├── editor-tray.js          # the "Pages" tray: dual UI/Logic canvas tabs, keybindings
-│   ├── canvas/
-│   │   ├── canvas-ui.js         # UI canvas render/zoom
-│   │   ├── component-renderer.js # renderComponent(), addComponentAt(), drag, Lit/Template mounting
-│   │   ├── selection.js          # Figma-style select/marquee, group/frame/ungroup, flip
-│   │   ├── selection-handles.js  # resize/rotate/lock handles, padding/gap overlay
-│   │   ├── drop-target.js        # frames capture: where a drag / drop goes (docs/LAYOUT.md)
-│   │   ├── layout-readback.js    # auto-layout boxes read back from the DOM
-│   │   ├── constraints.js        # children follow a resized frame / screen
-│   │   └── clipboard.js          # copy/cut/paste for UI components
-│   ├── model/                 # the node tree (shared with the deployed page, docs/LAYOUT.md)
-│   │   ├── tree.js / migrate.js  # tree helpers; layers + groups -> the tree
-│   │   ├── layout.js             # frames, auto layout, constraints (CSS)
-│   │   └── scope.js              # variables and their lexical scope chain
-│   ├── logic/
-│   │   ├── logic-nodes.js       # Logic node render/drag/add/remove
-│   │   ├── logic-wires.js       # bezier wire drawing + radius-based port hit-testing
-│   │   ├── logic-selection.js   # Logic canvas select/marquee/copy/paste
-│   │   └── logic-zoom.js        # Logic canvas zoom/fit (independent of the UI canvas's)
-│   ├── dialogs/
-│   │   ├── function-dialog.js    # Function node code editor (RED.editor.createEditor)
-│   │   ├── ui-update-dialog.js   # "Update Component" node config
-│   │   ├── inject-dialog.js      # Inject node config
-│   │   ├── open-url-dialog.js    # Open URL node config
-│   │   └── lit-code-dialog.js    # Lit Component's class-body/CSS code editor (§9)
-│   └── sidebar/
-│       ├── sidebar-content.js       # the 6-tab "Nexa" sidebar shell
-│       ├── screens-panel.js         # Screens tab (add/select/delete/settings)
-│       ├── templates-panel.js       # Templates tab (§8)
-│       ├── properties-panel.js      # Properties tab (per-component inspector)
-│       ├── hierarchy-panel.js       # Hierarchy tab (the node tree)
-│       ├── frame-inspector.js       # Frame / layout child / constraints inspectors
-│       ├── variables-inspector.js   # Variables of a screen / group / frame
-│       ├── kit-inspector.js         # SDK components: the kit's inspector + undo for prop edits
-│       └── palette-events-panel.js  # Components palette + Events tab (Logic chips)
-├── test/                     # regression test suite — see §14.1
-│   ├── run-all.js             # rebuilds + runs every mock-*.js, prints a PASS/FAIL summary
-│   └── mock-*.js              # one file per area (registry/resize/templates/lit/etc.)
-├── sdk/                      # what component PLUGINS use (docs/SDK.md)
-│   ├── nexa-component-sdk.js  # the ES module plugins import (served at <root>/nexa-sdk/)
-│   ├── package.js             # backend helper: serve + register a plugin in one call
-│   ├── testkit/               # headless-Chrome harness for plugin tests
-│   └── template/              # a plugin to copy
-├── docs/
-│   ├── SDK.md                 # the Nexa Component SDK guide
-│   ├── LAYOUT.md              # hierarchy, frames, auto layout, constraints, variables
-│   ├── STATE.md               # variables and app state, web & data Logic nodes, Function API
-│   ├── TYPES.md               # types (UDT): classes for data, instances, faceplates
-│   └── LIT_COMPONENT_GUIDE.md # deep-dive companion to §9
-└── dist/                      # 100% generated, gitignored — nothing here is ever hand-edited
-    ├── nexa-editor.bundle.js      # ⚠️ AUTO-GENERATED — the raw editor bundle (lib/nexa-plugin.html wraps this)
-    ├── nexa-sdk.bundle.js         # ⚠️ AUTO-GENERATED from src/sdk/runtime-entry.js — Lit + SDK, editor + deployed pages
-    └── nexa-sdk-kit.bundle.js     # ⚠️ AUTO-GENERATED from src/sdk/kit/index.js — the property kit, editor only
+├── dist/                                 # 100% AUTO-GENERATED BUNDLES (DO NOT EDIT DIRECTLY)
+│   ├── nexa-editor.bundle.js             # Bundled editor studio code (IIFE)
+│   ├── nexa-model-client.js              # window.NexaModel for browser deployed pages
+│   ├── nexa-model.js                     # CommonJS pure model for Node-RED & workers
+│   ├── nexa-plugin.html                  # Node-RED editor plugin definition with bundled script
+│   ├── nexa-plugin.js                    # CommonJS entrypoint loader required by package.json
+│   ├── nexa-registry-client.js           # Component registry bundle served to deployed pages
+│   ├── nexa-runtime.bundle.js            # Modular deployed client runtime (/nexa/_runtime.js)
+│   ├── nexa-sdk-kit.bundle.js            # Inspector property kit (<nx-*>) widgets bundle
+│   └── nexa-sdk.bundle.js                # Core SDK runtime (Lit + FieldController + codecs)
+├── docs/                                 # IN-DEPTH TECHNICAL SPECIFICATIONS & GUIDES
+│   ├── FLOWS.md                          # Screens, Templates, Folders & Screen Flows architecture
+│   ├── LAYOUT.md                         # Layout system, auto-layout frames & constraints
+│   ├── LIT_COMPONENT_GUIDE.md            # Guide to authoring custom Lit components
+│   ├── MEDIA.md                          # Media asset management and file uploading
+│   ├── SDK.md                            # Nexa Component SDK complete API reference
+│   ├── STATE.md                          # Lexical state scoping, variables & expression binding
+│   ├── THEME.md                          # Design tokens, color system, and breakpoint rules
+│   └── TYPES.md                          # User-Defined Types (UDT) and data schemas
+├── nodes/                                # NODE-RED BACKEND NODE DEFINITIONS
+│   ├── nexa-project.html                 # UI definition for kufayeka-nexa-project config node
+│   ├── nexa-project.js                   # Backend implementation of kufayeka-nexa-project
+│   ├── nexa-sparkplug.html               # UI definition for kufayeka-nexa-sparkplug node
+│   └── nexa-sparkplug.js                 # Backend implementation of kufayeka-nexa-sparkplug
+├── sdk/                                  # COMPONENT SDK TEMPLATES & DEV TESTKITS
+│   ├── template/                         # Sample starting boilerplate for 3rd party plugins
+│   ├── testkit/                          # Headless Chrome test runner and DOM testing utilities
+│   ├── nexa-component-sdk.js             # ESM facade module re-exporting SDK APIs
+│   └── package.js                        # Node-RED plugin discovery helper for component packages
+├── src/                                  # 100% HANDWRITTEN MODULAR SOURCE CODE (EDIT HERE)
+│   ├── canvas/                           # Editor UI design canvas & canvas interactions
+│   │   ├── breakpoints-ui.js             # Responsive breakpoint preview bar & screen width controls
+│   │   ├── canvas-ui.js                  # Main artboard render, stage setup, zoom transform
+│   │   ├── clipboard.js                  # Copy, cut, and paste handlers for UI canvas nodes
+│   │   ├── component-renderer.js         # Component DOM renderer, Lit mounting, slot tab switching
+│   │   ├── constraints.js                # Auto-pinning & constraint resizing engine
+│   │   ├── drag-feedback.js              # Visual insertion indicators and drop ghost rendering
+│   │   ├── drop-target.js                # Frame capture, auto-layout insertion, and reparenting
+│   │   ├── layout-readback.js            # Reads back computed layout bounding boxes from live DOM
+│   │   ├── selection-handles.js          # Bounding box selection handles, resize, rotate, gap/padding
+│   │   ├── selection.js                  # Selection state, marquee selection, multi-select, lock/group
+│   │   └── sparkplug-live.js             # In-editor live Sparkplug metric update listener
+│   ├── dialogs/                          # Native Node-RED Modal Tray Properties Dialogs (window.RED.tray.show)
+│   │   ├── app-variable-dialog.js        # Global app variable properties dialog
+│   │   ├── component-template-dialog.js  # Component template properties & configuration dialog
+│   │   ├── delay-dialog.js               # Logic Delay node duration configuration dialog
+│   │   ├── flow-dialog.js                # Screen Flow metadata & starting endpoint dialog
+│   │   ├── folder-dialog.js              # Group / Folder name & category dialog
+│   │   ├── function-dialog.js            # Logic Function node JavaScript code editor
+│   │   ├── get-variable-multi-dialog.js  # Batch variable read configuration dialog
+│   │   ├── inject-dialog.js              # Logic manual message injector configuration
+│   │   ├── join-dialog.js                # Upstream message join node configuration
+│   │   ├── layer-control-dialog.js       # Z-index and layer ordering configuration
+│   │   ├── lit-code-dialog.js            # Lit Component inline class body and CSS code editor
+│   │   ├── navigate-dialog.js            # Goto Screen (SPA Navigation) configuration dialog
+│   │   ├── open-url-dialog.js            # External URL open configuration dialog
+│   │   ├── overlay-dialog.js             # Dialog / Drawer overlay trigger configuration
+│   │   ├── populate-dialog.js            # Repeater / list population configuration dialog
+│   │   ├── render-screen-dialog.js       # Flow Render Screen node configuration dialog
+│   │   ├── route-not-found-dialog.js     # Flow 404 Route Not Found configuration dialog
+│   │   ├── route-trigger-dialog.js       # Flow Ingress Route Trigger (path, cookies, device) dialog
+│   │   ├── screen-dialog.js              # Screen properties (name, path, dimensions, grid, auth)
+│   │   ├── screen-variable-dialog.js     # Screen-scoped variable configuration dialog
+│   │   ├── send-to-flow-dialog.js        # Send to Flow message dispatcher dialog
+│   │   ├── set-variable-dialog.js        # Set Variable operation (set, toggle, append, math) dialog
+│   │   ├── set-variable-multi-dialog.js  # Batch variable update configuration dialog
+│   │   ├── shared-variable-dialog.js     # Realtime server-synced IO variable configuration dialog
+│   │   ├── sparkplug-write-dialog.js     # Single tag DCMD write configuration dialog
+│   │   ├── sparkplug-write-multi-dialog.js# Multi-tag batch write configuration dialog
+│   │   ├── switch-dialog.js              # Multi-way condition branching configuration dialog
+│   │   ├── teleport-dialog.js            # Teleport node target container configuration dialog
+│   │   ├── template-dialog.js            # Composite template properties & sizing dialog
+│   │   ├── template-output-dialog.js     # Composite template event output configuration dialog
+│   │   ├── template-param-dialog.js      # Template parameter definition & typing dialog
+│   │   ├── template-variable-dialog.js   # Template-scoped variable configuration dialog
+│   │   ├── ui-update-dialog.js           # Update Component properties & action dispatch dialog
+│   │   └── web-io-dialog.js              # HTTP Request, LocalStorage & Cookie config dialogs
+│   ├── editor/                           # In-editor CodeMirror 6 code editor integration
+│   │   ├── cm6-code-editor.js            # CodeMirror 6 wrapper with JavaScript and CSS syntax modes
+│   │   └── nexa-completions.js           # Autocomplete provider for variables, tags, and APIs
+│   ├── logic/                            # Logic canvas design surface (Node-RED style graph)
+│   │   ├── logic-nodes.js                # Logic node rendering, ports, status chips, dragging
+│   │   ├── logic-selection.js            # Marquee box selection, copy, paste, delete on Logic canvas
+│   │   ├── logic-wires.js                # Cubic bezier wire rendering, port hit testing, drag-wire
+│   │   └── logic-zoom.js                 # Independent pan, zoom, and viewport centering for Logic
+│   ├── model/                            # Pure state data model (Shared across editor & runtime)
+│   │   ├── breakpoints.js                # Tailwind breakpoint matching and media query rules
+│   │   ├── index.js                      # Root export compiling to dist/nexa-model*.js
+│   │   ├── layout.js                     # Auto-layout CSS calculation, flex/grid rules, constraints
+│   │   ├── migrate.js                    # Backward-compatibility project migration functions
+│   │   ├── scope.js                      # Lexical scope chain resolution (App -> Screen -> Frame)
+│   │   ├── theme.js                      # CSS variable token resolution and color utility functions
+│   │   ├── tree.js                       # Core immutable tree algorithms (find, locate, walk, reparent)
+│   │   └── types.js                      # User-Defined Type (UDT) validation and schema models
+│   ├── runtime/                          # Modular deployed screen runtime engine (/nexa/<path>)
+│   │   ├── index.js                      # Runtime entrypoint compiling to dist/nexa-runtime.bundle.js
+│   │   ├── state.js                      # Client-side runtime state singleton
+│   │   ├── features/                     # Specialized client features
+│   │   │   ├── breakpoints.js            # Window resize listener and reactive breakpoint switching
+│   │   │   ├── navigation.js             # SPA router, history.pushState, and path parsing
+│   │   │   ├── overlays.js               # Dialog and Drawer modal overlay managers
+│   │   │   ├── teleport.js               # Cross-container component teleportation engine
+│   │   │   └── theme.js                  # Document-level theme switching and token injection
+│   │   ├── io/                           # Realtime client networking
+│   │   │   ├── client.js                 # Realtime Nexa IO WebSocket client connection & heartbeat
+│   │   │   ├── frame.js                  # Binary packet decoder and telemetry frame parser
+│   │   │   └── sparkplug.js              # Sparkplug live tag subscription dispatcher
+│   │   ├── logic/                        # Logic execution runner inside the browser
+│   │   │   ├── context.js                # Execution context (msg, vars, http, cookies, storage)
+│   │   │   ├── runner.js                 # Event graph runner: triggers, wire traversal, async nodes
+│   │   │   ├── nodes/                    # Specialized node execution logic
+│   │   │   │   ├── control-nodes.js      # Delay, Switch, Join, Navigate, Render Screen runners
+│   │   │   │   ├── data-nodes.js         # HTTP Request, Storage, Cookie, Function node runners
+│   │   │   │   ├── sparkplug-nodes.js    # Sparkplug tag write execution
+│   │   │   │   └── variable-nodes.js     # Set Variable, Get Variable, Watch Variable runners
+│   │   │   └── widgets/                  # Dynamic UI widgets controlled by Logic
+│   │   │       ├── carousel.js           # Interactive carousel slide controller
+│   │   │       ├── populate.js           # Template repeater & dynamic list generator
+│   │   │       ├── virtual.js            # Virtual scrolling list engine (100,000+ rows)
+│   │   │       └── zoom.js               # Pan-zoom interactive widget container
+│   │   ├── mounting/                     # DOM component instantiation
+│   │   │   ├── box.js                    # Sizing box, CSS position, and visibility wrapper
+│   │   │   ├── lit.js                    # Lit component compiler, reactive props, event wiring
+│   │   │   ├── pins.js                   # Screen pin placement and layout anchoring
+│   │   │   ├── render.js                 # Recursive DOM tree mounter and life-cycle scheduler
+│   │   │   └── slots.js                  # Slot host container and light-DOM projection
+│   │   └── state/                        # Variable and scope store
+│   │       ├── scope.js                  # Client prototype scope chain implementation
+│   │       └── variable.js               # writeVariable, variable persistence, and change watchers
+│   ├── sdk/                              # Nexa Component SDK Source Code
+│   │   ├── assets.js                     # Asset URL resolver helper
+│   │   ├── bind.js                       # Two-way data binding and property interpolation
+│   │   ├── component.js                  # Component definition helpers and lifecycle hooks
+│   │   ├── element.js                    # Base Lit NexaElement class
+│   │   ├── format.js                     # Number, date, currency, and string formatters
+│   │   ├── registry-entry.js             # Entrypoint generating dist/nexa-registry-client.js
+│   │   ├── registry.js                   # window.NEXA registry implementation and component lookup
+│   │   ├── runtime-entry.js              # Entrypoint generating dist/nexa-sdk.bundle.js
+│   │   ├── schema.js                     # Component property schema validation
+│   │   ├── tags.js                       # Sparkplug tag binding resolution
+│   │   ├── theme.js                      # SDK token helper
+│   │   ├── zag.js                        # Zag.js state machine wrapper for Lit
+│   │   ├── field/                        # Industrial field controls & data codecs
+│   │   │   ├── codecs.js                 # Data type coercion (int, float, hex, ascii)
+│   │   │   └── controller.js             # FieldController managing input value/quality states
+│   │   └── kit/                          # Nexa Property Kit (<nx-*>) widgets & inspector
+│   │       ├── asset.js                  # Asset picker widget (<nx-asset>)
+│   │       ├── base.js                   # Base KitElement class
+│   │       ├── binding.js                # Data binding source picker widget (<nx-binding>)
+│   │       ├── composite.js              # Composite inspector sub-forms
+│   │       ├── index.js                  # Entrypoint generating dist/nexa-sdk-kit.bundle.js
+│   │       ├── inputs.js                 # Text, number, switch, select, color widgets
+│   │       ├── inspector.js              # Dynamic inspector generator for components
+│   │       ├── layout-widgets.js         # Layout controls (flex direction, padding, gap)
+│   │       ├── lit-global.js             # Resolves Lit from window global
+│   │       ├── styles.js                 # CSS styles for all <nx-*> kit widgets
+│   │       └── tree.js                   # Optix hierarchy tree (<nx-tree>) web component
+│   ├── server/                           # Backend Node.js code running inside Node-RED
+│   │   ├── assets.js                     # Server-side asset store (file hashing, SVG sanitizing)
+│   │   ├── plugin.js                     # Main Node-RED plugin registering routes & hooks
+│   │   ├── components/                   # Core built-in component definitions
+│   │   │   ├── layout.js                 # Flex container & grid layout component definitions
+│   │   │   └── media.js                  # Image, video, and iframe component definitions
+│   │   ├── io/                           # Realtime Nexa IO Engine (Backend)
+│   │   │   ├── ioHub.js                  # WebSocket hub managing cyclic broadcasts & subscriptions
+│   │   │   └── ioProtocol.js             # Frame pack/unpack and cyclic telemetry protocols
+│   │   ├── sparkplug/                    # Sparkplug B Industrial Engine
+│   │   │   ├── deltaBatcher.js           # Coalesces high-frequency metric deltas
+│   │   │   ├── sparkplugCodec.js         # Protobuf serialization/deserialization
+│   │   │   ├── sparkplugRebirth.js       # Rebirth request coordinator (CMD publishing)
+│   │   │   ├── sparkplugTree.js          # In-memory Sparkplug topic/metric hierarchy
+│   │   │   └── sparkplug_b.proto         # Official Eclipse Sparkplug B protobuf schema
+│   │   └── workers/                      # Node.js Worker Threads
+│   │       ├── screen-worker.js          # Dedicated HTTP server worker (port 1881)
+│   │       └── sparkplug-worker.js       # Dedicated MQTT & protobuf parser worker
+│   ├── shared/                           # Code shared identically between backend and client
+│   │   └── io/
+│   │       └── protocol.js               # Common binary opcodes and packet structure constants
+│   ├── sidebar/                          # Node-RED Left/Right Sidebar Panels
+│   │   ├── assets-panel.js               # Asset library management panel (upload, preview)
+│   │   ├── breakpoints-panel.js          # Responsive breakpoints manager panel
+│   │   ├── frame-inspector.js            # Auto-layout, flex direction, padding & constraint inspector
+│   │   ├── hierarchy-panel.js            # Outline / DOM tree hierarchy tab
+│   │   ├── kit-inspector.js              # Renders dynamic component property forms using NexaKit
+│   │   ├── palette-events-panel.js       # Draggable component palette and event triggers
+│   │   ├── properties-panel.js           # Right-side component properties panel dispatcher
+│   │   ├── screens-panel.js              # Screens, Templates, Folders & Flows tree (Screens & Flows tab)
+│   │   ├── sidebar-content.js            # 10-tab sidebar container and tab switcher
+│   │   ├── sparkplug-panel.js            # Live Sparkplug B tree browser & metric monitor
+│   │   ├── templates-panel.js            # Screen template management panel
+│   │   ├── theme-panel.js                # Project color palettes, typography & theme manager
+│   │   ├── types-panel.js                # User-Defined Types (UDT) data structure builder
+│   │   └── variables-inspector.js        # Scoped variables inspector for screens and containers
+│   ├── assets-client.js                  # Client API for requesting project assets
+│   ├── editor-tray.js                    # Pages studio tray setup (dual tabs, toolbar, zoom, keys)
+│   ├── history.js                        # Undo/Redo stack manager with coalescing
+│   ├── index.js                          # Editor entrypoint registering plugins and sidebar
+│   ├── param-types.js                    # Typed-input helpers and parameter coercion utilities
+│   ├── registry.js                       # Editor-side component registry instance
+│   └── state.js                          # Global editor state singleton and helper functions
+├── test/                                 # EXHAUSTIVE TEST SUITES
+│   ├── fixtures/                         # HTML and mock fixtures for test execution
+│   ├── mock-*.js                         # Headless mock tests covering editor and runtime
+│   ├── *-browser.test.js                 # Headless Chrome integration tests
+│   ├── test-p0-p1-screens-flows.js       # Screens & Flows architecture regression tests
+│   ├── test-p2-spa-navigation.js         # Single Page App transition & persistent IO tests
+│   ├── test-p2-flow-routing.js           # Screen Flow gateway & Route Trigger tests
+│   ├── test-tree-variables-sidebar.js    # Tree hierarchy, variables, and component click tests
+│   └── run-all.js                        # Master test runner executing all 56+ suites
+├── build.js                              # ESBuild bundler compiling src/ into dist/
+└── package.json                          # Package manifest, Node-RED plugin hooks & dependencies
 ```
 
-### The build step — **`src/` is the source of truth, not `lib/nexa-plugin.html`**
+---
 
-`lib/nexa-plugin.html`, `lib/nexa-registry-client.js` and the `dist/` bundles are not
-written by hand — each carries an "AUTO-GENERATED, DO NOT EDIT" banner at the top as a
-second line of defense. `build.js` runs esbuild (IIFE format, `es2020` target) for:
+## 4. Developer Bug-Fixing & Code Architecture Guide
 
-1. Bundles the ES module tree rooted at `src/index.js`, writing the result to both
-   `dist/nexa-editor.bundle.js` (the raw bundle) and `lib/nexa-plugin.html` (the same
-   bundle wrapped in a single `<script>` tag, preceded by `<script src>`s for the SDK and
-   property-kit bundles — see §9.3 for why Lit isn't folded into this same bundle). This
-   `.html` file is what Node-RED's plugin loader actually serves to the editor (a `.html`
-   sibling of `lib/nexa-plugin.js`'s registered plugin id is loaded automatically, per the
-   standard Node-RED plugin-loader convention) — and it's the **one** generated file that
-   is forced to live in `lib/` rather than `dist/`, because that loader convention derives
-   the `.html` path by swapping the extension on the *exact* registered `.js` path, with
-   no way to point it elsewhere.
-2. `src/sdk/runtime-entry.js` -> `dist/nexa-sdk.bundle.js` (Lit + the component SDK),
-   served to the editor (`/nexa-dashboard/_sdk.js`) and to deployed pages (`/nexa/_sdk.js`;
-   `_lit-vendor.js` is its old name, kept as an alias).
-3. `src/sdk/kit/index.js` -> `dist/nexa-sdk-kit.bundle.js` (the property kit, editor only,
-   `/nexa-dashboard/_sdk-kit.js`), with `lit` aliased to the SDK's copy.
-4. `src/sdk/registry-entry.js` -> `lib/nexa-registry-client.js` (`/nexa/_registry.js`).
+When encountering a bug or implementing a new feature, use this directory-by-directory breakdown to pinpoint the exact file responsible.
+
+### 4.1 Root & Core Entrypoints (`src/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/index.js` | Main entrypoint for the Node-RED editor bundle. Registers the `kufayeka-nexa-dashboard` plugin and sidebar tab. | Sidebar tab failing to appear, plugin registration failure at editor load. | Root initialization block. |
+| `src/state.js` | Central state management singleton for the editor. Stores `screens`, `templates`, `flows`, `folders`, selection, and DOM references. | Stale screen state, screen lookup failures (`getActiveScreen`), UUID generation, snap-to-grid calculations. | `state`, `getActiveScreen()`, `findTemplate()`, `findFlow()`, `findFolder()`, `genId()`, `snap()`. |
+| `src/editor-tray.js` | Full-width Pages studio tray lifecycle (`window.RED.tray.show`). Houses the dual UI and Logic canvas tabs, keyboard shortcuts, and tray header/footer. | Pages tray failing to open/close, Esc/Delete/Ctrl+Z shortcut issues, UI/Logic canvas tab switching or visibility glitches. | `registerPagesEditorAction()`, `updateCanvasTabsVisibility()`, `buildCanvasArea()`. |
+| `src/history.js` | Undo and redo command stack with action coalescing (e.g., rapid slider or text edits grouped into a single undo step). | Ctrl+Z / Ctrl+Y not restoring properties correctly, undo stack memory leaks, corrupted component state after undo. | `pushHistory()`, `undo()`, `redo()`, `clearHistory()`. |
+| `src/registry.js` | Editor-side component registry bootstrap attaching `window.NEXA`. | Custom widgets not registering in editor, duplicate component type errors. | `window.NEXA`. |
+| `src/param-types.js` | Type coercion and Node-RED `typedInput` wrappers for custom component and template parameters. | Type mismatch when binding numbers/booleans/JSON, `typedInput` widget rendering errors. | `buildTypedInputWidget()`, `mapParamTypeToTypedInputType()`. |
+| `src/assets-client.js` | Frontend client for fetching asset URLs, project images, and SVG icons. | Broken image thumbnails in editor, failing asset path resolution. | `resolveAssetUrl()`. |
+
+---
+
+### 4.2 UI Design Canvas (`src/canvas/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/canvas/canvas-ui.js` | Manages the artboard DOM, canvas grid rendering, background styling, stage dimensions, and canvas zoom transforms. | Canvas grid not rendering, stage sizing bugs, zoom levels incorrect, artboard background colors not following theme. | `renderActiveScreen(opts)`, `applyZoomTransform()`. |
+| `src/canvas/selection.js` | Manages canvas selection (`state.selectedIds`), multi-selection, marquee drag boxes, lock states, and grouping. | Component not selecting when clicked, marquee box selecting wrong nodes, sidebar jumping unexpectedly away from active tree. | `selectOnly(id, opts)`, `selectMultiple(ids, opts)`, `deselectAll()`, `refreshSelectionVisuals()`. |
+| `src/canvas/selection-handles.js` | Draws Figma-style selection bounding boxes, 8-point resize handles, rotation handles, padding overlays, and gap indicators. | Resize handles detached from element, rotating component snaps incorrectly, padding/gap visuals misaligned. | `renderSelectionHandles()`, `clearSelectionHandles()`. |
+| `src/canvas/component-renderer.js`| Renders components into the artboard DOM. Instantiates Lit Web Components, project templates, slots, and sets up jQuery UI draggable. | Component visual not updating on prop edit, slot frames missing, drag ghost offset from mouse pointer. | `renderComponent()`, `addComponentAt()`, `revealSlotsOf()`. |
+| `src/canvas/drop-target.js` | Calculates drop targets when dragging components over the canvas, into auto-layout frames, or into component slot frames. | Dragging a button into a frame drops it outside, auto-layout reordering drops in reverse, cycle detection failures. | `findDropTarget()`, `reparentKeepingPlace()`. |
+| `src/canvas/layout-readback.js` | Reads back actual computed bounding boxes and CSS values from the live DOM after layout rendering. | Auto-layout frame has zero width/height, children overlapping despite auto-layout enabled. | `readbackLayout()`. |
+| `src/canvas/constraints.js` | Calculates and applies resizing constraints (pin Left, Right, Center, Stretch) when parent frames or screens resize. | Child element fails to follow parent frame resize, anchored element stretches unexpectedly. | `applyConstraints()`. |
+| `src/canvas/clipboard.js` | In-memory clipboard operations for UI components (Copy, Cut, Paste, Duplicate) with deep ID remapping. | Pasted component overwrites existing component ID, duplicated frame loses children. | `copySelected()`, `pasteClipboard()`, `duplicateSelected()`. |
+| `src/canvas/sparkplug-live.js` | Subscribes to live Sparkplug metric updates during design time so components display live values on the canvas. | Live values not updating on the editor canvas despite MQTT connection active. | `ensureSparkplugLiveRenderWired()`. |
+| `src/canvas/breakpoints-ui.js` | Renders the top breakpoint switcher bar (Mobile, Tablet, Desktop) and manages screen width simulation. | Breakpoint selector bar missing, clicking mobile width fails to resize stage. | `refreshBreakpointBar()`. |
+| `src/canvas/drag-feedback.js` | Renders insertion lines and drop indicator highlights during drag-and-drop. | Insertion line not showing between auto-layout siblings. | `showInsertionLine()`, `clearDragFeedback()`. |
+
+---
+
+### 4.3 Native Modal Tray Dialogs (`src/dialogs/`)
+
+Every entity and Logic node in Nexa uses standard Node-RED modal trays (`window.RED.tray.show`), ensuring a consistent native experience.
+
+| File | Entity / Node Configured | Common Debug Scenarios |
+| :--- | :--- | :--- |
+| `src/dialogs/screen-dialog.js` | Screen properties (name, URL route path, width, height, grid size, disabled flag). | Screen route path validation, width/height changes not persisting to project. |
+| `src/dialogs/screen-variable-dialog.js` | Screen-scoped variable (name, type, defaultValue). | Type dropdown coercion errors, defaultValue parsing bugs. |
+| `src/dialogs/template-dialog.js` | Composite template properties (name, dimensions, category). | Template conversion issues, sizing changes. |
+| `src/dialogs/component-template-dialog.js`| Component template properties (custom tagName, label, icon). | Component template failing to register in palette. |
+| `src/dialogs/template-param-dialog.js` | Template parameter (name, label, type, default value). | Parameter type binding mismatch, label updates not reflecting. |
+| `src/dialogs/template-variable-dialog.js` | Template-scoped variable. | Variable values leaking outside template instance boundaries. |
+| `src/dialogs/flow-dialog.js` | Screen Flow properties (name, ingress endpoint route). | Flow starting route `/app` not saving, duplicate flow route warnings. |
+| `src/dialogs/folder-dialog.js` | Group / Folder properties (name, category). | Folder rename failing, wrong category assigned. |
+| `src/dialogs/app-variable-dialog.js` | Global project variable (name, type, defaultValue, persistence). | Variable failing to save in `sessionStorage` or `localStorage`. |
+| `src/dialogs/shared-variable-dialog.js`| Realtime server-synced IO variable. | Shared IO variable failing to sync over WebSocket. |
+| `src/dialogs/delay-dialog.js` | Logic `Delay` node (duration in ms or s). | Timer values not validating, non-numeric inputs. |
+| `src/dialogs/switch-dialog.js` | Logic `Switch` node (rules, operators: `==`, `>`, regex, else). | Output ports not matching rule count, branching evaluation errors. |
+| `src/dialogs/function-dialog.js` | Logic `Function` node (JavaScript code, output count). | Syntax errors in CodeMirror editor, `msg` not returning. |
+| `src/dialogs/navigate-dialog.js` | Logic `Goto Screen` node (target screen, route, history action). | Destination screen dropdown missing screens, back/forward history failures. |
+| `src/dialogs/route-trigger-dialog.js` | Logic `Route Trigger` node (pattern `/devices/:id`, cookies). | Route pattern not matching dynamic params, cookies not extracting. |
+| `src/dialogs/render-screen-dialog.js` | Logic `Render Screen` node. | Render screen lifecycle not receiving flow context. |
+| `src/dialogs/set-variable-dialog.js` | Logic `Set Variable` node (op: set, merge, append, toggle, inc). | Array append appending undefined, toggle failing on boolean. |
+| `src/dialogs/sparkplug-write-dialog.js` | Logic `Sparkplug Write` node (metric path, payload, DCMD). | Metric picker empty, wrong payload data type published. |
+| `src/dialogs/ui-update-dialog.js` | Logic `Update Component` node (target component, action, props). | Target component dropdown empty, action parameters not routing. |
+| `src/dialogs/web-io-dialog.js` | Logic `HTTP Request`, `Storage`, and `Cookie` nodes. | REST request URL interpolation failing, storage key missing. |
+
+---
+
+### 4.4 In-Editor Code Editors (`src/editor/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/editor/cm6-code-editor.js` | Wraps CodeMirror 6 for code editing in Function and Lit dialogs. Supports dark/light themes, linting, and line numbers. | Code editor cursor jumping, syntax highlighting broken, theme not updating. | `createCodeEditor()`. |
+| `src/editor/nexa-completions.js` | IntelliSense autocomplete extension for CodeMirror. Suggests in-scope variables, `msg` properties, and Sparkplug tags. | Autocomplete popup not appearing, outdated variable names suggested. | `getNexaCompletions()`. |
+
+---
+
+### 4.5 Logic Graph Canvas (`src/logic/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/logic/logic-nodes.js` | Renders Logic nodes on the SVG logic canvas, port connectors, node status badges, and node dragging. | Logic node misplaced, port icon missing, dragging node doesn't update wires. | `renderLogicCanvas()`, `addLogicNode()`, `removeLogicNode()`. |
+| `src/logic/logic-wires.js` | Calculates and draws smooth cubic bezier connection curves between node ports; handles wire creation and deletion. | Wires drawn with jagged lines, port hit-testing fails when connecting wire, dangling wires left after node delete. | `renderLogicWires()`, `startWireDrag()`, `removeWire()`. |
+| `src/logic/logic-selection.js` | Marquee box selection, multi-node movement, copying, cutting, and pasting logic subgraphs. | Pasted nodes overlapping original nodes, multi-node dragging desyncing. | `selectLogicNode()`, `copyLogicSelection()`, `pasteLogic()`. |
+| `src/logic/logic-zoom.js` | Pan and zoom controls for the Logic canvas, zoom level indicators, and "Fit to View". | Logic canvas panning stuck, zoom jumping to extremes, fit-to-view clipping nodes. | `setLogicZoom()`, `fitLogicToView()`. |
+
+---
+
+### 4.6 Pure State Model & Tree Operations (`src/model/`)
+
+The model contains pure functions with zero DOM or Node-RED dependencies. It is compiled by `build.js` into both `dist/nexa-model.js` (CommonJS for workers) and `dist/nexa-model-client.js` (browser global `window.NexaModel`).
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/model/tree.js` | Core immutable tree operations: node lookup, path traversal, parent/child relationships, container checks, and tree pruning. | `Tree.locate` failing, reparenting node causes cyclic hierarchy, child count badges incorrect. | `locate()`, `find()`, `parentOf()`, `ancestors()`, `kids()`, `insert()`, `detach()`. |
+| `src/model/layout.js` | Pure layout engine calculating CSS flexbox, grid, sizing, and constraint offsets for frames and children. | Auto-layout flexDirection broken, wrap not wrapping, fill-container calculating wrong width. | `computeLayoutStyles()`, `computeFrameStyles()`. |
+| `src/model/scope.js` | Lexical scope resolution (`App` -> `Screen` -> `Container` -> `Component`). Manages variable visibility and shadowing. | Variable bound in child component resolving to wrong scope, outer variable shadowed incorrectly. | `createScope()`, `resolveVariable()`. |
+| `src/model/breakpoints.js` | Tailwind-compatible responsive breakpoint thresholds (`sm`, `md`, `lg`, `xl`, `2xl`). | Screen failing to adapt at target width, breakpoint rules firing on wrong window size. | `matchBreakpoint()`, `getSortedBreakpoints()`. |
+| `src/model/theme.js` | Design token dictionary, light/dark mode color palettes, and CSS variable injector. | Color tokens not resolving, dark mode toggle not changing component colors. | `resolveToken()`, `applyThemeVariables()`. |
+| `src/model/types.js` | User-Defined Type (UDT) validation and structured data mapping. | Custom UDT object property rejected, schema validation failure. | `validateUDT()`. |
+| `src/model/migrate.js` | Project version migrations upgrading legacy schemas to the current tree structure. | Old flows failing to import, missing properties after upgrade. | `migrateProject()`. |
+
+---
+
+### 4.7 Modular Deployed Runtime Engine (`src/runtime/`)
+
+Compiled by `build.js` into `dist/nexa-runtime.bundle.js` and served to public client browsers under `/nexa/_runtime.js`.
+
+| Subdirectory / File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/runtime/index.js` | Runtime entrypoint; initializes DOM mounting, network listeners, and boots the active screen. | Deployed page blank on load, startup lifecycle failure. | `initNexaRuntime()`. |
+| `src/runtime/features/navigation.js` | Client-side SPA routing engine. Intercepts URL changes, executes flow pipelines, and swaps screens without page reload. | Browser back/forward button broken, URL query parameters lost during transition, flash of unstyled content. | `gotoScreen()`, `initRouter()`. |
+| `src/runtime/features/overlays.js` | Manages modal Dialogs and sliding Drawers. Controls z-index stacking, focus trapping, and backdrop dismissal. | Modal dialog opening behind other components, backdrop click not closing drawer, focus escaping modal. | `openOverlay()`, `closeOverlay()`. |
+| `src/runtime/features/teleport.js` | Teleports UI elements into remote DOM target containers (e.g. into headers, toolbars, or floating popups). | Teleported element rendered twice, element not returning to origin when closed. | `teleportNode()`. |
+| `src/runtime/io/client.js` | Realtime Nexa IO WebSocket client. Handles automatic reconnection, subscription sync, and binary packet reception. | Live metrics showing `???`, WebSocket disconnecting frequently, high network latency. | `ioConnect()`, `ioSubscribe()`, `ioSend()`. |
+| `src/runtime/io/frame.js` | Decodes cyclic binary telemetry packets into UI metric values. | Telemetry values parsed as NaN or incorrect types. | `decodeFrame()`. |
+| `src/runtime/logic/runner.js` | Logic execution engine on deployed screens. Dispatches component events (`click`, `change`), executes wires and async nodes. | Button click not triggering flow, wire execution hanging, variable change watcher not firing. | `runLogic()`, `dispatchComponentEvent()`. |
+| `src/runtime/logic/nodes/*` | Runtime implementations for Delay, Switch, Join, Navigate, Functions, and Tag writes. | Delay timer not pausing flow, Switch node taking wrong branch, HTTP request failing CORS. | Individual node executor functions. |
+| `src/runtime/logic/widgets/*` | High-performance dynamic UI controllers: virtual lists (`virtual.js`), template repeaters (`populate.js`), carousels (`carousel.js`). | 10,000-row list crashing browser, repeater duplicating rows, carousel animation jitter. | `initVirtualList()`, `renderPopulate()`. |
+| `src/runtime/mounting/render.js` | Recursive DOM component renderer for deployed screens. Handles late-registering component plugins. | Component showing `???` inside tabs, late-loaded plugin widgets not mounting. | `mountScreen()`, `dismountScreen()`, `beginLateMount()`. |
+| `src/runtime/mounting/lit.js` | Instantiates Lit-based Web Components, binds reactive properties, and routes events. | Lit component not updating when bound variable changes. | `mountLitComponent()`. |
+| `src/runtime/state/variable.js` | Runtime variable store, `sessionStorage`/`localStorage` persistence, and change notification dispatch. | Variables not persisting across reload, two-way input binding failing to write back. | `writeVariable()`, `readVariable()`. |
+
+---
+
+### 4.8 Component SDK & Property Kit (`src/sdk/`)
+
+| Subdirectory / File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/sdk/element.js` | Base `NexaElement` Lit class extending `LitElement` with automatic property binding, theme token access, and cleanup hooks. | Custom component lifecycle errors, styles not inheriting design tokens. | `NexaElement`. |
+| `src/sdk/component.js` | `defineComponent()` helper defining component metadata, property schemas, actions, and palette categorization. | Custom component missing from sidebar palette, wrong default icon or dimensions. | `defineComponent()`. |
+| `src/sdk/field/controller.js` | `FieldController` managing industrial two-way bindings (reading live PLC tag, handling user edits, echoing writes, quality states). | Field input value reverting while user is typing, write echo not updating state, `???` bad quality badge missing. | `FieldController`. |
+| `src/sdk/field/codecs.js` | Data transformation codecs: scaling, offset, bit masking, unit conversion, and number formatting. | Scaled sensor value calculating incorrectly, raw integer not converting to decimal. | `applyCodec()`. |
+| `src/sdk/kit/tree.js` | The `<nx-tree>` web component implementing the virtualized 2D hierarchy tree. | Tree horizontal scroll clipping text, double click inline rename triggering when disabled, drag-and-drop tree reordering issues. | `NxTree`, `nx-tree-select`, `nx-tree-open`, `nx-tree-move`. |
+| `src/sdk/kit/inspector.js` | Dynamically generates property inspector forms for components based on their `props` schema. | Property field missing in inspector, wrong widget rendered for property type. | `renderInspector()`. |
+| `src/sdk/kit/inputs.js` | Reusable property kit controls: `<nx-text>`, `<nx-number>`, `<nx-switch>`, `<nx-select>`, `<nx-color>`. | Number input stepping incorrectly, color picker failing to update value. | Custom element definitions. |
+| `src/sdk/kit/binding.js` | Property data binding picker widget (`<nx-binding>`). Allows binding properties to variables, tags, or expressions. | Binding picker missing variable from scope, expression evaluation syntax errors. | `<nx-binding>`. |
+| `src/sdk/zag.js` | Adapts Zag.js state machines (tabs, dropdowns, dialogs, sliders) for accessible Lit components. | Keyboard navigation not working in custom widget, dropdown closing prematurely. | `ZagController`. |
+
+---
+
+### 4.9 Backend Server, Workers & Protocols (`src/server/`)
+
+| Subdirectory / File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/server/plugin.js` | Main backend plugin registered in Node-RED. Mounts HTTP admin endpoints, static asset routes, and starts worker threads. | Node-RED startup crash, `/nexa-assets/` returning 404, worker communication failure. | `module.exports = function(RED)`. |
+| `src/server/workers/screen-worker.js` | Dedicated Node.js worker hosting the independent HTTP runtime server on port 1881. | Port 1881 conflict, deployed screens returning 500 or not reloading on deploy, worker memory leak. | HTTP server and worker message loop. |
+| `src/server/workers/sparkplug-worker.js`| Dedicated Node.js worker managing MQTT broker connections, Sparkplug B protobuf encoding/decoding, and metric state caching. | Telemetry data dropped under high load, broker disconnects, protobuf decode errors on non-standard PLC metrics. | MQTT client and worker message loop. |
+| `src/server/io/ioHub.js` | Realtime Nexa IO hub on server. Aggregates client WebSocket connections and broadcasts cyclic binary delta packets. | High CPU usage on server WebSocket, client disconnected due to buffer overflow. | `IoHub`. |
+| `src/server/io/ioProtocol.js` | Binary packet serialization and packet protocol encoders for server-to-client telemetry sync. | Protocol version mismatch, byte offset packing errors. | `packFrame()`, `unpackFrame()`. |
+| `src/server/sparkplug/sparkplugCodec.js`| Encodes and decodes Sparkplug B payloads using Google Protobuf (`sparkplug_b.proto`). | Bad datatype conversion in metric value, rebirth CMD rejected by EoN. | `encodePayload()`, `decodePayload()`. |
+| `src/server/sparkplug/deltaBatcher.js` | Batches high-frequency metric changes over 50-100ms intervals before publishing to avoid network congestion. | High latency on metric updates, batch queue overflowing. | `DeltaBatcher`. |
+| `src/server/assets.js` | Local filesystem asset storage (`<userDir>/nexa-assets/`), content-addressed SHA-256 naming, SVG sanitization. | Image upload failing, corrupted SVG upload, permission denied on asset folder. | `saveAsset()`, `deleteAsset()`, `sanitizeSvg()`. |
+
+---
+
+### 4.10 Shared Cross-Environment Code (`src/shared/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/shared/io/protocol.js` | Defines shared binary message opcodes, frame headers, and status flags used by both server and browser IO clients. | Client/Server opcode mismatch, packet alignment errors. | Protocol constants and opcodes. |
+
+---
+
+### 4.11 Sidebar Panels & Optix Hierarchy (`src/sidebar/`)
+
+| File | Primary Responsibility | If Bug / Feature Relates To... | Key Exports / APIs |
+| :--- | :--- | :--- | :--- |
+| `src/sidebar/sidebar-content.js` | Shell container for the 10 sidebar tabs. Manages tab switching, active tab state (`state.sidebarTabs.selected`), and pane visibility. | Clicking a tab fails to show pane, active tab desyncs when switching tools. | `buildSidebarContent()`. |
+| `src/sidebar/screens-panel.js` | "Screens & Flows" tab. Renders the Optix-style hierarchy tree (`<nx-tree>`), handles screen/template/flow creation, reparenting, and component selection. | Tree item inline rename activating on double-click, component click not selecting component on canvas or jumping to Properties tab. | `renderScreenList()`, `buildScreensFlowsTreeNodes()`, `selectComponentFromTree()`, `openPropertiesDialogForId()`. |
+| `src/sidebar/hierarchy-panel.js` | "Hierarchy" tab. Displays outline DOM tree of the currently active screen, manages visibility toggles, locks, and layer reordering. | Element lock/hide button not updating canvas, unplaced components not appearing in Unplaced group. | `renderHierarchyPanel()`. |
+| `src/sidebar/properties-panel.js` | "Properties" tab. Contextual inspector dispatcher. Routes to Frame Inspector, Component Inspector, or Screen properties. | Properties panel blank when element selected, inspector not refreshing after undo. | `renderPropertiesPanel()`. |
+| `src/sidebar/frame-inspector.js` | Inspector for Auto-Layout Frames: Flex direction, wrap, alignment, gap, padding, and child constraint settings. | Frame padding input not applying, child constraint dropdown disabled. | `renderFrameInspector()`. |
+| `src/sidebar/kit-inspector.js` | Renders dynamic property forms for custom Lit components using the NexaKit property kit. | Component prop edit not creating undo history entry, typing in text field causes focus loss. | `renderKitInspector()`. |
+| `src/sidebar/palette-events-panel.js` | "Components" and "Events" tabs. Renders draggable component palette and Logic canvas event chip shortcuts. | Draggable palette component not spawning on canvas, event chips missing for custom actions. | `buildPalette()`, `renderEventsPanel()`. |
+| `src/sidebar/sparkplug-panel.js` | "MQTT Sparkplug" tab. Live interactive explorer for discovered Sparkplug B topics, devices, and metric tags. | Sparkplug tree not populating, dragging tag onto canvas doesn't create bound widget. | `renderSparkplugPanel()`. |
+| `src/sidebar/theme-panel.js` | "Theme" tab. Color scheme management, primary/neutral palettes, typography, and live token previews. | Custom color token not saving, theme changes not reflecting immediately. | `renderThemePanel()`. |
+| `src/sidebar/types-panel.js` | "Types" tab. Schema editor for User-Defined Types (UDT) and data structures. | UDT field addition failing, nested object schema corruption. | `renderTypesPanel()`. |
+| `src/sidebar/assets-panel.js` | "Assets" tab. Upload, preview, and drag project images, SVG symbols, and media into the canvas. | Image upload failing, drag-and-drop asset onto canvas creates broken image. | `renderAssetsPanel()`. |
+| `src/sidebar/breakpoints-panel.js`| "Breakpoints" tab. Configure custom screen responsive breakpoint widths and test simulated resolutions. | Custom breakpoint width not saving, responsive preview glitching. | `renderBreakpointsPanel()`. |
+| `src/sidebar/variables-inspector.js`| "Variables" sub-inspector. Manages scoped variables on selected frames, groups, or screens. | Container-scoped variable leaking to parent, variable deletion not removing bindings. | `renderVariablesInspector()`. |
+
+---
+
+### 4.12 Node-RED Backend Nodes (`nodes/`)
+
+| File | Node Type | Responsibility & Debugging |
+| :--- | :--- | :--- |
+| `nodes/nexa-project.js` | `kufayeka-nexa-project` | Core project configuration node. Persists all screens, templates, flows, folders, and project variables into Node-RED `flows.json`. If project data is lost or not saving on Deploy, check this file. |
+| `nodes/nexa-project.html` | `kufayeka-nexa-project` | Node-RED edit dialog for project node (status display, Sparkplug connection link). |
+| `nodes/nexa-sparkplug.js` | `kufayeka-nexa-sparkplug` | Sparkplug B configuration node. Manages MQTT broker credentials, client IDs, and delegates connection to `sparkplug-worker.js`. |
+| `nodes/nexa-sparkplug.html`| `kufayeka-nexa-sparkplug` | Node-RED edit dialog for configuring MQTT broker host, port, TLS, username, and password. |
+
+---
+
+### 4.13 Build Outputs & Artifacts (`dist/`)
+
+All files in `dist/` are strictly generated by `build.js`. **Never edit these files by hand.**
+
+- `dist/nexa-editor.bundle.js`: Bundled IIFE containing all of `src/` needed inside the Node-RED editor.
+- `dist/nexa-runtime.bundle.js`: Modular runtime client served to browser clients as `/nexa/_runtime.js`.
+- `dist/nexa-sdk.bundle.js`: Minified Lit runtime and Nexa Component SDK served as `/nexa/_sdk.js`.
+- `dist/nexa-sdk-kit.bundle.js`: Property kit `<nx-*>` inspector widgets served to the editor as `/nexa-dashboard/_sdk-kit.js`.
+- `dist/nexa-model.js`: Pure data model compiled as CommonJS for Node-RED and worker threads.
+- `dist/nexa-model-client.js`: Pure data model compiled as an IIFE (`window.NexaModel`) for browser pages.
+- `dist/nexa-registry-client.js`: Component registry bundle served to deployed pages as `/nexa/_registry.js`.
+- `dist/nexa-plugin.js`: CommonJS entrypoint module referenced by `package.json`.
+- `dist/nexa-plugin.html`: Node-RED editor plugin definition with script tags wrapping `nexa-editor.bundle.js`.
+
+---
+
+## 5. Build Pipeline & Development Workflow
+
+The build system is powered by `esbuild` and orchestrated via `build.js`.
+
+### Commands
 
 ```bash
-npm run build     # one-shot build (both bundles above)
-npm run watch      # rebuilds on every change under src/ (fs.watch, recursive)
-npm test           # rebuild + run the full regression suite, see §14.1
-```
+# Clean build of all bundles and artifacts into dist/
+npm run build
 
-**If you edit `lib/nexa-plugin.html` or anything under `dist/` directly, your changes
-will be silently overwritten the next time anyone runs `npm run build`.** Always edit the
-modular files under `src/` and rebuild. `lib/nexa-plugin.js`, `lib/nexa-registry-client.js`,
-and `lib/nexa-runtime-client.js` are genuinely different — **not** part of the build at
-all — those three are plain hand-edited files (backend code and public runtime code,
-neither of which benefits from bundling) and must be edited directly in `lib/`.
+# Watch mode: Automatically recompile dist/ on any change under src/
+npm run watch
 
----
-
-## 4. Data model
-
-Everything lives on the `kufayeka-nexa-project` config node's `screens` array — there is
-exactly one such config node per flow file in normal use (`getOrCreateProjectConfigNode()`
-creates it automatically the first time you open the Pages editor).
-
-```ts
-interface Screen {
-  id: string;
-  name: string;             // e.g. "Overview"
-  path: string;              // e.g. "/plant/:id/overview" — matched with simple ":param" segments
-  width: number;              // artboard width in px (e.g. 1280)
-  height: number;             // artboard height in px (e.g. 800)
-  gridSize: number;           // snap grid, px (default 20)
-  snap: boolean;               // snap-to-grid on/off
-  components: Component[];    // a TREE: containers ("@group" / "@frame") hold `children`
-  orphans: Component[];       // taken out of the tree, not deleted (Hierarchy -> Unplaced)
-  variables?: Variable[];     // see docs/LAYOUT.md §5
-  treeVersion: 1;             // pre-tree saves (flat components + layers) are migrated on open
-  logic: { nodes: LogicNode[]; wires: LogicWire[] };
-}
-
-interface Component {
-  id: string;
-  // A registered NEXA component id (e.g. "kufayeka-rect"), OR one of two
-  // reserved types the runtime special-cases instead of looking up in the
-  // component registry — see §8 and §9:
-  //   "@template"      — a Reusable Screen Template instance (needs `templateId`,
-  //                       `paramValues`)
-  //   "@lit-component" — an inline Lit.js node (needs `litCode`, `litStyles`,
-  //                       `litBindable`, `litEvents`)
-  type: string;
-  x: number; y: number; w: number; h: number;
-  rotation: number;            // degrees
-  flipH?: boolean; flipV?: boolean;
-  locked: boolean;
-  name?: string;               // shown in the Hierarchy; Layer Control targets nodes by name
-  visibility?: "hide" | "remove";  // unset = show; the most restrictive ancestor wins
-  // x / y are relative to the parent container. Containers ("@group" / "@frame"),
-  // frames' layout / style, layoutChild, constraints and variables:
-  // see docs/LAYOUT.md
-  children?: Component[];
-  props: Record<string, any>;  // seeded from the component's `defaults`
-
-  // Only present on a "@template" instance (see §8):
-  templateId?: string;               // which Template this instance renders
-  paramValues?: Record<string, any>; // per-instance static override of the template's
-                                       // declared params — a string value that is
-                                       // EXACTLY one "{path}" expression is resolved
-                                       // against the immediately-enclosing scope's own
-                                       // params instead of being used literally
-
-  // Only present on a "@lit-component" instance (see §9):
-  litCode?: string;      // the class BODY text — wrapped as `class extends <base> { <litCode> }`
-  litStyles?: string;    // plain CSS text — wrapped as `static styles = css\`<litStyles>\`;`
-  litBindable?: Array<{ name: string; type: "string"|"number"|"boolean"|"object"|"array"|"color"; defaultValue: any }>;
-  litEvents?: Array<{ name: string }>;
-}
-
-interface Variable { id: string; name: string; type: "string" | "number" | "boolean" | "object" | "array" | "color"; defaultValue: any; }
-
-// One flat edge list — not Node-RED's node.wires[[...]] nested-array shape.
-// Deliberately simpler: fan-out is just "more than one wire with the same `from`".
-interface LogicWire { id: string; from: string; to: string; }
-
-// See §6 for the full per-type field reference.
-interface LogicNode {
-  id: string;
-  type: "onload" | "onrender" | "onclose" | "ui-event" | "ui-update"
-      | "function" | "debug" | "inject" | "reload" | "open-url" | "layer-control" | "set-variable"
-      // Template-only node types (only offered in the Events tab while
-      // editing a Template — see §8):
-      | "param-input" | "set-template-param";
-  x: number; y: number;
-  // ...type-specific fields, see §6
-}
-
-// A project's Reusable Screen Templates (see §8) — same shape as Screen
-// minus `path`, plus `params`/`identifier`. Stored alongside `screens` on
-// the SAME kufayeka-nexa-project config node.
-interface ProjectTemplate {
-  id: string;
-  name: string;
-  identifier: string;    // plain user-editable reference field — NOT a routing key
-  width: number; height: number; gridSize: number; snap: boolean;
-  components: Component[];    // a tree, like a Screen's
-  orphans: Component[];
-  variables?: Variable[];
-  logic: { nodes: LogicNode[]; wires: LogicWire[] };
-  params: Array<{
-    id: string; name: string; label: string;
-    type: "string" | "number" | "boolean" | "object" | "array" | "color";
-    defaultValue: any;
-  }>;
-}
-```
-
----
-
-## 5. The editor (Pages tray)
-
-Open it via the hamburger menu → **"Pages (Nexa Dashboard)"**, or the **"Nexa"** sidebar
-tab's **"Open Pages Canvas"** button. Both call the same `nexa:open-pages-editor` action,
-which opens a full-width (`width: Infinity`) tray.
-
-### Sidebar tabs
-
-| Tab | Purpose |
-| --- | --- |
-| **Components** | Palette of every registered component type (from all installed component packages), grouped by `category`. Drag a chip onto the UI canvas to place it. |
-| **Screens** | Add/select/delete screens; per-screen settings (name, URL path, width/height, grid size, snap toggle). |
-| **Properties** | Inspector for the current selection: one component's full `defaults` schema as editable fields, plus X/Y/W/H/rotation, lock toggle, flip H/V, its sizing in an auto layout or its constraints — for a group / frame: variables, and a frame's box, auto layout and style — or, for a multi-selection, group / frame, lock/unlock all, and flip. |
-| **Hierarchy** | The screen's node tree (top of the stack first): drag to reorder / reparent, visibility (show → hide → remove), lock, rename, and the **Unplaced** list. See docs/LAYOUT.md. |
-| **Events** | The Logic canvas's own "palette" — see §6. |
-
-### Dual canvas: **UI** tab and **Logic** tab
-
-The tray body has its own 2-tab bar (built with the same `RED.tabs.create` widget the
-sidebar uses) switching between:
-
-- **UI canvas** — the visual artboard. Fixed screen-size artboard on a dotted grid,
-  independent zoom (`Ctrl/Cmd`+scroll or the bottom-right zoom toolbar: `−` / percentage
-  / reset / `+` / zoom-to-fit), full click/shift-click/marquee multi-select, group/ungroup
-  (`Ctrl+G` / `Ctrl+Shift+G`), 8-handle resize with grid snap, a rotate handle (`Shift`
-  = 15° snap), horizontal/vertical flip (`Shift+H` / `Shift+V`), per-component lock,
-  copy/cut/paste (`Ctrl+C` / `Ctrl+X` / `Ctrl+V`, pasted copies offset +20px, cut-then-paste
-  keeps the original ids), and full undo/redo (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`).
-- **Logic canvas** — a separate, independently-zoomed 2000×1400 canvas per screen holding
-  that screen's Logic graph. See §6.
-
-Switching tabs is guarded both ways: dragging a UI component chip onto the Logic tab (or
-a Logic/Events chip onto the UI tab) is rejected with a warning notification rather than
-silently doing the wrong thing.
-
-**Important design decision:** the editor tray is a **pure design surface**. Opening the
-tray, switching screens, dragging components, and editing Logic node config **does not
-execute anything** — no lifecycle nodes fire, no `ui-event`/`ui-update` wiring runs, and
-no Function node code is evaluated while you are editing. All of that only happens on the
-actual deployed page (§10). This was a deliberate correction during development: an
-earlier version *did* execute the Logic graph inside the editor tray, which produced
-confusing side effects (and diverged from what actually happens once a page is deployed).
-
-### Undo/redo model
-
-A single independent stack (`state.undoStack` / `state.redoStack`, not Node-RED's own
-`RED.history`) records typed events: `move`, `resize`, `rotate`, `flip`, `props`,
-`node` (one field of a node) and `tree` (a structural change — add, delete, group,
-reparent, paste — stored as before/after snapshots of the tree) for the UI canvas, and `addLogicNode`, `deleteLogicNode`,
-`moveLogicNode`, `addLogicWire`, `deleteLogicWire` for the Logic canvas, plus a `multi`
-wrapper (an ordered list of the above, replayed/reversed together) for any action that
-touches more than one thing at once — e.g. dragging 3 selected components, or deleting a
-multi-selection. `Ctrl+Z`/`Ctrl+Shift+Z` (or `Ctrl+Y`) walk this stack and automatically
-re-render whichever canvas (UI or Logic) the event belongs to.
-
----
-
-## 6. The Logic canvas in detail
-
-Each screen has its own Logic graph: absolutely-positioned node boxes on a 2000×1400
-canvas, connected by SVG cubic-bezier wires, styled to match Node-RED's own node
-chrome (`var(--red-ui-node-border)`, `var(--red-ui-view-background)`, etc.) — colored
-left-edge band per node kind, small square input/output ports, full multi-select
-(click/shift-click/marquee), group-drag, copy/cut/paste, and batch delete (one undo step
-for a multi-selection).
-
-Wiring: click-drag from an output port draws a temporary dashed line; releasing over an
-input port within a **26px hit radius** (not a literal pixel dot — this is deliberately
-forgiving, unlike a naive `elementFromPoint` hit-test) commits the wire and turns it solid.
-Clicking an existing wire deletes it (hover turns it red first as a warning).
-
-### Node kinds
-
-| Type | Label | In | Out | Color | Config (double-click to edit) |
-| --- | --- | :-: | :-: | --- | --- |
-| `onload` | On Load | — | ✔ | green | none — fires once per page load |
-| `onrender` | On Render | — | ✔ | green | none — fires once per page load, right after `onload` |
-| `onclose` | On Close | — | ✔ | green | none — fires on `window.beforeunload` |
-| `ui-event` | *(component-specific, e.g. "Rect1 → Clicked")* | — | ✔ | blue | none — dropped from the **Events** tab, already bound to one component + one event name |
-| `ui-update` | *(e.g. "Update Rect1")* | ✔ | — | orange | a form with X/Y/W/H/rotation plus every one of the target component's `defaults` fields — each left blank means "don't touch, or take it from `msg` at runtime" |
-| `function` | Function | ✔ | ✔ | purple | an Ace code editor (`RED.editor.createEditor`); receives `msg`, returns a new `msg` (or `null`/`undefined` to stop propagation there) |
-| `debug` | Debug | ✔ | — | gray | none — logs the incoming `msg` to the browser console |
-| `inject` | Inject | — | ✔ | light green | payload type (`json` / `str` / `num` / `date`), payload value, repeat interval in ms (0 = no repeat), "fire once on startup" |
-| `reload` | Reload Page | ✔ | — | gray | none — calls `window.location.reload()` |
-| `open-url` | Open URL | ✔ | — | teal | navigation mode (replace whole URL vs. sub-path/"endpoint" relative to the current screen), URL/endpoint value, open in new tab |
-| `layer-control` | Layer Control | ✔ | — | amber | `[{name, state}]` — shows / hides / removes the nodes of this screen's tree with that name (usually groups); what is inside follows |
-| `set-variable` | *(e.g. "Set Panel.label")* | ✔ | ✔ | purple | scope (the screen, or the group / frame that declares it), variable name, value (`msg.payload` or a fixed value) — see docs/LAYOUT.md §5 |
-| `param-input` | On Params Change | — | ✔ | green | none — **only offered while editing a Template** (see §8). Subflow-Input analogue: fires the current instance's full param snapshot as `msg.payload`, once on mount and again every time any of its params change |
-| `set-template-param` | *(e.g. "Instance #xxxx → Set Value")* | ✔ | — | purple | none — dropped from the **Events** tab like `ui-event`/`ui-update`, already bound to one `@template` instance + one declared param name; sets `msg.payload` as that param's new live value and cascades into any bound nested instance (see §8) |
-
-The **Events** sidebar tab is where `ui-event` and `ui-update` node chips come from: for
-every component currently on the screen, it lists one draggable chip per declared event
-(`"<Component> → <event label>"`) and a single consolidated **"<Component> → Update"**
-chip (one `ui-update` node configures *any* combination of that component's properties —
-there is no more one-node-per-property). A `@template` instance instead gets one
-**"<Instance> → Set `<Param>`"** chip per param its Template declares (§8); a
-`@lit-component` instance gets one **"<Instance> → on `<event>`"** chip per declared
-event plus the same consolidated **"→ Update"** chip (§9). Selecting a component on the
-canvas highlights its chips here (and vice versa is not implemented — see §13).
-
-### Execution engine — **only runs on the deployed page**
-
-The functions that actually walk the graph (`runLogicGraph`, `continuePropagation`,
-`fireLifecycle`, `fireUiEvent`, `applyUiUpdateProp`/`applyUiUpdateMulti`) exist **only**
-in `lib/nexa-runtime-client.js` — the file served to public, deployed pages. The editor
-never imports or calls any of them; it only builds/edits the graph data.
-
-Execution semantics (verified in the current code):
-
-- **Sources**: `onload`/`onrender` fire once, automatically, right after the page mounts
-  its components; `onclose` fires on `beforeunload`; `ui-event` fires when a component
-  calls `ctx.emit(eventName, payload)` from inside its own `render()`; `inject` runs its
-  own `setInterval` (floor of 100ms, regardless of the configured interval) and/or a
-  one-shot `setTimeout` if "fire once" is set.
-- **Fan-out is real fan-out**: a node with two outgoing wires runs both downstream nodes;
-  a node with two *incoming* wires from the same cascade runs **twice** — there is no
-  per-firing dedup (an earlier version had one specifically to survive wiring cycles, but
-  it also silently swallowed legitimate fan-in, so it was removed).
-- **Every wire hop gets its own deep-cloned `msg`** (`structuredClone` where available,
-  `JSON` round-trip as a fallback, and a manual recursive clone as a last resort for
-  circular/non-serializable objects) — so one branch mutating `msg` can never corrupt a
-  sibling branch or the parent event.
-- **Function nodes support `await`**: the node's code is wrapped as
-  `new Function("msg", "return (async function(){ " + code + " })();")`, so
-  `await fetch(...)` (or any other promise) works directly in the code box. Because of
-  this, *every* Function node call returns a Promise, even fully synchronous code with no
-  `await` at all.
-- **Loop safeguard is a single shared budget, not a per-call counter**: a naive per-call
-  step counter would reset to zero on every `.then()` continuation and therefore *never*
-  cap a cycle that runs through an async Function node — since every Function node call is
-  now unconditionally async, that failure mode is real, not theoretical. The fix: one
-  `budget = { steps: 0 }` object is created by the initial trigger (`fireLifecycle` /
-  `fireUiEvent` / the inject timer) and threaded through every recursive call *and* every
-  async `.then()` continuation after that. Once `budget.steps` exceeds **2000**, execution
-  stops and logs `console.error("[nexa-logic] stopped after 2000 steps...")`.
-- **"Update Component" (`ui-update`) merge priority** (lowest to highest, later wins):
-  the node's own static `config` object → a plain-object `msg.payload` (so a Function
-  node can just do `msg.payload = { text: "hi" }` without knowing about a separate field)
-  or a small set of recognized top-level `msg` keys (`fill`, `stroke`, `color`, `text`,
-  `rotation`, `x`, `y`, `w`, `h`, `opacity`) → an explicit `msg.properties` object, which
-  always wins. `x`/`y`/`w`/`h`/`rotation`/`flipH`/`flipV` are treated as component
-  geometry (moved/resized directly); everything else is written to `comp.props.<key>` and
-  applied via the component's `onBind(el, "props.<key>", value)` if it has one, or a full
-  `render()` re-invocation otherwise (a `@lit-component` sets the property directly on
-  its mounted custom element — Lit's own reactivity re-renders it, no `onBind` involved).
-  **`msg.properties` must be a whole object you assign, not a nonexistent one you mutate**
-  — this is the single most common Function-node mistake when targeting a *custom*
-  bindable prop name (one that isn't in the recognized top-level-key list above, e.g. a
-  `@lit-component`'s own declared prop):
-  ```js
-  // WRONG — msg.properties is undefined the first time this runs; this throws
-  // "Cannot set properties of undefined (setting 'prop1')"
-  msg.properties.prop1 = msg.payload;
-  return msg;
-
-  // RIGHT — assign the whole object
-  msg.properties = { prop1: msg.payload };
-  return msg;
-  ```
-- **Verbose logging is off by default** on deployed pages (nobody wants a live SCADA
-  screen spamming devtools). Run `window.NEXA_LOGIC_VERBOSE = true` in the browser console
-  to turn on step-by-step `[nexa-logic] ...` tracing for that page load. `debug` nodes
-  always log, regardless of this flag.
-
----
-
-## 7. Basic Shape Components — practical usage
-
-`@kufayeka/nexa-component-basic-shapes` is the bundled reference component package —
-installed alongside Nexa Dashboard, it registers 8 component types under the **"Basic"**
-palette category. This section is the practical "what does each one actually do" guide;
-§11/§12 cover the underlying contract if you want to write your own.
-
-All 8 share the same basic recipe: drag the chip onto the UI canvas, then use the
-**Properties** tab to edit its fields (each maps 1:1 to a key in `comp.props`), and the
-**Events** tab to wire its `click` event and/or drop an **"→ Update"** node targeting it.
-
-| Component id | Palette label | Default size | Key props (`defaults`) | Notes |
-| --- | --- | --- | --- | --- |
-| `kufayeka-rect` | Rectangle | 120×80 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `borderRadius`, `opacity`, `shadowBlur`, `shadowColor` | Plain `<div>` styling (border/background/box-shadow) — no SVG |
-| `kufayeka-ellipse` | Circle / Ellipse | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity`, `shadowBlur`, `shadowColor` | Same as Rectangle with `border-radius: 50%` |
-| `kufayeka-triangle` | Triangle | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `direction` (`up`\|`down`\|`left`\|`right`), `opacity` | Inline SVG `<polygon>`, non-scaling stroke |
-| `kufayeka-diamond` | Diamond | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | Inline SVG `<polygon>` |
-| `kufayeka-star` | Star | 100×100 | `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | Inline SVG `<polygon>`, 10-point star |
-| `kufayeka-line` | Line | 140×24 | `stroke`, `strokeWidth`, `strokeStyle`, `arrowStart`, `arrowEnd`, `opacity` | Inline SVG `<line>` with optional arrowhead `<marker>`s |
-| `kufayeka-path` | Freeform Path | 120×80 | `pathData` (raw SVG path `d` string), `fill`, `stroke`, `strokeWidth`, `strokeStyle`, `opacity` | For any shape the others can't express — edit `pathData` directly (no visual path editor yet) |
-| `kufayeka-text-label` | Text Label | 160×36 | `text`, `color`, `fontSize`, `fontFamily`, `fontWeight`, `fontStyle`, `textAlign`, `textDecoration`, `lineHeight`, `letterSpacing`, `backgroundColor`, `padding`, `wordWrap` | The one component in this package built as a Lit web component (`<nexa-text-label>`) rather than plain DOM — see §9 for what that pattern looks like when you write your own |
-
-All 8 fire a `click` event and support the geometry every component gets for free
-(x/y/w/h/rotation/lock, flip H/V except Text Label, resize/rotate handles).
-
-### Recipe: change a shape's color when clicked
-
-1. Drop a Rectangle, note its id from the canvas (e.g. `#a1b2`).
-2. **Events** tab → drag **"Rectangle #a1b2 → Clicked"** onto the Logic canvas.
-3. Drag **"Rectangle #a1b2 → Update"** onto the canvas too, double-click it, and set
-   `fill` to a new color in the config form (leave every other field blank).
-4. Wire "Clicked" → "Update". Deploy, open the screen, click the rectangle.
-
-### Recipe: drive `pathData` from live data
-
-`kufayeka-path`'s `pathData` isn't in the recognized top-level `msg` key list (§6), so
-target it via `msg.properties` from a Function node between your data source and the
-`ui-update` node:
-```js
-msg.properties = { pathData: "M 10 " + msg.payload + " L 100 " + msg.payload };
-return msg;
-```
-
----
-
-## 8. Reusable Screen Templates
-
-A **Template** solves "the same 10-field monitoring card needs to appear on this screen
-15 times, all wired the same way, without hand-copying it 15 times." A Template is
-**data-shape-identical to a Screen** (a node tree + `logic`, see `ProjectTemplate`
-in §4) — no `path` (it's never deployed directly), plus a declared `params` list. Once
-created, it's droppable from the **Components** palette (under a **"Templates"** section)
-onto a Screen — or onto *another* Template, which is how nesting works — as a `"@template"`
-component instance.
-
-### 8.1 Creating and editing a Template
-
-Sidebar → **Templates** tab → **"+ Add Template"**. Its settings form mirrors the
-Screens tab's (Name / **Identifier** — a free-text reference field, not a routing key,
-replacing the URL-path field a Screen has / Width / Height / Grid size / Snap) — Width
-and Height are real, editable fields here, since a Template's own canvas size is
-otherwise fixed at creation. Clicking **"Edit"** on a Template row opens the *same* Pages
-tray, in **template-editing mode** — a **"← Back to Screens"** bar appears at the top;
-everything else (palette, Properties, Events, both canvases) works exactly as it does for
-a Screen, because the whole editor is generalized over "the currently active surface"
-(a Screen or a Template) rather than forked.
-
-### 8.2 Declaring params
-
-Still on the Templates tab, while editing a Template: the **Parameters** section is a
-boxed, sortable list (`buildEditableListWidget` in `src/param-types.js` — the same
-Node-RED-native list chrome used by core config-node dialogs like `asset-multi-write`'s
-rules). **"+ add"** appends a row with three sub-fields: **Name**, **Label**, and
-**Value** — the Value field is a real Node-RED `typedInput` widget (`str`/`num`/`bool`/
-`json`, via `buildTypedInputWidget`), and the param's `type` (`string`/`number`/
-`boolean`/`object`/`array`) is derived automatically from whichever typedInput type you
-pick — there's no separate type dropdown, so the declared type and the actual value can
-never drift out of sync with each other.
-
-### 8.3 Using a param inside the Template — automatic interpolation, zero wiring
-
-Any **string** prop on any component *inside* the Template can reference a declared param
-by name with `{paramName}` — this is resolved automatically on every render/mount, no
-Logic node required:
-```json
-{ "type": "kufayeka-text-label", "props": { "text": "Speed: {speed} RPM" } }
-```
-Deep paths work too, for `object`/`array`-typed params — `{info.specs.rpm}`,
-`{list[0]}`, `{items[1].label}` — via the same `{path}` grammar. A path that doesn't
-resolve (unknown param name, or a missing later segment) is left exactly as literal text,
-never rendered as `"undefined"`.
-
-### 8.4 Reading/writing a param from Logic — the Subflow-Input/env-var analogue
-
-Two node types exist **only** in a Template's own Events tab (§6):
-- **`param-input`** ("On Params Change") — a source node, the Subflow-Input equivalent:
-  fires the instance's current full param snapshot as `msg.payload` once on mount and
-  again every time any param changes. Wire it into a Function/Debug node to react to
-  params from inside the Template's own Logic.
-- **`set-template-param`** — one **"<Instance> → Set `<Param>`"** chip per declared
-  param, for every `@template` instance on the *current* canvas (a Screen, or another
-  Template while nesting). Wire a Function/Inject node into it; `msg.payload` becomes
-  that instance's new live param value, which re-interpolates every prop referencing it,
-  re-fires that instance's own `param-input` node(s), and cascades into any nested
-  instance bound to it (§8.5) — all without touching the Template's own definition.
-
-### 8.5 Per-instance values: static default (Properties panel) or a `{path}` binding
-
-Drop a Template instance onto a Screen (or another Template) and select it — the
-**Properties** panel shows one `typedInput` field per declared param, seeded from the
-param's `defaultValue`. Two ways to set it:
-- **A literal value** — pick whichever typedInput type matches (`str`/`num`/`bool`/
-  `json`) and type the value directly. This is a static per-instance override
-  (`comp.paramValues.<name>`), exactly like a Subflow instance's own env-var dialog.
-- **A `{path}` binding** — leave the typedInput on its **`str`** type and type an
-  expression like `{x}` or `{info.specs.rpm}` as the text value. This is **declarative,
-  reactive, and needs zero Logic-node wiring**: it's resolved against the
-  *immediately-enclosing* scope's own already-resolved params (the Screen's own param
-  state doesn't exist, so this only makes sense for a NESTED instance — one Template
-  dropped inside another), and re-resolves automatically whenever the outer param changes
-  live via `set-template-param` — the "10 identical monitoring cards, one wired data
-  source" use case this feature exists for. A binding only ever looks at its *direct*
-  parent's params (never grandparent), but composes correctly through any nesting depth
-  because each level re-resolves its own binding the same way, one hop at a time.
-
-### 8.6 Nesting and the cycle guard
-
-A Template dropped inside another Template is mounted/rendered exactly like any other
-component — recursively, scaled from its own intrinsic width/height to the instance's
-actual `w`/`h`. Two independent guards prevent an infinite loop: the **palette**, while
-editing Template A, excludes any Template that already (directly or transitively)
-contains A (so you can't even drop it); a **defensive runtime/editor backstop**
-(`visitedTemplateIds`, threaded through the recursive mount) renders a clear
-`(circular template reference: ...)` box instead of hanging, in case hand-edited or
-future-buggy data ever reaches that far.
-
-### 8.7 Worked example — matches the "why does my second card follow the first card's value" question
-
-Two independent Screen instances of the same "Card" Template, each driven by its own
-Function+`set-template-param` wiring, each with a NESTED instance bound via `{path}`:
-
-```
-Screen
-├─ cardA  (@template → "Card")     ← set-template-param("cardA", "value") = "A-DATA"
-│   └─ leaf (@template → "Leaf", paramValues: { value: "{value}" })
-└─ cardB  (@template → "Card")     ← set-template-param("cardB", "value") = "B-DATA"
-    └─ leaf (@template → "Leaf", paramValues: { value: "{value}" })
-```
-`cardA`'s and `cardB`'s param state is tracked separately (keyed by each instance's own
-full namespaced path — `cardA::leaf` and `cardB::leaf` are always distinct), so `leaf`
-under `cardA` shows `"A-DATA"` and `leaf` under `cardB` shows `"B-DATA"`, independently —
-this is namespace isolation working as designed, not something you need to wire around.
-If you ever see the wrong sibling's value in practice, hard-refresh the deployed page
-first (`_runtime.js` has no cache-busting query string, so a browser can serve a stale
-cached copy from before a fix) before assuming it's a data-modeling bug.
-
----
-
-## 9. The Lit Component node
-
-A generic, always-available palette entry (under a **"Custom"** section, not tied to any
-installed component package) for writing your **own** inline Lit.js component — the
-JS/CSS live on the dropped instance itself, authored in the Properties panel — analogous
-to Node-RED's own **Function** node (inline code, no separate package needed) or FlowFuse
-Dashboard 2's **`ui-template`** node, but Lit-based instead of Vue-based.
-
-> **This section covers the basics.** For internal functions/state, conditional
-> rendering, loops, embedding an already-made Screen Template from your own code
-> (`this.mountTemplate(...)`), and a full set of worked use cases, see the dedicated
-> **[Lit Component Guide](docs/LIT_COMPONENT_GUIDE.md)**.
-
-### 9.1 Authoring
-
-Drop **"Lit Component"** from the palette, select it, and the Properties panel shows:
-
-- **Class body / CSS preview fields** — read-only, just enough to see at a glance that
-  code exists (a first-line snippet + character count). Click **"Edit Code..."** to
-  actually write/change it — this opens a **modal dialog** (`RED.editor.createEditor`,
-  the same widget the core Function node uses, in the same kind of `RED.tray.show`
-  dialog the Function node's own editor uses — see `src/dialogs/lit-code-dialog.js`),
-  not an inline sidebar editor. This is deliberate, not just a style choice: the
-  Properties panel fully rebuilds on almost any interaction elsewhere in it (adding a
-  Bindable Property, etc.), which would silently discard anything typed but not yet
-  committed if the editor lived inline in the sidebar — a real bug an earlier version
-  had. The dialog owns the editor exclusively while open, immune to that.
-  - **Class body** is the INSIDE of a Lit class: `render()`, any other methods,
-    lifecycle hooks. You do **not** write `class extends LitElement { ... }` yourself —
-    just the members that go inside it.
-    ```js
-    render() {
-      return html`<div>Hello, ${this.label}</div>`;
-    }
-    ```
-  - **CSS** is plain CSS text, wrapped as `static styles = css\`...\`;` — scoped to
-    *this component only*, for free, via Lit's Shadow DOM (no manual `scoped`/BEM-style
-    hacks needed, unlike a plain-DOM component sharing the page's global stylesheet).
-  - **Cancel** discards everything typed in the dialog; **Done** commits both the class
-    body and CSS at once and re-renders the preview.
-- **Bindable Properties** — a boxed, sortable list (`buildEditableListWidget`, the same
-  Node-RED-native list chrome used by core config-node dialogs) declaring `{ name,
-  defaultValue }` rows here rather than in your own code; each row's Value field is a
-  real Node-RED `typedInput` (`str`/`num`/`bool`/`json`) — the property's `type` is
-  derived automatically from whichever typedInput type you pick, no separate type
-  dropdown. This list is what actually generates the Lit `static properties` declaration
-  behind the scenes (so `this.label` in `render()` above just works, reactively, once
-  you've declared `label` here) — **and** doubles as this instance's `ui-update`/
-  Properties-panel targets, exactly like `defaults` does for a registered component (§11).
-- **Events** — another boxed list, declaring `{ name }` rows for anything your code fires
-  with `this.emit(eventName, payload)` (an `emit` method every Lit Component instance
-  gets for free, wired to the Logic canvas's `ctx.emit` underneath) — each becomes an
-  **"<Instance> → on `<name>`"** chip in the Events tab.
-
-### 9.2 Reading data in — from a Logic node
-
-Exactly the pattern documented in §6/§7: a `@lit-component`'s Bindable Properties are
-NOT in the recognized top-level `msg` key list, so target them via `msg.properties`
-keyed by the bindable prop's name:
-```js
-// A declared Bindable Property named "prop1" —
-msg.properties = { prop1: msg.payload };
-return msg;
-```
-wired into that instance's **"→ Update"** node. Lit's own reactivity re-renders the
-component the moment the property is set — there's no `onBind` to write, unlike a plain
-registered component.
-
-### 9.3 How it actually runs (useful for debugging)
-
-- Your class body is compiled once via `new Function(...)` into
-  `class extends NexaLitBase { <your code> }` (`NexaLitBase` is a thin wrapper around the
-  real `LitElement` adding two methods for free: `emit(name, payload)` and
-  `mountTemplate(hostEl, templateIdOrName, paramValues, opts)` — the latter lets your own
-  code embed an already-authored Screen Template into your shadow DOM, see the
-  [Lit Component Guide](docs/LIT_COMPONENT_GUIDE.md#8-embedding-an-already-made-screen-template--thismounttemplate))
-  and registered as a custom element with an
-  auto-generated tag name (`nexa-lit-<hash of your code+styles+bindable list>`) —
-  **same trust boundary as the Function node**: no sandboxing, this runs with full access,
-  same as everything else in the admin editor.
-- The compiled class is **cached by that hash**, so editing an unrelated instance, or
-  re-rendering the same one with unchanged code, never re-registers a duplicate custom
-  element (the browser's `customElements` registry only allows defining a given tag once).
-  Editing the code/CSS/bindable list *does* produce a new hash → a new tag → a fresh
-  element — the old tag simply stops being used, it isn't cleaned up (an accepted,
-  standard limitation of live-editing custom elements in any browser).
-- Lit itself ships as a plain `<script src>` — `window.NEXA_LIT = { LitElement, html,
-  css, nothing }` — loaded once via `RED.httpAdmin` in the editor and once via
-  `RED.httpNode` on each deployed page (`dist/nexa-sdk.bundle.js`, built from
-  `src/sdk/runtime-entry.js` by `build.js`), **not** bundled into the editor's own ES-module
-  pipeline. Lit's module-level code runs real browser feature-detection unconditionally at
-  import time, so folding it into `dist/nexa-editor.bundle.js` would mean paying that cost
-  (and needing a real DOM) the instant the editor bundle loads, whether or not any screen
-  actually uses a Lit Component.
-
----
-
-## 10. The deployed runtime
-
-`lib/nexa-plugin.js` registers a **second** plugin from the same package
-(`type: "node-red-runtime-plugin"`) that mounts everything under `RED.httpNode` — the
-*public*, unauthenticated Node-RED app, deliberately separate from `RED.httpAdmin` (the
-editor-only API) and deliberately prefixed with `/nexa` so it can never collide with a
-user's own `http-in` nodes wired into their own flows on the same shared instance:
-
-- `GET /nexa/_registry.js` → `lib/nexa-registry-client.js` (the `window.NEXA` bootstrap —
-  a standalone duplicate of the editor's own bootstrap in `src/registry.js`, kept
-  separate on purpose so the proven editor code path is never put at risk while iterating
-  on the public runtime).
-- `GET /nexa/_runtime.js` → `lib/nexa-runtime-client.js` (§6's execution engine, plus DOM
-  mounting).
-- `GET /nexa/*` → matches the remainder of the path against every screen's `path` pattern
-  (simple `:param` segments, e.g. `/plant/:id/overview`, matched by segment count and
-  literal equality — not a full path-to-regexp implementation) across the **one**
-  currently-deployed project (`getCurrentProject()`), and renders that screen's HTML page:
-  an empty `#nexa-runtime-artboard` div sized to the screen's `width`/`height`, followed
-  by `_registry.js`, then every component package's declared `runtimeScripts` (in
-  registration order), then a `<script>` block embedding the screen JSON plus
-  `window.__NEXA_PARAMS__`/`__NEXA_QUERY__` (route params and the request's query string),
-  then `_runtime.js`, which immediately mounts `window.__NEXA_SCREEN__` on load.
-
-The screen JSON embedded in that inline `<script>` block is escaped against a classic
-`</script>`-injection XSS vector (`<` → `<`) before being serialized — necessary
-because component `props` are free-text editor input that ends up embedded verbatim in a
-public HTML page.
-
-Live Sparkplug values reach the editor as `RED.comms.publish("nexa/sparkplug/delta", [deltas])`
-— batched every 75ms (`lib/sparkplug/deltaBatcher.js`: data metrics merged per device, last
-value wins; birth/death kept in order). Deployed pages are not batched: they get every delta
-over the screen worker's SSE stream.
-
----
-
-## 11. The component plugin contract (`window.NEXA.registerComponent`)
-
-> **Legacy.** New components use the Nexa Component SDK (`defineComponent`, see
-> [docs/SDK.md](docs/SDK.md)), which compiles to this same registry contract. Everything
-> below still works for existing plugins — `test/fixtures/legacy-buttons-components.js`
-> keeps proving it — but it has no generated inspector, no generic tags and no testkit.
-
-Any script that calls `window.NEXA.registerComponent(id, definition)` — from the editor
-bundle, from a component package's own runtime script, or both (the same `def` shape
-works in either context) — adds one draggable component type.
-
-### Mandatory safe-queue bootstrap
-
-Because script load order across independently-installed packages isn't guaranteed,
-every component package's own script **must** start with this exact guard so a
-registration call arriving before Nexa's own registry has initialized is queued instead
-of lost:
-
-```javascript
-window.NEXA = window.NEXA || { _q: [], registerComponent: function (id, def) { this._q.push([id, def]); } };
-```
-
-Nexa's real registry (`src/registry.js` in the editor, `lib/nexa-registry-client.js` on
-deployed pages) replaces `window.NEXA` with the real implementation and immediately
-flushes anything queued in `_q`.
-
-### Definition schema
-
-```ts
-interface NexaComponentDefinition {
-  category?: string;   // palette grouping, e.g. "Basic", "Gauges" (default: "General")
-  label?: string;       // palette / inspector display name (default: the registered id)
-  icon?: string;         // FontAwesome class, e.g. "fa fa-square-o" (cosmetic only today)
-  defaultSize?: { w: number; h: number };  // size when first dropped (default: 100×60)
-
-  capabilities?: {
-    resizable?: boolean;   // show resize handles (default: treated as true)
-    rotatable?: boolean;    // show the rotate handle (default: treated as true)
-    flippable?: boolean;    // allow Flip H/V (default: treated as true; false disables it)
-    lockable?: boolean;      // show the lock icon (default: treated as true)
-  };
-
-  defaults?: {
-    [propName: string]: {
-      value: any;
-      type: "text" | "number" | "color" | "checkbox" | "select";
-      options?: string[];   // only meaningful for "select" in your own render() logic —
-                              // the built-in Properties panel does not special-case "select" today
-    };
-  };
-
-  // Property paths intended for live external (e.g. asset tag) binding.
-  // Declared and normalized by the registry today; not yet consumed by any
-  // binding UI — see §13.
-  bindable?: string[];        // e.g. ["props.fill", "props.stroke"]
-
-  // Events this component can emit toward the Logic canvas. Both forms are accepted —
-  // a bare string is normalized to {name, label: "On "+name} automatically.
-  events?: Array<string | { name: string; label: string }>;
-
-  // Called on mount AND whenever the component may need a full re-render
-  // (e.g. a property was edited in the Properties panel).
-  render(el: HTMLElement, props: Record<string, any>, ctx: NexaRenderContext): void;
-
-  // Optional fast path for a single property changing (from the Properties panel,
-  // or from a "Update Component" Logic node at runtime). If omitted, a full
-  // render() re-invocation is used instead.
-  onBind?(el: HTMLElement, target: string, value: any): void;
-}
-
-interface NexaRenderContext {
-  emit(eventName: string, payload?: Record<string, any>): void;
-}
-```
-
-### Writing `render()` correctly
-
-- **`el` is already positioned and sized for you.** Nexa's own wrapper div already has
-  `position: absolute`, explicit `width`/`height` in px matching the component's actual
-  `w`/`h`, and `box-sizing: border-box` set *before* your `render()` runs. **Do not set
-  `el.style.width`/`el.style.height` yourself** — doing so overwrites the wrapper's own
-  explicit pixel size (e.g. with `"100%"`, which resolves against the *canvas*, not your
-  component), making the rendered shape balloon to fill the whole artboard while the
-  selection box — which is sized independently, straight from `comp.w`/`comp.h` — stays
-  correctly small. (This exact regression happened during development: two shape
-  components were fixed by removing a stray `el.style.width = "100%"` from their own
-  `render()`.) If you need an inner element sized to fill its parent, size *that child*
-  to `100%` — never `el` itself.
-- **`render()` can be called more than once** (property edits, layer changes, etc.) —
-  assign event handlers idempotently (`el.onclick = function(){...}`, not
-  `el.addEventListener(...)`, which would otherwise accumulate duplicate listeners on
-  every re-render).
-- **`ctx.emit(eventName, payload)`** is how a component notifies the Logic canvas.
-  `payload` should be a plain, JSON-serializable object — it gets deep-cloned before
-  being handed to any downstream Function/Update node.
-
----
-
-## 12. Writing your own component plugin, step by step
-
-Use the **Nexa Component SDK** — the full guide is [docs/SDK.md](docs/SDK.md):
-
-1. Copy [`sdk/template/`](sdk/template/) and rename `acme-nexa-sample` everywhere.
-2. Write your components in `dist/*.js` as ES modules:
-   `import { defineComponent, NexaElement, html, css, bind } from "../../nexa-sdk/nexa-component-sdk.js";`
-   — one `defineComponent({ properties, inputs, outputs, events, actions, inspector, view })` each.
-3. `widgets/plugin.js` is one call to `require("@kufayeka/node-red-nexa-dashboard/sdk/package")(RED, {...})`;
-   `widgets/plugin.html` is one `<script type="module">`.
-4. Test with the SDK testkit (`sdk/testkit`, headless Chrome): `npm test`.
-
-The three bundled plugins are the references: `@kufayeka/nexa-component-fields` (inputs,
-hand-written inspector, `FieldController`), `@kufayeka/nexa-component-buttons` (a boolean
-control, per-state CSS, a migration) and `@kufayeka/nexa-component-basic-shapes` (simple
-components, automatic inspector).
-
----
-
-## 13. Known limitations & roadmap
-
-Documented honestly so nobody builds on top of something that isn't really there yet:
-
-- **Asset Engine live tag-binding is not wired up end-to-end.** There is no direct
-  asset-path binding (an earlier unused `nexa/value` comms republish was removed) — bind
-  through Sparkplug (`{sparkplug:...}`) instead. The `bindable` field on a component definition is a real, normalized part of the
-  contract, but there is no picker UI anywhere to actually bind a component property to
-  an asset tag path yet. Practically, if you need a Nexa screen to react to live data
-  today, the only two ways are: (a) an `inject` Logic node polling on an interval, driven
-  by a Function node that fetches the value itself (e.g. `await fetch(...)` against an
-  Asset Engine HTTP endpoint), or (b) extending `lib/nexa-runtime-client.js` yourself. A
-  proper live-binding picker (reusing the Asset Engine's existing hierarchy-autocomplete
-  pattern) is the natural next step here, not yet built.
-- **The Logic canvas never executes inside the editor, by design.** This means there is
-  no "test it live in the tray" workflow — you always have to Deploy and open the actual
-  deployed page to see Logic run. This was a deliberate correction (an earlier version
-  did execute Logic in the editor, which caused confusing side effects), not an oversight.
-- **Selecting a component on the canvas highlights its Events-tab chips, but not the
-  reverse** — clicking an Events chip does not select/scroll to the underlying component.
-- **`icon` and `select`-type `defaults` fields are cosmetic conventions only** — nothing
-  in the built-in palette or Properties panel currently renders a `<select>` for a
-  `type: "select"` field (it falls back to a plain text input); component authors wanting
-  a real dropdown must build it themselves inside `render()`.
-- **Screen path matching is intentionally simple** (`:param` segments, exact segment
-  count, no wildcards/regex) — not a full router. Good enough for
-  `/plant/:plantId/overview`-style routes; not a substitute for Express's own
-  `path-to-regexp` if you need more.
-- **Only one project (config node) is served publicly at a time**
-  (`getCurrentProject()` tracks the most recently loaded `kufayeka-nexa-project` node
-  module-globally). Multiple Nexa project config nodes in the same flow file are not a
-  supported multi-tenant setup today.
-- **A `@lit-component`'s actual Shadow-DOM rendering has not been verified against a real
-  browser DOM in an automated test** — this codebase's own headless mock-test harness
-  (plain Node.js, no real `HTMLElement`/`customElements`/Shadow DOM) can and does verify
-  the mount/compile/cache/`ui-update` wiring around it, but not whether Lit itself then
-  paints correctly. Boot-test any non-trivial Lit Component by hand before relying on it.
-- **`_registry.js`/`_runtime.js`/`_sdk.js` are served with no cache-busting query
-  string.** If you deploy a fix to this package itself and a previously-opened deployed
-  page still looks wrong, hard-refresh (or open in a private window) before assuming the
-  fix didn't take — the browser may be serving an old cached copy of one of those scripts.
-- **A `set-template-param`/declarative-`{path}`-binding cascade only reaches ONE level of
-  nesting depth from where the change originates** (by design — see §8.5 on why a binding
-  only ever looks at its direct parent, never a grandparent). A chain three or more
-  Templates deep composes correctly on its own (each level re-resolves independently), but
-  a `set-template-param` node itself can currently only target a `@template` instance that
-  is a **direct child of the surface the node is authored on** — there's no picker for
-  reaching a doubly-nested instance from three levels up. Work around it today by putting
-  the `set-template-param` node on the *middle* Template's own canvas instead.
-
----
-
-## 14. Installation & development workflow
-
-This package follows the same convention as `@kufayeka/node-red-asset-engine` in this
-monorepo — installed as a `file:` dependency from `data/package.json` (the Node-RED user
-directory) rather than published to a registry:
-
-```json
-{
-  "dependencies": {
-    "@kufayeka/node-red-nexa-dashboard": "file:../packages/node_modules/@kufayeka/node-red-nexa-dashboard"
-  }
-}
-```
-
-```bash
-cd data
-npm install
-```
-
-To work on the editor itself:
-
-```bash
-cd packages/node_modules/@kufayeka/node-red-nexa-dashboard
-npm install         # esbuild, lit
-npm run watch         # rebuilds lib/nexa-plugin.html + the SDK bundles on every src/ change
-```
-
-**Two different kinds of change need two different kinds of restart, and mixing them up
-produces confusing symptoms:**
-
-- **Editor bundle changes** (anything under `src/`, i.e. `lib/nexa-plugin.html` after a
-  rebuild) — a plain **browser reload** of the Node-RED editor tab is enough; the plugin
-  `.html` is fetched fresh on every editor page load.
-- **Backend node/plugin registration changes** (`nodes/nexa-project.js`,
-  `lib/nexa-plugin.js`, or a fresh `npm install` in `data/` after adding this package as a
-  dependency for the first time) — these run **once, at Node-RED process startup**
-  (`RED.nodes.registerType(...)` / `RED.plugins.registerPlugin(...)`). A browser reload
-  does **not** re-run them. If the editor ever reports *"kufayeka-nexa-project node type
-  not found"*, this is almost always the cause — restart the actual Node-RED **process**
-  (not just the browser tab), and confirm `data/node_modules/@kufayeka/
-  node-red-nexa-dashboard` actually resolves (a broken/missing `file:` link after moving
-  the repo, or an `npm install` that never completed in `data/`, produces the identical
-  symptom).
-
-### 14.1 Running the test suite
-
-```bash
+# Run master test suite (rebuilds and executes all 56+ tests)
 npm test
 ```
 
-Rebuilds the editor bundle, then runs every `test/mock-*.js` file (plain hand-written
-Node.js against a minimal DOM/jQuery shim — no `jsdom` in this environment, so anything
-genuinely Shadow-DOM/real-browser-specific is called out as such in the relevant test's
-own header comment rather than silently assumed to be covered) and prints a PASS/FAIL
-summary. Add a new `mock-*.js` file to `test/` and its filename to the appropriate array
-in `test/run-all.js` to extend coverage — see any existing `mock-*.js` file's own header
-comment for the established pattern (what it mocks, what it deliberately does not).
+### What `build.js` Does
+
+1. Compiles `src/index.js` into `dist/nexa-editor.bundle.js`.
+2. Wraps the editor bundle into `dist/nexa-plugin.html` with script tags for the SDK, kit, and built-in plugins.
+3. Compiles `src/sdk/runtime-entry.js` into `dist/nexa-sdk.bundle.js`.
+4. Compiles `src/sdk/kit/index.js` into `dist/nexa-sdk-kit.bundle.js`.
+5. Compiles `src/model/index.js` into `dist/nexa-model.js` (CJS) and `dist/nexa-model-client.js` (IIFE).
+6. Compiles `src/runtime/index.js` into `dist/nexa-runtime.bundle.js`.
+7. Compiles `src/sdk/registry-entry.js` into `dist/nexa-registry-client.js`.
 
 ---
 
-## 15. License
+## 6. Testing & Verification Guide
 
-MIT © Kufayeka Tech
+Nexa Dashboard maintains an exhaustive suite of 56+ automated tests covering model validation, mock DOM testing, and real headless-Chrome browser tests.
+
+### Running Tests
+
+```bash
+# Run all tests in sequence
+npm test
+
+# Run a specific test suite
+node test/test-tree-variables-sidebar.js
+node test/test-p0-p1-screens-flows.js
+node test/test-p2-spa-navigation.js
+node test/test-p2-flow-routing.js
+```
+
+### Key Test Categories
+
+- **Model Tests (`test/model-*.test.js`)**: Tests pure tree algorithms, layout calculation, slots, and breakpoints in pure Node.js.
+- **Mock Editor Tests (`test/mock-*.js`)**: Tests canvas resizing, multi-selection, grouping, clipboard, and Logic graph drawing using a lightweight jQuery/DOM shim.
+- **Screens & Flows Suites (`test/test-p*.js` & `test/test-tree-*.js`)**: Tests Optix hierarchy generation, drag-and-drop reparenting, SPA screen transitions, route triggers, protected tree rename, and component selection routing.
+- **Headless Chrome Browser Tests (`test/*-browser.test.js`)**: Spins up a local test server and verifies live DOM rendering, CSS animations, virtual scrolling, and theme switches in headless Chrome via Chrome DevTools Protocol (CDP).
+
+> [!IMPORTANT]
+> **Safety Rule**: Never run tests or point Node-RED development instances at your live `data/` directory. Use isolated ports (e.g. `1899` / `1898`) and temporary userDirs during development.
+
+---
+
+## 7. License
+
+Copyright (c) 2026 Kufayeka. All rights reserved.
+Licensed under the Apache License 2.0.

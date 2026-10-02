@@ -1773,6 +1773,7 @@ nx-tab[hidden] { display: none !important; }
       super();
       this.nodes = [];
       this.selected = [];
+      this.renamable = true;
       this._collapsed = {};
       this._renaming = null;
       this._drop = null;
@@ -1883,6 +1884,12 @@ nx-tab[hidden] { display: none !important; }
         }
         this._fire("nx-tree-select", { id: node.id, additive });
       }}"
+                @dblclick="${(e) => {
+        if (this.renamable === false || this.hasAttribute("no-rename") || node.renamable === false) {
+          e.stopPropagation();
+          this._fire("nx-tree-open", { id: node.id });
+        }
+      }}"
                 @dragstart="${(e) => {
         this._dragId = node.id;
         e.dataTransfer.effectAllowed = "move";
@@ -1935,7 +1942,11 @@ nx-tab[hidden] { display: none !important; }
         }
       }}">` : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => {
         e.stopPropagation();
-        if (node.renamable !== false) this._renaming = node.id;
+        if (this.renamable !== false && !this.hasAttribute("no-rename") && node.renamable !== false) {
+          this._renaming = node.id;
+        } else {
+          this._fire("nx-tree-open", { id: node.id });
+        }
       }}">${node.label}</span>`}
                 ${node.badge !== void 0 && node.badge !== "" ? html`<span class="nx-badge">${node.badge}</span>` : nothing}
                 ${node.actions && node.actions.length ? html`
@@ -1969,6 +1980,7 @@ nx-tab[hidden] { display: none !important; }
     selected: { attribute: false },
     persistKey: { type: String, attribute: "persist-key" },
     emptyText: { type: String, attribute: "empty-text" },
+    renamable: { type: Boolean },
     _collapsed: { state: true },
     _renaming: { state: true },
     _drop: { state: true }

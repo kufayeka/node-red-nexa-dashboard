@@ -8,7 +8,7 @@ embedding an already-made Screen Template, and a set of full worked use cases.
 
 Everything here describes the **actual current implementation**, verified against the
 source in this package (`src/canvas/component-renderer.js` for the editor,
-`lib/nexa-runtime-client.js` for deployed pages — the two are kept in lockstep by hand).
+`src/runtime/mounting/lit.js` (bundled into `dist/nexa-runtime.bundle.js`) for deployed pages).
 Anything not yet supported is called out explicitly under [§9](#9-what-doesnt-work-yet)
 rather than described as if it already worked.
 

@@ -82,8 +82,9 @@ Flows (N)
   - Dragging onto a folder (`position: "inside"`) reparents the item into that folder.
   - Cycle detection prevents dragging a folder into itself or any descendant.
   - Dropping `"before"` or `"after"` reorders siblings and aligns `parentId`.
-- **Inline Rename (`nx-tree-rename`)**:
-  - Double clicking or triggering rename on any node updates its name in place.
+- **Properties Tray Dialog on Double-Click (`nx-tree-open`)**:
+  - Double-clicking any tree node or icon in Screens & Flows never toggles an inline text input. Instead, it dispatches `nx-tree-open` and opens the corresponding Node-RED modal tray properties dialog (`window.RED.tray.show`) for that Screen, Template, Flow, Folder/Group, or Variable. This prevents unintended renaming when navigating the project tree.
+  - Property updates and renaming are safely handled within the dedicated property tray dialogs.
 - **Action Menus (`nx-tree-action`)**:
   - Screen: Open route in new tab, Convert to Template, Duplicate, Delete.
   - Template: Convert to Screen, Duplicate, Delete.

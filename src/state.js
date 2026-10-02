@@ -157,6 +157,7 @@ export const state = {
     logicZoomLabelEl: null,
 
     // Sidebar panes
+    screensPane: null,
     componentsPane: null,
     propertiesPane: null,
     hierarchyPane: null,

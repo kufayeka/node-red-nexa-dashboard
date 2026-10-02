@@ -373,4 +373,51 @@ api.renderScreenForm();
 console.log('Template properties form has NO parameters list embedded?', state.screenFormEl.find('.nexa-template-params-section').length === 0);
 console.log('Template properties form has NO variables list embedded?', state.screenFormEl.find('.nexa-template-vars-section').length === 0);
 
+console.log('--- 7. Component Click & Hierarchy Logic in Tree ---');
+let openPagesEditorCalled = false;
+global.window.RED.actions = {
+  invoke(action) {
+    if (action === "nexa:open-pages-editor") openPagesEditorCalled = true;
+  }
+};
+let activatedCanvasTab = null;
+state.canvasTabs = {
+  activateTab(tab) { activatedCanvasTab = tab; }
+};
+state.trayContent = null; // simulate tray closed
+const comp1 = { id: 'c1', type: 'text', name: 'MyText' };
+screen1.components = [comp1];
+state.selectedIds = [];
+
+state.sidebarTabs.selected = 'screens';
+
+// Simulate clicking component in Screens & Flows tree
+state.screensFlowsTreeEl.dispatchEvent({
+  type: 'nx-tree-select',
+  detail: { id: 'screen-comp:' + screen1.id + ':c1' }
+});
+console.log('Clicking component in tree opens Pages tray when closed?', openPagesEditorCalled);
+console.log('Clicking component in tree sets active screen to screen1?', state.activeScreenId === screen1.id && state.editingMode === 'screen');
+console.log('Clicking component in tree activates UI canvas tab?', activatedCanvasTab === 'ui');
+console.log('Clicking component in tree selects component on screen?', state.selectedIds.includes('c1'));
+console.log('Clicking component in tree does NOT switch sidebar tab to properties?', state.sidebarTabs.selected === 'screens');
+console.log('Tree node renamable is false?', state.screensFlowsTreeEl.renamable === false);
+
+console.log('--- 8. Tree Scroll Preservation (reuse, not recreate) ---');
+// The tree element should be reused on subsequent renderScreenList() calls,
+// not destroyed and recreated, so that scroll position is preserved.
+const treeRefBefore = state.screensFlowsTreeEl;
+// Mark the element as "connected" so the fast-path kicks in
+treeRefBefore.isConnected = true;
+// Call renderScreenList again
+api.renderScreenList();
+const treeRefAfter = state.screensFlowsTreeEl;
+console.log('Tree element is reused (same reference)?', treeRefBefore === treeRefAfter);
+// The tree nodes should still be updated
+console.log('Tree nodes updated on reuse?', treeRefAfter.nodes && treeRefAfter.nodes.length > 0);
+// The selected property should also be updated
+console.log('Tree selected updated on reuse?', Array.isArray(treeRefAfter.selected));
+// screenListEl should NOT have been emptied (still has children)
+console.log('screenListEl not emptied on reuse?', state.screenListEl._children.length > 0);
+
 console.log('ALL OK - ALL TREE & VARIABLE TESTS PASSED!');

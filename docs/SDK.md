@@ -473,7 +473,7 @@ defineComponent({
 - A slot frame is a normal frame: auto layout, padding, fill, variables. In Properties you see its layout and look; the component sets its position and size. It can't be moved, resized or taken out of its component. A double click on the component selects the slot frame.
 - If a slot goes away (a tab is removed or its value renamed), its frame is **kept** (`slotUnused`) and not drawn. Its content comes back if the slot comes back.
 - Deleting the component turns what its slots held into orphans (Hierarchy → Unplaced).
-- **On the live page**, a plugin's modules usually register *after* the page was drawn. What a component's slots hold is mounted at that moment, and everything the first mount does is done for it too: its tags subscribed, its teleports, its templates' param-input, its Logic's onload / onrender (`beginLateMount` / `endLateMount` in `lib/nexa-runtime-client.js`). Without this, a tag-bound component in a Tabs panel showed `???` forever.
+- **On the live page**, a plugin's modules usually register *after* the page was drawn. What a component's slots hold is mounted at that moment, and everything the first mount does is done for it too: its tags subscribed, its teleports, its templates' param-input, its Logic's onload / onrender (`beginLateMount` / `endLateMount` in `src/runtime/mounting/render.js`, bundled into `dist/nexa-runtime.bundle.js`). Without this, a tag-bound component in a Tabs panel showed `???` forever.
 - The data: the component node has `slots: true`, and its `children` are the slot frames (`@frame`, `inSlot: "<name>"`, `slotLabel`). On the live page each slot frame is a light-DOM child of the component's element with `slot="<name>"`. Tests: `test/model-slots.test.js`, `test/runtime-slots-browser.test.js`.
 
 ## 11c. zag.js (accessible widgets)
@@ -588,7 +588,7 @@ The harness loads the registry, the SDK, the property kit and your modules in he
 **Source layout.** The source lives in `src/sdk/`, and `build.js` produces three browser files:
 - `dist/nexa-sdk.bundle.js`: Lit, the registry and the SDK runtime (`defineComponent`, `NexaElement`, `FieldController`, codecs, tags, `bind`). It is loaded by the editor (`/nexa-dashboard/_sdk.js`) and by deployed pages (`/nexa/_sdk.js`).
 - `dist/nexa-sdk-kit.bundle.js`: the property kit (`<nx-*>` widgets and the inspector renderer). Editor only. It uses the SDK's Lit and waits for it if loaded first.
-- `lib/nexa-registry-client.js`: the deployed page's registry, generated from the same `src/sdk/registry.js` the editor bundles.
+- `dist/nexa-registry-client.js`: the deployed page's registry, generated from the same `src/sdk/registry.js` the editor bundles.
 
 **Facade.** `sdk/nexa-component-sdk.js` is served at `<root>/nexa-sdk/` on httpAdmin and httpNode.
 

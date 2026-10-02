@@ -2153,6 +2153,7 @@
     logicSizerEl: null,
     logicZoomLabelEl: null,
     // Sidebar panes
+    screensPane: null,
     componentsPane: null,
     propertiesPane: null,
     hierarchyPane: null,
@@ -34421,17 +34422,19 @@
       }
     });
     var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
-    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+    var inScreens = state.screensPane && typeof state.screensPane.is === "function" && (state.screensPane.is(":visible") || state.screensPane.css("display") === "flex") || state.sidebarTabs && typeof state.sidebarTabs.selected === "string" && state.sidebarTabs.selected === "screens";
+    var keepPanel = opts && (opts.keepPanel || opts.keepSidebarTab) || inHierarchy || inScreens;
+    if (state.selectedIds.length > 0 && !keepPanel && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
       state.sidebarTabs.activateTab("properties");
     }
   }
-  function selectOnly(id2) {
+  function selectOnly(id2, opts) {
     state.selectedIds = [id2];
-    refreshSelectionVisuals();
+    refreshSelectionVisuals(opts);
   }
-  function selectMultiple(ids) {
+  function selectMultiple(ids, opts) {
     state.selectedIds = ids.slice();
-    refreshSelectionVisuals();
+    refreshSelectionVisuals(opts);
   }
   function deselectAll() {
     state.selectedIds = [];
@@ -35713,6 +35716,7 @@
     removeScreen: () => removeScreen,
     renderScreenForm: () => renderScreenForm,
     renderScreenList: () => renderScreenList,
+    selectComponentFromTree: () => selectComponentFromTree,
     selectFlowFromScreensPanel: () => selectFlowFromScreensPanel,
     selectFolderFromScreensPanel: () => selectFolderFromScreensPanel,
     selectScreenFromSidebar: () => selectScreenFromSidebar,
@@ -37454,6 +37458,7 @@
         container: isCont,
         badge: isCont ? String(kids2.length) : "",
         muted: eff !== "show" || !!node.slotUnused,
+        renamable: false,
         children: isCont ? buildComponentTreeRows(surface, kids2, orphan) : []
       };
     });
@@ -37506,8 +37511,64 @@
       state.screensFlowsTreeEl.setAllCollapsed(true);
     }
   }
+  function selectComponentFromTree(surfId, compId, additive) {
+    var scr = state.screens.find(function(s) {
+      return s.id === surfId;
+    });
+    var tmpl = !scr && findTemplate(surfId);
+    if (!scr && !tmpl) return;
+    if (!state.trayContent && window.RED && window.RED.actions) {
+      window.RED.actions.invoke("nexa:open-pages-editor");
+    }
+    if (scr) {
+      if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
+        selectScreenFromSidebar(surfId);
+      }
+    } else {
+      if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
+        selectTemplateFromScreensPanel(surfId);
+      }
+    }
+    if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+      state.canvasTabs.activateTab("ui");
+    }
+    var screen2 = getActiveScreen();
+    var loc = screen2 && tree_exports.locate(screen2, compId);
+    if (loc && !loc.orphan) {
+      var hidden = tree_exports.ancestors(screen2, compId).concat([loc.node]).filter(function(n) {
+        return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
+      });
+      if (hidden.length) {
+        hidden.forEach(function(n) {
+          state.overlayPreview[n.id] = true;
+        });
+        renderActiveScreen({ keepPanel: true });
+      }
+      if (typeof revealSlotsOf === "function") {
+        revealSlotsOf(compId);
+      }
+      if (additive) {
+        if (isSelected(compId)) selectMultiple(state.selectedIds.filter(function(cid) {
+          return cid !== compId;
+        }), { keepSidebarTab: true });
+        else selectMultiple(state.selectedIds.concat([compId]), { keepSidebarTab: true });
+      } else {
+        selectOnly(compId, { keepSidebarTab: true });
+      }
+    }
+    if (state.screensFlowsTreeEl) {
+      state.screensFlowsTreeEl.selected = ["screen-comp:" + surfId + ":" + compId];
+    }
+  }
   function openPropertiesDialogForId(id2) {
     if (!id2) return;
+    if (id2.startsWith("screen-comp:")) {
+      var parts = id2.split(":");
+      var surfId = parts[1];
+      var compId = parts[2];
+      selectComponentFromTree(surfId, compId, false);
+      return;
+    }
     if (id2.startsWith("screen-var:")) {
       var parts = id2.split(":");
       var sId = parts[1];
@@ -38071,26 +38132,7 @@
       var parts = id2.split(":");
       var surfId = parts[1];
       var compId = parts[2];
-      var scr = state.screens.find(function(s) {
-        return s.id === surfId;
-      });
-      if (scr) {
-        if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
-          selectScreenFromSidebar(surfId);
-        }
-        selectOnly(compId);
-        renderActiveScreen();
-        return;
-      }
-      var tmpl = findTemplate(surfId);
-      if (tmpl) {
-        if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
-          selectTemplateFromScreensPanel(surfId);
-        }
-        selectOnly(compId);
-        renderActiveScreen();
-        return;
-      }
+      selectComponentFromTree(surfId, compId, e && e.detail && e.detail.additive);
       return;
     }
     if (id2.startsWith("screen-comps-group:") || id2.startsWith("screen-unplaced-group:")) {
@@ -38770,8 +38812,15 @@
   }
   function renderScreenList() {
     if (!state.screenListEl) return;
-    state.screenListEl.empty();
     var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || window.customElements && window.customElements.get("nx-tree"));
+    if (hasNexaKit && state.screensFlowsTreeEl && state.screensFlowsTreeEl.isConnected) {
+      var nodes = buildScreensFlowsTreeNodes();
+      state.screensFlowsTreeEl.nodes = nodes;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      state.screensFlowsTreeEl.selected = activeId ? [activeId] : [];
+      return;
+    }
+    state.screenListEl.empty();
     if (hasNexaKit) {
       var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
         width: "max-content",
@@ -38782,6 +38831,8 @@
       var treeEl2 = document.createElement("nx-tree");
       treeEl2.setAttribute("empty-text", "No items yet \u2014 click + Add Screen, Template or Flow");
       treeEl2.setAttribute("persist-key", "screens-flows:tree");
+      treeEl2.setAttribute("no-rename", "");
+      treeEl2.renamable = false;
       treeEl2.addEventListener("nx-tree-select", onScreensFlowsSelect);
       treeEl2.addEventListener("nx-tree-open", onScreensFlowsOpen);
       treeEl2.addEventListener("nx-tree-move", onScreensFlowsMove);
@@ -41170,6 +41221,7 @@
     var panesWrap = window.$("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
     state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
     var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    state.screensPane = screensPane;
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
@@ -41221,6 +41273,7 @@
       scrollable: true,
       onchange: function(tab) {
         if (!tab) return;
+        state.sidebarTabs.selected = tab.id;
         screensPane.css("display", tab.id === "screens" ? "flex" : "none");
         state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
         state.hierarchyPane.toggle(tab.id === "hierarchy");

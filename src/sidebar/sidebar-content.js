@@ -42,6 +42,7 @@ export function buildSidebarContent() {
     // panel.js) instead keeps their margin at a plain, non-auto value.
     state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
     var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    state.screensPane = screensPane;
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
@@ -98,6 +99,7 @@ export function buildSidebarContent() {
         scrollable: true,
         onchange: function (tab) {
             if (!tab) return;
+            state.sidebarTabs.selected = tab.id;
             screensPane.css("display", tab.id === "screens" ? "flex" : "none");
             state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             state.hierarchyPane.toggle(tab.id === "hierarchy");

@@ -21,7 +21,7 @@ The **Assets** tab (sidebar) accepts png, jpg, svg, webp, gif and avif, up to 10
 - **Drag an image onto the canvas** to get an Image component showing it. It is sized to the image, between 64 and 320 px on the longer side.
 - **The tab warns about big files** (more than 1 MB or more than 3000 px), because a smaller file loads faster on a page.
 
-On the server (`lib/assets.js`):
+On the server (`src/server/assets.js`):
 
 - Files live in `<userDir>/nexa-assets/`, next to `assets.json`, which holds each name and its file.
 - A file is named after its content, so its URL never changes meaning and pages cache it forever. A new upload under the same name gets a new file.

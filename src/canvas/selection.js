@@ -44,22 +44,25 @@ export function refreshSelectionVisuals(opts) {
         selectLogicForComponents(state.selectedIds);
     }
     hierarchyListeners.forEach(function (fn) { try { fn(state.selectedIds); } catch (e) { /* a panel must not break selection */ } });
-    // (not away from the Hierarchy: selecting there — or arranging the tree —
-    // must keep the tree in view)
+    // (not away from the Hierarchy or Screens tab: selecting there — or arranging the tree —
+    // must keep the active sidebar tree in view)
     var inHierarchy = state.hierarchyPane && typeof state.hierarchyPane.is === "function" && state.hierarchyPane.is(":visible");
-    if (state.selectedIds.length > 0 && !inHierarchy && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
+    var inScreens = (state.screensPane && typeof state.screensPane.is === "function" && (state.screensPane.is(":visible") || state.screensPane.css("display") === "flex")) ||
+        (state.sidebarTabs && typeof state.sidebarTabs.selected === "string" && state.sidebarTabs.selected === "screens");
+    var keepPanel = (opts && (opts.keepPanel || opts.keepSidebarTab)) || inHierarchy || inScreens;
+    if (state.selectedIds.length > 0 && !keepPanel && state.sidebarTabs && typeof state.sidebarTabs.activateTab === "function") {
         state.sidebarTabs.activateTab("properties");
     }
 }
 
-export function selectOnly(id) {
+export function selectOnly(id, opts) {
     state.selectedIds = [id];
-    refreshSelectionVisuals();
+    refreshSelectionVisuals(opts);
 }
 
-export function selectMultiple(ids) {
+export function selectMultiple(ids, opts) {
     state.selectedIds = ids.slice();
-    refreshSelectionVisuals();
+    refreshSelectionVisuals(opts);
 }
 
 export function deselectAll() {

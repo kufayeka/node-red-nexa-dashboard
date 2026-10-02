@@ -29,6 +29,7 @@ export class NxTree extends KitElement {
         selected: { attribute: false },
         persistKey: { type: String, attribute: "persist-key" },
         emptyText: { type: String, attribute: "empty-text" },
+        renamable: { type: Boolean },
         _collapsed: { state: true },
         _renaming: { state: true },
         _drop: { state: true }
@@ -38,6 +39,7 @@ export class NxTree extends KitElement {
         super();
         this.nodes = [];
         this.selected = [];
+        this.renamable = true;
         this._collapsed = {};
         this._renaming = null;
         this._drop = null;
@@ -130,6 +132,12 @@ export class NxTree extends KitElement {
                     }
                     this._fire("nx-tree-select", { id: node.id, additive: additive });
                 }}"
+                @dblclick="${(e) => {
+                    if (this.renamable === false || this.hasAttribute("no-rename") || node.renamable === false) {
+                        e.stopPropagation();
+                        this._fire("nx-tree-open", { id: node.id });
+                    }
+                }}"
                 @dragstart="${(e) => { this._dragId = node.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", node.id); } catch (err) { /* ok */ } }}"
                 @dragend="${() => { this._dragId = null; this._drop = null; }}"
                 @dragover="${(e) => {
@@ -155,7 +163,14 @@ export class NxTree extends KitElement {
                             if (e.key === "Enter") { this._renaming = null; this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() }); }
                             if (e.key === "Escape") this._renaming = null;
                         }}" @blur="${(e) => { if (this._renaming === node.id) { this._renaming = null; this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() }); } }}">`
-                    : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => { e.stopPropagation(); if (node.renamable !== false) this._renaming = node.id; }}">${node.label}</span>`}
+                    : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => {
+                        e.stopPropagation();
+                        if (this.renamable !== false && !this.hasAttribute("no-rename") && node.renamable !== false) {
+                            this._renaming = node.id;
+                        } else {
+                            this._fire("nx-tree-open", { id: node.id });
+                        }
+                    }}">${node.label}</span>`}
                 ${node.badge !== undefined && node.badge !== "" ? html`<span class="nx-badge">${node.badge}</span>` : nothing}
                 ${node.actions && node.actions.length ? html`
                     <span class="nx-tree-actions">${(node.actions || []).map((a) => html`<button type="button" class="nx-icon-btn ${a.on ? "nx-on" : ""}" title="${a.title || a.id}"
