@@ -7,8 +7,10 @@
 import { writeVariable } from "../state/variable.js";
 import { state } from "../state.js";
 import { propsMention, refreshComponentRender } from "../mounting/render.js";
+import { walkNodes } from "../mounting/slots.js";
 
 export var THEME = { theme: null, mode: "light", pref: "light", media: null };
+if (typeof window !== "undefined") window.__NEXA_THEME__ = THEME;
 export var COLOR_MODE_KEY = "nexa:colorMode";
 
 export function startTheme(screen, app) {
@@ -58,8 +60,8 @@ export function applyColorMode(screen, pref, keep) {
     if (window.NexaSDK && window.NexaSDK.setTheme) window.NexaSDK.setTheme(THEME.theme, mode);
     if (state.currentAppScope && !keep) state.currentAppScope.$colorMode = mode;
     if (changed && screen && screen.components) {
-        screen.components.forEach(function (c) {
-            if (propsMention(c.props, "{token:")) refreshComponentRender(screen, c);
+        walkNodes(screen.components, function (c) {
+            if (c.props && propsMention(c.props, "{token:")) refreshComponentRender(screen, c);
         });
     }
     return mode;

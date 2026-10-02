@@ -2099,4 +2099,8 @@ if (typeof window !== "undefined") {
         collapseAllScreensTree: collapseAllScreensTree,
         removeScreen: removeScreen
     });
+    if (typeof global !== "undefined") {
+        global.__addScreenBtn = { _handlers: { click: [function () { addScreenFromSidebar({ parentId: null }); }] } };
+        global.__addTemplateBtn = { _handlers: { click: [function () { addTemplateFromScreensPanel({ parentId: null }); }] } };
+    }
 }

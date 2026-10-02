@@ -12,6 +12,7 @@ import { combineVisibility, getComponentTransform } from "./box.js";
 import { renderLitComponentInstance, coerceLitBindableValue } from "./lit.js";
 import { mountAndFlatten } from "../features/navigation.js";
 import { runLogicGraph, fireUiEvent } from "../logic/runner.js";
+import { THEME } from "../features/theme.js";
 
 export const LOGIC_GEOMETRY_KEYS = { x: 1, y: 1, w: 1, h: 1, rotation: 1, flipH: 1, flipV: 1 };
 export const LOCAL_TARGET_RE = /^\{(\$route\.query\.([A-Za-z_$][\w$]*)|([A-Za-z_][\w$]*)((?:\.[A-Za-z_$][\w$]*)*))\}$/;
@@ -40,8 +41,8 @@ export function interpolateProps(props, paramState, comp) {
     }
     let resolved = resolveSparkplugProps(withTemplateBindings);
     if (window.NexaModel && window.NexaModel.resolveTokenProps && propsMention(resolved, "{token:")) {
-        const THEME = window.__NEXA_THEME__ || {};
-        resolved = window.NexaModel.resolveTokenProps(resolved, THEME.theme, THEME.mode);
+        const t = (window.__NEXA_THEME__ && window.__NEXA_THEME__.theme) ? window.__NEXA_THEME__ : THEME;
+        resolved = window.NexaModel.resolveTokenProps(resolved, t.theme, t.mode);
     }
     return props && props.__fallback && window.NexaModel && window.NexaModel.applyFallbacks ? window.NexaModel.applyFallbacks(props, resolved) : resolved;
 }

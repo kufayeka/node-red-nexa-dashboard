@@ -11,7 +11,8 @@ import { updateInstanceParam, fireParamInputForInstance } from "../../mounting/r
 import { applyTeleports } from "../../features/teleport.js";
 import { mountAndFlatten } from "../../features/navigation.js";
 import { runLogicGraph, continuePropagation } from "../runner.js";
-import { sizingOf, unmountRepeated, startVirtual, stopVirtual } from "./virtual.js";
+import { sizingOf, unmountRepeated, startVirtual, stopVirtual, renderVirtual } from "./virtual.js";
+import { batchSparkplugIndex, registerSparkplugBoundComponentsFrom } from "../../io/sparkplug.js";
 
 export function repeatList(screen, frameNs) {
     screen.__lists = screen.__lists || {};

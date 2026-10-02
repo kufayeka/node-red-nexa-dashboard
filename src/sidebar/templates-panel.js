@@ -360,6 +360,7 @@ function renderTemplateLiveSection(template, formEl) {
             renderActiveScreen();
             window.RED.notify(count + " element(s) of " + (template.name || "the template") + " follow their place now. Select one to see / change its constraints.", { type: "success", timeout: 3000 });
         });
+    if (!state.screensFlowsTreeEl) renderTemplateParamsSection(formEl);
 }
 
 // Constraints from where each node sits (Layout.guessConstraints), into frames that do
