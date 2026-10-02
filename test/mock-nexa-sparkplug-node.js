@@ -1,13 +1,13 @@
 // Integration-ish test for nodes/nexa-sparkplug.js's actual wiring (not just
-// the pure lib/sparkplug/sparkplugTree.js and sparkplugRebirth.js modules it
+// the pure src/server/sparkplug/sparkplugTree.js and sparkplugRebirth.js modules it
 // calls into) — specifically the auto-rebirth-on-missing-birth behavior that
 // was the whole point of adding a publish path to what used to be a purely
 // passive listener. Run standalone: `node test/mock-nexa-sparkplug-node.js`.
 //
 // The actual mqtt.connect()/Protobuf codec now lives in a worker_thread
-// (lib/sparkplug-worker.js), which a real worker_threads.Worker runs in its
+// (src/server/workers/sparkplug-worker.js), which a real worker_threads.Worker runs in its
 // own isolated module registry — faking require("mqtt") in THIS test process
-// (the old technique, still used by lib/sparkplug-worker.js's own tests)
+// (the old technique, still used by src/server/workers/sparkplug-worker.js's own tests)
 // can't reach into it. So this test instead substitutes the worker itself,
 // via nodes/nexa-sparkplug.js's _setWorkerFactoryForTests seam — the same
 // spirit as the CM6 editor's window.__kufayekaCreateCM6EditorOverride. A

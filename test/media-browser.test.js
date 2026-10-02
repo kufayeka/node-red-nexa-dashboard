@@ -1,6 +1,6 @@
 'use strict';
 
-// The dashboard's Image component (lib/components/media.js) and the nx-asset
+// The dashboard's Image component (src/server/components/media.js) and the nx-asset
 // picker, in headless Chrome with the SDK testkit: the source ({asset:name}, a
 // name, a URL, a binding), the state map, the tint, load / error / fallback,
 // lazy loading, a change of the asset list, and the inspector's picker.

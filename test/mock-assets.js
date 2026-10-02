@@ -1,4 +1,4 @@
-// lib/assets.js — the app's image assets on disk (the Assets tab): no Node-RED, a temp dir.
+// src/server/assets.js — the app's image assets on disk (the Assets tab): no Node-RED, a temp dir.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');

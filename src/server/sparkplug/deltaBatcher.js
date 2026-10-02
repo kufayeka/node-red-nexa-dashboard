@@ -4,7 +4,7 @@
 // every single high-frequency delta made debug output, node status and this
 // tree all arrive seconds late (measured 2-6s, growing) once tag traffic
 // passed that rate. Deployed screens don't go through here — they get every
-// delta directly from lib/screen-worker.js's SSE.
+// delta directly from src/server/workers/screen-worker.js's SSE.
 //
 // Merging rules (order-preserving):
 //   - "data" deltas for the same group/edge/device merge their metrics by

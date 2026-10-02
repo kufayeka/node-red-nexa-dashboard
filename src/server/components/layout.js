@@ -1,5 +1,5 @@
 // Nexa "Layout" components, built into the dashboard using the Nexa Component SDK.
-// An ES module served at nexa-dashboard-layout/vendor/, registered by lib/nexa-plugin.js.
+// An ES module served at nexa-dashboard-layout/vendor/, registered by src/server/plugin.js.
 // These demonstrate the official standard for container & slot components.
 import { defineComponent, NexaElement, html, css, nothing } from "../../nexa-sdk/nexa-component-sdk.js";
 

@@ -82,7 +82,7 @@ var renderCallCount = 0;
 NEXA.registerComponent('kufayeka-text-label', { render: function () { renderCallCount++; } });
 
 // One template: 1 sparkplug-bound label per param (a/b/c), matching the
-// real "power meter card" shape (lib/nexa-runtime-client.js resolves
+// real "power meter card" shape (src/runtime/ resolves
 // "{lantai}" from this instance's OWN paramValues before matching a real
 // tag -- see registerSparkplugBoundComponentsFrom).
 var templateComponents = ["a", "b", "c"].map(function (p, i) {

@@ -1,7 +1,7 @@
 // --- Assets tab: the app's images (png, jpg, svg, webp, gif, avif) -------------
 // Import (button or drop files here), search, rename (references follow), delete,
 // copy {asset:name}; drag one onto the canvas for an Image component showing it.
-// Stored on the server (lib/assets.js), used by name: {asset:icons/motor-on}.
+// Stored on the server (src/server/assets.js), used by name: {asset:icons/motor-on}.
 import { state, markDirty, Tree } from "../state.js";
 import { redrawCanvas } from "../canvas/canvas-ui.js";
 import { loadAssets, uploadAssets, renameAsset, deleteAsset, assetLimits } from "../assets-client.js";

@@ -1,4 +1,4 @@
-// Unit/logic test for lib/screen-worker.js — the deployed-screen HTTP
+// Unit/logic test for src/server/workers/screen-worker.js — the deployed-screen HTTP
 // server that now runs in its own worker_threads.Worker. Run standalone:
 // `node test/mock-screen-worker.js`.
 //

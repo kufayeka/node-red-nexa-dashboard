@@ -1,4 +1,4 @@
-// Exercises the ACTUAL shipped code in lib/nexa-runtime-client.js for
+// Exercises the ACTUAL shipped code in src/runtime/ for
 // "@lit-component" (not a reimplementation) end-to-end: mounting, custom
 // element creation/caching, ui-update, and {param} interpolation cascading
 // from a Template's own params. Stands in a FAKE LitElement base (not real

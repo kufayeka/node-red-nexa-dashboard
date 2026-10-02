@@ -1,6 +1,6 @@
 // Config node backing Nexa Dashboard's own "MQTT Sparkplug" sidebar tab —
 // mostly a passive Sparkplug B LISTENER, maintaining a live Group -> Edge
-// Node -> Device -> Metric tree (lib/sparkplug/sparkplugTree.js) from
+// Node -> Device -> Metric tree (src/server/sparkplug/sparkplugTree.js) from
 // NBIRTH/DBIRTH/NDATA/DDATA/NDEATH/DDEATH messages. It ALSO publishes two
 // kinds of standard Sparkplug command message: a "Node Control/Rebirth"
 // NCMD request (see requestRebirth()'s own comment for exactly why that's
@@ -12,20 +12,19 @@
 //
 // Deliberately its OWN independent MQTT connection, not a reuse of
 // @kufayeka/node-red-asset-engine's kufayeka-sparkplug-in/-edge-node nodes —
-// Nexa Dashboard has no hard dependency on that package (see lib/nexa-
-// plugin.js's getAssetController comment), and a user may well want Nexa
+// Nexa Dashboard has no hard dependency on that package, and a user may well want Nexa
 // pointed at a different broker/scope than whatever Asset Engine is doing.
 //
 // A REAL, multi-instance Node-RED config node — several can exist (a
 // project picks which one via its own "Sparkplug Connection" field, see
 // nodes/nexa-project.js/.html), each independently connected, same as
 // @kufayeka/node-red-asset-engine's kufayeka-sparkplug-edge-node. No
-// singleton tracking here: lib/nexa-plugin.js resolves "the active one for
+// singleton tracking here: src/server/plugin.js resolves "the active one for
 // the current project" via plain RED.nodes.getNode(id), Node-RED's own
 // standard config-node lookup.
 //
 // The actual MQTT client/Protobuf codec now lives in a worker_thread
-// (lib/sparkplug-worker.js) — see that file's header for why. This node is
+// (src/server/workers/sparkplug-worker.js) — see that file's header for why. This node is
 // the main-thread half: it owns the live value tree, rebirth tracking, and
 // all "when should we do X" decisions, and only exchanges already-decoded
 // Sparkplug payloads / outgoing publish requests with the worker.
@@ -110,7 +109,7 @@ module.exports = function (RED) {
 
         function emitDelta(delta) {
             // Serialize ONCE here (not once per SSE-connected browser tab in
-            // lib/nexa-plugin.js) — turns O(connected clients) JSON.stringify
+            // src/server/plugin.js) — turns O(connected clients) JSON.stringify
             // calls per delta into O(1); each listener just writes the
             // already-serialized string.
             var serialized;
@@ -131,7 +130,7 @@ module.exports = function (RED) {
             });
         }
 
-        // --- Public surface, read by lib/nexa-plugin.js (comms/REST/SSE
+        // --- Public surface, read by src/server/plugin.js (comms/REST/SSE
         // wiring) and by the editor bundle indirectly via those same channels.
         node.subscribeTree = function (fn) {
             listeners.push(fn);
@@ -171,7 +170,7 @@ module.exports = function (RED) {
         }
 
         // Value write-back (Screen Logic's "Sparkplug Write"/"Sparkplug Write
-        // Multi" nodes, via the public REST endpoint in lib/nexa-plugin.js — a
+        // Multi" nodes, via the public REST endpoint in src/server/plugin.js — a
         // deployed page can't hold this node's own MQTT client directly, only
         // reach it over HTTP). Publishes a DCMD (deviceId given) or NCMD
         // (deviceId falsy — a node-scoped write), the exact same shape/QoS as
@@ -190,7 +189,7 @@ module.exports = function (RED) {
         };
 
         // Manual "Rebirth / Refresh" trigger (sidebar button + REST endpoint,
-        // see lib/nexa-plugin.js) — unlike the automatic trigger below, this
+        // see src/server/plugin.js) — unlike the automatic trigger below, this
         // bypasses the tracker's "already birthed"/cooldown checks entirely: a
         // user explicitly asking for a refresh should always get one, even if
         // this listener already believes everything is up to date. Requests a

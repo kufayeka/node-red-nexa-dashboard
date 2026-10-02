@@ -6,7 +6,7 @@
 // (many SSE connections, many page loads) won't delay flow execution. This
 // is a resource-CONTENTION fix, not a "something was slow" fix — nothing
 // here was measured as blocking before the split (see the header comment on
-// lib/nexa-plugin.js's route registration this replaced).
+// src/server/plugin.js's route registration this replaced).
 //
 // Deliberately plain `http` + hand-rolled routing, not Express — only ~6
 // routes, and adding a framework dependency here wouldn't remove any actual
@@ -14,7 +14,7 @@
 // that doesn't touch Express's own strengths (JSON schema serialization,
 // large route tables) anyway.
 //
-// Protocol with the main thread (lib/nexa-plugin.js), all via
+// Protocol with the main thread (src/server/plugin.js), all via
 // parentPort.postMessage/on("message"):
 //   main -> worker: {type:"project", project:{screens,templates}, componentScriptSrcs, nodeRedPort}
 //                   {type:"sparkplug-delta", serialized}      -- broadcast to SSE clients
@@ -313,7 +313,7 @@ var server = http.createServer(function (req, res) {
         sendJson(res, 200, sparkplugSnapshot); return;
     }
     // Deliberately UNAUTHENTICATED for now — same tradeoff/flag as the route
-    // this replaced in lib/nexa-plugin.js; see that file's own comment.
+    // this replaced in src/server/plugin.js; see that file's own comment.
     if (req.method === "POST" && pathname === RUNTIME_PREFIX + "/_sparkplug-write") {
         handleSparkplugWrite(req, res); return;
     }

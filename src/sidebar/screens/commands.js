@@ -19,7 +19,7 @@ import { openFolderPropertiesDialog } from "../../dialogs/folder-dialog.js";
 import { refreshLogicCanvasIfActive, renderScreenList } from "../screens-panel.js";
 import { renderScreenForm } from "./screen-form.js";
 
-// Deployed screens live on lib/screen-worker.js's own dedicated port
+// Deployed screens live on src/server/workers/screen-worker.js's own dedicated port
 var cachedScreenWorkerPort = null;
 
 function fetchScreenWorkerPort(cb) {

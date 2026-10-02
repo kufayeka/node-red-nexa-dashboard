@@ -1,4 +1,4 @@
-// Image assets for components (the Assets tab; lib/assets.js stores them).
+// Image assets for components (the Assets tab; src/server/assets.js stores them).
 // A prop names one as {asset:name} — bindable like anything else, e.g.
 // {asset:{param1.image}} — or just by its name ("icons/motor-on"), which is
 // what a variable usually holds. assetUrl(value) is what an <img> shows.

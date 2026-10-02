@@ -1,6 +1,6 @@
 // Nexa "Media" components, built into the dashboard: Image.
 // An ES module on the Nexa component SDK (served at nexa-dashboard-media/vendor/,
-// registered by lib/nexa-plugin.js like any component package).
+// registered by src/server/plugin.js like any component package).
 //
 // Image shows an imported asset ({asset:name}, the Assets tab), a URL, or what a
 // binding gives (an asset name or a URL: {param1.image}). A state map switches

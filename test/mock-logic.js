@@ -5,7 +5,7 @@
 // tray or wiring things up (that's what confused "kok pas di-edit udah
 // jalan" was about) — see the big comment on findLogicNode in
 // nexa-plugin.html. Actual execution is now only ever tested against
-// lib/nexa-runtime-client.js (mock-runtime-client.js), which is the ONLY
+// src/runtime/ (mock-runtime-client.js), which is the ONLY
 // place screen.logic ever runs.
 //
 // What THIS file covers instead: multi-select (click/shift-click/marquee)

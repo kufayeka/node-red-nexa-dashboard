@@ -1,5 +1,5 @@
 // Verifies the "Sparkplug Write" / "Sparkplug Write Multi" Logic node
-// execution in lib/nexa-runtime-client.js's runLogicGraph — the write-back
+// execution in src/runtime/'s runLogicGraph — the write-back
 // feature added on top of the read-only Sparkplug binding that already
 // existed. Uses a fake XMLHttpRequest (this file's own sendSparkplugWrite
 // helper is XHR-based, not fetch) to capture outgoing POSTs to

@@ -1,4 +1,4 @@
-// Types (UDT) on a deployed page (src/model/types.js + lib/nexa-runtime-client.js):
+// Types (UDT) on a deployed page (src/model/types.js + src/runtime/):
 // an instance is an app variable of a type; {M101.Speed} (a member with a tag
 // source using the type's params) resolves and updates live, whole or inside an
 // expression; a nested type (a Pump has a Motor) gets the parent's params; a

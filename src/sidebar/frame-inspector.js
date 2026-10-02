@@ -597,7 +597,7 @@ export function renderInstanceInspector(container, comp, template) {
     return true;
 }
 
-// ---- Teleport: drawn in another place of the page (lib/nexa-runtime-client.js applyTeleports) ----
+// ---- Teleport: drawn in another place of the page (src/runtime/ applyTeleports) ----
 // node.teleport = a target's name (a frame's `slot`) or "@page"; frame.slot = its own
 // target name. Only where it is drawn changes: its Logic, params and variables stay.
 function teleportTargets() {

@@ -20,7 +20,7 @@ import { mentionsToken, tokenCss } from "./theme.js";
 // min / max sizes: node.minW / maxW / minH / maxH.
 //
 // The layout itself is plain CSS flexbox / grid, computed here once for the
-// editor AND the deployed page (lib/nexa-model-client.js), as { property:
+// editor AND the deployed page (dist/nexa-model-client.js), as { property:
 // value } maps in kebab-case (fit for jQuery .css() and style.setProperty).
 // The editor reads the resulting boxes back into x / y / w / h (see
 // src/canvas/layout-readback.js) so selection, handles and snapping work on

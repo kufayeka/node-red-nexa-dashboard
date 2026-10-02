@@ -9,7 +9,7 @@
 // is just a "@Path" string reference; the live tag VALUE behind it stays
 // entirely in the Asset Engine's own runtime store, untouched by this).
 // Module-level (not inside the RED-scoped export below) so the runtime
-// page-serving route in lib/nexa-plugin.js — a DIFFERENT file requiring
+// page-serving route in src/server/plugin.js — a DIFFERENT file requiring
 // this one — can reach it via the exported getCurrentProject() below.
 var currentProject = null;
 
@@ -30,7 +30,7 @@ module.exports = function (RED) {
     // a normal Node-RED config-node reference (several nexa-sparkplug
     // instances can exist; this picks one), resolved at runtime via
     // RED.nodes.getNode(this.sparkplugConnection) — see
-    // lib/nexa-plugin.js's getActiveSparkplugNode().
+    // src/server/plugin.js's getActiveSparkplugNode().
     this.sparkplugConnection = config.sparkplugConnection || "";
     currentProject = this;
 

@@ -1,4 +1,4 @@
-// A prop's binding source on a deployed page (lib/nexa-runtime-client.js):
+// A prop's binding source on a deployed page (src/runtime/):
 // Variable, Tag, Message ({msg.*}, filled by an "Update Component" node) and
 // an Expression mixing all three in one text — including a Sparkplug tag
 // INSIDE a text, which must also update live. Same DOM shim / fake SSE as

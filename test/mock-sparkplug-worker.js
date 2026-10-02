@@ -1,4 +1,4 @@
-// Unit test for lib/sparkplug-worker.js — the actual mqtt.connect()/Protobuf
+// Unit test for src/server/workers/sparkplug-worker.js — the actual mqtt.connect()/Protobuf
 // codec boundary that now runs inside a real worker_threads.Worker in
 // production. Run standalone: `node test/mock-sparkplug-worker.js`.
 //
@@ -8,7 +8,7 @@
 // via require.cache (same technique test/mock-nexa-sparkplug-node.js's OLD
 // version used, and asset-engine's test/helpers/fakeMqtt.js still uses) —
 // plus a fake require("worker_threads") providing a controllable
-// parentPort/workerData, since lib/sparkplug-worker.js talks to the outside
+// parentPort/workerData, since src/server/workers/sparkplug-worker.js talks to the outside
 // world exclusively through those, not through any exported function.
 const { EventEmitter } = require("events");
 const assert = require("assert");

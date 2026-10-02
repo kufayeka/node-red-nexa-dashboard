@@ -48,6 +48,7 @@ For people and AI agents alike. The map of the code is [ARCHITECTURE.md](ARCHITE
 - The e2e test that covers the area passes:
   - tags, bindings, IO: `node test/tags-e2e.test.js` in `nexa-component-ui-library` (99 checks);
   - Nexa Link, workers, IO plumbing: `node test/link-e2e.test.js`;
+  - shared variables across pages: `node test/shared-vars-e2e.test.js`;
   - editor UI: an isolated Node-RED e2e with a screenshot you have looked at (`.agents/skills/nexa-testing-and-verification`).
 - Docs updated (§3.5).
 - Never test against the real `data/` userDir. Use an isolated Node-RED on 1899 / 1898 (link 1897).

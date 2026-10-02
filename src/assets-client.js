@@ -1,4 +1,4 @@
-// The editor's side of the image assets (lib/assets.js on the server): load the
+// The editor's side of the image assets (src/server/assets.js on the server): load the
 // list into the SDK (window.NexaSDK.setAssets — every nx-asset picker and Image
 // component follows it), import files, rename, delete. $.ajax, not fetch: the
 // editor's own auth token rides along on it.

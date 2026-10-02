@@ -1,5 +1,5 @@
 'use strict';
-// src/model/theme.js (as lib/nexa-model.js): tokens, semantic tokens light / dark, the
+// src/model/theme.js (as dist/nexa-model.js): tokens, semantic tokens light / dark, the
 // palettes' own tokens and colors.primary, an app's own categories, generated palettes,
 // the CSS variables, {token:…} in props and in a frame's CSS.   node test/model-theme.test.js
 

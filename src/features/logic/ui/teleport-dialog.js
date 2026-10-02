@@ -1,7 +1,7 @@
 import { state, getActiveScreen, markDirty, Tree } from "../../../state.js";
 import { renderLogicCanvas } from "../../../logic/logic-nodes.js";
 
-// The "Teleport" Logic node (lib/nexa-runtime-client.js teleportEl / teleportHome): a node of
+// The "Teleport" Logic node (src/runtime/ teleportEl / teleportHome): a node of
 // this surface drawn in a teleport target (a frame's "teleport target" name) or on the page —
 // or back home, where it is in the tree. Where to: fixed, or msg.payload (a target's name,
 // "@page", or "" / "home"). The msg goes on.

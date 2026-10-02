@@ -5,7 +5,7 @@
 // at the top of each file for exactly what it does and doesn't verify.
 //
 // IMPORTANT: this always extracts a FRESH copy of the editor's bundled
-// <script> from lib/nexa-plugin.html before running the editor-side tests —
+// <script> from dist/nexa-plugin.html before running the editor-side tests —
 // running against a stale extraction after a src/ change is a real mistake
 // this project's own history has hit more than once.
 //

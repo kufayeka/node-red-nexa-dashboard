@@ -1,4 +1,4 @@
-// Pure logic test for lib/sparkplug/sparkplugTree.js — no DOM needed. Run
+// Pure logic test for src/server/sparkplug/sparkplugTree.js — no DOM needed. Run
 // standalone: `node test/mock-sparkplug-tree.js`. See test/run-all.js for
 // the pass/fail convention ("? false" anywhere = a failed assertion,
 // "ALL OK" at the end = every assertion in this file printed "? true").

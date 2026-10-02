@@ -3,7 +3,7 @@
 // and the deployed page's /nexa/_registry.js — whichever runs first creates
 // window.NEXA, the others get the same object back (ensureRegistry is
 // idempotent). This replaces the two hand-kept copies that used to drift
-// apart (src/registry.js vs lib/nexa-registry-client.js).
+// apart (src/registry.js vs dist/nexa-registry-client.js).
 //
 // Plugins may run BEFORE any of those (the editor loads plugin .html files
 // in no guaranteed order), so they talk to a shim and the real registry

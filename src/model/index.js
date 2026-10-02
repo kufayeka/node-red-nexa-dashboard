@@ -1,6 +1,6 @@
-// Entry of lib/nexa-model.js (CommonJS, for lib/screen-worker.js) and of
-// lib/nexa-model-client.js (window.NexaModel, for the deployed page's
-// lib/nexa-runtime-client.js: the frame / auto layout CSS).
+// Entry of dist/nexa-model.js (CommonJS, for src/server/workers/screen-worker.js) and of
+// dist/nexa-model-client.js (window.NexaModel, for the deployed page's
+// src/runtime/: the frame / auto layout CSS).
 export * from "./tree.js";
 export * from "./layout.js";
 export * from "./scope.js";

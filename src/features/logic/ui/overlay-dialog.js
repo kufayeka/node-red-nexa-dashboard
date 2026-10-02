@@ -2,7 +2,7 @@ import { getActiveScreen, markDirty, Tree, Layout } from "../../../state.js";
 import { renderLogicCanvas } from "../../../logic/logic-nodes.js";
 
 // The "Open" / "Close" Logic nodes of a dialog / drawer (a frame with an overlay, see
-// src/model/layout.js overlayOf; lib/nexa-runtime-client.js openOverlay / closeOverlay).
+// src/model/layout.js overlayOf; src/runtime/ openOverlay / closeOverlay).
 //   Open   opens it (on top of any open one); its OUTPUT fires when it closes:
 //          msg.payload = the result, msg.closedBy = backdrop | esc | timer | node
 //   Close  closes it — or, with none chosen, the one on top — with msg.payload as the result

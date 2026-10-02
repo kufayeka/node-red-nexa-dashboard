@@ -3,7 +3,7 @@
 // "MQTT Sparkplug" explorer tab. Deliberately independent of
 // @kufayeka/node-red-asset-engine (which already has its own, richer
 // Sparkplug implementation) — Nexa Dashboard is designed to work standalone,
-// without a hard dependency on the asset engine (see lib/nexa-plugin.js's
+// without a hard dependency on the asset engine (see src/server/plugin.js's
 // own getAssetController escape-hatch comment for why cross-plugin
 // dependencies here are kept loose).
 //

@@ -1,4 +1,4 @@
-// Nexa IO end-to-end: the REAL lib/screen-worker.js in a real worker thread,
+// Nexa IO end-to-end: the REAL src/server/workers/screen-worker.js in a real worker thread,
 // a real WebSocket client (the `ws` package) on /nexa/_io:
 //   open -> opened + layout + FULL frame from the snapshot
 //   sparkplug-delta posted to the worker -> binary frame with the new value
@@ -126,7 +126,7 @@ async function main() {
   b.ws.close();
   a.ws.close();
   await sleep(100);
-  // Same shutdown as lib/nexa-plugin.js onremove: "close" then terminate().
+  // Same shutdown as src/server/plugin.js onremove: "close" then terminate().
   worker.postMessage({ type: "close" });
   await sleep(50);
   await worker.terminate();

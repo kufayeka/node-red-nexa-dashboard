@@ -9,7 +9,7 @@
 // be placed again.
 //
 // Pure functions (no DOM): shared by the editor, the deployed page (through
-// lib/nexa-model-client.js) and the tests.
+// dist/nexa-model-client.js) and the tests.
 
 export var CONTAINER_TYPES = { "@group": true, "@frame": true };
 

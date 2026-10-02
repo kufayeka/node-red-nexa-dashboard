@@ -1,5 +1,5 @@
 'use strict';
-// src/model/breakpoints.js (as lib/nexa-model.js): the app's bands (xs … 3xl), which
+// src/model/breakpoints.js (as dist/nexa-model.js): the app's bands (xs … 3xl), which
 // one a width is in, the design's band (the screen's width), the cascade away from the
 // design, merged object fields, the diff that becomes an override, legacy Tablet / Phone
 // overrides, fallbacks of bound props.   node test/model-breakpoints.test.js

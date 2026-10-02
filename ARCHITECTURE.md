@@ -102,7 +102,7 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 | A Logic node's label / dialog / palette chip | `src/features/logic/<family>/editor.js`, `meta.js` |
 | A page 404 / wrong screen for a URL | `src/model/routes.js` `resolveScreenRoute` (tested in `test/model-routes.test.js`); called by `screen-worker.js` `handleScreenRequest`; on the page: `runtime/features/navigation.js` |
 | Layout / auto layout / slots look wrong | `src/model/layout.js`, `tree.js` (pure, tested in `test/model-*.test.js`); drawn by `runtime/mounting/render.js` and `canvas/component-renderer.js` |
-| A variable doesn't update | `src/model/scope.js`, `runtime/state/variable.js`, `features/logic/variables/` |
+| A variable doesn't update | `src/model/scope.js`, `runtime/state/variable.js`, `features/logic/variables/`; a **shared** one from another page: `runtime/io/frame.js` (`test/shared-vars-e2e.test.js`) |
 | Theme / dark mode | `src/model/theme.js`, `runtime/features/theme.js`, `sidebar/theme-panel.js` |
 | A Request / From Node-RED never arrives | `docs/LINK.md`; `GET /nexa/_link-info` (port null = no channel deployed); `server/link/hub.js` |
 | A component plugin doesn't load ("unknown component") | `screen-worker.js` `renderScreenHtml` (script URLs), then `docs/SDK.md` |
@@ -121,7 +121,10 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 ## 7. Not done yet (structure backlog)
 
 These are known and listed in the order they pay off:
-- Runtime state: `runtime/state.js` and module variables in `features/navigation.js` both hold the current screen.
-- Join has no page implementation (it passes each message on).
-- The Overlay Open node passes msg on right away **and** again when the overlay closes. This was kept as is in the registry move; decide whether the first one is wanted.
-- `var` → `const` / `let`, and comments that still name `lib/` (gone).
+- `var` → `const` / `let`: file by file when a file is touched (CONTRIBUTING §2). Not in bulk: `var` and `let` behave differently in loops with closures.
+
+Done on 2026-10-03:
+- the screen on show has one source (`features/navigation.js` getters). This fixed shared variables set on another page not showing.
+- Join works on the page (`features/logic/control/join-core.js`).
+- Overlay Open passes msg on once, when the overlay closes.
+- comments no longer name `lib/`.

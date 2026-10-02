@@ -1,5 +1,5 @@
-// Verifies lib/nexa-plugin.js's OWN responsibilities around the deployed-
-// screen worker (lib/screen-worker.js) — spawning it with the right initial
+// Verifies src/server/plugin.js's OWN responsibilities around the deployed-
+// screen worker (src/server/workers/screen-worker.js) — spawning it with the right initial
 // data, relaying project/Sparkplug-delta updates to it, and round-tripping
 // its {type:"write-request"} messages through the active Sparkplug
 // connection's own writeMetrics(). The worker's OWN routing/rendering logic
@@ -9,7 +9,7 @@
 const { EventEmitter } = require("events");
 const assert = require("assert");
 
-// lib/nexa-plugin.js resolves "the active Sparkplug node" via the current
+// src/server/plugin.js resolves "the active Sparkplug node" via the current
 // project's own sparkplugConnection field + RED.nodes.getNode(id) (see
 // getActiveSparkplugNode() there) — stub nodes/nexa-project.js's
 // getCurrentProject() BEFORE nexa-plugin.js requires it, so this test

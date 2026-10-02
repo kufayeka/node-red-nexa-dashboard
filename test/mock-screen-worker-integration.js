@@ -1,4 +1,4 @@
-// Real worker_threads.Worker running the real lib/screen-worker.js, driven
+// Real worker_threads.Worker running the real src/server/workers/screen-worker.js, driven
 // over real HTTP — proves the actual thread-spawning/postMessage PLUMBING
 // works, not just the routing logic (already covered, without a real
 // thread, by mock-screen-worker.js). Run standalone:

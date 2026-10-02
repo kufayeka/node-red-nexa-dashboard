@@ -66,7 +66,7 @@ export function refKeysInString(raw) {
 }
 
 var liveCache = {}; // refKey(ref) -> {value, type, isNull, online}
-// Mirrors lib/sparkplug/sparkplugTree.js's own shape exactly (group ->
+// Mirrors src/server/sparkplug/sparkplugTree.js's own shape exactly (group ->
 // edge node -> device -> metric) — duplicated here rather than shared,
 // same as nexa-runtime-client.js already duplicates component-renderer.js's
 // interpolation logic verbatim: this is browser ES-module code bundled by
@@ -362,7 +362,7 @@ export function ensureSparkplugCommsWired() {
     // connection and we'd never get an initial snapshot at all.
     loadSparkplugSnapshot();
     if (window.RED && window.RED.comms && window.RED.comms.subscribe) {
-        // The runtime batches these (lib/sparkplug/deltaBatcher.js) — an
+        // The runtime batches these (src/server/sparkplug/deltaBatcher.js) — an
         // ARRAY of deltas per message; a single delta is still accepted.
         window.RED.comms.subscribe("nexa/sparkplug/delta", function (topic, delta) {
             if (Array.isArray(delta)) delta.forEach(applyDelta);
@@ -384,7 +384,7 @@ export function ensureSparkplugCommsWired() {
     // WebSocket at all — that connection is completely independent of a
     // flow deploy. What actually happens server-side is
     // nodes/nexa-sparkplug.js's node instance gets closed and a BRAND NEW
-    // one created (new empty tree, new mqtt client) — lib/nexa-plugin.js's
+    // one created (new empty tree, new mqtt client) — src/server/plugin.js's
     // wireSparkplugSubscription() picks up that new instance for FUTURE
     // deltas, but the tree already cached here from BEFORE the deploy was
     // never invalidated, so the sidebar kept showing stale data

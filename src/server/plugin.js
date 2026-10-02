@@ -51,7 +51,7 @@ function getActiveSparkplugNode(RED) {
 //
 // Deployed screens are served under this prefix — HTML render, static
 // assets, SSE stream, snapshot, and write-back all now live in
-// lib/screen-worker.js's own dedicated HTTP server/port (see that file's
+// src/server/workers/screen-worker.js's own dedicated HTTP server/port (see that file's
 // header), not here. This constant stays here only because a couple of
 // admin-only conveniences below (the "_screen-port" lookup, log messages)
 // still reference it.
@@ -82,7 +82,7 @@ module.exports = function(RED) {
     modules: ["layout.js"]
   });
 
-  // image assets of the app (the Assets tab), in <userDir>/nexa-assets — see lib/assets.js
+  // image assets of the app (the Assets tab), in <userDir>/nexa-assets — see src/server/assets.js
   const assetStore = createAssetStore(path.join((RED.settings && RED.settings.userDir) || process.cwd(), "nexa-assets"));
 
   RED.plugins.registerPlugin("kufayeka-nexa-dashboard", {
@@ -103,7 +103,7 @@ module.exports = function(RED) {
       // broker settings) — re-wiring only actually happens when the
       // instance in hand has changed. Also the ONLY place that needs to
       // detect a connection swap now (the old per-SSE-connection 3s poll in
-      // lib/screen-worker.js's predecessor is gone — there's one central
+      // src/server/workers/screen-worker.js's predecessor is gone — there's one central
       // subscription here instead of one per browser tab).
       let sparkplugUnsubscribe = null;
       let wiredSparkplugNode = null;
@@ -139,7 +139,7 @@ module.exports = function(RED) {
           });
         }
         if (!sparkplugNode) return;
-        // Editor copy is batched (see lib/sparkplug/deltaBatcher.js) and
+        // Editor copy is batched (see src/server/sparkplug/deltaBatcher.js) and
         // published as an ARRAY of deltas; the screen worker below still
         // gets every delta immediately, so deployed screens stay real-time.
         const editorBatcher = createDeltaBatcher(function (batch) {
@@ -157,7 +157,7 @@ module.exports = function(RED) {
       }
       RED.events.on("flows:started", wireSparkplugSubscription);
 
-      // Throttled full-snapshot refresh so lib/screen-worker.js's one-shot
+      // Throttled full-snapshot refresh so src/server/workers/screen-worker.js's one-shot
       // "_sparkplug-snapshot" GET (served to a freshly-opened tab, before it
       // opens SSE) doesn't drift far from live state under continuous
       // updates — without re-serializing the whole tree on every single
@@ -169,7 +169,7 @@ module.exports = function(RED) {
       }, 2000);
 
       // --- Deployed-screen HTTP server, in its own worker thread + its own
-      // dedicated port (see lib/screen-worker.js's header for why: CPU-
+      // dedicated port (see src/server/workers/screen-worker.js's header for why: CPU-
       // contention isolation between Node-RED flow execution and dashboard-
       // serving, not a "something was slow" fix — nothing here was measured
       // as blocking before this split).
@@ -210,7 +210,7 @@ module.exports = function(RED) {
           // never calls window.NEXA.registerComponent). The worker uses this
           // to rewrite those specific srcs into absolute URLs pointing back
           // at Node-RED's real port, same hostname the browser already used
-          // to reach it (see lib/screen-worker.js's renderScreenHtml).
+          // to reach it (see src/server/workers/screen-worker.js's renderScreenHtml).
           nodeRedPort: (RED.settings && RED.settings.uiPort) || 1880,
           sparkplugSnapshot: initialSparkplugNode ? initialSparkplugNode.getSnapshot() : {},
           assetsDir: assetStore.dir,
@@ -270,10 +270,10 @@ module.exports = function(RED) {
         });
       });
 
-      // SDK bundles for the EDITOR (lib/nexa-plugin.html loads them via plain
+      // SDK bundles for the EDITOR (dist/nexa-plugin.html loads them via plain
       // <script src>s — see build.js and src/sdk/runtime-entry.js for why
       // they're not folded into the editor's own bundle). Deployed pages get
-      // the SDK from lib/screen-worker.js's own "/nexa/_sdk.js" route instead.
+      // the SDK from src/server/workers/screen-worker.js's own "/nexa/_sdk.js" route instead.
       // The module component plugins import: <root>/nexa-sdk/nexa-component-sdk.js,
       // on BOTH the editor (httpAdmin) and deployed pages (httpNode) so a
       // plugin served from <root>/<plugin>/vendor/ reaches it with the same
@@ -302,7 +302,7 @@ module.exports = function(RED) {
           res.sendFile(path.join(__dirname, "..", "..", "dist", "nexa-sdk-kit.bundle.js"));
         });
 
-        // Deployed screens now live on lib/screen-worker.js's own dedicated
+        // Deployed screens now live on src/server/workers/screen-worker.js's own dedicated
         // port, not this admin server's — the editor's "Open Screen" button
         // (src/sidebar/screens-panel.js) needs to know which port to build
         // the URL against, since it can't just assume "same origin as the
@@ -369,7 +369,7 @@ module.exports = function(RED) {
       }
 
       // Deployed-page runtime (HTML render, static assets, SSE, snapshot,
-      // write-back) all now lives in lib/screen-worker.js's own worker
+      // write-back) all now lives in src/server/workers/screen-worker.js's own worker
       // thread + dedicated port, wired above (startScreenWorker() /
       // wireSparkplugSubscription()) — see that file's header for the full
       // route list and protocol.

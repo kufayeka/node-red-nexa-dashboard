@@ -1,7 +1,7 @@
 import { markDirty, getActiveScreen, Tree, Layout, state } from "../../../state.js";
 import { renderLogicCanvas } from "../../../logic/logic-nodes.js";
 
-// The "Populate" Logic node (the repeater, see lib/nexa-runtime-client.js
+// The "Populate" Logic node (the repeater, see src/runtime/
 // runPopulate): a template repeated, one copy per item of an array, into the
 // frame(s) of the Layout node(s) it is wired to. Each copy gets the item in the
 // param the template declares, and `index`; its own Logic runs per copy, and an

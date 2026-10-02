@@ -1,11 +1,11 @@
-// Nexa IO from the PAGE side: the real lib/nexa-runtime-client.js (+ the real
-// buttons plugin) running against the real lib/screen-worker.js over a real
+// Nexa IO from the PAGE side: the real src/runtime/ (+ the real
+// buttons plugin) running against the real src/server/workers/screen-worker.js over a real
 // WebSocket (Node's built-in WebSocket standing in for the browser's).
 //   - page subscribes only to the tags its components are bound to
 //   - a tag change reaches the bound component
 //   - a latch click writes over IO (explicit) and gets acked
 //   - worker dies -> watchdog marks values "???" (no frozen stale values)
-// Run: node test/mock-io-runtime-client.js lib/nexa-registry-client.js lib/nexa-runtime-client.js
+// Run: node test/mock-io-runtime-client.js dist/nexa-registry-client.js src/runtime/
 const fs = require("fs");
 const path = require("path");
 const { Worker } = require("worker_threads");

@@ -121,7 +121,7 @@ console.log('a render() that throws is caught, shows error text, no crash?', /re
 // --- Logic execution on a DEPLOYED page — this is the actual bug report
 // this test was added for: the whole screen.logic graph (onload/ui-event/
 // function/ui-update/debug) was only ever wired up in the EDITOR
-// (lib/nexa-plugin.html); a deployed page's console showed the component's
+// (dist/nexa-plugin.html); a deployed page's console showed the component's
 // own "[nexa] component event" log line (proving ctx.emit fired) but
 // NOTHING downstream ever ran, because nexa-runtime-client.js never called
 // fireUiEvent/fireLifecycle at all. This section proves the ported engine
