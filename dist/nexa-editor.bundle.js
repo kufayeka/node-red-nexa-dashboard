@@ -35824,13 +35824,23 @@
     buildScreensFlowsTreeNodes: () => buildScreensFlowsTreeNodes,
     collapseAllScreensTree: () => collapseAllScreensTree,
     expandAllScreensTree: () => expandAllScreensTree,
+    isFolderDescendant: () => isFolderDescendant2,
+    onScreensFlowsAction: () => onScreensFlowsAction,
+    onScreensFlowsMove: () => onScreensFlowsMove,
+    onScreensFlowsOpen: () => onScreensFlowsOpen,
+    onScreensFlowsRename: () => onScreensFlowsRename,
+    onScreensFlowsSelect: () => onScreensFlowsSelect,
     openFlowInBrowser: () => openFlowInBrowser,
     openPropertiesDialogForId: () => openPropertiesDialogForId,
     openScreenInBrowser: () => openScreenInBrowser,
     refreshLogicCanvasIfActive: () => refreshLogicCanvasIfActive,
     removeScreen: () => removeScreen,
+    renderFlowForm: () => renderFlowForm,
+    renderFolderForm: () => renderFolderForm,
     renderScreenForm: () => renderScreenForm,
     renderScreenList: () => renderScreenList,
+    renderTemplateParamPropertiesForm: () => renderTemplateParamPropertiesForm,
+    renderVariablePropertiesForm: () => renderVariablePropertiesForm,
     selectComponentFromTree: () => selectComponentFromTree,
     selectFlowFromScreensPanel: () => selectFlowFromScreensPanel,
     selectFolderFromScreensPanel: () => selectFolderFromScreensPanel,
@@ -37598,244 +37608,7 @@
     }
   }
 
-  // src/sidebar/screens-panel.js
-  function buildComponentTreeRows(surface, list, orphan) {
-    return (list || []).slice().reverse().map(function(node) {
-      var vis = node.visibility || "show";
-      var eff = orphan ? vis : tree_exports && tree_exports.effectiveVisibility ? tree_exports.effectiveVisibility(surface, node.id) : vis;
-      var isCont = tree_exports && tree_exports.isContainer ? tree_exports.isContainer(node) : false;
-      var kids2 = isCont ? tree_exports.kids(node) : [];
-      return {
-        id: "screen-comp:" + surface.id + ":" + node.id,
-        compId: node.id,
-        surfaceId: surface.id,
-        label: nodeLabel(node),
-        title: nodeLabel(node) + " \u2014 " + node.type,
-        icon: nodeIcon(node),
-        container: isCont,
-        badge: isCont ? String(kids2.length) : "",
-        muted: eff !== "show" || !!node.slotUnused,
-        renamable: false,
-        children: isCont ? buildComponentTreeRows(surface, kids2, orphan) : []
-      };
-    });
-  }
-  function refreshLogicCanvasIfActive() {
-    if (state.activeCanvasTab === "logic") renderLogicCanvas();
-  }
-  var cachedScreenWorkerPort = null;
-  function fetchScreenWorkerPort(cb) {
-    if (cachedScreenWorkerPort !== null) {
-      cb(cachedScreenWorkerPort);
-      return;
-    }
-    if (!window.$ || typeof window.$.getJSON !== "function") {
-      cb(null);
-      return;
-    }
-    window.$.getJSON("nexa-dashboard/_screen-port", function(data) {
-      cachedScreenWorkerPort = data && data.port || null;
-      cb(cachedScreenWorkerPort);
-    }).fail(function() {
-      cb(null);
-    });
-  }
-  function openScreenInBrowser(screen) {
-    var tab = window.open("", "_blank");
-    fetchScreenWorkerPort(function(port) {
-      var cleanPath = (screen.path || "").replace(/^\/+/, "");
-      var hostname = window.location.hostname || "localhost";
-      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
-      if (tab) tab.location.href = fullUrl;
-    });
-  }
-  function openFlowInBrowser(flow) {
-    var tab = window.open("", "_blank");
-    fetchScreenWorkerPort(function(port) {
-      var cleanEndpoint = (flow.endpoint || "").replace(/^\/+/, "");
-      var hostname = window.location.hostname || "localhost";
-      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanEndpoint;
-      if (tab) tab.location.href = fullUrl;
-    });
-  }
-  function expandAllScreensTree() {
-    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
-      state.screensFlowsTreeEl.setAllCollapsed(false);
-    }
-  }
-  function collapseAllScreensTree() {
-    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
-      state.screensFlowsTreeEl.setAllCollapsed(true);
-    }
-  }
-  function selectComponentFromTree(surfId, compId, additive) {
-    var scr = state.screens.find(function(s) {
-      return s.id === surfId;
-    });
-    var tmpl = !scr && findTemplate(surfId);
-    if (!scr && !tmpl) return;
-    if (!state.trayContent && window.RED && window.RED.actions) {
-      window.RED.actions.invoke("nexa:open-pages-editor");
-    }
-    if (scr) {
-      if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
-        selectScreenFromSidebar(surfId);
-      }
-    } else {
-      if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
-        selectTemplateFromScreensPanel(surfId);
-      }
-    }
-    if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
-      state.canvasTabs.activateTab("ui");
-    }
-    var screen = getActiveScreen();
-    var loc = screen && tree_exports.locate(screen, compId);
-    if (loc && !loc.orphan) {
-      var hidden = tree_exports.ancestors(screen, compId).concat([loc.node]).filter(function(n) {
-        return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
-      });
-      if (hidden.length) {
-        hidden.forEach(function(n) {
-          state.overlayPreview[n.id] = true;
-        });
-        renderActiveScreen({ keepPanel: true });
-      }
-      if (typeof revealSlotsOf === "function") {
-        revealSlotsOf(compId);
-      }
-      if (additive) {
-        if (isSelected(compId)) selectMultiple(state.selectedIds.filter(function(cid) {
-          return cid !== compId;
-        }), { keepSidebarTab: true });
-        else selectMultiple(state.selectedIds.concat([compId]), { keepSidebarTab: true });
-      } else {
-        selectOnly(compId, { keepSidebarTab: true });
-      }
-    }
-    if (state.screensFlowsTreeEl) {
-      state.screensFlowsTreeEl.selected = ["screen-comp:" + surfId + ":" + compId];
-    }
-  }
-  function openPropertiesDialogForId(id2) {
-    if (!id2) return;
-    if (id2.startsWith("screen-comp:")) {
-      var parts = id2.split(":");
-      var surfId = parts[1];
-      var compId = parts[2];
-      selectComponentFromTree(surfId, compId, false);
-      return;
-    }
-    if (id2.startsWith("screen-var:")) {
-      var parts = id2.split(":");
-      var sId = parts[1];
-      var varId = parts[2];
-      var s = state.screens.find(function(sc) {
-        return sc.id === sId;
-      });
-      var v = s && (s.variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v && s) openScreenVariablePropertiesDialog(v, s);
-      return;
-    }
-    if (id2.startsWith("template-var:")) {
-      var parts = id2.split(":");
-      var tId = parts[1];
-      var varId = parts[2];
-      var t2 = findTemplate(tId);
-      var v = t2 && (t2.variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v && t2) openTemplateVariablePropertiesDialog(v, t2);
-      return;
-    }
-    if (id2.startsWith("template-param:")) {
-      var parts = id2.split(":");
-      var tId = parts[1];
-      var paramId = parts[2];
-      var t2 = findTemplate(tId);
-      var p = t2 && (t2.params || []).find(function(x) {
-        return x.id === paramId;
-      });
-      if (p && t2) openTemplateParamPropertiesDialog(p, t2);
-      return;
-    }
-    if (id2.startsWith("app-var:")) {
-      var varId = id2.substring("app-var:".length);
-      var app2 = getApp();
-      var v = (app2.variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v) openAppVariablePropertiesDialog(v);
-      return;
-    }
-    if (id2.startsWith("shared-var:")) {
-      var varId = id2.substring("shared-var:".length);
-      var app2 = getApp();
-      var v = (app2.sharedVariables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v) openSharedVariablePropertiesDialog(v);
-      return;
-    }
-    var screen = state.screens.find(function(sc) {
-      return sc.id === id2;
-    });
-    if (screen) {
-      openScreenPropertiesDialog(screen);
-      return;
-    }
-    var template = findTemplate(id2);
-    if (template) {
-      if (template.kind === "component") {
-        openComponentTemplatePropertiesDialog(template);
-      } else {
-        openTemplatePropertiesDialog(template);
-      }
-      return;
-    }
-    var flow = findFlow(id2);
-    if (flow) {
-      openFlowPropertiesDialog(flow);
-      return;
-    }
-    var folder = findFolder(id2);
-    if (folder) {
-      openFolderPropertiesDialog(folder);
-      return;
-    }
-  }
-  function addAppVariableFromSidebar() {
-    var app2 = getApp();
-    app2.variables = app2.variables || [];
-    var newVar = { id: genId(), name: "appVar" + (app2.variables.length + 1), type: "string", defaultValue: "", persist: "none" };
-    app2.variables.push(newVar);
-    state.editingMode = "app-variable";
-    state.activeAppVariableId = newVar.id;
-    markDirty();
-    renderScreenList();
-    renderScreenForm();
-    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
-      state.screensFlowsTreeEl.reveal("app-var:" + newVar.id);
-    }
-    openAppVariablePropertiesDialog(newVar);
-  }
-  function addSharedVariableFromSidebar() {
-    var app2 = getApp();
-    app2.sharedVariables = app2.sharedVariables || [];
-    var newVar = { id: genId(), name: "sharedVar" + (app2.sharedVariables.length + 1), type: "string", defaultValue: "" };
-    app2.sharedVariables.push(newVar);
-    state.editingMode = "shared-variable";
-    state.activeSharedVariableId = newVar.id;
-    markDirty();
-    renderScreenList();
-    renderScreenForm();
-    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
-      state.screensFlowsTreeEl.reveal("shared-var:" + newVar.id);
-    }
-    openSharedVariablePropertiesDialog(newVar);
-  }
+  // src/sidebar/screens/tree-events.js
   function reorderInArray(arr, itemId, targetId, position) {
     var fromIdx = arr.findIndex(function(x) {
       return x.id === itemId;
@@ -37866,386 +37639,6 @@
       cur2 = findFolder(cur2.parentId);
     }
     return false;
-  }
-  function buildScreensFlowsTreeNodes() {
-    var folderNodes = {};
-    state.folders.forEach(function(f) {
-      folderNodes[f.id] = {
-        id: f.id,
-        label: f.name,
-        icon: "fa fa-folder-o",
-        container: true,
-        type: "folder",
-        children: [],
-        actions: [
-          { id: "edit-props", icon: "fa fa-sliders", title: "Group Properties" },
-          { id: "add-screen-in", icon: "fa fa-plus", title: "Add item in group" },
-          { id: "delete", icon: "fa fa-trash-o", title: "Delete group" }
-        ]
-      };
-    });
-    var screensSection = {
-      id: "section:screens",
-      label: "Screens",
-      icon: "fa fa-desktop",
-      container: true,
-      type: "section",
-      badge: String(state.screens.length),
-      actions: [
-        { id: "add-screen", icon: "fa fa-plus", title: "Add Screen" },
-        { id: "add-group-screen", icon: "fa fa-folder-o", title: "Add Group" }
-      ],
-      children: []
-    };
-    var compositeTemplates = state.templates.filter(function(t2) {
-      return t2.kind !== "component";
-    });
-    var componentTemplates = state.templates.filter(function(t2) {
-      return t2.kind === "component";
-    });
-    var compositeGroup = {
-      id: "section:composite-templates",
-      label: "Composite Templates",
-      icon: "fa fa-cubes",
-      container: true,
-      type: "template-category",
-      badge: String(compositeTemplates.length),
-      actions: [
-        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
-        { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
-      ],
-      children: []
-    };
-    var componentGroup = {
-      id: "section:component-templates",
-      label: "Component Templates",
-      icon: "fa fa-puzzle-piece",
-      container: true,
-      type: "template-category",
-      badge: String(componentTemplates.length),
-      actions: [
-        { id: "add-component-template", icon: "fa fa-plus", title: "Add Component Template" }
-      ],
-      children: []
-    };
-    var templatesSection = {
-      id: "section:templates",
-      label: "Templates",
-      icon: "fa fa-clone",
-      container: true,
-      type: "section",
-      badge: String(state.templates.length),
-      actions: [
-        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
-        { id: "add-component-template", icon: "fa fa-puzzle-piece", title: "Add Component Template" }
-      ],
-      children: [compositeGroup, componentGroup]
-    };
-    var flowsSection = {
-      id: "section:flows",
-      label: "Flows",
-      icon: "fa fa-code-fork",
-      container: true,
-      type: "section",
-      badge: String(state.flows.length),
-      actions: [
-        { id: "add-flow", icon: "fa fa-plus", title: "Add Flow" },
-        { id: "add-group-flow", icon: "fa fa-folder-o", title: "Add Group" }
-      ],
-      children: []
-    };
-    function placeInScreen(itemNode, parentId) {
-      if (parentId && folderNodes[parentId]) {
-        folderNodes[parentId].children.push(itemNode);
-      } else {
-        screensSection.children.push(itemNode);
-      }
-    }
-    function placeInTemplate(itemNode, parentId, kind) {
-      if (parentId && folderNodes[parentId]) {
-        folderNodes[parentId].children.push(itemNode);
-      } else if (kind === "component") {
-        componentGroup.children.push(itemNode);
-      } else {
-        compositeGroup.children.push(itemNode);
-      }
-    }
-    function placeInFlow(itemNode, parentId) {
-      if (parentId && folderNodes[parentId]) {
-        folderNodes[parentId].children.push(itemNode);
-      } else {
-        flowsSection.children.push(itemNode);
-      }
-    }
-    state.screens.forEach(function(s) {
-      var compRows = buildComponentTreeRows(s, s.components || [], false);
-      if (s.orphans && s.orphans.length) {
-        compRows.push({
-          id: "screen-unplaced-group:" + s.id,
-          surfaceId: s.id,
-          label: "Unplaced",
-          icon: "fa fa-inbox",
-          container: true,
-          badge: String(s.orphans.length),
-          children: buildComponentTreeRows(s, s.orphans, true)
-        });
-      }
-      var compsGroup = {
-        id: "screen-comps-group:" + s.id,
-        surfaceId: s.id,
-        label: "Components",
-        icon: "fa fa-cubes",
-        type: "screen-comps-group",
-        container: true,
-        badge: String((s.components || []).length + (s.orphans ? s.orphans.length : 0)),
-        children: compRows
-      };
-      var screenVars = (s.variables || []).map(function(v) {
-        return {
-          id: "screen-var:" + s.id + ":" + v.id,
-          label: v.name,
-          title: v.name + " (" + (v.type || "string") + ")",
-          icon: "fa fa-tag",
-          type: "screen-variable",
-          actions: [
-            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
-            { id: "delete-screen-var", icon: "fa fa-trash-o", title: "Delete variable" }
-          ]
-        };
-      });
-      var varsGroup = {
-        id: "screen-vars-group:" + s.id,
-        label: "Variables",
-        icon: "fa fa-tags",
-        type: "screen-vars-group",
-        container: true,
-        badge: String(screenVars.length),
-        actions: [
-          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" }
-        ],
-        children: screenVars
-      };
-      var node = {
-        id: s.id,
-        label: s.name,
-        title: s.name + " (" + (s.path || "/screen") + ")",
-        icon: "fa fa-desktop",
-        type: "screen",
-        container: true,
-        children: [compsGroup, varsGroup],
-        muted: !!s.disabled,
-        actions: [
-          { id: "edit-props", icon: "fa fa-sliders", title: "Screen Properties" },
-          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
-          { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
-          { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
-        ]
-      };
-      if (state.screens.length > 1) {
-        node.actions.push({ id: "delete", icon: "fa fa-trash-o", title: "Delete screen" });
-      }
-      placeInScreen(node, s.parentId);
-    });
-    state.templates.forEach(function(t2) {
-      t2.variables = t2.variables || [];
-      t2.params = t2.params || [];
-      var tmplCompRows = buildComponentTreeRows(t2, t2.components || [], false);
-      if (t2.orphans && t2.orphans.length) {
-        tmplCompRows.push({
-          id: "template-unplaced-group:" + t2.id,
-          surfaceId: t2.id,
-          label: "Unplaced",
-          icon: "fa fa-inbox",
-          container: true,
-          badge: String(t2.orphans.length),
-          children: buildComponentTreeRows(t2, t2.orphans, true)
-        });
-      }
-      var tmplCompsGroup = {
-        id: "template-comps-group:" + t2.id,
-        surfaceId: t2.id,
-        label: "Components",
-        icon: "fa fa-cubes",
-        type: "template-comps-group",
-        container: true,
-        badge: String((t2.components || []).length + (t2.orphans ? t2.orphans.length : 0)),
-        children: tmplCompRows
-      };
-      var tmplVars = (t2.variables || []).map(function(v) {
-        return {
-          id: "template-var:" + t2.id + ":" + v.id,
-          label: v.name,
-          title: v.name + " (" + (v.type || "string") + ")",
-          icon: "fa fa-tag",
-          type: "template-variable",
-          actions: [
-            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
-            { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
-          ]
-        };
-      });
-      var varsGroup = {
-        id: "template-vars-group:" + t2.id,
-        label: "Variables",
-        icon: "fa fa-tags",
-        type: "template-vars-group",
-        container: true,
-        badge: String(tmplVars.length),
-        actions: [
-          { id: "add-template-var", icon: "fa fa-plus", title: "Add Variable" }
-        ],
-        children: tmplVars
-      };
-      var tmplParams = (t2.params || []).map(function(p) {
-        return {
-          id: "template-param:" + t2.id + ":" + p.id,
-          label: p.name,
-          title: (p.label ? p.label + " (" + p.name + ")" : p.name) + " (" + (p.type || "string") + ")",
-          icon: "fa fa-sliders",
-          type: "template-param",
-          actions: [
-            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Parameter" },
-            { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
-          ]
-        };
-      });
-      var paramsGroup = {
-        id: "template-params-group:" + t2.id,
-        label: "Parameters",
-        icon: "fa fa-sliders",
-        type: "template-params-group",
-        container: true,
-        badge: String(tmplParams.length),
-        actions: [
-          { id: "add-template-param", icon: "fa fa-plus", title: "Add Parameter" }
-        ],
-        children: tmplParams
-      };
-      var node = {
-        id: t2.id,
-        label: t2.name,
-        title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
-        icon: t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
-        type: "template",
-        container: true,
-        children: t2.kind === "component" ? [] : [tmplCompsGroup, varsGroup, paramsGroup],
-        actions: [
-          { id: "edit-props", icon: "fa fa-sliders", title: t2.kind === "component" ? "Component Template Properties" : "Template Properties" },
-          { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
-          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
-          { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
-        ]
-      };
-      placeInTemplate(node, t2.parentId, t2.kind);
-    });
-    state.flows.forEach(function(fl) {
-      var isDef = !!fl.isDefault;
-      var node = {
-        id: fl.id,
-        label: fl.name + (isDef ? " \u2605" : ""),
-        title: fl.name + (isDef ? " [Default Flow]" : "") + " (" + (fl.endpoint || "/flow") + ")",
-        icon: "fa fa-code-fork",
-        type: "flow",
-        actions: [
-          { id: "edit-props", icon: "fa fa-sliders", title: "Flow Properties" },
-          { id: "open", icon: "fa fa-external-link", title: "Open flow in new tab" },
-          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
-          { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
-        ]
-      };
-      placeInFlow(node, fl.parentId);
-    });
-    var app2 = getApp();
-    var appVars = app2.variables || [];
-    var appVarsSection = {
-      id: "section:app-variables",
-      label: "App Variables",
-      icon: "fa fa-globe",
-      container: true,
-      type: "section",
-      badge: String(appVars.length),
-      actions: [
-        { id: "add-app-var", icon: "fa fa-plus", title: "Add App Variable" }
-      ],
-      children: appVars.map(function(v) {
-        return {
-          id: "app-var:" + v.id,
-          label: v.name,
-          title: v.name + " (" + (v.type || "string") + (v.persist && v.persist !== "none" ? ", " + v.persist : "") + ")",
-          icon: "fa fa-cube",
-          type: "app-variable",
-          actions: [
-            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
-            { id: "delete-app-var", icon: "fa fa-trash-o", title: "Delete variable" }
-          ]
-        };
-      })
-    };
-    var sharedVars = app2.sharedVariables || [];
-    var sharedVarsSection = {
-      id: "section:shared-variables",
-      label: "Shared Variables (Realtime Server)",
-      icon: "fa fa-refresh",
-      container: true,
-      type: "section",
-      badge: String(sharedVars.length),
-      actions: [
-        { id: "add-shared-var", icon: "fa fa-plus", title: "Add Shared Variable" }
-      ],
-      children: sharedVars.map(function(v) {
-        return {
-          id: "shared-var:" + v.id,
-          label: v.name,
-          title: v.name + " (" + (v.type || "string") + " [realtime nexa io protocol])",
-          icon: "fa fa-database",
-          type: "shared-variable",
-          actions: [
-            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
-            { id: "delete-shared-var", icon: "fa fa-trash-o", title: "Delete variable" }
-          ]
-        };
-      })
-    };
-    var screenFolderList = [], templateFolderList = [], flowFolderList = [];
-    state.folders.forEach(function(f) {
-      var node = folderNodes[f.id];
-      if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant2(f.id, f.parentId)) {
-        folderNodes[f.parentId].children.push(node);
-      } else if (f.parentId === "section:templates" || f.category === "template") {
-        templateFolderList.push(node);
-      } else if (f.parentId === "section:flows" || f.category === "flow") {
-        flowFolderList.push(node);
-      } else if (f.parentId === "section:screens" || f.category === "screen") {
-        screenFolderList.push(node);
-      } else {
-        var hasTemplates = state.templates.some(function(t2) {
-          return t2.parentId === f.id;
-        });
-        var hasFlows = state.flows.some(function(fl) {
-          return fl.parentId === f.id;
-        });
-        if (hasTemplates) {
-          f.category = "template";
-          templateFolderList.push(node);
-        } else if (hasFlows) {
-          f.category = "flow";
-          flowFolderList.push(node);
-        } else {
-          f.category = "screen";
-          screenFolderList.push(node);
-        }
-      }
-    });
-    screensSection.children = screenFolderList.concat(screensSection.children);
-    templatesSection.children = templateFolderList.concat(templatesSection.children);
-    flowsSection.children = flowFolderList.concat(flowsSection.children);
-    Object.keys(folderNodes).forEach(function(fid) {
-      folderNodes[fid].badge = String(folderNodes[fid].children.length);
-    });
-    screensSection.badge = String(state.screens.length);
-    templatesSection.badge = String(state.templates.length);
-    flowsSection.badge = String(state.flows.length);
-    return [screensSection, templatesSection, flowsSection, appVarsSection, sharedVarsSection];
   }
   function onScreensFlowsSelect(e) {
     var id2 = e.detail.id;
@@ -38438,388 +37831,6 @@
       openPropertiesDialogForId(id2);
     }
   }
-  function onScreensFlowsAction(e) {
-    var id2 = e.detail.id;
-    var action = e.detail.action;
-    if (action === "edit-props") {
-      openPropertiesDialogForId(id2);
-      return;
-    }
-    if (action === "add-screen") {
-      addScreenFromSidebar({ parentId: null });
-      return;
-    }
-    if (action === "add-template" || action === "add-composite-template") {
-      addTemplateFromScreensPanel({ parentId: null, kind: "composite" });
-      return;
-    }
-    if (action === "add-component-template") {
-      addTemplateFromScreensPanel({ parentId: null, kind: "component" });
-      return;
-    }
-    if (action === "add-flow") {
-      addFlowFromSidebar({ parentId: null });
-      return;
-    }
-    if (action === "add-group-screen") {
-      addGroupFromSidebar({ category: "screen", parentId: null });
-      return;
-    }
-    if (action === "add-group-template") {
-      addGroupFromSidebar({ category: "template", parentId: null });
-      return;
-    }
-    if (action === "add-group-flow") {
-      addGroupFromSidebar({ category: "flow", parentId: null });
-      return;
-    }
-    if (action === "add-app-var") {
-      addAppVariableFromSidebar();
-      return;
-    }
-    if (action === "add-shared-var") {
-      addSharedVariableFromSidebar();
-      return;
-    }
-    if (action === "add-screen-var") {
-      var sId = id2.startsWith("screen-vars-group:") ? id2.substring("screen-vars-group:".length) : id2;
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === sId;
-      });
-      if (s) {
-        s.variables = s.variables || [];
-        var newVar = { id: genId(), name: "var" + (s.variables.length + 1), type: "string", defaultValue: "" };
-        s.variables.push(newVar);
-        state.editingMode = "screen-variable";
-        state.activeScreenId = s.id;
-        state.activeScreenVariableId = newVar.id;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
-          state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
-        }
-        openScreenVariablePropertiesDialog(newVar, s);
-        return;
-      }
-    }
-    if (action === "add-template-var") {
-      var tId = id2.startsWith("template-vars-group:") ? id2.substring("template-vars-group:".length) : id2;
-      var t2 = findTemplate(tId);
-      if (t2) {
-        t2.variables = t2.variables || [];
-        var newVar = { id: genId(), name: "var" + (t2.variables.length + 1), type: "string", defaultValue: "" };
-        t2.variables.push(newVar);
-        state.activeTemplateId = t2.id;
-        state.editingMode = "template-variable";
-        state.activeTemplateVariableId = newVar.id;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
-          state.screensFlowsTreeEl.reveal("template-var:" + t2.id + ":" + newVar.id);
-        }
-        openTemplateVariablePropertiesDialog(newVar, t2);
-        return;
-      }
-    }
-    if (action === "delete-template-var") {
-      var parts = id2.split(":");
-      var tId = parts[1];
-      var varId = parts[2];
-      var t2 = findTemplate(tId);
-      if (t2 && t2.variables) {
-        t2.variables = t2.variables.filter(function(v) {
-          return v.id !== varId;
-        });
-        if (state.activeTemplateVariableId === varId) {
-          state.activeTemplateVariableId = null;
-          state.editingMode = "template";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    }
-    if (action === "add-template-param") {
-      var tId = id2.startsWith("template-params-group:") ? id2.substring("template-params-group:".length) : id2;
-      var t2 = findTemplate(tId);
-      if (t2) {
-        t2.params = t2.params || [];
-        var pName = "param" + (t2.params.length + 1);
-        var newParam = { id: genId(), name: pName, label: pName, type: "string", defaultValue: "" };
-        t2.params.push(newParam);
-        state.activeTemplateId = t2.id;
-        state.editingMode = "template-param";
-        state.activeTemplateParamId = newParam.id;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
-          state.screensFlowsTreeEl.reveal("template-param:" + t2.id + ":" + newParam.id);
-        }
-        openTemplateParamPropertiesDialog(newParam, t2);
-        return;
-      }
-    }
-    if (action === "delete-template-param") {
-      var parts = id2.split(":");
-      var tId = parts[1];
-      var paramId = parts[2];
-      var t2 = findTemplate(tId);
-      if (t2 && t2.params) {
-        t2.params = t2.params.filter(function(p) {
-          return p.id !== paramId;
-        });
-        if (state.activeTemplateParamId === paramId) {
-          state.activeTemplateParamId = null;
-          state.editingMode = "template";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    }
-    if (action === "delete-app-var") {
-      var varId = id2.startsWith("app-var:") ? id2.substring("app-var:".length) : id2;
-      var app2 = getApp();
-      if (app2 && app2.variables) {
-        app2.variables = app2.variables.filter(function(v) {
-          return v.id !== varId;
-        });
-        if (state.activeAppVariableId === varId) {
-          state.activeAppVariableId = null;
-          state.editingMode = "screen";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    }
-    if (action === "delete-shared-var") {
-      var varId = id2.startsWith("shared-var:") ? id2.substring("shared-var:".length) : id2;
-      var app2 = getApp();
-      if (app2 && app2.sharedVariables) {
-        app2.sharedVariables = app2.sharedVariables.filter(function(v) {
-          return v.id !== varId;
-        });
-        if (state.activeSharedVariableId === varId) {
-          state.activeSharedVariableId = null;
-          state.editingMode = "screen";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    }
-    if (action === "delete-screen-var") {
-      var parts = id2.split(":");
-      var screenId = parts[1];
-      var varId = parts[2];
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === screenId;
-      });
-      if (s && s.variables) {
-        s.variables = s.variables.filter(function(v) {
-          return v.id !== varId;
-        });
-        if (state.activeScreenVariableId === varId) {
-          state.activeScreenVariableId = null;
-          state.editingMode = "screen";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    }
-    if (action === "open") {
-      var fl = findFlow(id2);
-      if (fl) {
-        openFlowInBrowser(fl);
-        return;
-      }
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === id2;
-      });
-      if (s) openScreenInBrowser(s);
-    } else if (action === "convert") {
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === id2;
-      });
-      if (s) {
-        var t2 = convertScreenToTemplate(s.id);
-        markDirty();
-        selectTemplateFromScreensPanel(t2.id);
-        return;
-      }
-      var tmpl = findTemplate(id2);
-      if (tmpl) {
-        var sc = convertTemplateToScreen(tmpl.id);
-        markDirty();
-        selectScreenFromSidebar(sc.id);
-        return;
-      }
-    } else if (action === "duplicate") {
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === id2;
-      });
-      if (s) {
-        var copy = duplicateScreen(s.id);
-        markDirty();
-        selectScreenFromSidebar(copy.id);
-        return;
-      }
-      var tmpl = findTemplate(id2);
-      if (tmpl) {
-        var copyT = duplicateTemplate(tmpl.id);
-        markDirty();
-        selectTemplateFromScreensPanel(copyT.id);
-        return;
-      }
-      var fl = findFlow(id2);
-      if (fl) {
-        var copyFl = duplicateFlow(fl.id);
-        markDirty();
-        selectFlowFromScreensPanel(copyFl.id);
-        return;
-      }
-    } else if (action === "delete") {
-      var s = state.screens.find(function(sc2) {
-        return sc2.id === id2;
-      });
-      if (s) {
-        removeScreen(s.id);
-        return;
-      }
-      var tmpl = findTemplate(id2);
-      if (tmpl) {
-        state.templates = state.templates.filter(function(x) {
-          return x.id !== tmpl.id;
-        });
-        if (state.activeTemplateId === tmpl.id) {
-          state.activeTemplateId = state.templates.length ? state.templates[0].id : null;
-          if (!state.activeTemplateId) state.editingMode = "screen";
-        }
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-      var fl = findFlow(id2);
-      if (fl) {
-        deleteFlow(fl.id);
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-      var f = findFolder(id2);
-      if (f) {
-        deleteFolder(f.id);
-        if (state.selectedFolderId === f.id) state.selectedFolderId = null;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-        return;
-      }
-    } else if (action === "add-screen-in") {
-      var f = findFolder(id2);
-      if (f && f.category === "template") {
-        addTemplateFromScreensPanel({ parentId: id2 });
-      } else if (f && f.category === "flow") {
-        addFlowFromSidebar({ parentId: id2 });
-      } else {
-        addScreenFromSidebar({ parentId: id2 });
-      }
-    } else if (action === "add-group-in") {
-      var f = findFolder(id2);
-      addGroupFromSidebar({ parentId: id2, category: f ? f.category : "screen" });
-    }
-  }
-  function onScreensFlowsRename(e) {
-    var id2 = e.detail.id;
-    var name2 = e.detail.name;
-    if (id2.startsWith("app-var:")) {
-      var varId = id2.substring("app-var:".length);
-      var v = (getApp().variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v && name2 && v.name !== name2) {
-        v.name = name2;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-      }
-      return;
-    }
-    if (id2.startsWith("screen-var:")) {
-      var parts = id2.split(":");
-      var screenId = parts[1];
-      var varId = parts[2];
-      var s = state.screens.find(function(sc) {
-        return sc.id === screenId;
-      });
-      var v = s && (s.variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v && name2 && v.name !== name2) {
-        v.name = name2;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-      }
-      return;
-    }
-    if (id2.startsWith("template-var:")) {
-      var parts = id2.split(":");
-      var tmplId = parts[1];
-      var varId = parts[2];
-      var tmpl = findTemplate(tmplId);
-      var v = tmpl && (tmpl.variables || []).find(function(x) {
-        return x.id === varId;
-      });
-      if (v && name2 && v.name !== name2) {
-        v.name = name2;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-      }
-      return;
-    }
-    if (id2.startsWith("template-param:")) {
-      var parts = id2.split(":");
-      var tmplId = parts[1];
-      var paramId = parts[2];
-      var tmpl = findTemplate(tmplId);
-      var p = tmpl && (tmpl.params || []).find(function(x) {
-        return x.id === paramId;
-      });
-      if (p && name2 && p.name !== name2) {
-        p.name = name2;
-        if (!p.label || p.label === p.name) p.label = name2;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-      }
-      return;
-    }
-    var item = state.screens.find(function(s2) {
-      return s2.id === id2;
-    }) || findTemplate(id2) || findFlow(id2) || findFolder(id2);
-    if (item && name2 && item.name !== name2) {
-      item.name = name2;
-      markDirty();
-      renderScreenList();
-      renderScreenForm();
-      if (state.editingMode === "screen" && state.activeScreenId === id2) renderActiveScreen();
-      if (state.editingMode === "template" && state.activeTemplateId === id2) renderActiveScreen();
-    }
-  }
   function onScreensFlowsMove(e) {
     var d = e.detail;
     var item = state.screens.find(function(s) {
@@ -38967,106 +37978,8 @@
     markDirty();
     renderScreenList();
   }
-  function renderScreenList() {
-    if (!state.screenListEl) return;
-    var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || window.customElements && window.customElements.get("nx-tree"));
-    if (hasNexaKit && state.screensFlowsTreeEl && state.screensFlowsTreeEl.isConnected) {
-      var nodes = buildScreensFlowsTreeNodes();
-      state.screensFlowsTreeEl.nodes = nodes;
-      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
-      state.screensFlowsTreeEl.selected = activeId ? [activeId] : [];
-      return;
-    }
-    state.screenListEl.empty();
-    if (hasNexaKit) {
-      var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
-        width: "max-content",
-        "min-width": "100%",
-        "box-sizing": "border-box",
-        display: "inline-block"
-      }).appendTo(state.screenListEl);
-      var treeEl2 = document.createElement("nx-tree");
-      treeEl2.setAttribute("empty-text", "No items yet \u2014 click + Add Screen, Template or Flow");
-      treeEl2.setAttribute("persist-key", "screens-flows:tree");
-      treeEl2.setAttribute("no-rename", "");
-      treeEl2.renamable = false;
-      treeEl2.addEventListener("nx-tree-select", onScreensFlowsSelect);
-      treeEl2.addEventListener("nx-tree-open", onScreensFlowsOpen);
-      treeEl2.addEventListener("nx-tree-move", onScreensFlowsMove);
-      treeEl2.addEventListener("nx-tree-action", onScreensFlowsAction);
-      treeEl2.addEventListener("nx-tree-rename", onScreensFlowsRename);
-      treeHost.get(0).appendChild(treeEl2);
-      var nodes = buildScreensFlowsTreeNodes();
-      treeEl2.nodes = nodes;
-      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
-      treeEl2.selected = activeId ? [activeId] : [];
-      state.screensFlowsTreeEl = treeEl2;
-    }
-    state.screens.forEach(function(screen) {
-      var isActive = screen.id === state.activeScreenId && state.editingMode === "screen";
-      var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
-        padding: "8px 10px",
-        "border-radius": "5px",
-        display: hasNexaKit ? "none" : "flex",
-        "flex-wrap": "wrap",
-        "align-items": "center",
-        cursor: "pointer",
-        background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
-        border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
-        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
-        "font-size": "12px",
-        "user-select": "none",
-        gap: "4px",
-        transition: "all 0.15s ease"
-      }).appendTo(state.screenListEl);
-      window.$("<span>", {
-        style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
-        title: screen.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
-      }).html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
-        if (e && e.stopPropagation) e.stopPropagation();
-        screen.disabled = !screen.disabled;
-        markDirty();
-        renderScreenList();
-        renderScreenForm();
-      }).appendTo(row);
-      window.$("<span>", {
-        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
-      }).text(screen.name).appendTo(row);
-      if (screen.disabled) {
-        window.$("<span>", {
-          style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
-        }).text("DISABLED").appendTo(row);
-      }
-      window.$("<div>", {
-        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
-      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? screen.path.startsWith("/") ? screen.path : "/" + screen.path : "/screen") + "</span>").appendTo(row);
-      window.$("<button>", {
-        type: "button",
-        class: "red-ui-button red-ui-button-small",
-        title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
-        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
-      }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
-        if (e && e.preventDefault) e.preventDefault();
-        if (e && e.stopPropagation) e.stopPropagation();
-        openScreenInBrowser(screen);
-      }).appendTo(row);
-      if (state.screens.length > 1) {
-        window.$("<a>", {
-          href: "#",
-          title: "Delete screen",
-          class: "red-ui-button red-ui-button-small",
-          style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
-        }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
-          if (e && e.preventDefault) e.preventDefault();
-          if (e && e.stopPropagation) e.stopPropagation();
-          removeScreen(screen.id);
-        }).appendTo(row);
-      }
-      row.on("click", function() {
-        selectScreenFromSidebar(screen.id);
-      });
-    });
-  }
+
+  // src/sidebar/screens/item-forms.js
   function renderFlowForm(flow) {
     var header = window.$("<div>").css({
       "font-weight": "bold",
@@ -39488,6 +38401,392 @@
       }
     }).appendTo(btnRow);
   }
+
+  // src/sidebar/screens/tree-actions.js
+  function onScreensFlowsAction(e) {
+    var id2 = e.detail.id;
+    var action = e.detail.action;
+    if (action === "edit-props") {
+      openPropertiesDialogForId(id2);
+      return;
+    }
+    if (action === "add-screen") {
+      addScreenFromSidebar({ parentId: null });
+      return;
+    }
+    if (action === "add-template" || action === "add-composite-template") {
+      addTemplateFromScreensPanel({ parentId: null, kind: "composite" });
+      return;
+    }
+    if (action === "add-component-template") {
+      addTemplateFromScreensPanel({ parentId: null, kind: "component" });
+      return;
+    }
+    if (action === "add-flow") {
+      addFlowFromSidebar({ parentId: null });
+      return;
+    }
+    if (action === "add-group-screen") {
+      addGroupFromSidebar({ category: "screen", parentId: null });
+      return;
+    }
+    if (action === "add-group-template") {
+      addGroupFromSidebar({ category: "template", parentId: null });
+      return;
+    }
+    if (action === "add-group-flow") {
+      addGroupFromSidebar({ category: "flow", parentId: null });
+      return;
+    }
+    if (action === "add-app-var") {
+      addAppVariableFromSidebar();
+      return;
+    }
+    if (action === "add-shared-var") {
+      addSharedVariableFromSidebar();
+      return;
+    }
+    if (action === "add-screen-var") {
+      var sId = id2.startsWith("screen-vars-group:") ? id2.substring("screen-vars-group:".length) : id2;
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === sId;
+      });
+      if (s) {
+        s.variables = s.variables || [];
+        var newVar = { id: genId(), name: "var" + (s.variables.length + 1), type: "string", defaultValue: "" };
+        s.variables.push(newVar);
+        state.editingMode = "screen-variable";
+        state.activeScreenId = s.id;
+        state.activeScreenVariableId = newVar.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
+        }
+        openScreenVariablePropertiesDialog(newVar, s);
+        return;
+      }
+    }
+    if (action === "add-template-var") {
+      var tId = id2.startsWith("template-vars-group:") ? id2.substring("template-vars-group:".length) : id2;
+      var t2 = findTemplate(tId);
+      if (t2) {
+        t2.variables = t2.variables || [];
+        var newVar = { id: genId(), name: "var" + (t2.variables.length + 1), type: "string", defaultValue: "" };
+        t2.variables.push(newVar);
+        state.activeTemplateId = t2.id;
+        state.editingMode = "template-variable";
+        state.activeTemplateVariableId = newVar.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("template-var:" + t2.id + ":" + newVar.id);
+        }
+        openTemplateVariablePropertiesDialog(newVar, t2);
+        return;
+      }
+    }
+    if (action === "delete-template-var") {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var varId = parts[2];
+      var t2 = findTemplate(tId);
+      if (t2 && t2.variables) {
+        t2.variables = t2.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeTemplateVariableId === varId) {
+          state.activeTemplateVariableId = null;
+          state.editingMode = "template";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "add-template-param") {
+      var tId = id2.startsWith("template-params-group:") ? id2.substring("template-params-group:".length) : id2;
+      var t2 = findTemplate(tId);
+      if (t2) {
+        t2.params = t2.params || [];
+        var pName = "param" + (t2.params.length + 1);
+        var newParam = { id: genId(), name: pName, label: pName, type: "string", defaultValue: "" };
+        t2.params.push(newParam);
+        state.activeTemplateId = t2.id;
+        state.editingMode = "template-param";
+        state.activeTemplateParamId = newParam.id;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+          state.screensFlowsTreeEl.reveal("template-param:" + t2.id + ":" + newParam.id);
+        }
+        openTemplateParamPropertiesDialog(newParam, t2);
+        return;
+      }
+    }
+    if (action === "delete-template-param") {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var paramId = parts[2];
+      var t2 = findTemplate(tId);
+      if (t2 && t2.params) {
+        t2.params = t2.params.filter(function(p) {
+          return p.id !== paramId;
+        });
+        if (state.activeTemplateParamId === paramId) {
+          state.activeTemplateParamId = null;
+          state.editingMode = "template";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "delete-app-var") {
+      var varId = id2.startsWith("app-var:") ? id2.substring("app-var:".length) : id2;
+      var app2 = getApp();
+      if (app2 && app2.variables) {
+        app2.variables = app2.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeAppVariableId === varId) {
+          state.activeAppVariableId = null;
+          state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "delete-shared-var") {
+      var varId = id2.startsWith("shared-var:") ? id2.substring("shared-var:".length) : id2;
+      var app2 = getApp();
+      if (app2 && app2.sharedVariables) {
+        app2.sharedVariables = app2.sharedVariables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeSharedVariableId === varId) {
+          state.activeSharedVariableId = null;
+          state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "delete-screen-var") {
+      var parts = id2.split(":");
+      var screenId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === screenId;
+      });
+      if (s && s.variables) {
+        s.variables = s.variables.filter(function(v) {
+          return v.id !== varId;
+        });
+        if (state.activeScreenVariableId === varId) {
+          state.activeScreenVariableId = null;
+          state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    }
+    if (action === "open") {
+      var fl = findFlow(id2);
+      if (fl) {
+        openFlowInBrowser(fl);
+        return;
+      }
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) openScreenInBrowser(s);
+    } else if (action === "convert") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        var t2 = convertScreenToTemplate(s.id);
+        markDirty();
+        selectTemplateFromScreensPanel(t2.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        var sc = convertTemplateToScreen(tmpl.id);
+        markDirty();
+        selectScreenFromSidebar(sc.id);
+        return;
+      }
+    } else if (action === "duplicate") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        var copy = duplicateScreen(s.id);
+        markDirty();
+        selectScreenFromSidebar(copy.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        var copyT = duplicateTemplate(tmpl.id);
+        markDirty();
+        selectTemplateFromScreensPanel(copyT.id);
+        return;
+      }
+      var fl = findFlow(id2);
+      if (fl) {
+        var copyFl = duplicateFlow(fl.id);
+        markDirty();
+        selectFlowFromScreensPanel(copyFl.id);
+        return;
+      }
+    } else if (action === "delete") {
+      var s = state.screens.find(function(sc2) {
+        return sc2.id === id2;
+      });
+      if (s) {
+        removeScreen(s.id);
+        return;
+      }
+      var tmpl = findTemplate(id2);
+      if (tmpl) {
+        state.templates = state.templates.filter(function(x) {
+          return x.id !== tmpl.id;
+        });
+        if (state.activeTemplateId === tmpl.id) {
+          state.activeTemplateId = state.templates.length ? state.templates[0].id : null;
+          if (!state.activeTemplateId) state.editingMode = "screen";
+        }
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+      var fl = findFlow(id2);
+      if (fl) {
+        deleteFlow(fl.id);
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+      var f = findFolder(id2);
+      if (f) {
+        deleteFolder(f.id);
+        if (state.selectedFolderId === f.id) state.selectedFolderId = null;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+        return;
+      }
+    } else if (action === "add-screen-in") {
+      var f = findFolder(id2);
+      if (f && f.category === "template") {
+        addTemplateFromScreensPanel({ parentId: id2 });
+      } else if (f && f.category === "flow") {
+        addFlowFromSidebar({ parentId: id2 });
+      } else {
+        addScreenFromSidebar({ parentId: id2 });
+      }
+    } else if (action === "add-group-in") {
+      var f = findFolder(id2);
+      addGroupFromSidebar({ parentId: id2, category: f ? f.category : "screen" });
+    }
+  }
+  function onScreensFlowsRename(e) {
+    var id2 = e.detail.id;
+    var name2 = e.detail.name;
+    if (id2.startsWith("app-var:")) {
+      var varId = id2.substring("app-var:".length);
+      var v = (getApp().variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    if (id2.startsWith("screen-var:")) {
+      var parts = id2.split(":");
+      var screenId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc) {
+        return sc.id === screenId;
+      });
+      var v = s && (s.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    if (id2.startsWith("template-var:")) {
+      var parts = id2.split(":");
+      var tmplId = parts[1];
+      var varId = parts[2];
+      var tmpl = findTemplate(tmplId);
+      var v = tmpl && (tmpl.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && name2 && v.name !== name2) {
+        v.name = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    if (id2.startsWith("template-param:")) {
+      var parts = id2.split(":");
+      var tmplId = parts[1];
+      var paramId = parts[2];
+      var tmpl = findTemplate(tmplId);
+      var p = tmpl && (tmpl.params || []).find(function(x) {
+        return x.id === paramId;
+      });
+      if (p && name2 && p.name !== name2) {
+        p.name = name2;
+        if (!p.label || p.label === p.name) p.label = name2;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }
+      return;
+    }
+    var item = state.screens.find(function(s2) {
+      return s2.id === id2;
+    }) || findTemplate(id2) || findFlow(id2) || findFolder(id2);
+    if (item && name2 && item.name !== name2) {
+      item.name = name2;
+      markDirty();
+      renderScreenList();
+      renderScreenForm();
+      if (state.editingMode === "screen" && state.activeScreenId === id2) renderActiveScreen();
+      if (state.editingMode === "template" && state.activeTemplateId === id2) renderActiveScreen();
+    }
+  }
+
+  // src/sidebar/screens/screen-form.js
   function renderScreenForm() {
     if (!state.screenFormEl) return;
     state.screenFormEl.empty();
@@ -39845,6 +39144,221 @@
       renderScreenList();
     });
   }
+
+  // src/sidebar/screens/commands.js
+  var cachedScreenWorkerPort = null;
+  function fetchScreenWorkerPort(cb) {
+    if (cachedScreenWorkerPort !== null) {
+      cb(cachedScreenWorkerPort);
+      return;
+    }
+    if (!window.$ || typeof window.$.getJSON !== "function") {
+      cb(null);
+      return;
+    }
+    window.$.getJSON("nexa-dashboard/_screen-port", function(data) {
+      cachedScreenWorkerPort = data && data.port || null;
+      cb(cachedScreenWorkerPort);
+    }).fail(function() {
+      cb(null);
+    });
+  }
+  function openScreenInBrowser(screen) {
+    var tab = window.open("", "_blank");
+    fetchScreenWorkerPort(function(port) {
+      var cleanPath = (screen.path || "").replace(/^\/+/, "");
+      var hostname = window.location.hostname || "localhost";
+      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
+      if (tab) tab.location.href = fullUrl;
+    });
+  }
+  function openFlowInBrowser(flow) {
+    var tab = window.open("", "_blank");
+    fetchScreenWorkerPort(function(port) {
+      var cleanEndpoint = (flow.endpoint || "").replace(/^\/+/, "");
+      var hostname = window.location.hostname || "localhost";
+      var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanEndpoint;
+      if (tab) tab.location.href = fullUrl;
+    });
+  }
+  function expandAllScreensTree() {
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
+      state.screensFlowsTreeEl.setAllCollapsed(false);
+    }
+  }
+  function collapseAllScreensTree() {
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.setAllCollapsed === "function") {
+      state.screensFlowsTreeEl.setAllCollapsed(true);
+    }
+  }
+  function selectComponentFromTree(surfId, compId, additive) {
+    var scr = state.screens.find(function(s) {
+      return s.id === surfId;
+    });
+    var tmpl = !scr && findTemplate(surfId);
+    if (!scr && !tmpl) return;
+    if (!state.trayContent && window.RED && window.RED.actions) {
+      window.RED.actions.invoke("nexa:open-pages-editor");
+    }
+    if (scr) {
+      if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
+        selectScreenFromSidebar(surfId);
+      }
+    } else {
+      if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
+        selectTemplateFromScreensPanel(surfId);
+      }
+    }
+    if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+      state.canvasTabs.activateTab("ui");
+    }
+    var screen = getActiveScreen();
+    var loc = screen && tree_exports.locate(screen, compId);
+    if (loc && !loc.orphan) {
+      var hidden = tree_exports.ancestors(screen, compId).concat([loc.node]).filter(function(n) {
+        return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
+      });
+      if (hidden.length) {
+        hidden.forEach(function(n) {
+          state.overlayPreview[n.id] = true;
+        });
+        renderActiveScreen({ keepPanel: true });
+      }
+      if (typeof revealSlotsOf === "function") {
+        revealSlotsOf(compId);
+      }
+      if (additive) {
+        if (isSelected(compId)) selectMultiple(state.selectedIds.filter(function(cid) {
+          return cid !== compId;
+        }), { keepSidebarTab: true });
+        else selectMultiple(state.selectedIds.concat([compId]), { keepSidebarTab: true });
+      } else {
+        selectOnly(compId, { keepSidebarTab: true });
+      }
+    }
+    if (state.screensFlowsTreeEl) {
+      state.screensFlowsTreeEl.selected = ["screen-comp:" + surfId + ":" + compId];
+    }
+  }
+  function openPropertiesDialogForId(id2) {
+    if (!id2) return;
+    if (id2.startsWith("screen-comp:")) {
+      var parts = id2.split(":");
+      var surfId = parts[1];
+      var compId = parts[2];
+      selectComponentFromTree(surfId, compId, false);
+      return;
+    }
+    if (id2.startsWith("screen-var:")) {
+      var parts = id2.split(":");
+      var sId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc) {
+        return sc.id === sId;
+      });
+      var v = s && (s.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && s) openScreenVariablePropertiesDialog(v, s);
+      return;
+    }
+    if (id2.startsWith("template-var:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var varId = parts[2];
+      var t2 = findTemplate(tId);
+      var v = t2 && (t2.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && t2) openTemplateVariablePropertiesDialog(v, t2);
+      return;
+    }
+    if (id2.startsWith("template-param:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var paramId = parts[2];
+      var t2 = findTemplate(tId);
+      var p = t2 && (t2.params || []).find(function(x) {
+        return x.id === paramId;
+      });
+      if (p && t2) openTemplateParamPropertiesDialog(p, t2);
+      return;
+    }
+    if (id2.startsWith("app-var:")) {
+      var varId = id2.substring("app-var:".length);
+      var app2 = getApp();
+      var v = (app2.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v) openAppVariablePropertiesDialog(v);
+      return;
+    }
+    if (id2.startsWith("shared-var:")) {
+      var varId = id2.substring("shared-var:".length);
+      var app2 = getApp();
+      var v = (app2.sharedVariables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v) openSharedVariablePropertiesDialog(v);
+      return;
+    }
+    var screen = state.screens.find(function(sc) {
+      return sc.id === id2;
+    });
+    if (screen) {
+      openScreenPropertiesDialog(screen);
+      return;
+    }
+    var template = findTemplate(id2);
+    if (template) {
+      if (template.kind === "component") {
+        openComponentTemplatePropertiesDialog(template);
+      } else {
+        openTemplatePropertiesDialog(template);
+      }
+      return;
+    }
+    var flow = findFlow(id2);
+    if (flow) {
+      openFlowPropertiesDialog(flow);
+      return;
+    }
+    var folder = findFolder(id2);
+    if (folder) {
+      openFolderPropertiesDialog(folder);
+      return;
+    }
+  }
+  function addAppVariableFromSidebar() {
+    var app2 = getApp();
+    app2.variables = app2.variables || [];
+    var newVar = { id: genId(), name: "appVar" + (app2.variables.length + 1), type: "string", defaultValue: "", persist: "none" };
+    app2.variables.push(newVar);
+    state.editingMode = "app-variable";
+    state.activeAppVariableId = newVar.id;
+    markDirty();
+    renderScreenList();
+    renderScreenForm();
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+      state.screensFlowsTreeEl.reveal("app-var:" + newVar.id);
+    }
+    openAppVariablePropertiesDialog(newVar);
+  }
+  function addSharedVariableFromSidebar() {
+    var app2 = getApp();
+    app2.sharedVariables = app2.sharedVariables || [];
+    var newVar = { id: genId(), name: "sharedVar" + (app2.sharedVariables.length + 1), type: "string", defaultValue: "" };
+    app2.sharedVariables.push(newVar);
+    state.editingMode = "shared-variable";
+    state.activeSharedVariableId = newVar.id;
+    markDirty();
+    renderScreenList();
+    renderScreenForm();
+    if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
+      state.screensFlowsTreeEl.reveal("shared-var:" + newVar.id);
+    }
+    openSharedVariablePropertiesDialog(newVar);
+  }
   function selectScreenFromSidebar(id2) {
     state.editingMode = "screen";
     state.activeTemplateId = null;
@@ -39951,6 +39465,514 @@
       refreshLogicCanvasIfActive();
     }
     markDirty();
+  }
+
+  // src/sidebar/screens/tree-rows.js
+  function buildComponentTreeRows(surface, list, orphan) {
+    return (list || []).slice().reverse().map(function(node) {
+      var vis = node.visibility || "show";
+      var eff = orphan ? vis : tree_exports && tree_exports.effectiveVisibility ? tree_exports.effectiveVisibility(surface, node.id) : vis;
+      var isCont = tree_exports && tree_exports.isContainer ? tree_exports.isContainer(node) : false;
+      var kids2 = isCont ? tree_exports.kids(node) : [];
+      return {
+        id: "screen-comp:" + surface.id + ":" + node.id,
+        compId: node.id,
+        surfaceId: surface.id,
+        label: nodeLabel(node),
+        title: nodeLabel(node) + " \u2014 " + node.type,
+        icon: nodeIcon(node),
+        container: isCont,
+        badge: isCont ? String(kids2.length) : "",
+        muted: eff !== "show" || !!node.slotUnused,
+        renamable: false,
+        children: isCont ? buildComponentTreeRows(surface, kids2, orphan) : []
+      };
+    });
+  }
+  function buildScreensFlowsTreeNodes() {
+    var folderNodes = {};
+    state.folders.forEach(function(f) {
+      folderNodes[f.id] = {
+        id: f.id,
+        label: f.name,
+        icon: "fa fa-folder-o",
+        container: true,
+        type: "folder",
+        children: [],
+        actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Group Properties" },
+          { id: "add-screen-in", icon: "fa fa-plus", title: "Add item in group" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete group" }
+        ]
+      };
+    });
+    var screensSection = {
+      id: "section:screens",
+      label: "Screens",
+      icon: "fa fa-desktop",
+      container: true,
+      type: "section",
+      badge: String(state.screens.length),
+      actions: [
+        { id: "add-screen", icon: "fa fa-plus", title: "Add Screen" },
+        { id: "add-group-screen", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    var compositeTemplates = state.templates.filter(function(t2) {
+      return t2.kind !== "component";
+    });
+    var componentTemplates = state.templates.filter(function(t2) {
+      return t2.kind === "component";
+    });
+    var compositeGroup = {
+      id: "section:composite-templates",
+      label: "Composite Templates",
+      icon: "fa fa-cubes",
+      container: true,
+      type: "template-category",
+      badge: String(compositeTemplates.length),
+      actions: [
+        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+        { id: "add-group-template", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    var componentGroup = {
+      id: "section:component-templates",
+      label: "Component Templates",
+      icon: "fa fa-puzzle-piece",
+      container: true,
+      type: "template-category",
+      badge: String(componentTemplates.length),
+      actions: [
+        { id: "add-component-template", icon: "fa fa-plus", title: "Add Component Template" }
+      ],
+      children: []
+    };
+    var templatesSection = {
+      id: "section:templates",
+      label: "Templates",
+      icon: "fa fa-clone",
+      container: true,
+      type: "section",
+      badge: String(state.templates.length),
+      actions: [
+        { id: "add-composite-template", icon: "fa fa-plus", title: "Add Composite Template" },
+        { id: "add-component-template", icon: "fa fa-puzzle-piece", title: "Add Component Template" }
+      ],
+      children: [compositeGroup, componentGroup]
+    };
+    var flowsSection = {
+      id: "section:flows",
+      label: "Flows",
+      icon: "fa fa-code-fork",
+      container: true,
+      type: "section",
+      badge: String(state.flows.length),
+      actions: [
+        { id: "add-flow", icon: "fa fa-plus", title: "Add Flow" },
+        { id: "add-group-flow", icon: "fa fa-folder-o", title: "Add Group" }
+      ],
+      children: []
+    };
+    function placeInScreen(itemNode, parentId) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else {
+        screensSection.children.push(itemNode);
+      }
+    }
+    function placeInTemplate(itemNode, parentId, kind) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else if (kind === "component") {
+        componentGroup.children.push(itemNode);
+      } else {
+        compositeGroup.children.push(itemNode);
+      }
+    }
+    function placeInFlow(itemNode, parentId) {
+      if (parentId && folderNodes[parentId]) {
+        folderNodes[parentId].children.push(itemNode);
+      } else {
+        flowsSection.children.push(itemNode);
+      }
+    }
+    state.screens.forEach(function(s) {
+      var compRows = buildComponentTreeRows(s, s.components || [], false);
+      if (s.orphans && s.orphans.length) {
+        compRows.push({
+          id: "screen-unplaced-group:" + s.id,
+          surfaceId: s.id,
+          label: "Unplaced",
+          icon: "fa fa-inbox",
+          container: true,
+          badge: String(s.orphans.length),
+          children: buildComponentTreeRows(s, s.orphans, true)
+        });
+      }
+      var compsGroup = {
+        id: "screen-comps-group:" + s.id,
+        surfaceId: s.id,
+        label: "Components",
+        icon: "fa fa-cubes",
+        type: "screen-comps-group",
+        container: true,
+        badge: String((s.components || []).length + (s.orphans ? s.orphans.length : 0)),
+        children: compRows
+      };
+      var screenVars = (s.variables || []).map(function(v) {
+        return {
+          id: "screen-var:" + s.id + ":" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + ")",
+          icon: "fa fa-tag",
+          type: "screen-variable",
+          actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
+            { id: "delete-screen-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      });
+      var varsGroup = {
+        id: "screen-vars-group:" + s.id,
+        label: "Variables",
+        icon: "fa fa-tags",
+        type: "screen-vars-group",
+        container: true,
+        badge: String(screenVars.length),
+        actions: [
+          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" }
+        ],
+        children: screenVars
+      };
+      var node = {
+        id: s.id,
+        label: s.name,
+        title: s.name + " (" + (s.path || "/screen") + ")",
+        icon: "fa fa-desktop",
+        type: "screen",
+        container: true,
+        children: [compsGroup, varsGroup],
+        muted: !!s.disabled,
+        actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Screen Properties" },
+          { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
+          { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
+          { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
+        ]
+      };
+      if (state.screens.length > 1) {
+        node.actions.push({ id: "delete", icon: "fa fa-trash-o", title: "Delete screen" });
+      }
+      placeInScreen(node, s.parentId);
+    });
+    state.templates.forEach(function(t2) {
+      t2.variables = t2.variables || [];
+      t2.params = t2.params || [];
+      var tmplCompRows = buildComponentTreeRows(t2, t2.components || [], false);
+      if (t2.orphans && t2.orphans.length) {
+        tmplCompRows.push({
+          id: "template-unplaced-group:" + t2.id,
+          surfaceId: t2.id,
+          label: "Unplaced",
+          icon: "fa fa-inbox",
+          container: true,
+          badge: String(t2.orphans.length),
+          children: buildComponentTreeRows(t2, t2.orphans, true)
+        });
+      }
+      var tmplCompsGroup = {
+        id: "template-comps-group:" + t2.id,
+        surfaceId: t2.id,
+        label: "Components",
+        icon: "fa fa-cubes",
+        type: "template-comps-group",
+        container: true,
+        badge: String((t2.components || []).length + (t2.orphans ? t2.orphans.length : 0)),
+        children: tmplCompRows
+      };
+      var tmplVars = (t2.variables || []).map(function(v) {
+        return {
+          id: "template-var:" + t2.id + ":" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + ")",
+          icon: "fa fa-tag",
+          type: "template-variable",
+          actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
+            { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      });
+      var varsGroup = {
+        id: "template-vars-group:" + t2.id,
+        label: "Variables",
+        icon: "fa fa-tags",
+        type: "template-vars-group",
+        container: true,
+        badge: String(tmplVars.length),
+        actions: [
+          { id: "add-template-var", icon: "fa fa-plus", title: "Add Variable" }
+        ],
+        children: tmplVars
+      };
+      var tmplParams = (t2.params || []).map(function(p) {
+        return {
+          id: "template-param:" + t2.id + ":" + p.id,
+          label: p.name,
+          title: (p.label ? p.label + " (" + p.name + ")" : p.name) + " (" + (p.type || "string") + ")",
+          icon: "fa fa-sliders",
+          type: "template-param",
+          actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Parameter" },
+            { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
+          ]
+        };
+      });
+      var paramsGroup = {
+        id: "template-params-group:" + t2.id,
+        label: "Parameters",
+        icon: "fa fa-sliders",
+        type: "template-params-group",
+        container: true,
+        badge: String(tmplParams.length),
+        actions: [
+          { id: "add-template-param", icon: "fa fa-plus", title: "Add Parameter" }
+        ],
+        children: tmplParams
+      };
+      var node = {
+        id: t2.id,
+        label: t2.name,
+        title: t2.name + (t2.identifier ? " (@" + t2.identifier + ")" : ""),
+        icon: t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
+        type: "template",
+        container: true,
+        children: t2.kind === "component" ? [] : [tmplCompsGroup, varsGroup, paramsGroup],
+        actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: t2.kind === "component" ? "Component Template Properties" : "Template Properties" },
+          { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
+          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
+        ]
+      };
+      placeInTemplate(node, t2.parentId, t2.kind);
+    });
+    state.flows.forEach(function(fl) {
+      var isDef = !!fl.isDefault;
+      var node = {
+        id: fl.id,
+        label: fl.name + (isDef ? " \u2605" : ""),
+        title: fl.name + (isDef ? " [Default Flow]" : "") + " (" + (fl.endpoint || "/flow") + ")",
+        icon: "fa fa-code-fork",
+        type: "flow",
+        actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Flow Properties" },
+          { id: "open", icon: "fa fa-external-link", title: "Open flow in new tab" },
+          { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
+          { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
+        ]
+      };
+      placeInFlow(node, fl.parentId);
+    });
+    var app2 = getApp();
+    var appVars = app2.variables || [];
+    var appVarsSection = {
+      id: "section:app-variables",
+      label: "App Variables",
+      icon: "fa fa-globe",
+      container: true,
+      type: "section",
+      badge: String(appVars.length),
+      actions: [
+        { id: "add-app-var", icon: "fa fa-plus", title: "Add App Variable" }
+      ],
+      children: appVars.map(function(v) {
+        return {
+          id: "app-var:" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + (v.persist && v.persist !== "none" ? ", " + v.persist : "") + ")",
+          icon: "fa fa-cube",
+          type: "app-variable",
+          actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
+            { id: "delete-app-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      })
+    };
+    var sharedVars = app2.sharedVariables || [];
+    var sharedVarsSection = {
+      id: "section:shared-variables",
+      label: "Shared Variables (Realtime Server)",
+      icon: "fa fa-refresh",
+      container: true,
+      type: "section",
+      badge: String(sharedVars.length),
+      actions: [
+        { id: "add-shared-var", icon: "fa fa-plus", title: "Add Shared Variable" }
+      ],
+      children: sharedVars.map(function(v) {
+        return {
+          id: "shared-var:" + v.id,
+          label: v.name,
+          title: v.name + " (" + (v.type || "string") + " [realtime nexa io protocol])",
+          icon: "fa fa-database",
+          type: "shared-variable",
+          actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
+            { id: "delete-shared-var", icon: "fa fa-trash-o", title: "Delete variable" }
+          ]
+        };
+      })
+    };
+    var screenFolderList = [], templateFolderList = [], flowFolderList = [];
+    state.folders.forEach(function(f) {
+      var node = folderNodes[f.id];
+      if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant2(f.id, f.parentId)) {
+        folderNodes[f.parentId].children.push(node);
+      } else if (f.parentId === "section:templates" || f.category === "template") {
+        templateFolderList.push(node);
+      } else if (f.parentId === "section:flows" || f.category === "flow") {
+        flowFolderList.push(node);
+      } else if (f.parentId === "section:screens" || f.category === "screen") {
+        screenFolderList.push(node);
+      } else {
+        var hasTemplates = state.templates.some(function(t2) {
+          return t2.parentId === f.id;
+        });
+        var hasFlows = state.flows.some(function(fl) {
+          return fl.parentId === f.id;
+        });
+        if (hasTemplates) {
+          f.category = "template";
+          templateFolderList.push(node);
+        } else if (hasFlows) {
+          f.category = "flow";
+          flowFolderList.push(node);
+        } else {
+          f.category = "screen";
+          screenFolderList.push(node);
+        }
+      }
+    });
+    screensSection.children = screenFolderList.concat(screensSection.children);
+    templatesSection.children = templateFolderList.concat(templatesSection.children);
+    flowsSection.children = flowFolderList.concat(flowsSection.children);
+    Object.keys(folderNodes).forEach(function(fid) {
+      folderNodes[fid].badge = String(folderNodes[fid].children.length);
+    });
+    screensSection.badge = String(state.screens.length);
+    templatesSection.badge = String(state.templates.length);
+    flowsSection.badge = String(state.flows.length);
+    return [screensSection, templatesSection, flowsSection, appVarsSection, sharedVarsSection];
+  }
+
+  // src/sidebar/screens-panel.js
+  function refreshLogicCanvasIfActive() {
+    if (state.activeCanvasTab === "logic") renderLogicCanvas();
+  }
+  function renderScreenList() {
+    if (!state.screenListEl) return;
+    var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || window.customElements && window.customElements.get("nx-tree"));
+    if (hasNexaKit && state.screensFlowsTreeEl && state.screensFlowsTreeEl.isConnected) {
+      var nodes = buildScreensFlowsTreeNodes();
+      state.screensFlowsTreeEl.nodes = nodes;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      state.screensFlowsTreeEl.selected = activeId ? [activeId] : [];
+      return;
+    }
+    state.screenListEl.empty();
+    if (hasNexaKit) {
+      var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
+        width: "max-content",
+        "min-width": "100%",
+        "box-sizing": "border-box",
+        display: "inline-block"
+      }).appendTo(state.screenListEl);
+      var treeEl2 = document.createElement("nx-tree");
+      treeEl2.setAttribute("empty-text", "No items yet \u2014 click + Add Screen, Template or Flow");
+      treeEl2.setAttribute("persist-key", "screens-flows:tree");
+      treeEl2.setAttribute("no-rename", "");
+      treeEl2.renamable = false;
+      treeEl2.addEventListener("nx-tree-select", onScreensFlowsSelect);
+      treeEl2.addEventListener("nx-tree-open", onScreensFlowsOpen);
+      treeEl2.addEventListener("nx-tree-move", onScreensFlowsMove);
+      treeEl2.addEventListener("nx-tree-action", onScreensFlowsAction);
+      treeEl2.addEventListener("nx-tree-rename", onScreensFlowsRename);
+      treeHost.get(0).appendChild(treeEl2);
+      var nodes = buildScreensFlowsTreeNodes();
+      treeEl2.nodes = nodes;
+      var activeId = state.editingMode === "app-variable" ? "app-var:" + state.activeAppVariableId : state.editingMode === "shared-variable" ? "shared-var:" + state.activeSharedVariableId : state.editingMode === "screen-variable" ? "screen-var:" + state.activeScreenId + ":" + state.activeScreenVariableId : state.editingMode === "screen-vars-group" ? "screen-vars-group:" + state.activeScreenId : state.editingMode === "template-variable" ? "template-var:" + state.activeTemplateId + ":" + state.activeTemplateVariableId : state.editingMode === "template-param" ? "template-param:" + state.activeTemplateId + ":" + state.activeTemplateParamId : state.editingMode === "flow" ? state.activeFlowId : state.editingMode === "template" ? state.activeTemplateId : state.selectedFolderId || state.activeScreenId;
+      treeEl2.selected = activeId ? [activeId] : [];
+      state.screensFlowsTreeEl = treeEl2;
+    }
+    state.screens.forEach(function(screen) {
+      var isActive = screen.id === state.activeScreenId && state.editingMode === "screen";
+      var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
+        padding: "8px 10px",
+        "border-radius": "5px",
+        display: hasNexaKit ? "none" : "flex",
+        "flex-wrap": "wrap",
+        "align-items": "center",
+        cursor: "pointer",
+        background: isActive ? "var(--red-ui-list-item-selected-background, #e0f2fe)" : "var(--red-ui-secondary-background, #ffffff)",
+        border: isActive ? "1px solid #7dd3fc" : "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+        "box-shadow": isActive ? "0 1px 3px rgba(2,132,199,0.12)" : "0 1px 2px rgba(0,0,0,0.02)",
+        "font-size": "12px",
+        "user-select": "none",
+        gap: "4px",
+        transition: "all 0.15s ease"
+      }).appendTo(state.screenListEl);
+      window.$("<span>", {
+        style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
+        title: screen.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
+      }).html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
+        if (e && e.stopPropagation) e.stopPropagation();
+        screen.disabled = !screen.disabled;
+        markDirty();
+        renderScreenList();
+        renderScreenForm();
+      }).appendTo(row);
+      window.$("<span>", {
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
+      }).text(screen.name).appendTo(row);
+      if (screen.disabled) {
+        window.$("<span>", {
+          style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
+        }).text("DISABLED").appendTo(row);
+      }
+      window.$("<div>", {
+        style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
+      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? screen.path.startsWith("/") ? screen.path : "/" + screen.path : "/screen") + "</span>").appendTo(row);
+      window.$("<button>", {
+        type: "button",
+        class: "red-ui-button red-ui-button-small",
+        title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
+        style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
+      }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        openScreenInBrowser(screen);
+      }).appendTo(row);
+      if (state.screens.length > 1) {
+        window.$("<a>", {
+          href: "#",
+          title: "Delete screen",
+          class: "red-ui-button red-ui-button-small",
+          style: "flex: 0 0 auto; height: 22px; line-height: 20px; padding: 0 8px; font-size: 11px; color: #ef4444; display: inline-flex; align-items: center; justify-content: center;"
+        }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
+          if (e && e.preventDefault) e.preventDefault();
+          if (e && e.stopPropagation) e.stopPropagation();
+          removeScreen(screen.id);
+        }).appendTo(row);
+      }
+      row.on("click", function() {
+        selectScreenFromSidebar(screen.id);
+      });
+    });
   }
   if (typeof window !== "undefined") {
     window.__refreshScreensFlowsTree = function() {

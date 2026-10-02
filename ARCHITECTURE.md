@@ -23,21 +23,21 @@ dist/nexa-plugin.html                dist/nexa-runtime.bundle.js            dist
 
 | Folder | Runs in | What |
 | --- | --- | --- |
-| `src/model/` | everywhere | The node tree, layout, scopes, types, breakpoints, theme, migration. Pure. |
+| `src/model/` | everywhere | The node tree, layout, scopes, types, breakpoints, theme, migration, and routes (`routes.js`: URL → screen, used by the screen worker and the page). Pure. |
 | `src/features/logic/` | editor + page | Every Logic node type: `<family>/meta.js`, `editor.js`, `runtime.js`, and its dialogs. See §4. |
 | `src/shared/` | page + server | Wire formats, one CommonJS file per protocol, used by both sides: `io/frame.js` (tags), `link/frame.js` (Nexa Link). |
-| `src/index.js`, `editor-tray.js`, `canvas/`, `sidebar/`, `logic/`, `dialogs/`, `editor/` | editor | Shell: the Pages tray, the UI canvas, the Logic canvas, the sidebar tabs, and the non-Logic dialogs (screen, flow, template, variables). |
+| `src/index.js`, `editor-tray.js`, `canvas/`, `sidebar/`, `logic/`, `dialogs/`, `editor/` | editor | Shell: the Pages tray, the UI canvas, the Logic canvas, the sidebar tabs, and the non-Logic dialogs (screen, flow, template, variables). The Screens & Flows tab is `sidebar/screens-panel.js` (render + public API) with its parts in `sidebar/screens/`: tree-rows, tree-events, tree-actions, item-forms, screen-form, commands. Tree labels / icons: `sidebar/node-labels.js`. |
 | `src/state.js` | editor | The editor's state (open screen, selection, zoom…) and project helpers. |
 | `src/runtime/` | page | Shell: mount a screen (`mounting/`), navigation, overlays, teleport, theme, breakpoints (`features/`), the Logic engine (`logic/runner.js`), and the tag client and link client (`io/`). |
 | `src/sdk/`, `sdk/` | editor + page | The component SDK, the property kit, and the testkit (`sdk/testkit/`). |
-| `src/server/` | server | `plugin.js` (wires everything), `workers/`, `io/` (IoHub: tags to pages), `link/` (bridge, hub, token), `sparkplug/` (tree, codec, rebirth), `components/` (built-in components). |
+| `src/server/` | server | `plugin.js` (wires everything), `workers/`, `screens/render-html.js` (a page's HTML), `io/` (IoHub: tags to pages), `link/` (bridge, hub, token), `sparkplug/` (tree, codec, rebirth), `components/` (built-in components). |
 | `nodes/` | server | Node-RED nodes: project, Sparkplug connection, Nexa Link (channel, from Nexa, to Nexa). |
 | `dist/` | — | **Generated** by `node build.js`. Never edit. |
 | `docs/` | — | How each feature behaves: LAYOUT, STATE, TYPES, THEME, SDK, MEDIA, FLOWS, LINK. |
 
 ## 3. How data moves
 
-**A page opens.** The browser requests `GET :1881/nexa/<flow>/<screen>`. The screen worker resolves the route (`handleScreenRequest`) and renders HTML with the project embedded. It also serves `_runtime.js`, `_model.js`, and `_sdk.js`. Then `runtime/index.js` calls `mountScreen` (`features/navigation.js`), which mounts the tree (`mounting/`) and fires the onload / onrender Logic nodes (`logic/runner.js`).
+**A page opens.** The browser requests `GET :1881/nexa/<flow>/<screen>`. The screen worker resolves the route (`resolveScreenRoute` in `src/model/routes.js`) and renders HTML with the project embedded (`src/server/screens/render-html.js`). It also serves `_runtime.js`, `_model.js`, and `_sdk.js`. Then `runtime/index.js` calls `mountScreen` (`features/navigation.js`), which mounts the tree (`mounting/`) and fires the onload / onrender Logic nodes (`logic/runner.js`).
 
 **A tag value arrives.** The main thread is not on this path:
 1. MQTT goes into `sparkplug-worker`, which decodes it and updates **its own** tree (`server/sparkplug/sparkplugTree.js`).
@@ -96,10 +96,11 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 | --- | --- |
 | A tag shows `???` / never updates | `runtime/io/client.js` (subscribed keys: `window.__nexaRuntime.subscribedTags()`), then `server/io/ioHub.js`, then `screen-worker.js` `setSparkplugPort` / `applySparkplugDelta`, then `sparkplug-worker.js` `applyToTree`, then the broker |
 | A tag write does nothing | `runtime/io/client.js` `sendSparkplugWrite`, then `screen-worker.js` `requestWrite` / `finishWrite`, then `sparkplug-worker.js` `publish` |
+| The Screens & Flows tree shows / does the wrong thing | `sidebar/screens/tree-rows.js` (what it shows), `tree-events.js` (select / move), `tree-actions.js` (menu / rename) |
 | The editor's Sparkplug sidebar is stale | `nodes/nexa-sparkplug.js` (the main thread's tree), `plugin.js` `editorBatcher` |
 | A Logic node misbehaves on the page | `src/features/logic/<family>/runtime.js`; the engine: `runtime/logic/runner.js` |
 | A Logic node's label / dialog / palette chip | `src/features/logic/<family>/editor.js`, `meta.js` |
-| A page 404 / wrong screen for a URL | `server/workers/screen-worker.js` `handleScreenRequest`; on the page: `runtime/features/navigation.js` |
+| A page 404 / wrong screen for a URL | `src/model/routes.js` `resolveScreenRoute` (tested in `test/model-routes.test.js`); called by `screen-worker.js` `handleScreenRequest`; on the page: `runtime/features/navigation.js` |
 | Layout / auto layout / slots look wrong | `src/model/layout.js`, `tree.js` (pure, tested in `test/model-*.test.js`); drawn by `runtime/mounting/render.js` and `canvas/component-renderer.js` |
 | A variable doesn't update | `src/model/scope.js`, `runtime/state/variable.js`, `features/logic/variables/` |
 | Theme / dark mode | `src/model/theme.js`, `runtime/features/theme.js`, `sidebar/theme-panel.js` |
@@ -120,7 +121,6 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 ## 7. Not done yet (structure backlog)
 
 These are known and listed in the order they pay off:
-- Split `server/workers/screen-worker.js` (routing, HTML, SSE, IO) and `sidebar/screens-panel.js` (2484 lines).
 - Runtime state: `runtime/state.js` and module variables in `features/navigation.js` both hold the current screen.
 - Join has no page implementation (it passes each message on).
 - The Overlay Open node passes msg on right away **and** again when the overlay closes. This was kept as is in the registry move; decide whether the first one is wanted.
