@@ -26,11 +26,11 @@ export function parseHeaders(raw, screen, node, msg) {
 }
 
 export function runHttpNode(screen, node, msg, done) {
-    const method = String((msg && msg.method) || node.method || "GET").toUpperCase();
-    const url = bindText(screen, node, msg, (msg && typeof msg.url === "string" && msg.url) || node.url || "");
-    const headers = Object.assign(parseHeaders(node.headers, screen, node, msg), (msg && msg.headers && typeof msg.headers === "object") ? msg.headers : {});
-    const body = node.body === "none" || method === "GET" || method === "HEAD" ? undefined
-        : node.body === "binding" ? bindText(screen, node, msg, node.bodyText || "")
+    const method = String((msg && msg.method) || node.props.method || "GET").toUpperCase();
+    const url = bindText(screen, node, msg, (msg && typeof msg.url === "string" && msg.url) || node.props.url || "");
+    const headers = Object.assign(parseHeaders(node.props.headers, screen, node, msg), (msg && msg.headers && typeof msg.headers === "object") ? msg.headers : {});
+    const body = node.props.body === "none" || method === "GET" || method === "HEAD" ? undefined
+        : node.props.body === "binding" ? bindText(screen, node, msg, node.props.bodyText || "")
         : (msg ? msg.payload : undefined);
     const out = cloneMsg(msg || {});
     if (!url) {
@@ -41,8 +41,8 @@ export function runHttpNode(screen, node, msg, done) {
     }
     BROWSER_API.http.request(method, String(url), body, {
         headers: headers,
-        timeout: Number(node.timeout) || 0,
-        credentials: node.credentials || undefined
+        timeout: Number(node.props.timeout) || 0,
+        credentials: node.props.credentials || undefined
     }).then(function (res) {
         out.payload = res.data;
         out.statusCode = res.status;
@@ -60,24 +60,24 @@ export function runHttpNode(screen, node, msg, done) {
 }
 
 export function runStorageNode(screen, node, msg) {
-    const store = BROWSER_API.storage[node.store === "session" ? "session" : "local"];
-    const key = String(bindText(screen, node, msg, node.key || ""));
+    const store = BROWSER_API.storage[node.props.store === "session" ? "session" : "local"];
+    const key = String(bindText(screen, node, msg, node.props.key || ""));
     const out = cloneMsg(msg || {});
     if (!key) return out;
-    if (node.action === "set") store.set(key, node.valueSource === "static" ? node.value : (msg && msg.payload));
-    else if (node.action === "remove") store.remove(key);
-    else setMsgPath(out, node.target || "payload", store.get(key));
+    if (node.props.action === "set") store.set(key, node.props.valueSource === "static" ? node.props.value : (msg && msg.payload));
+    else if (node.props.action === "remove") store.remove(key);
+    else setMsgPath(out, node.props.target || "payload", store.get(key));
     return out;
 }
 
 export function runCookieNode(screen, node, msg) {
-    const name = String(bindText(screen, node, msg, node.name || ""));
+    const name = String(bindText(screen, node, msg, node.props.name || ""));
     const out = cloneMsg(msg || {});
     if (!name) return out;
-    const opts = { path: node.path || "/", sameSite: node.sameSite || "Lax", secure: !!node.secure };
-    if (node.days !== undefined && node.days !== "" && node.days !== null) opts.days = Number(node.days);
-    if (node.action === "set") BROWSER_API.cookies.set(name, node.valueSource === "static" ? node.value : (msg && msg.payload), opts);
-    else if (node.action === "remove") BROWSER_API.cookies.remove(name, opts);
-    else setMsgPath(out, node.target || "payload", BROWSER_API.cookies.get(name));
+    const opts = { path: node.props.path || "/", sameSite: node.props.sameSite || "Lax", secure: !!node.props.secure };
+    if (node.props.days !== undefined && node.props.days !== "" && node.props.days !== null) opts.days = Number(node.props.days);
+    if (node.props.action === "set") BROWSER_API.cookies.set(name, node.props.valueSource === "static" ? node.props.value : (msg && msg.payload), opts);
+    else if (node.props.action === "remove") BROWSER_API.cookies.remove(name, opts);
+    else setMsgPath(out, node.props.target || "payload", BROWSER_API.cookies.get(name));
     return out;
 }

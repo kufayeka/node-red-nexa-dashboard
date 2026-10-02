@@ -1,5 +1,5 @@
 // The screen's components on the page: events, updates, layers, teleport, dialogs / drawers.
-import { defineLogicRuntimes } from "../registry.js";
+import { defineLogicRuntimes, flatConfig } from "../registry.js";
 import { logicTrace } from "../../../runtime/logic/context.js";
 import { runUiUpdateNode, applyLayerControlUpdates } from "../../../runtime/mounting/render.js";
 import { teleportHome, teleportEl, teleportTarget } from "../../../runtime/features/teleport.js";
@@ -17,22 +17,22 @@ defineLogicRuntimes({
     "ui-event": { run: function (node, msg) { return msg; } },
     "ui-update": {
         run: function (node, msg, ctx) {
-            runUiUpdateNode(ctx.screen, node, msg);
+            runUiUpdateNode(ctx.screen, flatConfig(node), msg);
             return msg;
         }
     },
     "layer-control": {
         run: function (node, msg, ctx) {
-            applyLayerControlUpdates(ctx.screen, (msg && Array.isArray(msg.payload)) ? msg.payload : (node.states || []));
+            applyLayerControlUpdates(ctx.screen, (msg && Array.isArray(msg.payload)) ? msg.payload : (node.props.states || []));
             return msg;
         }
     },
     "teleport": {
         run: function (node, msg) {
-            const el = elById(namespaceOf(node) + node.node);
-            let to = node.toSource === "payload" ? (msg && msg.payload) : node.to;
+            const el = elById(namespaceOf(node) + node.props.node);
+            let to = node.props.toSource === "payload" ? (msg && msg.payload) : node.props.to;
             to = to === undefined || to === null ? "" : String(to).trim();
-            if (!el) logicTrace("teleport: no such node", node.node);
+            if (!el) logicTrace("teleport: no such node", node.props.node);
             else if (!to || to === "home") teleportHome(el);
             else if (!teleportEl(el, teleportTarget(to), to)) logicTrace("teleport: no target", to);
             return msg;
@@ -41,13 +41,13 @@ defineLogicRuntimes({
     // its output fires once, when the overlay closes (msg.payload = the result): Open -> confirm -> act
     "overlay-open": {
         run: function (node, msg, ctx) {
-            const ns = namespaceOf(node) + node.overlay;
+            const ns = namespaceOf(node) + node.props.overlay;
             if (!openOverlay(ctx.screen, ns, msg, ctx.next)) logicTrace("overlay-open: no overlay", ns);
         }
     },
     "overlay-close": {
         run: function (node, msg) {
-            closeOverlay(overlayForNode(node), node.valueSource === "none" ? undefined : msg && msg.payload, "node");
+            closeOverlay(overlayForNode(flatConfig(node)), node.props.valueSource === "none" ? undefined : msg && msg.payload, "node");
         }
     }
 });

@@ -28,7 +28,7 @@ function isUnary(op) {
 
 export function openSwitchNodeEditor(node) {
     var nameInput, propertyInput, checkallSelect;
-    var currentPropertyType = node.propertyType || "msg";
+    var currentPropertyType = node.props.propertyType || "msg";
     var rulesListEl;
 
     window.RED.tray.show({
@@ -40,15 +40,15 @@ export function openSwitchNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.name = (nameInput.val() || "").trim();
-                    node.checkall = checkallSelect.val();
+                    node.props.name = (nameInput.val() || "").trim();
+                    node.props.checkall = checkallSelect.val();
 
                     if (typeof propertyInput.typedInput === "function") {
-                        node.propertyType = propertyInput.typedInput("type");
-                        node.property = propertyInput.typedInput("value");
+                        node.props.propertyType = propertyInput.typedInput("type");
+                        node.props.property = propertyInput.typedInput("value");
                     } else {
-                        node.propertyType = currentPropertyType;
-                        node.property = propertyInput.val();
+                        node.props.propertyType = currentPropertyType;
+                        node.props.property = propertyInput.val();
                     }
 
                     var gatheredRules = [];
@@ -63,8 +63,8 @@ export function openSwitchNodeEditor(node) {
                     if (!gatheredRules.length) {
                         gatheredRules.push({ t: "eq", v: "", vt: "str" });
                     }
-                    node.rules = gatheredRules;
-                    node.outputs = gatheredRules.length;
+                    node.props.rules = gatheredRules;
+                    node.props.outputs = gatheredRules.length;
 
                     // Prune wires that were connected to deleted output ports
                     var screen = getActiveScreen();
@@ -95,7 +95,7 @@ export function openSwitchNodeEditor(node) {
             window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
                 .text("Name").appendTo(nameRow);
             nameInput = window.$("<input>", { type: "text", placeholder: "Switch" }).css({ width: "100%", "box-sizing": "border-box" })
-                .val(node.name || "").appendTo(nameRow);
+                .val(node.props.name || "").appendTo(nameRow);
 
             // Property Row (LHS: msg, var, tag - EXPLICITLY NO JSONata expression)
             var propRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
@@ -113,21 +113,21 @@ export function openSwitchNodeEditor(node) {
 
             if (typeof propertyInput.typedInput === "function") {
                 propertyInput.typedInput({
-                    default: node.propertyType || "msg",
+                    default: node.props.propertyType || "msg",
                     types: propTypes,
                     width: "100%"
                 });
-                propertyInput.typedInput("type", node.propertyType || "msg");
-                propertyInput.typedInput("value", node.property !== undefined ? String(node.property) : "payload");
+                propertyInput.typedInput("type", node.props.propertyType || "msg");
+                propertyInput.typedInput("value", node.props.property !== undefined ? String(node.props.property) : "payload");
             } else {
                 // Fallback select + input for test environments
                 propContainer.empty();
                 var pFlex = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(propContainer);
                 var pTypeSel = window.$("<select>").css({ width: "90px" }).appendTo(pFlex);
                 propTypes.forEach(function (pt) {
-                    window.$("<option>", { value: pt.value }).text(pt.label).prop("selected", (node.propertyType || "msg") === pt.value).appendTo(pTypeSel);
+                    window.$("<option>", { value: pt.value }).text(pt.label).prop("selected", (node.props.propertyType || "msg") === pt.value).appendTo(pTypeSel);
                 });
-                propertyInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(node.property !== undefined ? String(node.property) : "payload").appendTo(pFlex);
+                propertyInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(node.props.property !== undefined ? String(node.props.property) : "payload").appendTo(pFlex);
                 pTypeSel.on("change", function () {
                     currentPropertyType = pTypeSel.val();
                 });
@@ -302,7 +302,7 @@ export function openSwitchNodeEditor(node) {
             });
 
             // Populate initial rules
-            var initialRules = (node.rules && node.rules.length) ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+            var initialRules = (node.props.rules && node.props.rules.length) ? node.props.rules : [{ t: "eq", v: "", vt: "str" }];
             initialRules.forEach(function (r) {
                 rulesListEl.editableList("addItem", r);
             });
@@ -313,8 +313,8 @@ export function openSwitchNodeEditor(node) {
             window.$("<label>").css({ "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" })
                 .text("Evaluate").appendTo(checkallRow);
             checkallSelect = window.$("<select>").css({ flex: "1" }).appendTo(checkallRow);
-            window.$("<option>", { value: "true" }).text("checking all rules").prop("selected", node.checkall !== "false").appendTo(checkallSelect);
-            window.$("<option>", { value: "false" }).text("stopping after first match").prop("selected", node.checkall === "false").appendTo(checkallSelect);
+            window.$("<option>", { value: "true" }).text("checking all rules").prop("selected", node.props.checkall !== "false").appendTo(checkallSelect);
+            window.$("<option>", { value: "false" }).text("stopping after first match").prop("selected", node.props.checkall === "false").appendTo(checkallSelect);
         }
     });
 }

@@ -20,9 +20,9 @@ defineLogicRuntimes({
     },
     "get-variable": {
         run: function (node, msg, ctx) {
-            const scope = resolveScope(ctx.screen, node.scope, node.id);
+            const scope = resolveScope(ctx.screen, node.props.scope, node.id);
             const out = cloneMsg(msg || {});
-            setMsgPath(out, node.target || "payload", scope ? cloneValue(scope[node.name]) : undefined);
+            setMsgPath(out, node.props.target || "payload", scope ? cloneValue(scope[node.props.name]) : undefined);
             return out;
         }
     },

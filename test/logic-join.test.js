@@ -1,6 +1,8 @@
 // The Join node's rules (src/features/logic/control/join-core.js), without a browser.
 // Run standalone: node test/logic-join.test.js
-const { createJoin } = await import("../src/features/logic/control/join-core.js");
+const core = await import("../src/features/logic/control/join-core.js");
+// a Join node: its configuration in props
+const createJoin = (props) => core.createJoin({ id: "j", type: "join", props });
 
 let failures = 0;
 function check(label, ok, actual) {

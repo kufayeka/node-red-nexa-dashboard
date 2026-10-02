@@ -21,7 +21,7 @@ export function openSparkplugWriteNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.tag = (tagInput.val() || "").trim();
+                    node.props.tag = (tagInput.val() || "").trim();
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -57,7 +57,7 @@ export function openSparkplugWriteNodeEditor(node) {
             window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Sparkplug Tag").appendTo(row);
             tagInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" })
                 .attr("placeholder", "{sparkplug:group::edgeNode::device::metric}")
-                .val(node.tag || "").appendTo(row);
+                .val(node.props.tag || "").appendTo(row);
 
             var hint = window.$("<div>").css({ "font-size": "11px", "margin-top": "4px" }).appendTo(body);
             function updateHint() {

@@ -441,7 +441,7 @@ dropChip('Open URL', 600, 600);
 const injectNode = screen.logic.nodes.find(n => n.type === 'inject');
 const reloadNode = screen.logic.nodes.find(n => n.type === 'reload');
 const urlNode = screen.logic.nodes.find(n => n.type === 'open-url');
-console.log('all 3 new node types landed on the graph with their defaults?', injectNode.intervalMs === 5000 && !!reloadNode && urlNode.url === '' && urlNode.newTab === false);
+console.log('all 3 new node types landed on the graph with their defaults?', injectNode.props.intervalMs === 5000 && !!reloadNode && urlNode.props.url === '' && urlNode.props.newTab === false);
 logicNodeBoxesById[injectNode.id]._handlers['dblclick'][0]({ stopPropagation() {} });
 console.log('double-clicking Inject opens its own config tray?', traySpec.title === 'Configure Inject Node');
 logicNodeBoxesById[urlNode.id]._handlers['dblclick'][0]({ stopPropagation() {} });

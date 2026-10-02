@@ -112,9 +112,9 @@ export function evaluateSwitchRule(lhs, rule, screen, node, msg) {
 }
 
 export function runSwitchNode(screen, node, msg, budget, continuePropagation, runLogicGraph) {
-    const propVal = resolveSwitchBindingValue(screen, node, node.propertyType || "msg", node.property || "payload", msg);
-    const rules = (node.rules && node.rules.length) ? node.rules : [{ t: "eq", v: "", vt: "str" }];
-    const checkall = node.checkall !== "false";
+    const propVal = resolveSwitchBindingValue(screen, node, node.props.propertyType || "msg", node.props.property || "payload", msg);
+    const rules = (node.props.rules && node.props.rules.length) ? node.props.rules : [{ t: "eq", v: "", vt: "str" }];
+    const checkall = node.props.checkall !== "false";
     const matchedIndices = [];
     let hadPriorMatch = false;
 
@@ -146,7 +146,7 @@ export function runSwitchNode(screen, node, msg, budget, continuePropagation, ru
 }
 
 export function runDelayNode(screen, node, msg, budget, continuePropagation) {
-    let delayMs = (node.unit === "s" ? Number(node.delay) * 1000 : Number(node.delay));
+    let delayMs = (node.props.unit === "s" ? Number(node.props.delay) * 1000 : Number(node.props.delay));
     if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
     if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
         delayMs = msg.delay;

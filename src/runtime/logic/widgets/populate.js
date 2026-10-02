@@ -220,7 +220,7 @@ export function sendToHost(screen, node, msg, budget) {
         return;
     }
     var targets = (screen.logic.nodes || []).filter(function (n) {
-        return n.type === "template-event" && n.instanceId === ns && (!n.output || n.output === out.output);
+        return n.type === "template-event" && n.props.instanceId === ns && (!n.props.output || n.props.output === out.output);
     });
     targets.forEach(function (n, i) {
         runLogicGraph(screen, n, i === 0 ? out : cloneMsg(out), budget);

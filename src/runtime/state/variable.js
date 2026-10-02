@@ -96,11 +96,12 @@ export function notifyWatchers(screen, scope, name, next, old) {
     (screen.logic && screen.logic.nodes || []).forEach(function (n) {
         if (n.type !== "on-variable-change") return;
         let matched = false;
-        if (Array.isArray(n.variables) && n.variables.length > 0) {
-            matched = n.variables.some(function (v) {
+        const c = n.props;
+        if (Array.isArray(c.variables) && c.variables.length > 0) {
+            matched = c.variables.some(function (v) {
                 return v && v.name === name && resolveScope(screen, v.scope, n.id) === scope;
             });
-        } else if (n.name === name && resolveScope(screen, n.scope, n.id) === scope) {
+        } else if (c.name === name && resolveScope(screen, c.scope, n.id) === scope) {
             matched = true;
         }
         if (!matched) return;

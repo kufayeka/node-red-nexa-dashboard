@@ -1924,6 +1924,30 @@
     return out || resolved;
   }
 
+  // src/model/migrate-logic.js
+  var LOGIC_NODE_OWN_KEYS = ["id", "type", "x", "y", "w", "h", "props"];
+  function migrateLogicNode(node) {
+    if (!node || typeof node !== "object") return node;
+    if (node.props && typeof node.props === "object" && !Array.isArray(node.props)) return node;
+    const props = {};
+    Object.keys(node).forEach(function(k) {
+      if (LOGIC_NODE_OWN_KEYS.indexOf(k) !== -1) return;
+      props[k] = node[k];
+      delete node[k];
+    });
+    node.props = props;
+    return node;
+  }
+  function migrateLogic(logic) {
+    let moved = 0;
+    (logic && logic.nodes || []).forEach(function(n) {
+      const flat = !(n && n.props && typeof n.props === "object");
+      migrateLogicNode(n);
+      if (flat) moved++;
+    });
+    return moved;
+  }
+
   // src/model/migrate.js
   var TREE_VERSION = 1;
   function genIdFallback() {
@@ -1935,6 +1959,7 @@
     if (!surface.components) surface.components = [];
     if (!surface.orphans) surface.orphans = [];
     if (!surface.logic) surface.logic = { nodes: [], wires: [] };
+    migrateLogic(surface.logic);
     migrateOverrideKeys(surface.components);
     delete surface.breakpoints;
     if (surface.treeVersion >= TREE_VERSION) return surface;
@@ -2079,7 +2104,7 @@
       outputs: 1,
       exclusivePorts: true,
       ports: function(node) {
-        return node.rules && node.rules.length ? node.rules.length : 1;
+        return node.props.rules && node.props.rules.length ? node.props.rules.length : 1;
       }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
@@ -2371,21 +2396,22 @@
     var idMap = {};
     var clonedNodes = (logic.nodes || []).map(function(n) {
       var copy = JSON.parse(JSON.stringify(n));
+      if (!copy.props) copy.props = {};
       var newId = genId();
       idMap[n.id] = newId;
       copy.id = newId;
       if (compIdMap) {
-        if (copy.compId && compIdMap[copy.compId]) copy.compId = compIdMap[copy.compId];
-        if (copy.componentId && compIdMap[copy.componentId]) copy.componentId = compIdMap[copy.componentId];
-        if (copy.targetId && compIdMap[copy.targetId]) copy.targetId = compIdMap[copy.targetId];
-        if (copy.container && compIdMap[copy.container]) copy.container = compIdMap[copy.container];
-        if (copy.overlay && compIdMap[copy.overlay]) copy.overlay = compIdMap[copy.overlay];
-        if (copy.node && compIdMap[copy.node]) copy.node = compIdMap[copy.node];
-        if (typeof copy.tag === "string" && copy.tag.indexOf("comp:") === 0) {
-          var parts = copy.tag.split(":");
+        if (copy.props.compId && compIdMap[copy.props.compId]) copy.props.compId = compIdMap[copy.props.compId];
+        if (copy.props.componentId && compIdMap[copy.props.componentId]) copy.props.componentId = compIdMap[copy.props.componentId];
+        if (copy.props.targetId && compIdMap[copy.props.targetId]) copy.props.targetId = compIdMap[copy.props.targetId];
+        if (copy.props.container && compIdMap[copy.props.container]) copy.props.container = compIdMap[copy.props.container];
+        if (copy.props.overlay && compIdMap[copy.props.overlay]) copy.props.overlay = compIdMap[copy.props.overlay];
+        if (copy.props.node && compIdMap[copy.props.node]) copy.props.node = compIdMap[copy.props.node];
+        if (typeof copy.props.tag === "string" && copy.props.tag.indexOf("comp:") === 0) {
+          var parts = copy.props.tag.split(":");
           if (parts[1] && compIdMap[parts[1]]) {
             parts[1] = compIdMap[parts[1]];
-            copy.tag = parts.join(":");
+            copy.props.tag = parts.join(":");
           }
         }
       }
@@ -2778,6 +2804,7 @@
     var flowData = state.projectConfigNode && state.projectConfigNode.flows || [];
     flowData.forEach(function(f) {
       if (!f.logic) f.logic = { nodes: [], wires: [] };
+      migrateLogic(f.logic);
       if (!f.components) f.components = [];
       if (!f.variables) f.variables = [];
       if (f.parentId === void 0) f.parentId = null;
@@ -28367,7 +28394,7 @@
   function templateOutputs(template) {
     var out = [];
     (template && template.logic && template.logic.nodes || []).forEach(function(n) {
-      var name2 = n.type === "template-output" ? n.output || "out" : null;
+      var name2 = n.type === "template-output" ? n.props.output || "out" : null;
       if (name2 && out.indexOf(name2) === -1) out.push(name2);
     });
     return out;
@@ -30982,10 +31009,10 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
-            node.payloadType = payloadTypeSelect.val();
-            node.payload = payloadInput.val();
-            node.once = onceInput.is(":checked");
+            node.props.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
+            node.props.payloadType = payloadTypeSelect.val();
+            node.props.payload = payloadInput.val();
+            node.props.once = onceInput.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -31004,11 +31031,11 @@
           ["num", "Number"],
           ["date", "Timestamp (Date.now())"]
         ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.payloadType || "json") === opt[0]).appendTo(payloadTypeSelect);
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.props.payloadType || "json") === opt[0]).appendTo(payloadTypeSelect);
         });
         var valRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload").appendTo(valRow);
-        payloadInput = window.$("<textarea>").css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" }).val(node.payload !== void 0 ? node.payload : '{"text": "Hello World"}').appendTo(valRow);
+        payloadInput = window.$("<textarea>").css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" }).val(node.props.payload !== void 0 ? node.props.payload : '{"text": "Hello World"}').appendTo(valRow);
         function updatePayloadUi() {
           var t2 = payloadTypeSelect.val();
           if (t2 === "date") {
@@ -31021,9 +31048,9 @@
         updatePayloadUi();
         var intervalRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Repeat every (ms, 0 to disable repeat)").appendTo(intervalRow);
-        intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.intervalMs !== void 0 ? node.intervalMs : 5e3).appendTo(intervalRow);
+        intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.intervalMs !== void 0 ? node.props.intervalMs : 5e3).appendTo(intervalRow);
         var onceRow = window.$("<div>").css({ "margin-top": "10px" }).appendTo(body);
-        onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.once).css({ "margin-right": "6px" });
+        onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.props.once).css({ "margin-right": "6px" });
         onceRow.append(onceInput).append(window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Fire once on startup"));
       }
     });
@@ -31033,7 +31060,7 @@
   defineLogicEditors({
     "inject": {
       label: function(node) {
-        const p = node.payloadType === "json" ? "JSON" : node.payloadType === "str" ? node.payload || "str" : node.payloadType || "date";
+        const p = node.props.payloadType === "json" ? "JSON" : node.props.payloadType === "str" ? node.props.payload || "str" : node.props.payloadType || "date";
         return "Inject (" + p + ")";
       },
       edit: openInjectNodeEditor,
@@ -31043,7 +31070,7 @@
 
   // src/features/logic/ui/ui-update-dialog.js
   function openUiUpdateNodeEditor(node) {
-    var comp = findComponent(node.compId);
+    var comp = findComponent(node.props.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
     var fieldEls = {};
@@ -31075,21 +31102,21 @@
                 }
               }
             });
-            node.config = config2;
+            node.props.config = config2;
             var act = actionSel ? actionSel.val() : "";
             if (act) {
-              node.action = act;
+              node.props.action = act;
               var rawParams = paramsInput ? String(paramsInput.val() || "").trim() : "";
               if (rawParams) {
                 try {
-                  node.actionParams = JSON.parse(rawParams);
+                  node.props.actionParams = JSON.parse(rawParams);
                 } catch (e) {
-                  node.actionParams = rawParams;
+                  node.props.actionParams = rawParams;
                 }
-              } else delete node.actionParams;
+              } else delete node.props.actionParams;
             } else {
-              delete node.action;
-              delete node.actionParams;
+              delete node.props.action;
+              delete node.props.actionParams;
             }
             markDirty();
             window.RED.tray.close();
@@ -31111,10 +31138,10 @@
           actions.forEach(function(a) {
             window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel);
           });
-          actionSel.val(node.action || "");
+          actionSel.val(node.props.action || "");
           var pbox = window.$("<div>").css({ "margin-top": "8px" }).appendTo(arow);
           window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Its parameters (JSON or text), when msg.payload has none").appendTo(pbox);
-          paramsInput = window.$("<input>", { type: "text", placeholder: 'e.g. {"url": "https://\u2026"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(node.actionParams === void 0 ? "" : typeof node.actionParams === "string" ? node.actionParams : JSON.stringify(node.actionParams)).appendTo(pbox);
+          paramsInput = window.$("<input>", { type: "text", placeholder: 'e.g. {"url": "https://\u2026"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(node.props.actionParams === void 0 ? "" : typeof node.props.actionParams === "string" ? node.props.actionParams : JSON.stringify(node.props.actionParams)).appendTo(pbox);
           var phelp = window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).appendTo(pbox);
           propsBox = window.$("<div>").appendTo(body);
           var sync = function() {
@@ -31154,11 +31181,11 @@
           if (msgBound[key]) return;
           var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
           window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
-          var current2 = node.config && node.config[key] !== void 0 ? node.config[key] : "";
+          var current2 = node.props.config && node.props.config[key] !== void 0 ? node.props.config[key] : "";
           var input;
           if (type === "checkbox") {
             var checkWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
-            var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.config && node.config[key] !== void 0).appendTo(checkWrap);
+            var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.config && node.props.config[key] !== void 0).appendTo(checkWrap);
             window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
             input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current2).appendTo(checkWrap);
             fieldEls[key] = { input, overrideCheck, type: "checkbox" };
@@ -31224,9 +31251,9 @@
             var raw = typeof statesInput.typedInput === "function" ? statesInput.typedInput("value") : statesInput.val();
             try {
               var parsed = JSON.parse(raw);
-              node.states = Array.isArray(parsed) ? parsed : [];
+              node.props.states = Array.isArray(parsed) ? parsed : [];
             } catch (e) {
-              node.states = [];
+              node.props.states = [];
             }
             markDirty();
             renderLogicCanvas();
@@ -31239,7 +31266,7 @@
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Shows, hides or removes nodes of this screen's Hierarchy (usually groups) by name. Can be overridden at runtime by an incoming msg.payload with the same array shape.").appendTo(body);
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Visibility by node name (JSON array)").appendTo(row);
-        var initialText = JSON.stringify(node.states && node.states.length ? node.states : [{ name: "Group 1", state: "show" }], null, 2);
+        var initialText = JSON.stringify(node.props.states && node.props.states.length ? node.props.states : [{ name: "Group 1", state: "show" }], null, 2);
         statesInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
         if (typeof statesInput.typedInput === "function") {
           statesInput.typedInput({ default: "json", types: ["json"] });
@@ -31271,15 +31298,15 @@
   }
   function teleportNodeLabel(node) {
     var screen = getActiveScreen();
-    var n = node.node && screen ? tree_exports.find(screen, node.node) : null;
-    var who = n ? nodeName(n) : node.node ? "(missing node)" : "?";
-    if (node.toSource === "payload") return "Teleport " + who + " \u2192 msg.payload";
-    return node.to ? "Teleport " + who + " \u2192 " + (node.to === "@page" ? "page" : node.to) : "Send " + who + " home";
+    var n = node.props.node && screen ? tree_exports.find(screen, node.props.node) : null;
+    var who = n ? nodeName(n) : node.props.node ? "(missing node)" : "?";
+    if (node.props.toSource === "payload") return "Teleport " + who + " \u2192 msg.payload";
+    return node.props.to ? "Teleport " + who + " \u2192 " + (node.props.to === "@page" ? "page" : node.props.to) : "Send " + who + " home";
   }
   function openTeleportNodeEditor(node) {
     var screen = getActiveScreen();
     var all = screen ? tree_exports.allNodes(screen) : [];
-    var d = { node: node.node || "", to: node.to === void 0 ? "@page" : node.to, toSource: node.toSource || "static" };
+    var d = { node: node.props.node || "", to: node.props.to === void 0 ? "@page" : node.props.to, toSource: node.props.toSource || "static" };
     window.RED.tray.show({
       id: "nexa-logic-teleport-editor",
       title: "Configure Teleport Node",
@@ -31289,9 +31316,9 @@
           window.RED.tray.close();
         } },
         { text: "Save", "class": "primary", click: function() {
-          node.node = d.node;
-          node.to = d.to;
-          node.toSource = d.toSource;
+          node.props.node = d.node;
+          node.props.to = d.to;
+          node.props.toSource = d.toSource;
           markDirty();
           renderLogicCanvas();
           window.RED.tray.close();
@@ -31354,7 +31381,7 @@
   function openOverlayNodeEditor(node) {
     var screen = getActiveScreen();
     var list = overlaysOf(screen);
-    var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
+    var d = { overlay: node.props.overlay || "", valueSource: node.props.valueSource || "payload" };
     var close = node.type === "overlay-close";
     window.RED.tray.show({
       id: "nexa-logic-overlay-editor",
@@ -31365,8 +31392,8 @@
           window.RED.tray.close();
         } },
         { text: "Save", "class": "primary", click: function() {
-          node.overlay = d.overlay;
-          if (close) node.valueSource = d.valueSource;
+          node.props.overlay = d.overlay;
+          if (close) node.props.valueSource = d.valueSource;
           markDirty();
           renderLogicCanvas();
           window.RED.tray.close();
@@ -31410,32 +31437,32 @@
   }
   function overlayNodeLabel(node) {
     const screen = getActiveScreen();
-    const of = node.overlay && screen ? tree_exports.find(screen, node.overlay) : null;
+    const of = node.props.overlay && screen ? tree_exports.find(screen, node.props.overlay) : null;
     const verb = node.type === "overlay-open" ? "Open " : "Close ";
-    return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
+    return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.props.overlay ? "the top overlay" : "(missing overlay)");
   }
   defineLogicEditors({
     "ui-event": {
       label: function(node) {
-        const c = componentName(node.compId);
-        if (node.event === "sparkplug-change" || node.event === "sparkplug-update") return c.name + " on Sparkplug Update";
-        if (node.event === "slide-change") return c.name + " on Slide Change";
+        const c = componentName(node.props.compId);
+        if (node.props.event === "sparkplug-change" || node.props.event === "sparkplug-update") return c.name + " on Sparkplug Update";
+        if (node.props.event === "slide-change") return c.name + " on Slide Change";
         const evt = c.def && c.def.events && c.def.events.find(function(e) {
-          return e.name === node.event;
+          return e.name === node.props.event;
         });
-        return c.name + " " + (evt ? evt.label : "on " + node.event);
+        return c.name + " " + (evt ? evt.label : "on " + node.props.event);
       }
     },
     "ui-update": {
       label: function(node) {
-        return "Update " + componentName(node.compId).name;
+        return "Update " + componentName(node.props.compId).name;
       },
       edit: openUiUpdateNodeEditor,
       hint: "Double-click to configure"
     },
     "layer-control": {
       label: function(node) {
-        const n = (node.states || []).length;
+        const n = (node.props.states || []).length;
         return "Layer Control" + (n ? " (" + n + ")" : "");
       },
       edit: openLayerControlNodeEditor,
@@ -31473,7 +31500,7 @@
           text: "Done",
           "class": "primary",
           click: function() {
-            if (codeEditor) node.code = codeEditor.getValue();
+            if (codeEditor) node.props.code = codeEditor.getValue();
             markDirty();
             window.RED.tray.close();
           }
@@ -31485,7 +31512,7 @@
         var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
         codeEditor = createCM6Editor({
           parent: editorContainer.get(0),
-          value: node.code || "return msg;",
+          value: node.props.code || "return msg;",
           language: "javascript",
           completionSource: sparkplugBindingCompletionSource
         });
@@ -31521,7 +31548,7 @@
   }
   function openSwitchNodeEditor(node) {
     var nameInput, propertyInput, checkallSelect;
-    var currentPropertyType = node.propertyType || "msg";
+    var currentPropertyType = node.props.propertyType || "msg";
     var rulesListEl;
     window.RED.tray.show({
       id: "nexa-logic-switch-editor",
@@ -31535,14 +31562,14 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.name = (nameInput.val() || "").trim();
-            node.checkall = checkallSelect.val();
+            node.props.name = (nameInput.val() || "").trim();
+            node.props.checkall = checkallSelect.val();
             if (typeof propertyInput.typedInput === "function") {
-              node.propertyType = propertyInput.typedInput("type");
-              node.property = propertyInput.typedInput("value");
+              node.props.propertyType = propertyInput.typedInput("type");
+              node.props.property = propertyInput.typedInput("value");
             } else {
-              node.propertyType = currentPropertyType;
-              node.property = propertyInput.val();
+              node.props.propertyType = currentPropertyType;
+              node.props.property = propertyInput.val();
             }
             var gatheredRules = [];
             rulesListEl.find(".nexa-switch-rule-row").each(function() {
@@ -31555,8 +31582,8 @@
             if (!gatheredRules.length) {
               gatheredRules.push({ t: "eq", v: "", vt: "str" });
             }
-            node.rules = gatheredRules;
-            node.outputs = gatheredRules.length;
+            node.props.rules = gatheredRules;
+            node.props.outputs = gatheredRules.length;
             var screen = getActiveScreen();
             if (screen && screen.logic && screen.logic.wires) {
               screen.logic.wires = screen.logic.wires.filter(function(w) {
@@ -31577,7 +31604,7 @@
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Route messages based on property values and conditional rules. Each rule outputs to its corresponding output port.").appendTo(body);
         var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Name").appendTo(nameRow);
-        nameInput = window.$("<input>", { type: "text", placeholder: "Switch" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.name || "").appendTo(nameRow);
+        nameInput = window.$("<input>", { type: "text", placeholder: "Switch" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.name || "").appendTo(nameRow);
         var propRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Property").appendTo(propRow);
         var propContainer = window.$("<div>").css({ width: "100%" }).appendTo(propRow);
@@ -31589,20 +31616,20 @@
         ];
         if (typeof propertyInput.typedInput === "function") {
           propertyInput.typedInput({
-            default: node.propertyType || "msg",
+            default: node.props.propertyType || "msg",
             types: propTypes,
             width: "100%"
           });
-          propertyInput.typedInput("type", node.propertyType || "msg");
-          propertyInput.typedInput("value", node.property !== void 0 ? String(node.property) : "payload");
+          propertyInput.typedInput("type", node.props.propertyType || "msg");
+          propertyInput.typedInput("value", node.props.property !== void 0 ? String(node.props.property) : "payload");
         } else {
           propContainer.empty();
           var pFlex = window.$("<div>").css({ display: "flex", gap: "6px" }).appendTo(propContainer);
           var pTypeSel = window.$("<select>").css({ width: "90px" }).appendTo(pFlex);
           propTypes.forEach(function(pt) {
-            window.$("<option>", { value: pt.value }).text(pt.label).prop("selected", (node.propertyType || "msg") === pt.value).appendTo(pTypeSel);
+            window.$("<option>", { value: pt.value }).text(pt.label).prop("selected", (node.props.propertyType || "msg") === pt.value).appendTo(pTypeSel);
           });
-          propertyInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(node.property !== void 0 ? String(node.property) : "payload").appendTo(pFlex);
+          propertyInput = window.$("<input>", { type: "text" }).css({ flex: "1" }).val(node.props.property !== void 0 ? String(node.props.property) : "payload").appendTo(pFlex);
           pTypeSel.on("change", function() {
             currentPropertyType = pTypeSel.val();
           });
@@ -31755,7 +31782,7 @@
             setTimeout(refreshPortBadges, 10);
           }
         });
-        var initialRules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+        var initialRules = node.props.rules && node.props.rules.length ? node.props.rules : [{ t: "eq", v: "", vt: "str" }];
         initialRules.forEach(function(r) {
           rulesListEl.editableList("addItem", r);
         });
@@ -31763,8 +31790,8 @@
         var checkallRow = window.$("<div>").css({ "margin-top": "12px", display: "flex", "align-items": "center", gap: "8px" }).appendTo(body);
         window.$("<label>").css({ "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Evaluate").appendTo(checkallRow);
         checkallSelect = window.$("<select>").css({ flex: "1" }).appendTo(checkallRow);
-        window.$("<option>", { value: "true" }).text("checking all rules").prop("selected", node.checkall !== "false").appendTo(checkallSelect);
-        window.$("<option>", { value: "false" }).text("stopping after first match").prop("selected", node.checkall === "false").appendTo(checkallSelect);
+        window.$("<option>", { value: "true" }).text("checking all rules").prop("selected", node.props.checkall !== "false").appendTo(checkallSelect);
+        window.$("<option>", { value: "false" }).text("stopping after first match").prop("selected", node.props.checkall === "false").appendTo(checkallSelect);
       }
     });
   }
@@ -31785,8 +31812,8 @@
           "class": "primary",
           click: function() {
             var val = parseInt(delayInput.val(), 10);
-            node.delay = isNaN(val) || val < 0 ? 500 : val;
-            node.unit = unitSelect.val() || "ms";
+            node.props.delay = isNaN(val) || val < 0 ? 500 : val;
+            node.props.unit = unitSelect.val() || "ms";
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -31799,7 +31826,7 @@
         var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
         var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Delay Time").appendTo(delayCol);
-        delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" }).val(node.delay != null ? node.delay : 500).appendTo(delayCol);
+        delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.delay != null ? node.props.delay : 500).appendTo(delayCol);
         var unitCol = window.$("<div>").css({ flex: "0 0 120px" }).appendTo(row);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Unit").appendTo(unitCol);
         unitSelect = window.$("<select>").css({ width: "100%" }).appendTo(unitCol);
@@ -31807,7 +31834,7 @@
           ["ms", "Milliseconds (ms)"],
           ["s", "Seconds (s)"]
         ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.unit || "ms") === opt[0]).appendTo(unitSelect);
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.props.unit || "ms") === opt[0]).appendTo(unitSelect);
         });
       }
     });
@@ -31817,11 +31844,11 @@
   function openJoinNodeEditor(node) {
     var trayEl = null;
     var draft = {
-      mode: node.mode || "wait-all",
-      slots: Array.isArray(node.slots) ? JSON.parse(JSON.stringify(node.slots)) : [],
-      count: typeof node.count === "number" ? node.count : 2,
-      outputFormat: node.outputFormat || "object",
-      timeout: typeof node.timeout === "number" ? node.timeout : 0
+      mode: node.props.mode || "wait-all",
+      slots: Array.isArray(node.props.slots) ? JSON.parse(JSON.stringify(node.props.slots)) : [],
+      count: typeof node.props.count === "number" ? node.props.count : 2,
+      outputFormat: node.props.outputFormat || "object",
+      timeout: typeof node.props.timeout === "number" ? node.props.timeout : 0
     };
     var MODE_HELP = {
       "wait-all": "Waits until every configured slot has received at least one message, then emits the combined result and resets. Great for parallel async operations (HTTP + timer, etc.).",
@@ -31932,19 +31959,19 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.mode = draft.mode;
-            node.outputFormat = draft.outputFormat;
-            node.timeout = draft.timeout;
+            node.props.mode = draft.mode;
+            node.props.outputFormat = draft.outputFormat;
+            node.props.timeout = draft.timeout;
             if (draft.mode === "sequence-n") {
-              node.count = draft.count;
-              delete node.slots;
+              node.props.count = draft.count;
+              delete node.props.slots;
             } else {
               var nxListEl = trayEl && trayEl.find("nx-list").get(0);
               var rawSlots = nxListEl && (nxListEl.items || nxListEl.value) || draft.slots || [];
-              node.slots = rawSlots.filter(function(s) {
+              node.props.slots = rawSlots.filter(function(s) {
                 return s && s.topic;
               });
-              delete node.count;
+              delete node.props.count;
             }
             markDirty();
             renderLogicCanvas();
@@ -31962,28 +31989,28 @@
     "function": { edit: openFunctionNodeEditor, hint: "Double-click to edit code" },
     "switch": {
       label: function(node) {
-        const prop2 = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
-        return (node.name || "Switch") + " [" + prop2 + " : " + (node.rules || []).length + "]";
+        const prop2 = (node.props.propertyType === "var" ? "$" : node.props.propertyType === "tag" ? "" : "msg.") + (node.props.property || "payload");
+        return (node.props.name || "Switch") + " [" + prop2 + " : " + (node.props.rules || []).length + "]";
       },
       edit: openSwitchNodeEditor,
       hint: "Double-click to configure switch rules",
       portTitle: function(node, i2) {
-        const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq" }];
+        const rules = node.props.rules && node.props.rules.length ? node.props.rules : [{ t: "eq" }];
         return rules[i2] ? rules[i2].t || "rule" : "";
       }
     },
     "delay": {
       label: function(node) {
-        return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")";
+        return "Delay (" + (node.props.delay != null ? node.props.delay : 500) + (node.props.unit || "ms") + ")";
       },
       edit: openDelayNodeEditor,
       hint: "Double-click to configure delay"
     },
     "join": {
       label: function(node) {
-        const mode = node.mode || "wait-all";
-        const word = mode === "sequence-n" ? "Seq " + (node.count || 2) : JOIN_MODES[mode] || "Join";
-        const n = (node.slots || []).length;
+        const mode = node.props.mode || "wait-all";
+        const word = mode === "sequence-n" ? "Seq " + (node.props.count || 2) : JOIN_MODES[mode] || "Join";
+        const n = (node.props.slots || []).length;
         return "Join [" + word + (n ? ": " + n : "") + "]";
       },
       edit: openJoinNodeEditor,
@@ -32005,14 +32032,14 @@
     var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
     var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
     var draft = {
-      scope: node.scope || "",
-      name: node.name || "",
-      op: node.op || "set",
-      valueSource: node.valueSource || "payload",
-      value: node.value,
-      msgPath: node.msgPath || "payload.data",
-      target: node.target || "payload",
-      variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : node.name ? [{ scope: node.scope || "", name: node.name }] : []
+      scope: node.props.scope || "",
+      name: node.props.name || "",
+      op: node.props.op || "set",
+      valueSource: node.props.valueSource || "payload",
+      value: node.props.value,
+      msgPath: node.props.msgPath || "payload.data",
+      target: node.props.target || "payload",
+      variables: Array.isArray(node.props.variables) ? JSON.parse(JSON.stringify(node.props.variables)) : node.props.name ? [{ scope: node.props.scope || "", name: node.props.name }] : []
     };
     var nameSel;
     var trayEl = null;
@@ -32073,21 +32100,21 @@
                   }
                 }
               });
-              node.variables = gathered;
-              node.scope = gathered[0] ? gathered[0].scope : "";
-              node.name = gathered[0] ? gathered[0].name : "";
+              node.props.variables = gathered;
+              node.props.scope = gathered[0] ? gathered[0].scope : "";
+              node.props.name = gathered[0] ? gathered[0].name : "";
             } else {
-              node.scope = draft.scope;
-              node.name = draft.name;
+              node.props.scope = draft.scope;
+              node.props.name = draft.name;
               if (type === "set-variable") {
-                node.op = draft.op;
-                node.valueSource = draft.valueSource;
-                if (draft.valueSource === "static") node.value = draft.value;
-                else delete node.value;
-                if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
-                else delete node.msgPath;
+                node.props.op = draft.op;
+                node.props.valueSource = draft.valueSource;
+                if (draft.valueSource === "static") node.props.value = draft.value;
+                else delete node.props.value;
+                if (draft.valueSource === "msg") node.props.msgPath = draft.msgPath;
+                else delete node.props.msgPath;
               }
-              if (type === "get-variable") node.target = draft.target || "payload";
+              if (type === "get-variable") node.props.target = draft.target || "payload";
             }
             markDirty();
             renderLogicCanvas();
@@ -32364,7 +32391,7 @@
               }
               assignments.push(out);
             });
-            node.assignments = assignments;
+            node.props.assignments = assignments;
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -32464,7 +32491,7 @@
             });
           }
         });
-        var existing = Array.isArray(node.assignments) ? node.assignments : [];
+        var existing = Array.isArray(node.props.assignments) ? node.props.assignments : [];
         if (existing.length) {
           existing.forEach(function(a) {
             listEl.editableList("addItem", a);
@@ -32544,7 +32571,7 @@
                 target: d.target || "payload"
               });
             });
-            node.reads = reads;
+            node.props.reads = reads;
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -32629,7 +32656,7 @@
             });
           }
         });
-        var existing = Array.isArray(node.reads) ? node.reads : [];
+        var existing = Array.isArray(node.props.reads) ? node.props.reads : [];
         if (existing.length) {
           existing.forEach(function(r) {
             listEl.editableList("addItem", r);
@@ -32653,36 +32680,36 @@
   defineLogicEditors({
     "set-variable": {
       label: function(node) {
-        if (!node.name) return "Set Variable";
-        const value = node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "";
-        return (OPS3[node.op] || "Set ") + varRef(node.scope, node.name) + value;
+        if (!node.props.name) return "Set Variable";
+        const value = node.props.valueSource === "static" && node.props.op !== "toggle" ? " = " + JSON.stringify(node.props.value) : node.props.valueSource === "msg" ? " \u2190 msg." + node.props.msgPath : "";
+        return (OPS3[node.props.op] || "Set ") + varRef(node.props.scope, node.props.name) + value;
       },
       edit: openSetVariableNodeEditor,
       hint: varHint
     },
     "get-variable": {
       label: function(node) {
-        if (!node.name) return "Get Variable";
-        return "Get " + varRef(node.scope, node.name) + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
+        if (!node.props.name) return "Get Variable";
+        return "Get " + varRef(node.props.scope, node.props.name) + (node.props.target && node.props.target !== "payload" ? " \u2192 msg." + node.props.target : "");
       },
       edit: openSetVariableNodeEditor,
       hint: varHint
     },
     "on-variable-change": {
       label: function(node) {
-        if (Array.isArray(node.variables) && node.variables.length) {
-          return "Watch (" + node.variables.map(function(v) {
+        if (Array.isArray(node.props.variables) && node.props.variables.length) {
+          return "Watch (" + node.props.variables.map(function(v) {
             return v ? varRef(v.scope, v.name) : "?";
           }).join(", ") + ")";
         }
-        return node.name ? "Watch " + varRef(node.scope, node.name) : "Watch Variable";
+        return node.props.name ? "Watch " + varRef(node.props.scope, node.props.name) : "Watch Variable";
       },
       edit: openSetVariableNodeEditor,
       hint: varHint
     },
     "set-variable-multi": {
       label: function(node) {
-        const n = (node.assignments || []).length;
+        const n = (node.props.assignments || []).length;
         return "Set Variables" + (n ? " (" + n + ")" : "");
       },
       edit: openSetVariableMultiNodeEditor,
@@ -32690,7 +32717,7 @@
     },
     "get-variable-multi": {
       label: function(node) {
-        const n = (node.reads || []).length;
+        const n = (node.props.reads || []).length;
         return "Get Variables" + (n ? " (" + n + ")" : "");
       },
       edit: openGetVariableMultiNodeEditor,
@@ -32715,7 +32742,7 @@
     var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return n.type === "@frame";
     }) : [];
-    var chosen = node.container || "";
+    var chosen = node.props.container || "";
     window.RED.tray.show({
       id: "nexa-logic-layout-editor",
       title: "Configure Layout Node",
@@ -32725,7 +32752,7 @@
           window.RED.tray.close();
         } },
         { text: "Save", "class": "primary", click: function() {
-          node.container = chosen;
+          node.props.container = chosen;
           markDirty();
           renderLogicCanvas();
           window.RED.tray.close();
@@ -32752,15 +32779,15 @@
       return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
     });
     var d = {
-      template: node.template || "",
-      mode: node.mode || "replace",
-      key: node.key === void 0 ? "id" : node.key,
-      valueSource: node.valueSource || "payload",
-      msgPath: node.msgPath || "payload.items",
-      value: node.value,
-      fill: !!node.fill,
-      virtualize: !!node.virtualize,
-      itemParam: node.itemParam
+      template: node.props.template || "",
+      mode: node.props.mode || "replace",
+      key: node.props.key === void 0 ? "id" : node.props.key,
+      valueSource: node.props.valueSource || "payload",
+      msgPath: node.props.msgPath || "payload.items",
+      value: node.props.value,
+      fill: !!node.props.fill,
+      virtualize: !!node.props.virtualize,
+      itemParam: node.props.itemParam
     };
     function paramsOf(tid) {
       var t2 = templates.filter(function(x) {
@@ -32783,11 +32810,11 @@
           "class": "primary",
           click: function() {
             Object.keys(d).forEach(function(k) {
-              node[k] = d[k];
+              node.props[k] = d[k];
             });
-            delete node.container;
-            if (d.valueSource !== "static") delete node.value;
-            if (d.valueSource !== "msg") delete node.msgPath;
+            delete node.props.container;
+            if (d.valueSource !== "static") delete node.props.value;
+            if (d.valueSource !== "msg") delete node.props.msgPath;
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -32885,8 +32912,8 @@
   var NAME_RE2 = /^[A-Za-z_][\w-]*$/;
   function openTemplateOutputNodeEditor(node) {
     var sending = node.type === "template-output";
-    var d = { output: node.output === void 0 ? sending ? "out" : "" : node.output };
-    var inst = sending ? null : findComponent(node.instanceId);
+    var d = { output: node.props.output === void 0 ? sending ? "out" : "" : node.props.output };
+    var inst = sending ? null : findComponent(node.props.instanceId);
     var names = inst ? templateOutputs(findTemplate(inst.templateId)) : [];
     window.RED.tray.show({
       id: "nexa-logic-template-output-editor",
@@ -32901,7 +32928,7 @@
           "class": "primary",
           click: function() {
             if (sending && !NAME_RE2.test(d.output)) return;
-            node.output = d.output;
+            node.props.output = d.output;
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -32950,38 +32977,38 @@
   defineLogicEditors({
     "template-output": {
       label: function(node) {
-        return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
+        return "Send to Host" + (node.props.output && node.props.output !== "out" ? " (" + node.props.output + ")" : "");
       },
       edit: openTemplateOutputNodeEditor,
       hint: "Double-click to configure"
     },
     "template-event": {
       label: function(node) {
-        return instanceName(node.instanceId) + " on " + (node.output || "any output");
+        return instanceName(node.props.instanceId) + " on " + (node.props.output || "any output");
       },
       edit: openTemplateOutputNodeEditor,
       hint: "Double-click to configure"
     },
     "set-template-param": {
       label: function(node) {
-        const comp = findComponent(node.instanceId);
+        const comp = findComponent(node.props.instanceId);
         const tpl = comp && findTemplate(comp.templateId);
         const param = tpl && (tpl.params || []).find(function(p) {
-          return p.name === node.paramName;
+          return p.name === node.props.paramName;
         });
-        return instanceName(node.instanceId, "Instance") + " \u2192 Set " + (param ? param.label : node.paramName);
+        return instanceName(node.props.instanceId, "Instance") + " \u2192 Set " + (param ? param.label : node.props.paramName);
       }
     },
     "populate": {
       label: function(node) {
-        const tpl = node.template ? findTemplate(node.template) : null;
-        const noItems = node.mode === "clear" || node.mode === "remove";
-        if (!node.container) {
-          return (POPULATE_WORDS[node.mode] || "Populate ") + (noItems ? "items" : (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : "")) + " \u2192 layout";
+        const tpl = node.props.template ? findTemplate(node.props.template) : null;
+        const noItems = node.props.mode === "clear" || node.props.mode === "remove";
+        if (!node.props.container) {
+          return (POPULATE_WORDS[node.props.mode] || "Populate ") + (noItems ? "items" : (tpl ? tpl.name : "?") + (node.props.itemParam ? " \u2192 " + node.props.itemParam : "")) + " \u2192 layout";
         }
         const screen = getActiveScreen();
-        const target = screen ? tree_exports.find(screen, node.container) : null;
-        return (POPULATE_INTO[node.mode] || "Populate ") + (target ? target.name || "Frame" : "?") + (noItems ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : ""));
+        const target = screen ? tree_exports.find(screen, node.props.container) : null;
+        return (POPULATE_INTO[node.props.mode] || "Populate ") + (target ? target.name || "Frame" : "?") + (noItems ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.props.itemParam ? " \u2192 " + node.props.itemParam : ""));
       },
       edit: openPopulateNodeEditor,
       hint: "Double-click to configure"
@@ -32989,7 +33016,7 @@
     "layout": {
       label: function(node) {
         const screen = getActiveScreen();
-        const frame = node.container && screen ? tree_exports.find(screen, node.container) : null;
+        const frame = node.props.container && screen ? tree_exports.find(screen, node.props.container) : null;
         return frame ? frame.name || "Frame #" + frame.id.slice(-4) : "Layout (missing frame)";
       },
       edit: openLayoutNodeEditor,
@@ -33209,11 +33236,11 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.mode = modeSelect.val();
-            node.screenId = screenSelect.val();
-            node.url = urlInput.val();
-            node.historyAction = historySelect.val();
-            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            node.props.mode = modeSelect.val();
+            node.props.screenId = screenSelect.val();
+            node.props.url = urlInput.val();
+            node.props.historyAction = historySelect.val();
+            node.props.forwardPayload = forwardPayloadCheck.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33231,7 +33258,7 @@
           ["url", "Dynamic Route / Path (Expression / Payload)"],
           ["history", "Browser History (Back / Forward)"]
         ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "screen") === opt[0]).appendTo(modeSelect);
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.props.mode || "screen") === opt[0]).appendTo(modeSelect);
         });
         var screenRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Target Screen").appendTo(screenRow);
@@ -33241,12 +33268,12 @@
           window.$("<option>", { value: "" }).text("(No screens available)").appendTo(screenSelect);
         } else {
           screens.forEach(function(s) {
-            window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+            window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")").prop("selected", (node.props.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
           });
         }
         var urlRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Template / Sub-path").appendTo(urlRow);
-        urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(urlRow);
+        urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.url || "").appendTo(urlRow);
         var historyRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("History Action").appendTo(historyRow);
         historySelect = window.$("<select>").css({ width: "100%" }).appendTo(historyRow);
@@ -33254,7 +33281,7 @@
           ["back", "Back (-1)"],
           ["forward", "Forward (+1)"]
         ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.historyAction || "back") === opt[0]).appendTo(historySelect);
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.props.historyAction || "back") === opt[0]).appendTo(historySelect);
         });
         function updateVisibility() {
           var m = modeSelect.val();
@@ -33265,7 +33292,7 @@
         modeSelect.on("change", updateVisibility);
         updateVisibility();
         var payloadRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "8px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
         payloadRow.append("Forward current msg.payload into destination screen's On Load");
       }
     });
@@ -33286,9 +33313,9 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.mode = modeSelect.val();
-            node.url = urlInput.val();
-            node.newTab = newTabInput.is(":checked");
+            node.props.mode = modeSelect.val();
+            node.props.url = urlInput.val();
+            node.props.newTab = newTabInput.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33305,11 +33332,11 @@
           ["replace", "Replace Whole URL (e.g. https://... or /full/path)"],
           ["endpoint", "Endpoint / Sub-path only (e.g. /screen2 or screen2)"]
         ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "replace") === opt[0]).appendTo(modeSelect);
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.props.mode || "replace") === opt[0]).appendTo(modeSelect);
         });
         var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
         var urlLabel = window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("URL or Endpoint").appendTo(row);
-        urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(row);
+        urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.url || "").appendTo(row);
         function updateUrlPlaceholder() {
           if (modeSelect.val() === "endpoint") {
             urlLabel.text("Endpoint / Screen Sub-path (e.g. /screen2)");
@@ -33322,7 +33349,7 @@
         modeSelect.on("change", updateUrlPlaceholder);
         updateUrlPlaceholder();
         var tabRow = window.$("<label>").css({ "font-size": "11px", color: "#888", "margin-top": "6px", display: "block" }).appendTo(body);
-        newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
+        newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.props.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
         tabRow.append("Open in a new tab");
       }
     });
@@ -33345,9 +33372,9 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.path = flowEp;
-            node.cookies = (cookiesInput.val() || "").trim();
-            node.includeDevice = includeDeviceCheck.is(":checked");
+            node.props.path = flowEp;
+            node.props.cookies = (cookiesInput.val() || "").trim();
+            node.props.includeDevice = includeDeviceCheck.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33370,10 +33397,10 @@
         window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text("This Route Trigger is automatically bound to the Flow's starting endpoint. Incoming visits to /nexa" + flowEp + " initiate this flow sequence.").appendTo(endpointBanner);
         var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
-        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.cookies || "").appendTo(cookiesRow);
         window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
         var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
         deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
       }
     });
@@ -33396,8 +33423,8 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.cookies = (cookiesInput.val() || "").trim();
-            node.includeDevice = includeDeviceCheck.is(":checked");
+            node.props.cookies = (cookiesInput.val() || "").trim();
+            node.props.includeDevice = includeDeviceCheck.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33420,10 +33447,10 @@
         window.$("<div>").css({ "font-size": "11px", color: "#881337" }).text("Connect this node's output to a Render Screen (e.g. custom 404 page) or navigation logic to handle unmatched routes gracefully.").appendTo(endpointBanner);
         var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
-        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.cookies || "").appendTo(cookiesRow);
         window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
         var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
         deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
       }
     });
@@ -33444,8 +33471,8 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.screenId = screenSelect.val();
-            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            node.props.screenId = screenSelect.val();
+            node.props.forwardPayload = forwardPayloadCheck.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33474,7 +33501,7 @@
           window.$("<option>", { value: "" }).text("(No screens available in project)").appendTo(screenSelect);
         } else {
           screens.forEach(function(s) {
-            window.$("<option>", { value: s.id }).text(s.name + " (" + (s.path || "/" + s.id) + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+            window.$("<option>", { value: s.id }).text(s.name + " (" + (s.path || "/" + s.id) + ")").prop("selected", (node.props.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
           });
         }
         var payloadRow = window.$("<label>").css({
@@ -33485,7 +33512,7 @@
           "align-items": "center",
           cursor: "pointer"
         }).appendTo(body);
-        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
         payloadRow.append("Forward current msg.payload into screen's On Load lifecycle");
       }
     });
@@ -33506,7 +33533,7 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.action = (actionInput.val() || "").trim();
+            node.props.action = (actionInput.val() || "").trim();
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33532,7 +33559,7 @@
         actionInput = window.$("<input>", {
           type: "text",
           placeholder: "e.g. submit, cancel, next, login"
-        }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(node.action || "").appendTo(actionRow);
+        }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(node.props.action || "").appendTo(actionRow);
         window.$("<div>").css({
           "font-size": "11px",
           color: "#64748b",
@@ -33561,16 +33588,16 @@
   defineLogicEditors({
     "navigate": {
       label: function(node) {
-        if (node.mode === "history") return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
-        if (node.mode === "url") return "Goto Route" + (node.url ? " (" + node.url + ")" : "");
-        return "Goto Screen (" + screenName(node.screenId) + ")";
+        if (node.props.mode === "history") return "Goto (" + (node.props.historyAction === "forward" ? "Forward" : "Back") + ")";
+        if (node.props.mode === "url") return "Goto Route" + (node.props.url ? " (" + node.props.url + ")" : "");
+        return "Goto Screen (" + screenName(node.props.screenId) + ")";
       },
       edit: openNavigateNodeEditor,
       hint: "Double-click to configure navigation"
     },
     "open-url": {
       label: function(node) {
-        return "Open URL" + (node.url ? " (" + node.url + ")" : "");
+        return "Open URL" + (node.props.url ? " (" + node.props.url + ")" : "");
       },
       edit: openOpenUrlNodeEditor,
       hint: "Double-click to configure"
@@ -33578,13 +33605,13 @@
     "route-trigger": {
       label: function(node) {
         const flow = getActiveScreen();
-        return "Route Trigger (" + (flow && flow.endpoint || node.path || "/") + ")";
+        return "Route Trigger (" + (flow && flow.endpoint || node.props.path || "/") + ")";
       },
       edit: openRouteTriggerNodeEditor,
       hint: "Double-click to configure route trigger",
       canAdd: onePerFlow("route-trigger", "Route Trigger"),
-      onAdd: function(nodeData, screen) {
-        nodeData.path = screen.endpoint || "/";
+      onAdd: function(node, screen) {
+        node.props.path = screen.endpoint || "/";
       },
       // a red "!" when the trigger fans out to several Render Screens on the same path
       decorate: function(box2, node, screen) {
@@ -33619,14 +33646,14 @@
     },
     "render-screen": {
       label: function(node) {
-        return "Render Screen (" + screenName(node.screenId) + ")";
+        return "Render Screen (" + screenName(node.props.screenId) + ")";
       },
       edit: openRenderScreenNodeEditor,
       hint: "Double-click to choose screen to render"
     },
     "send-to-flow": {
       label: function(node) {
-        return "Send to Flow" + (node.action ? " (" + node.action + ")" : "");
+        return "Send to Flow" + (node.props.action ? " (" + node.props.action + ")" : "");
       },
       edit: openSendToFlowNodeEditor,
       hint: "Double-click to configure message to flow"
@@ -33642,7 +33669,7 @@
   };
   function openWebIoNodeEditor(node) {
     var type = node.type;
-    var d = JSON.parse(JSON.stringify(node));
+    var d = JSON.parse(JSON.stringify(node.props));
     window.RED.tray.show({
       id: "nexa-logic-webio-editor",
       title: "Configure " + TITLES2[type] + " Node",
@@ -33656,7 +33683,7 @@
           "class": "primary",
           click: function() {
             Object.keys(d).forEach(function(k) {
-              if (k !== "id" && k !== "x" && k !== "y" && k !== "type") node[k] = d[k];
+              node.props[k] = d[k];
             });
             markDirty();
             renderLogicCanvas();
@@ -33766,22 +33793,22 @@
   defineLogicEditors({
     "http-request": {
       label: function(node) {
-        const u = node.url || "";
-        return (node.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
+        const u = node.props.url || "";
+        return (node.props.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
       },
       edit: openWebIoNodeEditor,
       hint: "Double-click to configure"
     },
     "storage": {
       label: function(node) {
-        return (ACTION[node.action] || "Get ") + (node.store === "session" ? "session" : "local") + " " + (node.key || "?");
+        return (ACTION[node.props.action] || "Get ") + (node.props.store === "session" ? "session" : "local") + " " + (node.props.key || "?");
       },
       edit: openWebIoNodeEditor,
       hint: "Double-click to configure"
     },
     "cookie": {
       label: function(node) {
-        return (ACTION[node.action] || "Get ") + "cookie " + (node.name || "?");
+        return (ACTION[node.props.action] || "Get ") + "cookie " + (node.props.name || "?");
       },
       edit: openWebIoNodeEditor,
       hint: "Double-click to configure"
@@ -33803,7 +33830,7 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.tag = (tagInput.val() || "").trim();
+            node.props.tag = (tagInput.val() || "").trim();
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -33831,7 +33858,7 @@
         }
         var row = window.$("<div>").css({ "margin-bottom": "4px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Sparkplug Tag").appendTo(row);
-        tagInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).attr("placeholder", "{sparkplug:group::edgeNode::device::metric}").val(node.tag || "").appendTo(row);
+        tagInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).attr("placeholder", "{sparkplug:group::edgeNode::device::metric}").val(node.props.tag || "").appendTo(row);
         var hint = window.$("<div>").css({ "font-size": "11px", "margin-top": "4px" }).appendTo(body);
         function updateHint() {
           var ref = parseSparkplugBindingPath(tagInput.val());
@@ -33898,7 +33925,7 @@
   defineLogicEditors({
     "sparkplug-write": {
       label: function(node) {
-        const ref = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
+        const ref = node.props.tag && node.props.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
         return "Sparkplug Write" + (ref ? " (" + ref + ")" : "");
       },
       edit: openSparkplugWriteNodeEditor,
@@ -33929,14 +33956,14 @@
   }
   function channelName(node) {
     var RED2 = window.RED;
-    var cfg = node.channel && RED2 && RED2.nodes && typeof RED2.nodes.node === "function" ? RED2.nodes.node(node.channel) : null;
-    return cfg && cfg.name || node.channelName || (node.channel ? "(missing channel)" : "(no channel)");
+    var cfg = node.props.channel && RED2 && RED2.nodes && typeof RED2.nodes.node === "function" ? RED2.nodes.node(node.props.channel) : null;
+    return cfg && cfg.name || node.props.channelName || (node.props.channel ? "(missing channel)" : "(no channel)");
   }
   function linkNodeLabel(node) {
     return (TITLES3[node.type] || node.type) + ": " + channelName(node);
   }
   function openLinkNodeEditor(node) {
-    var d = { channel: node.channel || "" };
+    var d = { channel: node.props.channel || "" };
     window.RED.tray.show({
       id: "nexa-logic-link-editor",
       title: "Configure " + TITLES3[node.type] + " Node",
@@ -33949,11 +33976,11 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.channel = d.channel;
+            node.props.channel = d.channel;
             var picked = listLinkChannels().filter(function(c) {
               return c.id === d.channel;
             })[0];
-            node.channelName = picked ? picked.name : "";
+            node.props.channelName = picked ? picked.name : "";
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -34047,9 +34074,8 @@
       if (window.RED && window.RED.notify) window.RED.notify(refusal, "warning");
       return;
     }
-    if (ed && typeof ed.onAdd === "function") ed.onAdd(nodeData, screen);
-    var node = { id: genId(), x, y };
-    for (var k in nodeData) node[k] = nodeData[k];
+    var node = migrateLogicNode(Object.assign({}, nodeData, { id: genId(), x, y }));
+    if (ed && typeof ed.onAdd === "function") ed.onAdd(node, screen);
     screen.logic.nodes.push(node);
     pushHistory({ t: "addLogicNode", screenId: screen.id, node });
     renderLogicCanvas();
@@ -34296,7 +34322,8 @@
       set[id2] = true;
     });
     state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
-      return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay] || n.type === "teleport" && n.node && set[n.node];
+      var c = n.props || {};
+      return c.compId && set[c.compId] || c.instanceId && set[c.instanceId] || n.type === "layout" && c.container && set[c.container] || c.overlay && set[c.overlay] || n.type === "teleport" && c.node && set[c.node];
     }).map(function(n) {
       return n.id;
     });
@@ -34327,7 +34354,8 @@
     (state.logicSelectedIds || []).forEach(function(id2) {
       var n = nodeMap[id2];
       if (!n) return;
-      var cId = n.compId || n.instanceId || (n.type === "layout" ? n.container : null) || n.overlay || (n.type === "teleport" ? n.node : null);
+      var c = n.props || {};
+      var cId = c.compId || c.instanceId || (n.type === "layout" ? c.container : null) || c.overlay || (n.type === "teleport" ? c.node : null);
       if (cId && compIds.indexOf(cId) === -1) {
         compIds.push(cId);
       }
@@ -34382,7 +34410,7 @@
       copy.id = newId;
       copy.x = (copy.x || 0) + 30;
       copy.y = (copy.y || 0) + 30;
-      return copy;
+      return migrateLogicNode(copy);
     });
     logicClipboard.nodes.forEach(function(n) {
       n.x = (n.x || 0) + 30;
@@ -35393,7 +35421,7 @@
         var makeNode = ui.draggable.data("nexaMakeNode");
         var nodeData = metricRef ? { type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) } : typeof makeNode === "function" ? makeNode() : null;
         if (!nodeData) return;
-        var nodeW = logicNodeWidth(nodeData);
+        var nodeW = logicNodeWidth(migrateLogicNode(Object.assign({}, nodeData)));
         var nodeX = Math.max(0, x - nodeW / 2);
         var nodeY = Math.max(0, y - LOGIC_NODE_H / 2);
         if (!(event.altKey || event.originalEvent && event.originalEvent.altKey)) {

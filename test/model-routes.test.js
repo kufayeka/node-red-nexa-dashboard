@@ -6,7 +6,7 @@
 
 const path = require('path');
 const esbuild = require('esbuild');
-const out = esbuild.buildSync({ entryPoints: [path.join(__dirname, '..', 'src', 'model', 'routes.js')], bundle: true, format: 'cjs', platform: 'neutral', write: false });
+const out = esbuild.buildSync({ entryPoints: [path.join(__dirname, '..', 'src', 'model', 'index.js')], bundle: true, format: 'cjs', platform: 'neutral', write: false });
 const m = { exports: {} };
 new Function('module', 'exports', out.outputFiles[0].text)(m, m.exports);
 const R = m.exports;
@@ -34,11 +34,13 @@ const flow = {
         wires: [{ from: 'rt', to: 'rs' }, { from: 'nf', to: 'rs2' }]
     }
 };
-const project = { screens, flows: [flow, { id: 'f2', endpoint: '', logic: { nodes: [] } }] };
+// written the old way (config flat on the node), migrated like the screen worker does
+const project = R.migrateProject({ screens, flows: [flow, { id: 'f2', endpoint: '', logic: { nodes: [] } }] });
 
 check('matchScreenPath with a param', JSON.stringify(R.matchScreenPath('/line/:id', '/line/7%20A')) === '{"id":"7 A"}', R.matchScreenPath('/line/:id', '/line/7%20A'));
 check('matchScreenPath: no match', R.matchScreenPath('/a/b', '/a') === null, null);
 check('flowScreenIds: Render Screen + the Goto Screen they reach', JSON.stringify(R.flowScreenIds(flow, screens)) === '["home","detail","oops"]', R.flowScreenIds(flow, screens));
+check('migrated: the config is in node.props', flow.logic.nodes[1].props.screenId === 'home' && flow.logic.nodes[1].screenId === undefined, flow.logic.nodes[1]);
 check('flowEndpoint: "plant" -> "/plant", empty -> "/flow<n>"', R.flowEndpoint(flow, 0) === '/plant' && R.flowEndpoint({ endpoint: '' }, 1) === '/flow2', null);
 
 let r = R.resolveScreenRoute(project, '/', { search: '?line=2' });
@@ -56,7 +58,7 @@ check('a flow with no screens: 404 that says so', r.kind === 'not-found' && /No 
 r = R.resolveScreenRoute(project, '/home');
 check('a screen path without its flow: 404 (flows are the gateway)', r.kind === 'not-found' && /Direct screen access is disabled/.test(r.text), r.text);
 
-const fanOut = { flows: [{ id: 'f', endpoint: '/x', logic: { nodes: [{ id: 'rt', type: 'route-trigger' }, { id: 'a', type: 'render-screen', screenId: 'home' }, { id: 'b', type: 'render-screen', screenId: 'oops' }], wires: [{ from: 'rt', to: 'a' }, { from: 'rt', to: 'b' }] } }], screens };
+const fanOut = R.migrateProject({ flows: [{ id: 'f', endpoint: '/x', logic: { nodes: [{ id: 'rt', type: 'route-trigger' }, { id: 'a', type: 'render-screen', screenId: 'home' }, { id: 'b', type: 'render-screen', screenId: 'oops' }], wires: [{ from: 'rt', to: 'a' }, { from: 'rt', to: 'b' }] } }], screens });
 r = R.resolveScreenRoute(fanOut, '/x');
 check('a Route Trigger wired to two Render Screens: the first, with a warning', r.kind === 'screen' && r.screen.id === 'home' && r.warnings.length === 1, r.warnings);
 

@@ -421,13 +421,14 @@ export function setUpInjectNodes(effectiveScreen, runLogicGraphFn) {
     const runner = runLogicGraphFn || runLogicGraph;
     (effectiveScreen.logic && effectiveScreen.logic.nodes || []).filter(function (n) { return n.type === "inject"; }).forEach(function (n) {
         function getPayload() {
-            const ptype = n.payloadType || (n.payload !== undefined ? "str" : "date");
+            const c = n.props;
+            const ptype = c.payloadType || (c.payload !== undefined ? "str" : "date");
             if (ptype === "json") {
-                try { return JSON.parse(n.payload); } catch (e) { return {}; }
+                try { return JSON.parse(c.payload); } catch (e) { return {}; }
             } else if (ptype === "num") {
-                return parseFloat(n.payload) || 0;
+                return parseFloat(c.payload) || 0;
             } else if (ptype === "str") {
-                return n.payload !== undefined ? String(n.payload) : "Hello";
+                return c.payload !== undefined ? String(c.payload) : "Hello";
             }
             return Date.now();
         }
@@ -442,14 +443,14 @@ export function setUpInjectNodes(effectiveScreen, runLogicGraphFn) {
             runner(effectiveScreen, n, cloneMsg(msg));
         }
 
-        let intervalMs = parseInt(n.intervalMs, 10);
+        let intervalMs = parseInt(n.props.intervalMs, 10);
         if (isNaN(intervalMs)) intervalMs = 5000;
         if (intervalMs > 0) {
             const tid = setInterval(triggerInject, Math.max(100, intervalMs));
             state.activeScreenTimers.push(tid);
         }
-        if (n.once) {
-            const oid = setTimeout(triggerInject, Math.max(50, n.onceDelay || 100));
+        if (n.props.once) {
+            const oid = setTimeout(triggerInject, Math.max(50, n.props.onceDelay || 100));
             state.activeScreenTimers.push(oid);
         }
     });

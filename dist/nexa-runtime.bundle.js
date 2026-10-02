@@ -667,6 +667,9 @@
   function logicRuntime(type) {
     return runtimes.get(type) || null;
   }
+  function flatConfig(node) {
+    return Object.assign({ id: node.id, type: node.type }, node.props);
+  }
 
   // src/features/logic/lifecycle/meta.js
   var meta_default = [
@@ -702,7 +705,7 @@
       outputs: 1,
       exclusivePorts: true,
       ports: function(node) {
-        return node.rules && node.rules.length ? node.rules.length : 1;
+        return node.props.rules && node.props.rules.length ? node.props.rules.length : 1;
       }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
@@ -2622,10 +2625,10 @@
     let first = true;
     listening.forEach(function(screen2) {
       (screen2 && screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
-        if (n.type !== "link-receive" || n.channel !== channelId) return;
+        if (n.type !== "link-receive" || n.props.channel !== channelId) return;
         const p = first || payload === null || typeof payload !== "object" ? payload : cloneMsg(payload);
         first = false;
-        run(screen2, n, { payload: p, topic: n.channelName || "", retained: !!meta.retained });
+        run(screen2, n, { payload: p, topic: n.props.channelName || "", retained: !!meta.retained });
       });
     });
   }
@@ -2635,7 +2638,7 @@
     const ids = [];
     listening.forEach(function(screen2) {
       (screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
-        if (n.type === "link-receive" && n.channel) ids.push(n.channel);
+        if (n.type === "link-receive" && n.props.channel) ids.push(n.props.channel);
       });
     });
     linkSetSubscriptions(ids, onPush);
@@ -2666,11 +2669,11 @@
         return s.id === sid;
       });
       (scr && scr.logic && scr.logic.nodes || []).forEach(function(n) {
-        if (n && n.type === "navigate" && n.screenId) add(n.screenId);
+        if (n && n.type === "navigate" && n.props.screenId) add(n.props.screenId);
       });
     }
     flow.logic.nodes.forEach(function(n) {
-      if (n && (n.type === "render-screen" || n.type === "navigate") && n.screenId) add(n.screenId);
+      if (n && (n.type === "render-screen" || n.type === "navigate") && n.props.screenId) add(n.props.screenId);
     });
     return ids;
   }
@@ -2919,7 +2922,7 @@
       }
       if (!rNode) {
         rNode = (targetFlow.logic && targetFlow.logic.nodes || []).find(function(n) {
-          return (n.type === "render-screen" || n.type === "navigate") && n.screenId === screen2.id;
+          return (n.type === "render-screen" || n.type === "navigate") && n.props.screenId === screen2.id;
         });
       }
       if (rNode) {
@@ -2985,8 +2988,8 @@
         return n.type === "route-not-found";
       });
       if (notFoundNode) {
-        var notFoundCookies = notFoundNode.cookies ? extractCookies(notFoundNode.cookies) : {};
-        var notFoundDevice = notFoundNode.includeDevice !== false ? extractDeviceContext() : void 0;
+        var notFoundCookies = notFoundNode.props.cookies ? extractCookies(notFoundNode.props.cookies) : {};
+        var notFoundDevice = notFoundNode.props.includeDevice !== false ? extractDeviceContext() : void 0;
         var notFoundMsg = {
           path: match.subPath,
           fullPath: match.fullPath,
@@ -3013,8 +3016,8 @@
     var node = match.node;
     var params = match.params || {};
     window.__NEXA_PARAMS__ = params;
-    var cookies = node ? extractCookies(node.cookies) : {};
-    var device = node && node.includeDevice !== false ? extractDeviceContext() : void 0;
+    var cookies = node ? extractCookies(node.props.cookies) : {};
+    var device = node && node.props.includeDevice !== false ? extractDeviceContext() : void 0;
     var msg = {
       path: match.fullPath,
       params,
@@ -3265,8 +3268,9 @@
           var clone2 = {};
           for (var k in n) clone2[k] = n[k];
           clone2.id = namespace + "::" + n.id;
-          if (clone2.compId !== void 0) clone2.compId = namespace + "::" + clone2.compId;
-          if (clone2.instanceId !== void 0) clone2.instanceId = namespace + "::" + clone2.instanceId;
+          clone2.props = Object.assign({}, n.props);
+          if (clone2.props.compId !== void 0) clone2.props.compId = namespace + "::" + clone2.props.compId;
+          if (clone2.props.instanceId !== void 0) clone2.props.instanceId = namespace + "::" + clone2.props.instanceId;
           effectiveScreen.logic.nodes.push(clone2);
         });
         (template.logic.wires || []).forEach(function(w) {
@@ -4068,7 +4072,7 @@
       return;
     }
     var targets = (screen2.logic.nodes || []).filter(function(n) {
-      return n.type === "template-event" && n.instanceId === ns && (!n.output || n.output === out.output);
+      return n.type === "template-event" && n.props.instanceId === ns && (!n.props.output || n.props.output === out.output);
     });
     targets.forEach(function(n, i) {
       runLogicGraph(screen2, n, i === 0 ? out : cloneMsg(out), budget);
@@ -4087,22 +4091,22 @@
     } },
     "ui-update": {
       run: function(node, msg, ctx) {
-        runUiUpdateNode(ctx.screen, node, msg);
+        runUiUpdateNode(ctx.screen, flatConfig(node), msg);
         return msg;
       }
     },
     "layer-control": {
       run: function(node, msg, ctx) {
-        applyLayerControlUpdates(ctx.screen, msg && Array.isArray(msg.payload) ? msg.payload : node.states || []);
+        applyLayerControlUpdates(ctx.screen, msg && Array.isArray(msg.payload) ? msg.payload : node.props.states || []);
         return msg;
       }
     },
     "teleport": {
       run: function(node, msg) {
-        const el = elById(namespaceOf(node) + node.node);
-        let to = node.toSource === "payload" ? msg && msg.payload : node.to;
+        const el = elById(namespaceOf(node) + node.props.node);
+        let to = node.props.toSource === "payload" ? msg && msg.payload : node.props.to;
         to = to === void 0 || to === null ? "" : String(to).trim();
-        if (!el) logicTrace("teleport: no such node", node.node);
+        if (!el) logicTrace("teleport: no such node", node.props.node);
         else if (!to || to === "home") teleportHome(el);
         else if (!teleportEl(el, teleportTarget(to), to)) logicTrace("teleport: no target", to);
         return msg;
@@ -4111,13 +4115,13 @@
     // its output fires once, when the overlay closes (msg.payload = the result): Open -> confirm -> act
     "overlay-open": {
       run: function(node, msg, ctx) {
-        const ns = namespaceOf(node) + node.overlay;
+        const ns = namespaceOf(node) + node.props.overlay;
         if (!openOverlay(ctx.screen, ns, msg, ctx.next)) logicTrace("overlay-open: no overlay", ns);
       }
     },
     "overlay-close": {
       run: function(node, msg) {
-        closeOverlay(overlayForNode(node), node.valueSource === "none" ? void 0 : msg && msg.payload, "node");
+        closeOverlay(overlayForNode(flatConfig(node)), node.props.valueSource === "none" ? void 0 : msg && msg.payload, "node");
       }
     }
   });
@@ -4132,12 +4136,12 @@
     }
   }
   function createJoin(node) {
-    const mode = node.mode === "combine-latest" || node.mode === "sequence-n" ? node.mode : "wait-all";
-    const format = node.outputFormat === "array" || node.outputFormat === "forward" ? node.outputFormat : "object";
-    const topics = (Array.isArray(node.slots) ? node.slots : []).map(function(s) {
+    const mode = node.props.mode === "combine-latest" || node.props.mode === "sequence-n" ? node.props.mode : "wait-all";
+    const format = node.props.outputFormat === "array" || node.props.outputFormat === "forward" ? node.props.outputFormat : "object";
+    const topics = (Array.isArray(node.props.slots) ? node.props.slots : []).map(function(s) {
       return s && s.topic;
     }).filter(Boolean);
-    const count = Math.max(2, Number(node.count) || 2);
+    const count = Math.max(2, Number(node.props.count) || 2);
     let latest = {};
     let seq = [];
     function build(trigger, complete) {
@@ -4196,7 +4200,7 @@
           latest = {};
           return { send: out, startTimer: false, stopTimer: true };
         }
-        return { send: null, startTimer: first && Number(node.timeout) > 0, stopTimer: false };
+        return { send: null, startTimer: first && Number(node.props.timeout) > 0, stopTimer: false };
       },
       /** wait-all's timeout passed: send what is there (null when nothing arrived) and start over */
       timeout: function() {
@@ -4316,9 +4320,9 @@
     return false;
   }
   function runSwitchNode(screen2, node, msg, budget, continuePropagation2, runLogicGraph2) {
-    const propVal = resolveSwitchBindingValue(screen2, node, node.propertyType || "msg", node.property || "payload", msg);
-    const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
-    const checkall = node.checkall !== "false";
+    const propVal = resolveSwitchBindingValue(screen2, node, node.props.propertyType || "msg", node.props.property || "payload", msg);
+    const rules = node.props.rules && node.props.rules.length ? node.props.rules : [{ t: "eq", v: "", vt: "str" }];
+    const checkall = node.props.checkall !== "false";
     const matchedIndices = [];
     let hadPriorMatch = false;
     for (let i = 0; i < rules.length; i++) {
@@ -4350,7 +4354,7 @@
     });
   }
   function runDelayNode(screen2, node, msg, budget, continuePropagation2) {
-    let delayMs = node.unit === "s" ? Number(node.delay) * 1e3 : Number(node.delay);
+    let delayMs = node.props.unit === "s" ? Number(node.props.delay) * 1e3 : Number(node.props.delay);
     if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
     if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
       delayMs = msg.delay;
@@ -4365,7 +4369,7 @@
 
   // src/features/logic/control/runtime.js
   defineLogicRuntimes({
-    // node.code is the body of an async function (msg, vars, route, storage, cookies, http, getVariable, setVariable)
+    // node.props.code is the body of an async function (msg, vars, route, storage, cookies, http, getVariable, setVariable)
     "function": {
       run: function(node, msg, ctx) {
         const screen2 = ctx.screen;
@@ -4379,7 +4383,7 @@
           "http",
           "getVariable",
           "setVariable",
-          "return (async function(){ " + (node.code || "return msg;") + " })();"
+          "return (async function(){ " + (node.props.code || "return msg;") + " })();"
         )(
           cloneMsg(msg),
           fnVars,
@@ -4426,7 +4430,7 @@
             join.timer = null;
             const partial = join.core.timeout();
             if (partial) ctx.next(partial);
-          }, Number(node.timeout));
+          }, Number(node.props.timeout));
           state.activeScreenTimers.push(join.timer);
         }
         return r.send;
@@ -4442,15 +4446,15 @@
 
   // src/features/logic/variables/variable-ops.js
   function setVariable(screen2, node, msg) {
-    const scope = resolveScope(screen2, node.scope, node.id);
+    const scope = resolveScope(screen2, node.props.scope, node.id);
     if (!scope) {
-      console.warn("[nexa-logic] set-variable: no such scope", node.scope, node.name);
+      console.warn("[nexa-logic] set-variable: no such scope", node.props.scope, node.props.name);
       return;
     }
-    writeVariable(screen2, scope, node.name, valueFromMsg(node, msg), node.op);
+    writeVariable(screen2, scope, node.props.name, valueFromMsg(flatConfig(node), msg), node.props.op);
   }
   function setVariablesMulti(screen2, node, msg) {
-    const assignments = Array.isArray(node.assignments) ? node.assignments : [];
+    const assignments = Array.isArray(node.props.assignments) ? node.props.assignments : [];
     assignments.forEach(function(a) {
       if (!a || !a.name) return;
       const scope = resolveScope(screen2, a.scope, node.id);
@@ -4463,7 +4467,7 @@
   }
   function getVariablesMulti(screen2, node, msg) {
     const out = cloneMsg2(msg || {});
-    const reads = Array.isArray(node.reads) ? node.reads : [];
+    const reads = Array.isArray(node.props.reads) ? node.props.reads : [];
     reads.forEach(function(r) {
       if (!r || !r.name) return;
       const gScope = resolveScope(screen2, r.scope, node.id);
@@ -4489,9 +4493,9 @@
     },
     "get-variable": {
       run: function(node, msg, ctx) {
-        const scope = resolveScope(ctx.screen, node.scope, node.id);
+        const scope = resolveScope(ctx.screen, node.props.scope, node.id);
         const out = cloneMsg(msg || {});
-        setMsgPath(out, node.target || "payload", scope ? cloneValue(scope[node.name]) : void 0);
+        setMsgPath(out, node.props.target || "payload", scope ? cloneValue(scope[node.props.name]) : void 0);
         return out;
       }
     },
@@ -4517,24 +4521,24 @@
     "template-event": passOn2,
     "set-template-param": {
       run: function(node, msg, ctx) {
-        updateInstanceParam(ctx.screen, node.instanceId, node.paramName, msg && msg.payload);
+        updateInstanceParam(ctx.screen, node.props.instanceId, node.props.paramName, msg && msg.payload);
         return msg;
       }
     },
     "template-output": {
       run: function(node, msg, ctx) {
-        sendToHost(ctx.screen, node, msg, ctx.budget);
+        sendToHost(ctx.screen, flatConfig(node), msg, ctx.budget);
       }
     },
     // with a container: fill it now. Without: add a job to msg.populate for the Layout node it is wired to.
     "populate": {
       run: function(node, msg, ctx) {
-        if (node.container) {
-          runPopulate(ctx.screen, node, msg);
+        if (node.props.container) {
+          runPopulate(ctx.screen, flatConfig(node), msg);
           return msg;
         }
         const out = Object.assign({}, msg || {});
-        const job = { template: node.template, itemParam: node.itemParam, mode: node.mode, key: node.key, fill: node.fill, virtualize: node.virtualize, items: valueFromMsg(node, msg) };
+        const job = { template: node.props.template, itemParam: node.props.itemParam, mode: node.props.mode, key: node.props.key, fill: node.props.fill, virtualize: node.props.virtualize, items: valueFromMsg(flatConfig(node), msg) };
         const before = msg && msg.populate ? [].concat(msg.populate).filter(function(j) {
           return j && typeof j === "object";
         }) : [];
@@ -4550,7 +4554,7 @@
           if (!job || typeof job !== "object") return;
           runPopulate(ctx.screen, {
             id: node.id,
-            container: node.container,
+            container: node.props.container,
             template: job.template,
             itemParam: job.itemParam,
             mode: job.mode,
@@ -4583,26 +4587,26 @@
   defineLogicRuntimes({
     "navigate": {
       run: function(node, msg) {
-        const mode = msg && msg.mode || node.mode || "screen";
+        const mode = msg && msg.mode || node.props.mode || "screen";
         if (mode === "history") {
-          const action = msg && msg.action || node.historyAction || "back";
+          const action = msg && msg.action || node.props.historyAction || "back";
           const h = typeof window.history !== "undefined" ? window.history : null;
           if (action === "forward") {
             if (h && typeof h.forward === "function") h.forward();
           } else if (h && typeof h.back === "function") h.back();
           return msg;
         }
-        const targetId = mode === "url" ? msg && (msg.url || msg.path || msg.endpoint) || node.url : msg && (msg.screenId || msg.screen) || node.screenId;
-        const payload = node.forwardPayload !== false ? msg && msg.payload : void 0;
-        navigateToScreen(targetId, payload, node.replace === true, true);
+        const targetId = mode === "url" ? msg && (msg.url || msg.path || msg.endpoint) || node.props.url : msg && (msg.screenId || msg.screen) || node.props.screenId;
+        const payload = node.props.forwardPayload !== false ? msg && msg.payload : void 0;
+        navigateToScreen(targetId, payload, node.props.replace === true, true);
         return msg;
       }
     },
     "open-url": {
       run: function(node, msg) {
-        const raw = msg && typeof msg.payload === "string" && msg.payload || msg && (msg.url || msg.endpoint) || node.url;
-        const mode = msg && msg.mode || node.mode || "replace";
-        const newTab = msg && typeof msg.newTab === "boolean" ? msg.newTab : node.newTab;
+        const raw = msg && typeof msg.payload === "string" && msg.payload || msg && (msg.url || msg.endpoint) || node.props.url;
+        const mode = msg && msg.mode || node.props.mode || "replace";
+        const newTab = msg && typeof msg.newTab === "boolean" ? msg.newTab : node.props.newTab;
         if (raw) {
           const url = resolveUrl(String(raw).trim(), mode);
           if (newTab) window.open(url, "_blank");
@@ -4626,21 +4630,21 @@
     } },
     "render-screen": {
       run: function(node, msg, ctx) {
-        const target = msg && (msg.screenId || msg.screen) || node.screenId;
+        const target = msg && (msg.screenId || msg.screen) || node.props.screenId;
         const match = findScreenInProject(target);
         if (!match || !match.screen) {
           console.warn("[nexa-runtime] render-screen: target screen not found:", target);
           return;
         }
         setActiveRenderScreen({ flowScreen: ctx.screen, flowNode: node, screenId: match.screen.id });
-        navigateToScreen(match.screen.id, node.forwardPayload !== false ? msg && msg.payload : void 0, false, true, node.id);
+        navigateToScreen(match.screen.id, node.props.forwardPayload !== false ? msg && msg.payload : void 0, false, true, node.id);
       }
     },
     // from the screen to the active flow's Render Screen node; the screen's own chain goes on too
     "send-to-flow": {
       run: function(node, msg, ctx) {
         const sendMsg = cloneMsg(msg);
-        if (node.action) sendMsg.action = node.action;
+        if (node.props.action) sendMsg.action = node.props.action;
         const render = getActiveRenderScreen();
         const flow = getActiveFlowScreen();
         if (flow && render && render.flowNode) {
@@ -4678,10 +4682,10 @@
     return h;
   }
   function runHttpNode(screen2, node, msg, done) {
-    const method = String(msg && msg.method || node.method || "GET").toUpperCase();
-    const url = bindText(screen2, node, msg, msg && typeof msg.url === "string" && msg.url || node.url || "");
-    const headers = Object.assign(parseHeaders(node.headers, screen2, node, msg), msg && msg.headers && typeof msg.headers === "object" ? msg.headers : {});
-    const body = node.body === "none" || method === "GET" || method === "HEAD" ? void 0 : node.body === "binding" ? bindText(screen2, node, msg, node.bodyText || "") : msg ? msg.payload : void 0;
+    const method = String(msg && msg.method || node.props.method || "GET").toUpperCase();
+    const url = bindText(screen2, node, msg, msg && typeof msg.url === "string" && msg.url || node.props.url || "");
+    const headers = Object.assign(parseHeaders(node.props.headers, screen2, node, msg), msg && msg.headers && typeof msg.headers === "object" ? msg.headers : {});
+    const body = node.props.body === "none" || method === "GET" || method === "HEAD" ? void 0 : node.props.body === "binding" ? bindText(screen2, node, msg, node.props.bodyText || "") : msg ? msg.payload : void 0;
     const out = cloneMsg(msg || {});
     if (!url) {
       out.error = "no URL";
@@ -4691,8 +4695,8 @@
     }
     BROWSER_API.http.request(method, String(url), body, {
       headers,
-      timeout: Number(node.timeout) || 0,
-      credentials: node.credentials || void 0
+      timeout: Number(node.props.timeout) || 0,
+      credentials: node.props.credentials || void 0
     }).then(function(res) {
       out.payload = res.data;
       out.statusCode = res.status;
@@ -4709,24 +4713,24 @@
     });
   }
   function runStorageNode(screen2, node, msg) {
-    const store = BROWSER_API.storage[node.store === "session" ? "session" : "local"];
-    const key = String(bindText(screen2, node, msg, node.key || ""));
+    const store = BROWSER_API.storage[node.props.store === "session" ? "session" : "local"];
+    const key = String(bindText(screen2, node, msg, node.props.key || ""));
     const out = cloneMsg(msg || {});
     if (!key) return out;
-    if (node.action === "set") store.set(key, node.valueSource === "static" ? node.value : msg && msg.payload);
-    else if (node.action === "remove") store.remove(key);
-    else setMsgPath(out, node.target || "payload", store.get(key));
+    if (node.props.action === "set") store.set(key, node.props.valueSource === "static" ? node.props.value : msg && msg.payload);
+    else if (node.props.action === "remove") store.remove(key);
+    else setMsgPath(out, node.props.target || "payload", store.get(key));
     return out;
   }
   function runCookieNode(screen2, node, msg) {
-    const name = String(bindText(screen2, node, msg, node.name || ""));
+    const name = String(bindText(screen2, node, msg, node.props.name || ""));
     const out = cloneMsg(msg || {});
     if (!name) return out;
-    const opts = { path: node.path || "/", sameSite: node.sameSite || "Lax", secure: !!node.secure };
-    if (node.days !== void 0 && node.days !== "" && node.days !== null) opts.days = Number(node.days);
-    if (node.action === "set") BROWSER_API.cookies.set(name, node.valueSource === "static" ? node.value : msg && msg.payload, opts);
-    else if (node.action === "remove") BROWSER_API.cookies.remove(name, opts);
-    else setMsgPath(out, node.target || "payload", BROWSER_API.cookies.get(name));
+    const opts = { path: node.props.path || "/", sameSite: node.props.sameSite || "Lax", secure: !!node.props.secure };
+    if (node.props.days !== void 0 && node.props.days !== "" && node.props.days !== null) opts.days = Number(node.props.days);
+    if (node.props.action === "set") BROWSER_API.cookies.set(name, node.props.valueSource === "static" ? node.props.value : msg && msg.payload, opts);
+    else if (node.props.action === "remove") BROWSER_API.cookies.remove(name, opts);
+    else setMsgPath(out, node.props.target || "payload", BROWSER_API.cookies.get(name));
     return out;
   }
 
@@ -4746,12 +4750,12 @@
 
   // src/features/logic/sparkplug/runtime.js
   defineLogicRuntimes({
-    // node.tag = "{sparkplug:group::edge::device::metric}", the value = msg.payload
+    // node.props.tag = "{sparkplug:group::edge::device::metric}", the value = msg.payload
     "sparkplug-write": {
       run: function(node, msg, ctx) {
-        const ref = parseSparkplugBindingPath(node.tag);
+        const ref = parseSparkplugBindingPath(node.props.tag);
         if (!ref) {
-          console.error("[nexa-logic] sparkplug-write node " + node.id + ': "' + node.tag + '" is not a valid {sparkplug:...} binding');
+          console.error("[nexa-logic] sparkplug-write node " + node.id + ': "' + node.props.tag + '" is not a valid {sparkplug:...} binding');
           return;
         }
         sendSparkplugWrite(ref.groupId, ref.edgeNodeId, ref.deviceId, [{ name: ref.metricName, value: msg && msg.payload }]).then(function() {
@@ -4801,7 +4805,7 @@
     // msg.payload to the flow; output 1: msg.payload = its answer, output 2: msg.error
     "link-request": {
       run: function(node, msg, ctx) {
-        linkRequest(node.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function(value) {
+        linkRequest(node.props.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function(value) {
           const out = cloneMsg(msg || {});
           out.payload = value;
           delete out.error;
@@ -4816,7 +4820,7 @@
     // fire and forget; passes msg on once it is sent
     "link-send": {
       run: function(node, msg, ctx) {
-        linkSend(node.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function() {
+        linkSend(node.props.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function() {
           ctx.next(msg);
         }, function(e) {
           console.error("[nexa-logic] To Node-RED node " + node.id + " failed: " + (e && e.message));
@@ -4929,7 +4933,7 @@
       return;
     }
     var matches = (screen2.logic.nodes || []).filter(function(n) {
-      return n.type === "ui-event" && n.compId === compId && n.event === eventName;
+      return n.type === "ui-event" && n.props.compId === compId && n.props.event === eventName;
     });
     logicTrace("fireUiEvent(" + eventName + ") for component " + compId + ": " + matches.length + " matching node(s)");
     matches.forEach(function(n) {
@@ -5721,17 +5725,18 @@
       return n.type === "inject";
     }).forEach(function(n) {
       function getPayload() {
-        const ptype = n.payloadType || (n.payload !== void 0 ? "str" : "date");
+        const c = n.props;
+        const ptype = c.payloadType || (c.payload !== void 0 ? "str" : "date");
         if (ptype === "json") {
           try {
-            return JSON.parse(n.payload);
+            return JSON.parse(c.payload);
           } catch (e) {
             return {};
           }
         } else if (ptype === "num") {
-          return parseFloat(n.payload) || 0;
+          return parseFloat(c.payload) || 0;
         } else if (ptype === "str") {
-          return n.payload !== void 0 ? String(n.payload) : "Hello";
+          return c.payload !== void 0 ? String(c.payload) : "Hello";
         }
         return Date.now();
       }
@@ -5745,14 +5750,14 @@
         }
         runner(effectiveScreen, n, cloneMsg(msg));
       }
-      let intervalMs = parseInt(n.intervalMs, 10);
+      let intervalMs = parseInt(n.props.intervalMs, 10);
       if (isNaN(intervalMs)) intervalMs = 5e3;
       if (intervalMs > 0) {
         const tid = setInterval(triggerInject, Math.max(100, intervalMs));
         state.activeScreenTimers.push(tid);
       }
-      if (n.once) {
-        const oid = setTimeout(triggerInject, Math.max(50, n.onceDelay || 100));
+      if (n.props.once) {
+        const oid = setTimeout(triggerInject, Math.max(50, n.props.onceDelay || 100));
         state.activeScreenTimers.push(oid);
       }
     });
@@ -5902,11 +5907,12 @@
     (screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
       if (n.type !== "on-variable-change") return;
       let matched = false;
-      if (Array.isArray(n.variables) && n.variables.length > 0) {
-        matched = n.variables.some(function(v) {
+      const c = n.props;
+      if (Array.isArray(c.variables) && c.variables.length > 0) {
+        matched = c.variables.some(function(v) {
           return v && v.name === name && resolveScope(screen2, v.scope, n.id) === scope;
         });
-      } else if (n.name === name && resolveScope(screen2, n.scope, n.id) === scope) {
+      } else if (c.name === name && resolveScope(screen2, c.scope, n.id) === scope) {
         matched = true;
       }
       if (!matched) return;
@@ -6382,6 +6388,30 @@
     }
   }
 
+  // src/model/migrate-logic.js
+  var LOGIC_NODE_OWN_KEYS = ["id", "type", "x", "y", "w", "h", "props"];
+  function migrateLogicNode(node) {
+    if (!node || typeof node !== "object") return node;
+    if (node.props && typeof node.props === "object" && !Array.isArray(node.props)) return node;
+    const props = {};
+    Object.keys(node).forEach(function(k) {
+      if (LOGIC_NODE_OWN_KEYS.indexOf(k) !== -1) return;
+      props[k] = node[k];
+      delete node[k];
+    });
+    node.props = props;
+    return node;
+  }
+  function migrateLogic(logic) {
+    let moved = 0;
+    (logic && logic.nodes || []).forEach(function(n) {
+      const flat = !(n && n.props && typeof n.props === "object");
+      migrateLogicNode(n);
+      if (flat) moved++;
+    });
+    return moved;
+  }
+
   // src/runtime/index.js
   if (typeof window !== "undefined") {
     window.__nexaRuntime = Object.assign(window.__nexaRuntime || {}, {
@@ -6400,6 +6430,9 @@
       getEffectiveScreen,
       getActiveFlow,
       state
+    });
+    [window.__NEXA_SCREEN__].concat(window.__NEXA_SCREENS__ || [], window.__NEXA_FLOWS__ || [], window.__NEXA_TEMPLATES__ || []).forEach(function(s) {
+      if (s && s.logic) migrateLogic(s.logic);
     });
     prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
     currentPath = window.location && window.location.pathname || "";

@@ -19,7 +19,7 @@ export function openFunctionNodeEditor(node) {
             {
                 text: "Done", "class": "primary",
                 click: function () {
-                    if (codeEditor) node.code = codeEditor.getValue();
+                    if (codeEditor) node.props.code = codeEditor.getValue();
                     markDirty();
                     window.RED.tray.close();
                 }
@@ -33,7 +33,7 @@ export function openFunctionNodeEditor(node) {
             var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
             codeEditor = createCM6Editor({
                 parent: editorContainer.get(0),
-                value: node.code || "return msg;",
+                value: node.props.code || "return msg;",
                 language: "javascript",
                 completionSource: sparkplugBindingCompletionSource
             });

@@ -16,7 +16,7 @@ var HELP = {
 
 export function openWebIoNodeEditor(node) {
     var type = node.type;
-    var d = JSON.parse(JSON.stringify(node));
+    var d = JSON.parse(JSON.stringify(node.props));
     window.RED.tray.show({
         id: "nexa-logic-webio-editor",
         title: "Configure " + TITLES[type] + " Node",
@@ -26,7 +26,7 @@ export function openWebIoNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    Object.keys(d).forEach(function (k) { if (k !== "id" && k !== "x" && k !== "y" && k !== "type") node[k] = d[k]; });
+                    Object.keys(d).forEach(function (k) { node.props[k] = d[k]; });
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();

@@ -11,26 +11,26 @@ defineLogicEditors({
     "function": { edit: openFunctionNodeEditor, hint: "Double-click to edit code" },
     "switch": {
         label: function (node) {
-            const prop = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
-            return (node.name || "Switch") + " [" + prop + " : " + (node.rules || []).length + "]";
+            const prop = (node.props.propertyType === "var" ? "$" : node.props.propertyType === "tag" ? "" : "msg.") + (node.props.property || "payload");
+            return (node.props.name || "Switch") + " [" + prop + " : " + (node.props.rules || []).length + "]";
         },
         edit: openSwitchNodeEditor,
         hint: "Double-click to configure switch rules",
         portTitle: function (node, i) {
-            const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq" }];
+            const rules = node.props.rules && node.props.rules.length ? node.props.rules : [{ t: "eq" }];
             return rules[i] ? (rules[i].t || "rule") : "";
         }
     },
     "delay": {
-        label: function (node) { return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")"; },
+        label: function (node) { return "Delay (" + (node.props.delay != null ? node.props.delay : 500) + (node.props.unit || "ms") + ")"; },
         edit: openDelayNodeEditor,
         hint: "Double-click to configure delay"
     },
     "join": {
         label: function (node) {
-            const mode = node.mode || "wait-all";
-            const word = mode === "sequence-n" ? "Seq " + (node.count || 2) : (JOIN_MODES[mode] || "Join");
-            const n = (node.slots || []).length;
+            const mode = node.props.mode || "wait-all";
+            const word = mode === "sequence-n" ? "Seq " + (node.props.count || 2) : (JOIN_MODES[mode] || "Join");
+            const n = (node.props.slots || []).length;
             return "Join [" + word + (n ? ": " + n : "") + "]";
         },
         edit: openJoinNodeEditor,

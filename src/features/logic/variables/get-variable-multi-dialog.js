@@ -57,7 +57,7 @@ export function openGetVariableMultiNodeEditor(node) {
                             target: d.target || "payload"
                         });
                     });
-                    node.reads = reads;
+                    node.props.reads = reads;
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -164,7 +164,7 @@ export function openGetVariableMultiNodeEditor(node) {
             });
 
             /* Populate existing reads */
-            var existing = Array.isArray(node.reads) ? node.reads : [];
+            var existing = Array.isArray(node.props.reads) ? node.props.reads : [];
             if (existing.length) {
                 existing.forEach(function (r) { listEl.editableList("addItem", r); });
             } else {

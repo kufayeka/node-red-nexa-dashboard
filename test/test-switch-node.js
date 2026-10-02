@@ -16,24 +16,26 @@ console.log("--- 2. Logic Node Label Formatting ---");
 const mockNode = {
     id: "sw1",
     type: "switch",
-    name: "Route By Status",
-    property: "status",
-    propertyType: "msg",
-    rules: [{ t: "eq", v: "active" }, { t: "eq", v: "inactive" }, { t: "else" }]
+    props: {
+        name: "Route By Status",
+        property: "status",
+        propertyType: "msg",
+        rules: [{ t: "eq", v: "active" }, { t: "eq", v: "inactive" }, { t: "else" }]
+    }
 };
 const label = logicNodeLabel(mockNode);
 assert.equal(label, "Route By Status [msg.status : 3]");
 console.log("logicNodeLabel formats switch correctly?", label);
 
 console.log("--- 3. Dynamic Node Height by Rule Count ---");
-const singleRuleHeight = logicNodeHeight({ type: "switch", rules: [{ t: "eq" }] });
+const singleRuleHeight = logicNodeHeight({ type: "switch", props: { rules: [{ t: "eq" }] } });
 assert.equal(singleRuleHeight, LOGIC_NODE_H, "Single rule should default to standard LOGIC_NODE_H");
 
 const multiRuleNode = {
     type: "switch",
     x: 100,
     y: 100,
-    rules: [{ t: "1" }, { t: "2" }, { t: "3" }, { t: "4" }]
+    props: { rules: [{ t: "1" }, { t: "2" }, { t: "3" }, { t: "4" }] }
 };
 const multiRuleHeight = logicNodeHeight(multiRuleNode);
 assert.equal(multiRuleHeight, 4 * 20 + 10, "4 rules should expand height to 90px");

@@ -243,12 +243,12 @@ console.log('cloneLogic remaps wire from and to to new IDs?', clonedLogic.wires[
 // Test component ID remapping in logic cloning
 const compIdMap = { comp_orig: 'comp_fresh' };
 const logicWithComp = {
-  nodes: [{ id: 'n1', type: 'ui-set', compId: 'comp_orig', tag: 'comp:comp_orig:label' }],
+  nodes: [{ id: 'n1', type: 'ui-set', props: { compId: 'comp_orig', tag: 'comp:comp_orig:label' } }],
   wires: []
 };
 const clonedWithComp = api.cloneLogic(logicWithComp, compIdMap);
-console.log('cloneLogic remaps compId on logic node?', clonedWithComp.nodes[0].compId === 'comp_fresh');
-console.log('cloneLogic remaps comp:<id>:<prop> tag on logic node?', clonedWithComp.nodes[0].tag === 'comp:comp_fresh:label');
+console.log('cloneLogic remaps compId on logic node?', clonedWithComp.nodes[0].props.compId === 'comp_fresh');
+console.log('cloneLogic remaps comp:<id>:<prop> tag on logic node?', clonedWithComp.nodes[0].props.tag === 'comp:comp_fresh:label');
 
 console.log('--- [P0] 5. Duplication (Screens, Templates, Flows) ---');
 if (!state.screens || !state.screens.length) {

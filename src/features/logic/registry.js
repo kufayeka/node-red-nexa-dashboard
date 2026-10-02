@@ -47,6 +47,14 @@ export function logicEditor(type) { return editors.get(type) || null; }
 export function logicRuntime(type) { return runtimes.get(type) || null; }
 export function logicTypes() { return Array.from(metas.keys()); }
 
+/**
+ * The node's configuration with its id and type, flat ({id, type, ...props}): for the page's
+ * engine helpers (populate, overlays, ui-update…) that take a config object.
+ */
+export function flatConfig(node) {
+    return Object.assign({ id: node.id, type: node.type }, node.props);
+}
+
 /** How many output ports the node draws. */
 export function logicOutputCount(node) {
     if (!node) return 1;

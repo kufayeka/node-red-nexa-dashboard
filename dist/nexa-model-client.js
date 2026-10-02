@@ -32,6 +32,7 @@ var NexaModel = (() => {
     H_CONSTRAINTS: () => H_CONSTRAINTS,
     ITEMS_DEFAULT: () => ITEMS_DEFAULT,
     LAYOUT_MODES: () => LAYOUT_MODES,
+    LOGIC_NODE_OWN_KEYS: () => LOGIC_NODE_OWN_KEYS,
     NAME_RE: () => NAME_RE,
     OVERLAY_DEFAULT: () => OVERLAY_DEFAULT,
     OVERLAY_KINDS: () => OVERLAY_KINDS,
@@ -109,6 +110,7 @@ var NexaModel = (() => {
     layoutOf: () => layoutOf,
     listTokens: () => listTokens,
     locate: () => locate,
+    logicProps: () => logicProps,
     makeFrame: () => makeFrame,
     makeScope: () => makeScope,
     marginOf: () => marginOf,
@@ -116,6 +118,8 @@ var NexaModel = (() => {
     memberAt: () => memberAt,
     memberPaths: () => memberPaths,
     mentionsToken: () => mentionsToken,
+    migrateLogic: () => migrateLogic,
+    migrateLogicNode: () => migrateLogicNode,
     migrateOverrideKeys: () => migrateOverrideKeys,
     migrateProject: () => migrateProject,
     migrateSurface: () => migrateSurface,
@@ -1830,11 +1834,11 @@ var NexaModel = (() => {
         return s.id === sid;
       });
       (scr && scr.logic && scr.logic.nodes || []).forEach(function(n) {
-        if (n && n.type === "navigate" && n.screenId) add(n.screenId);
+        if (n && n.type === "navigate" && n.props.screenId) add(n.props.screenId);
       });
     }
     flow.logic.nodes.forEach(function(n) {
-      if (n && (n.type === "render-screen" || n.type === "navigate") && n.screenId) add(n.screenId);
+      if (n && (n.type === "render-screen" || n.type === "navigate") && n.props.screenId) add(n.props.screenId);
     });
     return ids;
   }
@@ -1877,8 +1881,8 @@ var NexaModel = (() => {
     const next = wires[0] && nodes.find(function(n) {
       return n.id === wires[0].to;
     });
-    const ok = next && (next.type === "render-screen" || next.type === "navigate") && next.screenId && allowedIds.indexOf(next.screenId) !== -1;
-    return { node: source, screen: ok ? enabledScreen(project, next.screenId) : null, fanOut: targets.length };
+    const ok = next && (next.type === "render-screen" || next.type === "navigate") && next.props.screenId && allowedIds.indexOf(next.props.screenId) !== -1;
+    return { node: source, screen: ok ? enabledScreen(project, next.props.screenId) : null, fanOut: targets.length };
   }
   function resolveScreenRoute(project, subPath, opts) {
     opts = opts || {};
@@ -1918,8 +1922,8 @@ var NexaModel = (() => {
         if (!screen) {
           const nodes = flow.logic && flow.logic.nodes || [];
           for (let n = 0; n < nodes.length && !screen; n++) {
-            if ((nodes[n].type === "render-screen" || nodes[n].type === "navigate") && nodes[n].screenId && allowedIds.indexOf(nodes[n].screenId) !== -1) {
-              screen = enabledScreen(project, nodes[n].screenId);
+            if ((nodes[n].type === "render-screen" || nodes[n].type === "navigate") && nodes[n].props.screenId && allowedIds.indexOf(nodes[n].props.screenId) !== -1) {
+              screen = enabledScreen(project, nodes[n].props.screenId);
             }
           }
         }
@@ -1953,6 +1957,33 @@ var NexaModel = (() => {
     return notFound("No Nexa flow found for path: " + subPath + ". Direct screen access is disabled \u2014 all routes must go through a Flow gateway (e.g. /nexa" + (flows[0] && flows[0].endpoint || "/flow1") + ").");
   }
 
+  // src/model/migrate-logic.js
+  var LOGIC_NODE_OWN_KEYS = ["id", "type", "x", "y", "w", "h", "props"];
+  function migrateLogicNode(node) {
+    if (!node || typeof node !== "object") return node;
+    if (node.props && typeof node.props === "object" && !Array.isArray(node.props)) return node;
+    const props = {};
+    Object.keys(node).forEach(function(k) {
+      if (LOGIC_NODE_OWN_KEYS.indexOf(k) !== -1) return;
+      props[k] = node[k];
+      delete node[k];
+    });
+    node.props = props;
+    return node;
+  }
+  function migrateLogic(logic) {
+    let moved = 0;
+    (logic && logic.nodes || []).forEach(function(n) {
+      const flat = !(n && n.props && typeof n.props === "object");
+      migrateLogicNode(n);
+      if (flat) moved++;
+    });
+    return moved;
+  }
+  function logicProps(node) {
+    return node && node.props || node || {};
+  }
+
   // src/model/migrate.js
   var TREE_VERSION = 1;
   function genIdFallback() {
@@ -1964,6 +1995,7 @@ var NexaModel = (() => {
     if (!surface.components) surface.components = [];
     if (!surface.orphans) surface.orphans = [];
     if (!surface.logic) surface.logic = { nodes: [], wires: [] };
+    migrateLogic(surface.logic);
     migrateOverrideKeys(surface.components);
     delete surface.breakpoints;
     if (surface.treeVersion >= TREE_VERSION) return surface;
@@ -2059,6 +2091,7 @@ var NexaModel = (() => {
     });
     project.flows.forEach(function(f) {
       if (!f.logic) f.logic = { nodes: [], wires: [] };
+      migrateLogic(f.logic);
     });
     return project;
   }

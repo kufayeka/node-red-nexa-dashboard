@@ -31,12 +31,12 @@ check("every meta has colour, icon, chip colour, inputs 0/1, outputs >= 0", badM
 const noLabel = types.filter((t) => {
     const ed = R.logicEditor(t);
     let label;
-    try { label = ed && ed.label ? ed.label({ id: "n1", type: t }) : R.logicMeta(t).label; } catch (e) { return true; }
+    try { label = ed && ed.label ? ed.label({ id: "n1", type: t, props: {} }) : R.logicMeta(t).label; } catch (e) { return true; }
     return !label || typeof label !== "string";
 });
 check("every type gets a label in the editor, even unconfigured", noLabel.length === 0, noLabel);
 
-check("Switch: one port per rule", R.logicOutputCount({ type: "switch", rules: [{}, {}, {}] }) === 3, R.logicOutputCount({ type: "switch", rules: [{}, {}, {}] }));
+check("Switch: one port per rule", R.logicOutputCount({ type: "switch", props: { rules: [{}, {}, {}] } }) === 3, R.logicOutputCount({ type: "switch", props: { rules: [{}, {}, {}] } }));
 check("Request: 2 ports (answer, error)", R.logicOutputCount({ type: "link-request" }) === 2 && R.logicMeta("link-request").outputLabels[1] === "error", null);
 check("a sink has 0 output ports", R.logicOutputCount({ type: "debug" }) === 0, R.logicOutputCount({ type: "debug" }));
 check("an unknown type falls back (1 in, 1 out)", R.logicOutputCount({ type: "nope" }) === 1 && R.logicMeta("nope").inputs === 1, null);

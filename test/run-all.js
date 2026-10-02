@@ -46,7 +46,7 @@ const STANDALONE_TESTS = [
     // Nexa Link (page <-> Node-RED flow): frame + hub without sockets, then the real worker + nodes + a WebSocket
     "link-hub.test.js", "link-worker-integration.test.js",
     // the Logic node registry: every type complete, no type switches outside src/features/logic/
-    "logic-registry.test.js", "logic-join.test.js",
+    "logic-registry.test.js", "logic-join.test.js", "migrate-project.test.js",
     // Nexa SDK: pure modules in Node, then the SDK + property kit in headless Chrome (skipped without Chrome)
     "sdk-format.test.js", "sdk-schema.test.js", "sdk-kit-browser.test.js",
     // the node tree, frames / auto layout (model in Node; deployed page in headless Chrome)

@@ -20,39 +20,39 @@ const varHint = "Double-click to configure";
 defineLogicEditors({
     "set-variable": {
         label: function (node) {
-            if (!node.name) return "Set Variable";
-            const value = node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value)
-                : node.valueSource === "msg" ? " ← msg." + node.msgPath : "";
-            return (OPS[node.op] || "Set ") + varRef(node.scope, node.name) + value;
+            if (!node.props.name) return "Set Variable";
+            const value = node.props.valueSource === "static" && node.props.op !== "toggle" ? " = " + JSON.stringify(node.props.value)
+                : node.props.valueSource === "msg" ? " ← msg." + node.props.msgPath : "";
+            return (OPS[node.props.op] || "Set ") + varRef(node.props.scope, node.props.name) + value;
         },
         edit: openSetVariableNodeEditor,
         hint: varHint
     },
     "get-variable": {
         label: function (node) {
-            if (!node.name) return "Get Variable";
-            return "Get " + varRef(node.scope, node.name) + (node.target && node.target !== "payload" ? " → msg." + node.target : "");
+            if (!node.props.name) return "Get Variable";
+            return "Get " + varRef(node.props.scope, node.props.name) + (node.props.target && node.props.target !== "payload" ? " → msg." + node.props.target : "");
         },
         edit: openSetVariableNodeEditor,
         hint: varHint
     },
     "on-variable-change": {
         label: function (node) {
-            if (Array.isArray(node.variables) && node.variables.length) {
-                return "Watch (" + node.variables.map(function (v) { return v ? varRef(v.scope, v.name) : "?"; }).join(", ") + ")";
+            if (Array.isArray(node.props.variables) && node.props.variables.length) {
+                return "Watch (" + node.props.variables.map(function (v) { return v ? varRef(v.scope, v.name) : "?"; }).join(", ") + ")";
             }
-            return node.name ? "Watch " + varRef(node.scope, node.name) : "Watch Variable";
+            return node.props.name ? "Watch " + varRef(node.props.scope, node.props.name) : "Watch Variable";
         },
         edit: openSetVariableNodeEditor,
         hint: varHint
     },
     "set-variable-multi": {
-        label: function (node) { const n = (node.assignments || []).length; return "Set Variables" + (n ? " (" + n + ")" : ""); },
+        label: function (node) { const n = (node.props.assignments || []).length; return "Set Variables" + (n ? " (" + n + ")" : ""); },
         edit: openSetVariableMultiNodeEditor,
         hint: "Double-click to configure variable assignments"
     },
     "get-variable-multi": {
-        label: function (node) { const n = (node.reads || []).length; return "Get Variables" + (n ? " (" + n + ")" : ""); },
+        label: function (node) { const n = (node.props.reads || []).length; return "Get Variables" + (n ? " (" + n + ")" : ""); },
         edit: openGetVariableMultiNodeEditor,
         hint: "Double-click to configure variable reads"
     }

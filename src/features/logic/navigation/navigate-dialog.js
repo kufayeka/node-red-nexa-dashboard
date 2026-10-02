@@ -12,11 +12,11 @@ export function openNavigateNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.mode = modeSelect.val();
-                    node.screenId = screenSelect.val();
-                    node.url = urlInput.val();
-                    node.historyAction = historySelect.val();
-                    node.forwardPayload = forwardPayloadCheck.is(":checked");
+                    node.props.mode = modeSelect.val();
+                    node.props.screenId = screenSelect.val();
+                    node.props.url = urlInput.val();
+                    node.props.historyAction = historySelect.val();
+                    node.props.forwardPayload = forwardPayloadCheck.is(":checked");
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -40,7 +40,7 @@ export function openNavigateNodeEditor(node) {
                 ["history", "Browser History (Back / Forward)"]
             ].forEach(function (opt) {
                 window.$("<option>", { value: opt[0] }).text(opt[1])
-                    .prop("selected", (node.mode || "screen") === opt[0])
+                    .prop("selected", (node.props.mode || "screen") === opt[0])
                     .appendTo(modeSelect);
             });
 
@@ -55,7 +55,7 @@ export function openNavigateNodeEditor(node) {
             } else {
                 screens.forEach(function (s) {
                     window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")")
-                        .prop("selected", (node.screenId || (screens[0] && screens[0].id)) === s.id)
+                        .prop("selected", (node.props.screenId || (screens[0] && screens[0].id)) === s.id)
                         .appendTo(screenSelect);
                 });
             }
@@ -64,7 +64,7 @@ export function openNavigateNodeEditor(node) {
             window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
                 .text("Route Template / Sub-path").appendTo(urlRow);
             urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" })
-                .val(node.url || "").appendTo(urlRow);
+                .val(node.props.url || "").appendTo(urlRow);
 
             var historyRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
             window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
@@ -75,7 +75,7 @@ export function openNavigateNodeEditor(node) {
                 ["forward", "Forward (+1)"]
             ].forEach(function (opt) {
                 window.$("<option>", { value: opt[0] }).text(opt[1])
-                    .prop("selected", (node.historyAction || "back") === opt[0])
+                    .prop("selected", (node.props.historyAction || "back") === opt[0])
                     .appendTo(historySelect);
             });
 
@@ -90,7 +90,7 @@ export function openNavigateNodeEditor(node) {
 
             // Forward payload option
             var payloadRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "8px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-            forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+            forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
             payloadRow.append("Forward current msg.payload into destination screen's On Load");
         }
     });

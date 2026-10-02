@@ -289,6 +289,7 @@ async function runTests() {
     components: [{ id: 'c2', type: 'text', name: 'Text 2', x: 0, y: 0, w: 100, h: 20, props: { text: 'Step 2' } }],
     logic: { nodes: [], wires: [] }
   };
+  NexaModel.migrateLogic(screen2.logic); // added after the runtime started
   global.__NEXA_SCREENS__.push(screen2);
 
   let freeFlowDownstreamExecuted = false;
@@ -313,6 +314,7 @@ async function runTests() {
       ]
     }
   };
+  NexaModel.migrateLogic(flowFree.logic); // added after the runtime started
   global.__NEXA_FLOWS__.push(flowFree);
 
   // Directly access /freeflow/step2 in Free Jump mode
@@ -382,6 +384,8 @@ async function runTests() {
     logic: { nodes: [], wires: [] }
   };
 
+  [screenLogin, screenSettings, screenDashboard, screenIsolated].forEach(function (x) { NexaModel.migrateLogic(x.logic); }); // added after the runtime started
+
   global.__NEXA_SCREENS__.push(screenLogin, screenSettings, screenDashboard, screenIsolated);
 
   let flowMiddlewareRan = false;
@@ -409,6 +413,7 @@ async function runTests() {
       ]
     }
   };
+  NexaModel.migrateLogic(flowOrchestrator.logic); // added after the runtime started
   global.__NEXA_FLOWS__.push(flowOrchestrator);
 
   // Initial trigger to /app: mounts Login Screen
@@ -503,6 +508,7 @@ async function runTests() {
       wires: { 'btn_s2_click': ['stf_s2'] }
     }
   };
+  [screenS1, screenS3, screenS2].forEach(function (x) { NexaModel.migrateLogic(x.logic); }); // added after the runtime started
   global.__NEXA_SCREENS__.push(screenS1, screenS3, screenS2);
 
   const flow1 = {
@@ -525,6 +531,7 @@ async function runTests() {
       ]
     }
   };
+  NexaModel.migrateLogic(flow1.logic); // added after the runtime started
   global.__NEXA_FLOWS__.push(flow1);
 
   // Re-read and eval runtime code

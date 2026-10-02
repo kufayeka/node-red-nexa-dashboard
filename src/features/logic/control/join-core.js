@@ -19,10 +19,10 @@ function clone(v) {
 }
 
 export function createJoin(node) {
-    const mode = node.mode === "combine-latest" || node.mode === "sequence-n" ? node.mode : "wait-all";
-    const format = node.outputFormat === "array" || node.outputFormat === "forward" ? node.outputFormat : "object";
-    const topics = (Array.isArray(node.slots) ? node.slots : []).map(function (s) { return s && s.topic; }).filter(Boolean);
-    const count = Math.max(2, Number(node.count) || 2);
+    const mode = node.props.mode === "combine-latest" || node.props.mode === "sequence-n" ? node.props.mode : "wait-all";
+    const format = node.props.outputFormat === "array" || node.props.outputFormat === "forward" ? node.props.outputFormat : "object";
+    const topics = (Array.isArray(node.props.slots) ? node.props.slots : []).map(function (s) { return s && s.topic; }).filter(Boolean);
+    const count = Math.max(2, Number(node.props.count) || 2);
     let latest = {};   // topic -> msg (slot modes)
     let seq = [];      // msgs (sequence-n)
 
@@ -77,7 +77,7 @@ export function createJoin(node) {
                 latest = {};
                 return { send: out, startTimer: false, stopTimer: true };
             }
-            return { send: null, startTimer: first && Number(node.timeout) > 0, stopTimer: false };
+            return { send: null, startTimer: first && Number(node.props.timeout) > 0, stopTimer: false };
         },
         /** wait-all's timeout passed: send what is there (null when nothing arrived) and start over */
         timeout: function () {

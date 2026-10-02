@@ -12,6 +12,7 @@
 //     nothing moves on screen
 import { fitGroup } from "./tree.js";
 import { migrateOverrideKeys } from "./breakpoints.js";
+import { migrateLogic } from "./migrate-logic.js";
 
 export var TREE_VERSION = 1;
 
@@ -25,6 +26,8 @@ export function migrateSurface(surface, genId) {
     if (!surface.components) surface.components = [];
     if (!surface.orphans) surface.orphans = [];
     if (!surface.logic) surface.logic = { nodes: [], wires: [] };
+    // logic nodes: configuration into node.props (./migrate-logic.js)
+    migrateLogic(surface.logic);
     // breakpoint overrides saved as Tablet / Phone: the md / sm bands
     migrateOverrideKeys(surface.components);
     delete surface.breakpoints;

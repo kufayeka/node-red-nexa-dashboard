@@ -18,29 +18,29 @@ function componentName(compId) {
 
 function overlayNodeLabel(node) {
     const screen = getActiveScreen();
-    const of = node.overlay && screen ? Tree.find(screen, node.overlay) : null;
+    const of = node.props.overlay && screen ? Tree.find(screen, node.props.overlay) : null;
     const verb = node.type === "overlay-open" ? "Open " : "Close ";
-    return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
+    return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.props.overlay ? "the top overlay" : "(missing overlay)");
 }
 
 defineLogicEditors({
     "ui-event": {
         label: function (node) {
-            const c = componentName(node.compId);
-            if (node.event === "sparkplug-change" || node.event === "sparkplug-update") return c.name + " on Sparkplug Update";
-            if (node.event === "slide-change") return c.name + " on Slide Change";
-            const evt = c.def && c.def.events && c.def.events.find(function (e) { return e.name === node.event; });
-            return c.name + " " + (evt ? evt.label : "on " + node.event);
+            const c = componentName(node.props.compId);
+            if (node.props.event === "sparkplug-change" || node.props.event === "sparkplug-update") return c.name + " on Sparkplug Update";
+            if (node.props.event === "slide-change") return c.name + " on Slide Change";
+            const evt = c.def && c.def.events && c.def.events.find(function (e) { return e.name === node.props.event; });
+            return c.name + " " + (evt ? evt.label : "on " + node.props.event);
         }
     },
     "ui-update": {
-        label: function (node) { return "Update " + componentName(node.compId).name; },
+        label: function (node) { return "Update " + componentName(node.props.compId).name; },
         edit: openUiUpdateNodeEditor,
         hint: "Double-click to configure"
     },
     "layer-control": {
         label: function (node) {
-            const n = (node.states || []).length;
+            const n = (node.props.states || []).length;
             return "Layer Control" + (n ? " (" + n + ")" : "");
         },
         edit: openLayerControlNodeEditor,

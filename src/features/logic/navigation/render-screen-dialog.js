@@ -12,8 +12,8 @@ export function openRenderScreenNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.screenId = screenSelect.val();
-                    node.forwardPayload = forwardPayloadCheck.is(":checked");
+                    node.props.screenId = screenSelect.val();
+                    node.props.forwardPayload = forwardPayloadCheck.is(":checked");
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -47,7 +47,7 @@ export function openRenderScreenNodeEditor(node) {
                 screens.forEach(function (s) {
                     window.$("<option>", { value: s.id })
                         .text(s.name + " (" + (s.path || "/" + s.id) + ")")
-                        .prop("selected", (node.screenId || (screens[0] && screens[0].id)) === s.id)
+                        .prop("selected", (node.props.screenId || (screens[0] && screens[0].id)) === s.id)
                         .appendTo(screenSelect);
                 });
             }
@@ -62,7 +62,7 @@ export function openRenderScreenNodeEditor(node) {
                 cursor: "pointer"
             }).appendTo(body);
             forwardPayloadCheck = window.$("<input>", { type: "checkbox" })
-                .prop("checked", node.forwardPayload !== false)
+                .prop("checked", node.props.forwardPayload !== false)
                 .css({ "margin-right": "8px" })
                 .appendTo(payloadRow);
             payloadRow.append("Forward current msg.payload into screen's On Load lifecycle");

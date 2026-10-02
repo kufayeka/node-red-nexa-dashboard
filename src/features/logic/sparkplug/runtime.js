@@ -4,12 +4,12 @@ import { parseSparkplugBindingPath } from "../../../runtime/io/sparkplug.js";
 import { sendSparkplugWrite } from "../../../runtime/io/client.js";
 
 defineLogicRuntimes({
-    // node.tag = "{sparkplug:group::edge::device::metric}", the value = msg.payload
+    // node.props.tag = "{sparkplug:group::edge::device::metric}", the value = msg.payload
     "sparkplug-write": {
         run: function (node, msg, ctx) {
-            const ref = parseSparkplugBindingPath(node.tag);
+            const ref = parseSparkplugBindingPath(node.props.tag);
             if (!ref) {
-                console.error("[nexa-logic] sparkplug-write node " + node.id + ": \"" + node.tag + "\" is not a valid {sparkplug:...} binding");
+                console.error("[nexa-logic] sparkplug-write node " + node.id + ": \"" + node.props.tag + "\" is not a valid {sparkplug:...} binding");
                 return;
             }
             sendSparkplugWrite(ref.groupId, ref.edgeNodeId, ref.deviceId, [{ name: ref.metricName, value: msg && msg.payload }])

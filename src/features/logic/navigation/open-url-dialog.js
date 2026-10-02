@@ -12,9 +12,9 @@ export function openOpenUrlNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.mode = modeSelect.val();
-                    node.url = urlInput.val();
-                    node.newTab = newTabInput.is(":checked");
+                    node.props.mode = modeSelect.val();
+                    node.props.url = urlInput.val();
+                    node.props.newTab = newTabInput.is(":checked");
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -35,13 +35,13 @@ export function openOpenUrlNodeEditor(node) {
                 ["endpoint", "Endpoint / Sub-path only (e.g. /screen2 or screen2)"]
             ].forEach(function (opt) {
                 window.$("<option>", { value: opt[0] }).text(opt[1])
-                    .prop("selected", (node.mode || "replace") === opt[0])
+                    .prop("selected", (node.props.mode || "replace") === opt[0])
                     .appendTo(modeSelect);
             });
 
             var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
             var urlLabel = window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("URL or Endpoint").appendTo(row);
-            urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(row);
+            urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.url || "").appendTo(row);
 
             function updateUrlPlaceholder() {
                 if (modeSelect.val() === "endpoint") {
@@ -56,7 +56,7 @@ export function openOpenUrlNodeEditor(node) {
             updateUrlPlaceholder();
 
             var tabRow = window.$("<label>").css({ "font-size": "11px", color: "#888", "margin-top": "6px", display: "block" }).appendTo(body);
-            newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
+            newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.props.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
             tabRow.append("Open in a new tab");
         }
     });

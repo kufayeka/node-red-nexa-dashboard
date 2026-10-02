@@ -75,7 +75,7 @@ export function openSetVariableMultiNodeEditor(node) {
                         }
                         assignments.push(out);
                     });
-                    node.assignments = assignments;
+                    node.props.assignments = assignments;
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -198,7 +198,7 @@ export function openSetVariableMultiNodeEditor(node) {
             });
 
             /* Populate existing */
-            var existing = Array.isArray(node.assignments) ? node.assignments : [];
+            var existing = Array.isArray(node.props.assignments) ? node.props.assignments : [];
             if (existing.length) {
                 existing.forEach(function (a) { listEl.editableList("addItem", a); });
             } else {

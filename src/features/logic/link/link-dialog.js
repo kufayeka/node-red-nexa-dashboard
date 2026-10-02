@@ -29,8 +29,8 @@ export function listLinkChannels() {
 
 function channelName(node) {
     var RED = window.RED;
-    var cfg = node.channel && RED && RED.nodes && typeof RED.nodes.node === "function" ? RED.nodes.node(node.channel) : null;
-    return (cfg && cfg.name) || node.channelName || (node.channel ? "(missing channel)" : "(no channel)");
+    var cfg = node.props.channel && RED && RED.nodes && typeof RED.nodes.node === "function" ? RED.nodes.node(node.props.channel) : null;
+    return (cfg && cfg.name) || node.props.channelName || (node.props.channel ? "(missing channel)" : "(no channel)");
 }
 
 export function linkNodeLabel(node) {
@@ -38,7 +38,7 @@ export function linkNodeLabel(node) {
 }
 
 export function openLinkNodeEditor(node) {
-    var d = { channel: node.channel || "" };
+    var d = { channel: node.props.channel || "" };
     window.RED.tray.show({
         id: "nexa-logic-link-editor",
         title: "Configure " + TITLES[node.type] + " Node",
@@ -48,10 +48,10 @@ export function openLinkNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.channel = d.channel;
+                    node.props.channel = d.channel;
                     // kept for the label and msg.topic, in case the config node is renamed / not in this editor
                     var picked = listLinkChannels().filter(function (c) { return c.id === d.channel; })[0];
-                    node.channelName = picked ? picked.name : "";
+                    node.props.channelName = picked ? picked.name : "";
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();

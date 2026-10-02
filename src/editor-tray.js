@@ -13,6 +13,7 @@ import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogic
 import { removeLogicNodes, renderLogicCanvas, addLogicNode, logicNodeWidth } from "./logic/logic-nodes.js";
 import { buildPalette, renderEventsPanel, refreshEventsHighlight } from "./sidebar/palette-events-panel.js";
 import { renderPropertiesPanel } from "./sidebar/properties-panel.js";
+import { migrateLogicNode } from "./model/migrate-logic.js";
 
 // Broader than a plain "is this an <input>/<textarea>" check: a real code
 // editor widget (RED.editor.createEditor — ace, monaco, or CodeMirror
@@ -282,7 +283,7 @@ export function buildCanvasArea(trayBody, chrome) {
             var makeNode = ui.draggable.data("nexaMakeNode");
             var nodeData = metricRef ? { type: "sparkplug-write", tag: makeSparkplugBindingPath(metricRef) } : (typeof makeNode === "function" ? makeNode() : null);
             if (!nodeData) return;
-            var nodeW = logicNodeWidth(nodeData);
+            var nodeW = logicNodeWidth(migrateLogicNode(Object.assign({}, nodeData)));
             var nodeX = Math.max(0, x - nodeW / 2);
             var nodeY = Math.max(0, y - LOGIC_NODE_H / 2);
             // on the grid, like a dragged node (Alt: where it was dropped)

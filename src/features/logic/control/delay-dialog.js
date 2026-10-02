@@ -13,8 +13,8 @@ export function openDelayNodeEditor(node) {
                 text: "Save", "class": "primary",
                 click: function () {
                     var val = parseInt(delayInput.val(), 10);
-                    node.delay = isNaN(val) || val < 0 ? 500 : val;
-                    node.unit = unitSelect.val() || "ms";
+                    node.props.delay = isNaN(val) || val < 0 ? 500 : val;
+                    node.props.unit = unitSelect.val() || "ms";
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -33,7 +33,7 @@ export function openDelayNodeEditor(node) {
             window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
                 .text("Delay Time").appendTo(delayCol);
             delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" })
-                .val(node.delay != null ? node.delay : 500).appendTo(delayCol);
+                .val(node.props.delay != null ? node.props.delay : 500).appendTo(delayCol);
 
             var unitCol = window.$("<div>").css({ flex: "0 0 120px" }).appendTo(row);
             window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" })
@@ -44,7 +44,7 @@ export function openDelayNodeEditor(node) {
                 ["s", "Seconds (s)"]
             ].forEach(function (opt) {
                 window.$("<option>", { value: opt[0] }).text(opt[1])
-                    .prop("selected", (node.unit || "ms") === opt[0])
+                    .prop("selected", (node.props.unit || "ms") === opt[0])
                     .appendTo(unitSelect);
             });
         }

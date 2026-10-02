@@ -9,8 +9,8 @@ var NAME_RE = /^[A-Za-z_][\w-]*$/;
 
 export function openTemplateOutputNodeEditor(node) {
     var sending = node.type === "template-output";
-    var d = { output: node.output === undefined ? (sending ? "out" : "") : node.output };
-    var inst = sending ? null : findComponent(node.instanceId);
+    var d = { output: node.props.output === undefined ? (sending ? "out" : "") : node.props.output };
+    var inst = sending ? null : findComponent(node.props.instanceId);
     var names = inst ? templateOutputs(findTemplate(inst.templateId)) : [];
     window.RED.tray.show({
         id: "nexa-logic-template-output-editor",
@@ -22,7 +22,7 @@ export function openTemplateOutputNodeEditor(node) {
                 text: "Save", "class": "primary",
                 click: function () {
                     if (sending && !NAME_RE.test(d.output)) return;
-                    node.output = d.output;
+                    node.props.output = d.output;
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();

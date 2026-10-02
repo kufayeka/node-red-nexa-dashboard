@@ -12,6 +12,7 @@ import {
 } from "./features/navigation.js";
 import { runLogicGraph } from "./logic/runner.js";
 import { state } from "./state.js";
+import { migrateLogic } from "../model/migrate-logic.js";
 
 // Export modular submodules for programmatic testing and integration
 export * from "./state.js";
@@ -56,6 +57,10 @@ if (typeof window !== "undefined") {
         getActiveFlow: getActiveFlow,
         state: state
     });
+
+    // logic nodes saved before node.props (a page built by hand, an older embed): bring them up to date
+    [window.__NEXA_SCREEN__].concat(window.__NEXA_SCREENS__ || [], window.__NEXA_FLOWS__ || [], window.__NEXA_TEMPLATES__ || [])
+        .forEach(function (s) { if (s && s.logic) migrateLogic(s.logic); });
 
     // Auto-bootstrap runtime on page load if artboard is mounted
     var prefix = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";

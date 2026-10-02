@@ -4,7 +4,7 @@ export default [
     // one output per rule; exclusivePorts: its outputs are alternatives (the flow fan-out check counts one at a time)
     {
         type: "switch", label: "Switch", color: "#e2d96e", icon: "fa-filter", chipColor: "#e2d96e", inputs: 1, outputs: 1, exclusivePorts: true,
-        ports: function (node) { return node.rules && node.rules.length ? node.rules.length : 1; }
+        ports: function (node) { return node.props.rules && node.props.rules.length ? node.props.rules.length : 1; }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
     // collects messages from several wires (by msg.topic) before it sends one: ./join-core.js

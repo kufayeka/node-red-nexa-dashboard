@@ -168,7 +168,7 @@ export function syncScreenWithFlow(screen, flowId, flowNodeId) {
         }
         if (!rNode) {
             rNode = (targetFlow.logic && targetFlow.logic.nodes || []).find(function (n) {
-                return (n.type === "render-screen" || n.type === "navigate") && n.screenId === screen.id;
+                return (n.type === "render-screen" || n.type === "navigate") && n.props.screenId === screen.id;
             });
         }
         if (rNode) {
@@ -239,8 +239,8 @@ export function matchFlowAndExecute(subPath, initialPayload) {
     if (match.notFound) {
         var notFoundNode = (flow.logic && flow.logic.nodes || []).find(function (n) { return n.type === "route-not-found"; });
         if (notFoundNode) {
-            var notFoundCookies = notFoundNode.cookies ? extractCookies(notFoundNode.cookies) : {};
-            var notFoundDevice = (notFoundNode.includeDevice !== false) ? extractDeviceContext() : undefined;
+            var notFoundCookies = notFoundNode.props.cookies ? extractCookies(notFoundNode.props.cookies) : {};
+            var notFoundDevice = (notFoundNode.props.includeDevice !== false) ? extractDeviceContext() : undefined;
             var notFoundMsg = {
                 path: match.subPath,
                 fullPath: match.fullPath,
@@ -271,8 +271,8 @@ export function matchFlowAndExecute(subPath, initialPayload) {
     var node = match.node;
     var params = match.params || {};
     window.__NEXA_PARAMS__ = params;
-    var cookies = node ? extractCookies(node.cookies) : {};
-    var device = (node && node.includeDevice !== false) ? extractDeviceContext() : undefined;
+    var cookies = node ? extractCookies(node.props.cookies) : {};
+    var device = (node && node.props.includeDevice !== false) ? extractDeviceContext() : undefined;
     var msg = {
         path: match.fullPath,
         params: params,
@@ -538,8 +538,9 @@ export function mountAndFlatten(parentEl, comp, inheritedVis, templates, namespa
                 var clone = {};
                 for (var k in n) clone[k] = n[k];
                 clone.id = namespace + "::" + n.id;
-                if (clone.compId !== undefined) clone.compId = namespace + "::" + clone.compId;
-                if (clone.instanceId !== undefined) clone.instanceId = namespace + "::" + clone.instanceId;
+                clone.props = Object.assign({}, n.props);
+                if (clone.props.compId !== undefined) clone.props.compId = namespace + "::" + clone.props.compId;
+                if (clone.props.instanceId !== undefined) clone.props.instanceId = namespace + "::" + clone.props.instanceId;
                 effectiveScreen.logic.nodes.push(clone);
             });
             (template.logic.wires || []).forEach(function (w) {

@@ -103,7 +103,7 @@ export function fireUiEvent(screen, compId, eventName, payload) {
         return;
     }
     var matches = (screen.logic.nodes || []).filter(function (n) {
-        return n.type === "ui-event" && n.compId === compId && n.event === eventName;
+        return n.type === "ui-event" && n.props.compId === compId && n.props.event === eventName;
     });
     logicTrace("fireUiEvent(" + eventName + ") for component " + compId + ": " + matches.length + " matching node(s)");
     matches.forEach(function (n) {

@@ -1,3 +1,4 @@
+import { flatConfig } from "../registry.js";
 // Variable Logic Nodes Handlers
 // Implementations for set-variable, set-variable-multi, and get-variable-multi.
 
@@ -5,16 +6,16 @@ import { resolveScope } from "../../../runtime/state/scope.js";
 import { writeVariable, valueFromMsg, setMsgPath, cloneMsg, cloneValue } from "../../../runtime/state/variable.js";
 
 export function setVariable(screen, node, msg) {
-    const scope = resolveScope(screen, node.scope, node.id);
+    const scope = resolveScope(screen, node.props.scope, node.id);
     if (!scope) {
-        console.warn("[nexa-logic] set-variable: no such scope", node.scope, node.name);
+        console.warn("[nexa-logic] set-variable: no such scope", node.props.scope, node.props.name);
         return;
     }
-    writeVariable(screen, scope, node.name, valueFromMsg(node, msg), node.op);
+    writeVariable(screen, scope, node.props.name, valueFromMsg(flatConfig(node), msg), node.props.op);
 }
 
 export function setVariablesMulti(screen, node, msg) {
-    const assignments = Array.isArray(node.assignments) ? node.assignments : [];
+    const assignments = Array.isArray(node.props.assignments) ? node.props.assignments : [];
     assignments.forEach(function (a) {
         if (!a || !a.name) return;
         const scope = resolveScope(screen, a.scope, node.id);
@@ -28,7 +29,7 @@ export function setVariablesMulti(screen, node, msg) {
 
 export function getVariablesMulti(screen, node, msg) {
     const out = cloneMsg(msg || {});
-    const reads = Array.isArray(node.reads) ? node.reads : [];
+    const reads = Array.isArray(node.props.reads) ? node.props.reads : [];
     reads.forEach(function (r) {
         if (!r || !r.name) return;
         const gScope = resolveScope(screen, r.scope, node.id);

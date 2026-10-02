@@ -16,16 +16,16 @@ function targets() {
 
 export function teleportNodeLabel(node) {
     var screen = getActiveScreen();
-    var n = node.node && screen ? Tree.find(screen, node.node) : null;
-    var who = n ? nodeName(n) : node.node ? "(missing node)" : "?";
-    if (node.toSource === "payload") return "Teleport " + who + " → msg.payload";
-    return (node.to ? "Teleport " + who + " → " + (node.to === "@page" ? "page" : node.to) : "Send " + who + " home");
+    var n = node.props.node && screen ? Tree.find(screen, node.props.node) : null;
+    var who = n ? nodeName(n) : node.props.node ? "(missing node)" : "?";
+    if (node.props.toSource === "payload") return "Teleport " + who + " → msg.payload";
+    return (node.props.to ? "Teleport " + who + " → " + (node.props.to === "@page" ? "page" : node.props.to) : "Send " + who + " home");
 }
 
 export function openTeleportNodeEditor(node) {
     var screen = getActiveScreen();
     var all = screen ? Tree.allNodes(screen) : [];
-    var d = { node: node.node || "", to: node.to === undefined ? "@page" : node.to, toSource: node.toSource || "static" };
+    var d = { node: node.props.node || "", to: node.props.to === undefined ? "@page" : node.props.to, toSource: node.props.toSource || "static" };
     window.RED.tray.show({
         id: "nexa-logic-teleport-editor",
         title: "Configure Teleport Node",
@@ -33,7 +33,7 @@ export function openTeleportNodeEditor(node) {
         buttons: [
             { text: "Cancel", click: function () { window.RED.tray.close(); } },
             { text: "Save", "class": "primary", click: function () {
-                node.node = d.node; node.to = d.to; node.toSource = d.toSource;
+                node.props.node = d.node; node.props.to = d.to; node.props.toSource = d.toSource;
                 markDirty(); renderLogicCanvas(); window.RED.tray.close();
             } }
         ],

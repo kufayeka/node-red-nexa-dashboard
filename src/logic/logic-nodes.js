@@ -7,6 +7,7 @@ import {
 import { logicMeta, logicEditor, logicOutputCount } from "../features/logic/registry.js";
 import "../features/logic/editor.js";
 import { pushHistory } from "../history.js";
+import { migrateLogicNode } from "../model/migrate-logic.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
 import { isLogicSelected, selectLogicOnly, refreshLogicSelectionVisuals, syncComponentFromLogicSelection } from "./logic-selection.js";
 
@@ -69,9 +70,9 @@ export function addLogicNode(nodeData, x, y) {
         if (window.RED && window.RED.notify) window.RED.notify(refusal, "warning");
         return;
     }
-    if (ed && typeof ed.onAdd === "function") ed.onAdd(nodeData, screen);
-    var node = { id: genId(), x: x, y: y };
-    for (var k in nodeData) node[k] = nodeData[k];
+    // a palette chip's recipe is flat ({type, url: …}): its config goes into node.props
+    var node = migrateLogicNode(Object.assign({}, nodeData, { id: genId(), x: x, y: y }));
+    if (ed && typeof ed.onAdd === "function") ed.onAdd(node, screen);
     screen.logic.nodes.push(node);
     pushHistory({ t: "addLogicNode", screenId: screen.id, node: node });
     renderLogicCanvas();

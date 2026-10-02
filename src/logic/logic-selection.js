@@ -1,4 +1,5 @@
 import { state, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen, genId, markDirty } from "../state.js";
+import { migrateLogicNode } from "../model/migrate-logic.js";
 import { pushHistory } from "../history.js";
 import { removeLogicNodes, renderLogicCanvas, logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
 import { refreshSelectionVisuals } from "../canvas/selection.js";
@@ -15,7 +16,8 @@ export function selectLogicForComponents(ids) {
     var set = {};
     (ids || []).forEach(function (id) { set[id] = true; });
     state.logicSelectedIds = ((screen && screen.logic && screen.logic.nodes) || []).filter(function (n) {
-        return (n.compId && set[n.compId]) || (n.instanceId && set[n.instanceId]) || (n.type === "layout" && n.container && set[n.container]) || (n.overlay && set[n.overlay]) || (n.type === "teleport" && n.node && set[n.node]);
+        var c = n.props || {};
+        return (c.compId && set[c.compId]) || (c.instanceId && set[c.instanceId]) || (n.type === "layout" && c.container && set[c.container]) || (c.overlay && set[c.overlay]) || (n.type === "teleport" && c.node && set[c.node]);
     }).map(function (n) { return n.id; });
     refreshLogicSelectionVisuals();
 }
@@ -52,7 +54,8 @@ export function syncComponentFromLogicSelection() {
     (state.logicSelectedIds || []).forEach(function (id) {
         var n = nodeMap[id];
         if (!n) return;
-        var cId = n.compId || n.instanceId || (n.type === "layout" ? n.container : null) || n.overlay || (n.type === "teleport" ? n.node : null);
+        var c = n.props || {};
+        var cId = c.compId || c.instanceId || (n.type === "layout" ? c.container : null) || c.overlay || (n.type === "teleport" ? c.node : null);
         if (cId && compIds.indexOf(cId) === -1) {
             compIds.push(cId);
         }
@@ -117,7 +120,7 @@ export function pasteLogicClipboard() {
         copy.id = newId;
         copy.x = (copy.x || 0) + 30;
         copy.y = (copy.y || 0) + 30;
-        return copy;
+        return migrateLogicNode(copy); // copied from an older project: its config into props
     });
 
     logicClipboard.nodes.forEach(function (n) {

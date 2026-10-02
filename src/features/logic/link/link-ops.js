@@ -10,11 +10,11 @@ function onPush(channelId, payload, meta) {
     let first = true;
     listening.forEach(function (screen) {
         ((screen && screen.logic && screen.logic.nodes) || []).forEach(function (n) {
-            if (n.type !== "link-receive" || n.channel !== channelId) return;
+            if (n.type !== "link-receive" || n.props.channel !== channelId) return;
             // the first node gets the payload itself, every other one a copy (a big answer is copied only when needed)
             const p = first || payload === null || typeof payload !== "object" ? payload : cloneMsg(payload);
             first = false;
-            run(screen, n, { payload: p, topic: n.channelName || "", retained: !!meta.retained });
+            run(screen, n, { payload: p, topic: n.props.channelName || "", retained: !!meta.retained });
         });
     });
 }
@@ -26,7 +26,7 @@ export function syncLinkSubscriptions(screens, runLogicGraph) {
     const ids = [];
     listening.forEach(function (screen) {
         ((screen.logic && screen.logic.nodes) || []).forEach(function (n) {
-            if (n.type === "link-receive" && n.channel) ids.push(n.channel);
+            if (n.type === "link-receive" && n.props.channel) ids.push(n.props.channel);
         });
     });
     linkSetSubscriptions(ids, onPush);

@@ -22,14 +22,14 @@ export function openSetVariableNodeEditor(node) {
     var decls = screen ? Scope.allDeclarations(screen, Tree.walk, getApp()) : [];
     var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
     var draft = {
-        scope: node.scope || "",
-        name: node.name || "",
-        op: node.op || "set",
-        valueSource: node.valueSource || "payload",
-        value: node.value,
-        msgPath: node.msgPath || "payload.data",
-        target: node.target || "payload",
-        variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : (node.name ? [{ scope: node.scope || "", name: node.name }] : [])
+        scope: node.props.scope || "",
+        name: node.props.name || "",
+        op: node.props.op || "set",
+        valueSource: node.props.valueSource || "payload",
+        value: node.props.value,
+        msgPath: node.props.msgPath || "payload.data",
+        target: node.props.target || "payload",
+        variables: Array.isArray(node.props.variables) ? JSON.parse(JSON.stringify(node.props.variables)) : (node.props.name ? [{ scope: node.props.scope || "", name: node.props.name }] : [])
     };
     var nameSel;
     var trayEl = null; // FIX: capture tray so button click handler can access it
@@ -76,19 +76,19 @@ export function openSetVariableNodeEditor(node) {
                                 }
                             }
                         });
-                        node.variables = gathered;
-                        node.scope = gathered[0] ? gathered[0].scope : "";
-                        node.name = gathered[0] ? gathered[0].name : "";
+                        node.props.variables = gathered;
+                        node.props.scope = gathered[0] ? gathered[0].scope : "";
+                        node.props.name = gathered[0] ? gathered[0].name : "";
                     } else {
-                        node.scope = draft.scope;
-                        node.name = draft.name;
+                        node.props.scope = draft.scope;
+                        node.props.name = draft.name;
                         if (type === "set-variable") {
-                            node.op = draft.op;
-                            node.valueSource = draft.valueSource;
-                            if (draft.valueSource === "static") node.value = draft.value; else delete node.value;
-                            if (draft.valueSource === "msg") node.msgPath = draft.msgPath; else delete node.msgPath;
+                            node.props.op = draft.op;
+                            node.props.valueSource = draft.valueSource;
+                            if (draft.valueSource === "static") node.props.value = draft.value; else delete node.props.value;
+                            if (draft.valueSource === "msg") node.props.msgPath = draft.msgPath; else delete node.props.msgPath;
                         }
-                        if (type === "get-variable") node.target = draft.target || "payload";
+                        if (type === "get-variable") node.props.target = draft.target || "payload";
                     }
                     markDirty();
                     renderLogicCanvas();

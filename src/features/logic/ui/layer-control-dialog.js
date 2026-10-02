@@ -19,9 +19,9 @@ export function openLayerControlNodeEditor(node) {
                     var raw = (typeof statesInput.typedInput === "function") ? statesInput.typedInput("value") : statesInput.val();
                     try {
                         var parsed = JSON.parse(raw);
-                        node.states = Array.isArray(parsed) ? parsed : [];
+                        node.props.states = Array.isArray(parsed) ? parsed : [];
                     } catch (e) {
-                        node.states = [];
+                        node.props.states = [];
                     }
                     markDirty();
                     renderLogicCanvas();
@@ -37,7 +37,7 @@ export function openLayerControlNodeEditor(node) {
 
             var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
             window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", "margin-bottom": "4px" }).text("Visibility by node name (JSON array)").appendTo(row);
-            var initialText = JSON.stringify((node.states && node.states.length) ? node.states : [{ name: "Group 1", state: "show" }], null, 2);
+            var initialText = JSON.stringify((node.props.states && node.props.states.length) ? node.props.states : [{ name: "Group 1", state: "show" }], null, 2);
             statesInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).appendTo(row);
             if (typeof statesInput.typedInput === "function") {
                 statesInput.typedInput({ default: "json", types: ["json"] });

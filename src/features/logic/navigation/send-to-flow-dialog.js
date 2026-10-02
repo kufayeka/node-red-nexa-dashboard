@@ -12,7 +12,7 @@ export function openSendToFlowNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.action = (actionInput.val() || "").trim();
+                    node.props.action = (actionInput.val() || "").trim();
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -41,7 +41,7 @@ export function openSendToFlowNodeEditor(node) {
                 type: "text",
                 placeholder: "e.g. submit, cancel, next, login"
             }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" })
-                .val(node.action || "")
+                .val(node.props.action || "")
                 .appendTo(actionRow);
 
             window.$("<div>").css({

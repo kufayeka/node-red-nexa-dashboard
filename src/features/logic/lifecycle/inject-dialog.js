@@ -12,10 +12,10 @@ export function openInjectNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
-                    node.payloadType = payloadTypeSelect.val();
-                    node.payload = payloadInput.val();
-                    node.once = onceInput.is(":checked");
+                    node.props.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
+                    node.props.payloadType = payloadTypeSelect.val();
+                    node.props.payload = payloadInput.val();
+                    node.props.once = onceInput.is(":checked");
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();
@@ -38,7 +38,7 @@ export function openInjectNodeEditor(node) {
                 ["date", "Timestamp (Date.now())"]
             ].forEach(function (opt) {
                 window.$("<option>", { value: opt[0] }).text(opt[1])
-                    .prop("selected", (node.payloadType || "json") === opt[0])
+                    .prop("selected", (node.props.payloadType || "json") === opt[0])
                     .appendTo(payloadTypeSelect);
             });
 
@@ -46,7 +46,7 @@ export function openInjectNodeEditor(node) {
             window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload").appendTo(valRow);
             payloadInput = window.$("<textarea>")
                 .css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" })
-                .val(node.payload !== undefined ? node.payload : '{"text": "Hello World"}')
+                .val(node.props.payload !== undefined ? node.props.payload : '{"text": "Hello World"}')
                 .appendTo(valRow);
 
             function updatePayloadUi() {
@@ -62,10 +62,10 @@ export function openInjectNodeEditor(node) {
 
             var intervalRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
             window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Repeat every (ms, 0 to disable repeat)").appendTo(intervalRow);
-            intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.intervalMs !== undefined ? node.intervalMs : 5000).appendTo(intervalRow);
+            intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.props.intervalMs !== undefined ? node.props.intervalMs : 5000).appendTo(intervalRow);
 
             var onceRow = window.$("<div>").css({ "margin-top": "10px" }).appendTo(body);
-            onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.once).css({ "margin-right": "6px" });
+            onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.props.once).css({ "margin-right": "6px" });
             onceRow.append(onceInput).append(window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Fire once on startup"));
         }
     });

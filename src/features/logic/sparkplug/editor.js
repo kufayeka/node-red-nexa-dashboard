@@ -6,7 +6,7 @@ import { openSparkplugWriteMultiNodeEditor } from "./sparkplug-write-multi-dialo
 defineLogicEditors({
     "sparkplug-write": {
         label: function (node) {
-            const ref = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
+            const ref = node.props.tag && node.props.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
             return "Sparkplug Write" + (ref ? " (" + ref + ")" : "");
         },
         edit: openSparkplugWriteNodeEditor,

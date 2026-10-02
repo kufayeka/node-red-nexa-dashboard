@@ -25,27 +25,27 @@ function resolveUrl(target, mode) {
 defineLogicRuntimes({
     "navigate": {
         run: function (node, msg) {
-            const mode = (msg && msg.mode) || node.mode || "screen";
+            const mode = (msg && msg.mode) || node.props.mode || "screen";
             if (mode === "history") {
-                const action = (msg && msg.action) || node.historyAction || "back";
+                const action = (msg && msg.action) || node.props.historyAction || "back";
                 const h = typeof window.history !== "undefined" ? window.history : null;
                 if (action === "forward") { if (h && typeof h.forward === "function") h.forward(); }
                 else if (h && typeof h.back === "function") h.back();
                 return msg;
             }
             const targetId = mode === "url"
-                ? ((msg && (msg.url || msg.path || msg.endpoint)) || node.url)
-                : ((msg && (msg.screenId || msg.screen)) || node.screenId);
-            const payload = node.forwardPayload !== false ? (msg && msg.payload) : undefined;
-            navigateToScreen(targetId, payload, node.replace === true, true);
+                ? ((msg && (msg.url || msg.path || msg.endpoint)) || node.props.url)
+                : ((msg && (msg.screenId || msg.screen)) || node.props.screenId);
+            const payload = node.props.forwardPayload !== false ? (msg && msg.payload) : undefined;
+            navigateToScreen(targetId, payload, node.props.replace === true, true);
             return msg;
         }
     },
     "open-url": {
         run: function (node, msg) {
-            const raw = (msg && typeof msg.payload === "string" && msg.payload) || (msg && (msg.url || msg.endpoint)) || node.url;
-            const mode = (msg && msg.mode) || node.mode || "replace";
-            const newTab = (msg && typeof msg.newTab === "boolean") ? msg.newTab : node.newTab;
+            const raw = (msg && typeof msg.payload === "string" && msg.payload) || (msg && (msg.url || msg.endpoint)) || node.props.url;
+            const mode = (msg && msg.mode) || node.props.mode || "replace";
+            const newTab = (msg && typeof msg.newTab === "boolean") ? msg.newTab : node.props.newTab;
             if (raw) {
                 const url = resolveUrl(String(raw).trim(), mode);
                 if (newTab) window.open(url, "_blank");
@@ -65,21 +65,21 @@ defineLogicRuntimes({
     "route-not-found": { run: function (node, msg) { return msg; } },
     "render-screen": {
         run: function (node, msg, ctx) {
-            const target = (msg && (msg.screenId || msg.screen)) || node.screenId;
+            const target = (msg && (msg.screenId || msg.screen)) || node.props.screenId;
             const match = findScreenInProject(target);
             if (!match || !match.screen) {
                 console.warn("[nexa-runtime] render-screen: target screen not found:", target);
                 return;
             }
             setActiveRenderScreen({ flowScreen: ctx.screen, flowNode: node, screenId: match.screen.id });
-            navigateToScreen(match.screen.id, node.forwardPayload !== false ? (msg && msg.payload) : undefined, false, true, node.id);
+            navigateToScreen(match.screen.id, node.props.forwardPayload !== false ? (msg && msg.payload) : undefined, false, true, node.id);
         }
     },
     // from the screen to the active flow's Render Screen node; the screen's own chain goes on too
     "send-to-flow": {
         run: function (node, msg, ctx) {
             const sendMsg = cloneMsg(msg);
-            if (node.action) sendMsg.action = node.action;
+            if (node.props.action) sendMsg.action = node.props.action;
             const render = getActiveRenderScreen();
             const flow = getActiveFlowScreen();
             if (flow && render && render.flowNode) {

@@ -18,7 +18,7 @@ export function overlayLabel(n) {
 export function openOverlayNodeEditor(node) {
     var screen = getActiveScreen();
     var list = overlaysOf(screen);
-    var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
+    var d = { overlay: node.props.overlay || "", valueSource: node.props.valueSource || "payload" };
     var close = node.type === "overlay-close";
     window.RED.tray.show({
         id: "nexa-logic-overlay-editor",
@@ -27,8 +27,8 @@ export function openOverlayNodeEditor(node) {
         buttons: [
             { text: "Cancel", click: function () { window.RED.tray.close(); } },
             { text: "Save", "class": "primary", click: function () {
-                node.overlay = d.overlay;
-                if (close) node.valueSource = d.valueSource;
+                node.props.overlay = d.overlay;
+                if (close) node.props.valueSource = d.valueSource;
                 markDirty(); renderLogicCanvas(); window.RED.tray.close();
             } }
         ],

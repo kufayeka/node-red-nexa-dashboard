@@ -1,7 +1,7 @@
 import { findComponent, markDirty } from "../../../state.js";
 
 export function openUiUpdateNodeEditor(node) {
-    var comp = findComponent(node.compId);
+    var comp = findComponent(node.props.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
     var fieldEls = {};
@@ -31,15 +31,15 @@ export function openUiUpdateNodeEditor(node) {
                             }
                         }
                     });
-                    node.config = config;
+                    node.props.config = config;
                     var act = actionSel ? actionSel.val() : "";
                     if (act) {
-                        node.action = act;
+                        node.props.action = act;
                         var rawParams = paramsInput ? String(paramsInput.val() || "").trim() : "";
                         if (rawParams) {
-                            try { node.actionParams = JSON.parse(rawParams); } catch (e) { node.actionParams = rawParams; }
-                        } else delete node.actionParams;
-                    } else { delete node.action; delete node.actionParams; }
+                            try { node.props.actionParams = JSON.parse(rawParams); } catch (e) { node.props.actionParams = rawParams; }
+                        } else delete node.props.actionParams;
+                    } else { delete node.props.action; delete node.props.actionParams; }
                     markDirty();
                     window.RED.tray.close();
                 }
@@ -59,11 +59,11 @@ export function openUiUpdateNodeEditor(node) {
                 actionSel = window.$("<select>").css({ width: "100%" }).appendTo(arow);
                 window.$("<option>", { value: "" }).text("Update its properties").appendTo(actionSel);
                 actions.forEach(function (a) { window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel); });
-                actionSel.val(node.action || "");
+                actionSel.val(node.props.action || "");
                 var pbox = window.$("<div>").css({ "margin-top": "8px" }).appendTo(arow);
                 window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Its parameters (JSON or text), when msg.payload has none").appendTo(pbox);
                 paramsInput = window.$("<input>", { type: "text", placeholder: "e.g. {\"url\": \"https://…\"}" }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" })
-                    .val(node.actionParams === undefined ? "" : (typeof node.actionParams === "string" ? node.actionParams : JSON.stringify(node.actionParams))).appendTo(pbox);
+                    .val(node.props.actionParams === undefined ? "" : (typeof node.props.actionParams === "string" ? node.props.actionParams : JSON.stringify(node.props.actionParams))).appendTo(pbox);
                 var phelp = window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).appendTo(pbox);
                 propsBox = window.$("<div>").appendTo(body);
                 var sync = function () {
@@ -105,11 +105,11 @@ export function openUiUpdateNodeEditor(node) {
                 if (msgBound[key]) return; // bound to the message: listed above
                 var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
                 window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
-                var current = node.config && node.config[key] !== undefined ? node.config[key] : "";
+                var current = node.props.config && node.props.config[key] !== undefined ? node.props.config[key] : "";
                 var input;
                 if (type === "checkbox") {
                     var checkWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
-                    var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.config && node.config[key] !== undefined).appendTo(checkWrap);
+                    var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.config && node.props.config[key] !== undefined).appendTo(checkWrap);
                     window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
                     input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current).appendTo(checkWrap);
                     fieldEls[key] = { input: input, overrideCheck: overrideCheck, type: "checkbox" };

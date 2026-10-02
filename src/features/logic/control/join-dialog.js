@@ -26,11 +26,11 @@ export function openJoinNodeEditor(node) {
     var trayEl = null;
 
     var draft = {
-        mode: node.mode || "wait-all",
-        slots: Array.isArray(node.slots) ? JSON.parse(JSON.stringify(node.slots)) : [],
-        count: typeof node.count === "number" ? node.count : 2,
-        outputFormat: node.outputFormat || "object",
-        timeout: typeof node.timeout === "number" ? node.timeout : 0
+        mode: node.props.mode || "wait-all",
+        slots: Array.isArray(node.props.slots) ? JSON.parse(JSON.stringify(node.props.slots)) : [],
+        count: typeof node.props.count === "number" ? node.props.count : 2,
+        outputFormat: node.props.outputFormat || "object",
+        timeout: typeof node.props.timeout === "number" ? node.props.timeout : 0
     };
 
     var MODE_HELP = {
@@ -174,18 +174,18 @@ export function openJoinNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    node.mode = draft.mode;
-                    node.outputFormat = draft.outputFormat;
-                    node.timeout = draft.timeout;
+                    node.props.mode = draft.mode;
+                    node.props.outputFormat = draft.outputFormat;
+                    node.props.timeout = draft.timeout;
 
                     if (draft.mode === "sequence-n") {
-                        node.count = draft.count;
-                        delete node.slots;
+                        node.props.count = draft.count;
+                        delete node.props.slots;
                     } else {
                         var nxListEl = trayEl && trayEl.find("nx-list").get(0);
                         var rawSlots = (nxListEl && (nxListEl.items || nxListEl.value)) || draft.slots || [];
-                        node.slots = rawSlots.filter(function (s) { return s && s.topic; });
-                        delete node.count;
+                        node.props.slots = rawSlots.filter(function (s) { return s && s.topic; });
+                        delete node.props.count;
                     }
 
                     markDirty();

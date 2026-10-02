@@ -21,14 +21,14 @@ function frameLabel(f) {
 export function openLayoutNodeEditor(node) {
     var screen = getActiveScreen();
     var frames = screen ? Tree.allNodes(screen).filter(function (n) { return n.type === "@frame"; }) : [];
-    var chosen = node.container || "";
+    var chosen = node.props.container || "";
     window.RED.tray.show({
         id: "nexa-logic-layout-editor",
         title: "Configure Layout Node",
         width: 420,
         buttons: [
             { text: "Cancel", click: function () { window.RED.tray.close(); } },
-            { text: "Save", "class": "primary", click: function () { node.container = chosen; markDirty(); renderLogicCanvas(); window.RED.tray.close(); } }
+            { text: "Save", "class": "primary", click: function () { node.props.container = chosen; markDirty(); renderLogicCanvas(); window.RED.tray.close(); } }
         ],
         open: function (tray) {
             var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
@@ -46,9 +46,9 @@ export function openLayoutNodeEditor(node) {
 
 export function openPopulateNodeEditor(node) {
     var templates = (state.templates || []).filter(function (t) { return !(state.editingMode === "template" && t.id === state.activeTemplateId); });
-    var d = { template: node.template || "", mode: node.mode || "replace", key: node.key === undefined ? "id" : node.key,
-        valueSource: node.valueSource || "payload", msgPath: node.msgPath || "payload.items", value: node.value, fill: !!node.fill,
-        virtualize: !!node.virtualize, itemParam: node.itemParam };
+    var d = { template: node.props.template || "", mode: node.props.mode || "replace", key: node.props.key === undefined ? "id" : node.props.key,
+        valueSource: node.props.valueSource || "payload", msgPath: node.props.msgPath || "payload.items", value: node.props.value, fill: !!node.props.fill,
+        virtualize: !!node.props.virtualize, itemParam: node.props.itemParam };
     // the template declares its params; each card's item goes into the one chosen here
     function paramsOf(tid) { var t = templates.filter(function (x) { return x.id === tid; })[0]; return (t && t.params || []).map(function (p) { return p.name; }).filter(Boolean); }
 
@@ -61,10 +61,10 @@ export function openPopulateNodeEditor(node) {
             {
                 text: "Save", "class": "primary",
                 click: function () {
-                    Object.keys(d).forEach(function (k) { node[k] = d[k]; });
-                    delete node.container;   // where it goes: the Layout node(s) it is wired to
-                    if (d.valueSource !== "static") delete node.value;
-                    if (d.valueSource !== "msg") delete node.msgPath;
+                    Object.keys(d).forEach(function (k) { node.props[k] = d[k]; });
+                    delete node.props.container;   // where it goes: the Layout node(s) it is wired to
+                    if (d.valueSource !== "static") delete node.props.value;
+                    if (d.valueSource !== "msg") delete node.props.msgPath;
                     markDirty();
                     renderLogicCanvas();
                     window.RED.tray.close();

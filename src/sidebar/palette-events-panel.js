@@ -39,7 +39,7 @@ function getLogicNodeMeta(type) {
 export function templateOutputs(template) {
     var out = [];
     ((template && template.logic && template.logic.nodes) || []).forEach(function (n) {
-        var name = n.type === "template-output" ? (n.output || "out") : null;
+        var name = n.type === "template-output" ? (n.props.output || "out") : null;
         if (name && out.indexOf(name) === -1) out.push(name);
     });
     return out;

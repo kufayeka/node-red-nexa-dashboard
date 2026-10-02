@@ -6,6 +6,7 @@ import * as Types from "./model/types.js";
 import * as Theme from "./model/theme.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
 import { logicMeta, logicTypes, logicOutputCount } from "./features/logic/registry.js";
+import { migrateLogic } from "./model/migrate-logic.js";
 import "./features/logic/meta.js";
 
 export { Tree, Layout, Scope, Types, Theme };
@@ -246,21 +247,22 @@ export function cloneLogic(logic, compIdMap) {
     var idMap = {};
     var clonedNodes = (logic.nodes || []).map(function (n) {
         var copy = JSON.parse(JSON.stringify(n));
+        if (!copy.props) copy.props = {};
         var newId = genId();
         idMap[n.id] = newId;
         copy.id = newId;
         if (compIdMap) {
-            if (copy.compId && compIdMap[copy.compId]) copy.compId = compIdMap[copy.compId];
-            if (copy.componentId && compIdMap[copy.componentId]) copy.componentId = compIdMap[copy.componentId];
-            if (copy.targetId && compIdMap[copy.targetId]) copy.targetId = compIdMap[copy.targetId];
-            if (copy.container && compIdMap[copy.container]) copy.container = compIdMap[copy.container];
-            if (copy.overlay && compIdMap[copy.overlay]) copy.overlay = compIdMap[copy.overlay];
-            if (copy.node && compIdMap[copy.node]) copy.node = compIdMap[copy.node];
-            if (typeof copy.tag === "string" && copy.tag.indexOf("comp:") === 0) {
-                var parts = copy.tag.split(":");
+            if (copy.props.compId && compIdMap[copy.props.compId]) copy.props.compId = compIdMap[copy.props.compId];
+            if (copy.props.componentId && compIdMap[copy.props.componentId]) copy.props.componentId = compIdMap[copy.props.componentId];
+            if (copy.props.targetId && compIdMap[copy.props.targetId]) copy.props.targetId = compIdMap[copy.props.targetId];
+            if (copy.props.container && compIdMap[copy.props.container]) copy.props.container = compIdMap[copy.props.container];
+            if (copy.props.overlay && compIdMap[copy.props.overlay]) copy.props.overlay = compIdMap[copy.props.overlay];
+            if (copy.props.node && compIdMap[copy.props.node]) copy.props.node = compIdMap[copy.props.node];
+            if (typeof copy.props.tag === "string" && copy.props.tag.indexOf("comp:") === 0) {
+                var parts = copy.props.tag.split(":");
                 if (parts[1] && compIdMap[parts[1]]) {
                     parts[1] = compIdMap[parts[1]];
-                    copy.tag = parts.join(":");
+                    copy.props.tag = parts.join(":");
                 }
             }
         }
@@ -691,6 +693,7 @@ export function ensureScreensLoaded(cb) {
     var flowData = (state.projectConfigNode && state.projectConfigNode.flows) || [];
     flowData.forEach(function (f) {
         if (!f.logic) f.logic = { nodes: [], wires: [] };
+        migrateLogic(f.logic);
         if (!f.components) f.components = [];
         if (!f.variables) f.variables = [];
         if (f.parentId === undefined) f.parentId = null;

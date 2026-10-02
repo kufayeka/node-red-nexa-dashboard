@@ -26,27 +26,27 @@ function onePerFlow(type, label) {
 defineLogicEditors({
     "navigate": {
         label: function (node) {
-            if (node.mode === "history") return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
-            if (node.mode === "url") return "Goto Route" + (node.url ? " (" + node.url + ")" : "");
-            return "Goto Screen (" + screenName(node.screenId) + ")";
+            if (node.props.mode === "history") return "Goto (" + (node.props.historyAction === "forward" ? "Forward" : "Back") + ")";
+            if (node.props.mode === "url") return "Goto Route" + (node.props.url ? " (" + node.props.url + ")" : "");
+            return "Goto Screen (" + screenName(node.props.screenId) + ")";
         },
         edit: openNavigateNodeEditor,
         hint: "Double-click to configure navigation"
     },
     "open-url": {
-        label: function (node) { return "Open URL" + (node.url ? " (" + node.url + ")" : ""); },
+        label: function (node) { return "Open URL" + (node.props.url ? " (" + node.props.url + ")" : ""); },
         edit: openOpenUrlNodeEditor,
         hint: "Double-click to configure"
     },
     "route-trigger": {
         label: function (node) {
             const flow = getActiveScreen();
-            return "Route Trigger (" + ((flow && flow.endpoint) || node.path || "/") + ")";
+            return "Route Trigger (" + ((flow && flow.endpoint) || node.props.path || "/") + ")";
         },
         edit: openRouteTriggerNodeEditor,
         hint: "Double-click to configure route trigger",
         canAdd: onePerFlow("route-trigger", "Route Trigger"),
-        onAdd: function (nodeData, screen) { nodeData.path = screen.endpoint || "/"; },
+        onAdd: function (node, screen) { node.props.path = screen.endpoint || "/"; },
         // a red "!" when the trigger fans out to several Render Screens on the same path
         decorate: function (box, node, screen) {
             if (state.editingMode !== "flow" || !screen || !screen.logic) return;
@@ -66,12 +66,12 @@ defineLogicEditors({
         canAdd: onePerFlow("route-not-found", "Route Not Found")
     },
     "render-screen": {
-        label: function (node) { return "Render Screen (" + screenName(node.screenId) + ")"; },
+        label: function (node) { return "Render Screen (" + screenName(node.props.screenId) + ")"; },
         edit: openRenderScreenNodeEditor,
         hint: "Double-click to choose screen to render"
     },
     "send-to-flow": {
-        label: function (node) { return "Send to Flow" + (node.action ? " (" + node.action + ")" : ""); },
+        label: function (node) { return "Send to Flow" + (node.props.action ? " (" + node.props.action + ")" : ""); },
         edit: openSendToFlowNodeEditor,
         hint: "Double-click to configure message to flow"
     }

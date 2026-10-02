@@ -8,13 +8,13 @@ import { makeRoute } from "../../../runtime/state/scope.js";
 import { runSwitchNode, runDelayNode } from "./control-runtime-helpers.js";
 
 defineLogicRuntimes({
-    // node.code is the body of an async function (msg, vars, route, storage, cookies, http, getVariable, setVariable)
+    // node.props.code is the body of an async function (msg, vars, route, storage, cookies, http, getVariable, setVariable)
     "function": {
         run: function (node, msg, ctx) {
             const screen = ctx.screen;
             const fnVars = varsFor(screen, node);
             const result = new Function("msg", "vars", "route", "storage", "cookies", "http", "getVariable", "setVariable",
-                "return (async function(){ " + (node.code || "return msg;") + " })();")(
+                "return (async function(){ " + (node.props.code || "return msg;") + " })();")(
                 cloneMsg(msg), fnVars, cloneValue(((screen.__scopes || {})["@app"] || {}).$route || makeRoute()),
                 BROWSER_API.storage, BROWSER_API.cookies, BROWSER_API.http,
                 function (name, scopeId) { return fnVars.get(name, scopeId); },
@@ -48,7 +48,7 @@ defineLogicRuntimes({
                     join.timer = null;
                     const partial = join.core.timeout();
                     if (partial) ctx.next(partial);
-                }, Number(node.timeout));
+                }, Number(node.props.timeout));
                 state.activeScreenTimers.push(join.timer);
             }
             return r.send;

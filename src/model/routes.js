@@ -31,11 +31,11 @@ export function flowScreenIds(flow, screens) {
         ids.push(sid);
         const scr = all.find(function (s) { return s.id === sid; });
         ((scr && scr.logic && scr.logic.nodes) || []).forEach(function (n) {
-            if (n && n.type === "navigate" && n.screenId) add(n.screenId);
+            if (n && n.type === "navigate" && n.props.screenId) add(n.props.screenId);
         });
     }
     flow.logic.nodes.forEach(function (n) {
-        if (n && (n.type === "render-screen" || n.type === "navigate") && n.screenId) add(n.screenId);
+        if (n && (n.type === "render-screen" || n.type === "navigate") && n.props.screenId) add(n.props.screenId);
     });
     return ids;
 }
@@ -70,8 +70,8 @@ function screenAfter(project, flow, sourceType, allowedIds) {
         return nodes.find(function (n) { return n.id === w.to && (n.type === "render-screen" || n.type === "navigate"); });
     }).filter(Boolean);
     const next = wires[0] && nodes.find(function (n) { return n.id === wires[0].to; });
-    const ok = next && (next.type === "render-screen" || next.type === "navigate") && next.screenId && allowedIds.indexOf(next.screenId) !== -1;
-    return { node: source, screen: ok ? enabledScreen(project, next.screenId) : null, fanOut: targets.length };
+    const ok = next && (next.type === "render-screen" || next.type === "navigate") && next.props.screenId && allowedIds.indexOf(next.props.screenId) !== -1;
+    return { node: source, screen: ok ? enabledScreen(project, next.props.screenId) : null, fanOut: targets.length };
 }
 
 /**
@@ -128,8 +128,8 @@ export function resolveScreenRoute(project, subPath, opts) {
                 // any screen a Render Screen / Goto Screen node of the flow names
                 const nodes = (flow.logic && flow.logic.nodes) || [];
                 for (let n = 0; n < nodes.length && !screen; n++) {
-                    if ((nodes[n].type === "render-screen" || nodes[n].type === "navigate") && nodes[n].screenId && allowedIds.indexOf(nodes[n].screenId) !== -1) {
-                        screen = enabledScreen(project, nodes[n].screenId);
+                    if ((nodes[n].type === "render-screen" || nodes[n].type === "navigate") && nodes[n].props.screenId && allowedIds.indexOf(nodes[n].props.screenId) !== -1) {
+                        screen = enabledScreen(project, nodes[n].props.screenId);
                     }
                 }
             }
