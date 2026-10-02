@@ -25,35 +25,7 @@ import { openFlowPropertiesDialog } from "../dialogs/flow-dialog.js";
 import { openAppVariablePropertiesDialog } from "../dialogs/app-variable-dialog.js";
 import { openSharedVariablePropertiesDialog } from "../dialogs/shared-variable-dialog.js";
 import { openFolderPropertiesDialog } from "../dialogs/folder-dialog.js";
-
-function labelOfComp(node) {
-    if (Tree && Tree.isSlotFrame && Tree.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
-    if (node.name) return node.name;
-    if (node.type === "@group") return "Group";
-    if (node.type === "@frame") return "Frame";
-    if (node.type === "@template") {
-        var t = findTemplate(node.templateId);
-        return (t ? t.name : "Template") + " (instance)";
-    }
-    if (node.type === "@lit-component") return "Lit Component";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
-    return (def && def.label) || node.type;
-}
-
-function iconOfComp(node) {
-    if (node.type === "@group") return "fa fa-object-group";
-    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
-    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
-    if (Tree && Tree.isSlotFrame && Tree.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
-    if (node.type === "@frame") return "fa fa-square-o";
-    if (node.type === "@template") {
-        var t = findTemplate(node.templateId);
-        return (t && t.kind === "component") ? "fa fa-puzzle-piece" : "fa fa-clone";
-    }
-    if (node.type === "@lit-component") return "fa fa-code";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
-    return (def && def.icon) || "fa fa-cube";
-}
+import { nodeLabel as labelOfComp, nodeIcon as iconOfComp } from "./node-labels.js";
 
 function buildComponentTreeRows(surface, list, orphan) {
     return (list || []).slice().reverse().map(function (node) {

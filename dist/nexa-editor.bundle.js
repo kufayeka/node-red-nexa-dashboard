@@ -35553,48 +35553,53 @@
     };
   }
 
-  // src/sidebar/hierarchy-panel.js
-  var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-eye-slash" };
-  var VIS_TITLE = { show: "Visible \u2014 click to hide", hide: "Hidden \u2014 click to show", remove: "Hidden \u2014 click to show" };
-  var UNPLACED_ID = "__unplaced__";
-  var treeEl = null;
-  var orphanEl = null;
-  function labelOf(node) {
+  // src/sidebar/node-labels.js
+  function componentDef(type) {
+    return window.NEXA && typeof window.NEXA.getComponent === "function" ? window.NEXA.getComponent(type) : null;
+  }
+  function nodeLabel(node) {
     if (tree_exports.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
     if (node.name) return node.name;
     if (node.type === "@group") return "Group";
     if (node.type === "@frame") return "Frame";
     if (node.type === "@template") {
-      var t2 = findTemplate(node.templateId);
+      const t2 = findTemplate(node.templateId);
       return (t2 ? t2.name : "Template") + " (instance)";
     }
     if (node.type === "@lit-component") return "Lit Component";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    const def = componentDef(node.type);
     return def && def.label || node.type;
   }
-  function iconOf(node) {
+  function nodeIcon(node) {
     if (node.type === "@group") return "fa fa-object-group";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
     if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
     if (tree_exports.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
     if (node.type === "@frame") return "fa fa-square-o";
     if (node.type === "@template") {
-      var t2 = findTemplate(node.templateId);
+      const t2 = findTemplate(node.templateId);
       return t2 && t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone";
     }
     if (node.type === "@lit-component") return "fa fa-code";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    const def = componentDef(node.type);
     return def && def.icon || "fa fa-cube";
   }
+
+  // src/sidebar/hierarchy-panel.js
+  var VIS_ICON = { show: "fa fa-eye", hide: "fa fa-eye-slash", remove: "fa fa-eye-slash" };
+  var VIS_TITLE = { show: "Visible \u2014 click to hide", hide: "Hidden \u2014 click to show", remove: "Hidden \u2014 click to show" };
+  var UNPLACED_ID = "__unplaced__";
+  var treeEl = null;
+  var orphanEl = null;
   function rows(screen, list, orphan) {
     return list.slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
       var eff = orphan ? vis : tree_exports.effectiveVisibility(screen, node.id);
       return {
         id: node.id,
-        label: labelOf(node),
-        title: labelOf(node) + " \u2014 " + node.type,
-        icon: iconOf(node),
+        label: nodeLabel(node),
+        title: nodeLabel(node) + " \u2014 " + node.type,
+        icon: nodeIcon(node),
         container: tree_exports.isContainer(node),
         badge: tree_exports.isContainer(node) ? String(tree_exports.kids(node).length) : "",
         muted: eff !== "show" || !!node.slotUnused,
@@ -37594,33 +37599,6 @@
   }
 
   // src/sidebar/screens-panel.js
-  function labelOfComp(node) {
-    if (tree_exports && tree_exports.isSlotFrame && tree_exports.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
-    if (node.name) return node.name;
-    if (node.type === "@group") return "Group";
-    if (node.type === "@frame") return "Frame";
-    if (node.type === "@template") {
-      var t2 = findTemplate(node.templateId);
-      return (t2 ? t2.name : "Template") + " (instance)";
-    }
-    if (node.type === "@lit-component") return "Lit Component";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
-    return def && def.label || node.type;
-  }
-  function iconOfComp(node) {
-    if (node.type === "@group") return "fa fa-object-group";
-    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
-    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
-    if (tree_exports && tree_exports.isSlotFrame && tree_exports.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
-    if (node.type === "@frame") return "fa fa-square-o";
-    if (node.type === "@template") {
-      var t2 = findTemplate(node.templateId);
-      return t2 && t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone";
-    }
-    if (node.type === "@lit-component") return "fa fa-code";
-    var def = window.NEXA && window.NEXA.getComponent(node.type);
-    return def && def.icon || "fa fa-cube";
-  }
   function buildComponentTreeRows(surface, list, orphan) {
     return (list || []).slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
@@ -37631,9 +37609,9 @@
         id: "screen-comp:" + surface.id + ":" + node.id,
         compId: node.id,
         surfaceId: surface.id,
-        label: labelOfComp(node),
-        title: labelOfComp(node) + " \u2014 " + node.type,
-        icon: iconOfComp(node),
+        label: nodeLabel(node),
+        title: nodeLabel(node) + " \u2014 " + node.type,
+        icon: nodeIcon(node),
         container: isCont,
         badge: isCont ? String(kids2.length) : "",
         muted: eff !== "show" || !!node.slotUnused,
