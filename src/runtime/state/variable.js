@@ -4,6 +4,8 @@
 import { state, PERSIST_PREFIX } from "../state.js";
 import { storeFor, resolveScope, refreshScope } from "./scope.js";
 import { ioSendSharedVar } from "../io/client.js";
+import { applyColorMode } from "../features/theme.js";
+import { runLogicGraph } from "../logic/runner.js";
 
 export const WHOLE_BINDING_RE = /^\{([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*)\}$/;
 export const INTERPOLATION_RE = /\{([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*|\[\d+\])*)\}/g;
@@ -60,8 +62,8 @@ export function writeVariable(screen, scope, name, value, op) {
     const old = scope[name];
     let next = applyOp(op || "set", old, value);
 
-    if (scope === state.currentAppScope && name === "$colorMode" && typeof window.__nexaApplyColorMode === "function") {
-        next = window.__nexaApplyColorMode(screen, next, true);
+    if (scope === state.currentAppScope && name === "$colorMode") {
+        next = applyColorMode(screen, next, true);
     }
     scope[name] = next;
 
@@ -102,14 +104,12 @@ export function notifyWatchers(screen, scope, name, next, old) {
             matched = true;
         }
         if (!matched) return;
-        if (typeof window.__nexaRunLogicGraph === "function") {
-            window.__nexaRunLogicGraph(screen, n, {
-                payload: cloneValue(next),
-                previous: cloneValue(old),
-                variable: name,
-                scope: scope
-            });
-        }
+        runLogicGraph(screen, n, {
+            payload: cloneValue(next),
+            previous: cloneValue(old),
+            variable: name,
+            scope: scope
+        });
     });
 }
 

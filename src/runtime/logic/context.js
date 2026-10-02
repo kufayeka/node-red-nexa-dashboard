@@ -3,6 +3,14 @@
 
 import { resolveScope, ownerOf, storeFor } from "../state/scope.js";
 import { writeVariable, cloneValue } from "../state/variable.js";
+export { cloneValue };
+
+export function logicTrace() {
+    if (typeof window !== "undefined" && window.NEXA_LOGIC_VERBOSE) {
+        var args = ["[nexa-logic]"].concat(Array.prototype.slice.call(arguments));
+        console.log.apply(console, args);
+    }
+}
 
 export function cloneMsg(msg, seen) {
     if (msg === null || typeof msg !== "object") return msg;

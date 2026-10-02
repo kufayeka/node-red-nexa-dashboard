@@ -28,6 +28,9 @@ const outRegistryClient = path.join(__dirname, "lib", "nexa-registry-client.js")
 const modelEntry = path.join(__dirname, "src", "model", "index.js");
 const outModel = path.join(__dirname, "lib", "nexa-model.js");
 const outModelClient = path.join(__dirname, "lib", "nexa-model-client.js");
+const runtimeEntry = path.join(__dirname, "src", "runtime", "index.js");
+const outRuntimeBundle = path.join(__dirname, "dist", "nexa-runtime.bundle.js");
+const outRuntimeClient = path.join(__dirname, "lib", "nexa-runtime-client.js");
 
 // Resolves `import ... from "lit"` to the global the SDK bundle publishes.
 const litFromGlobal = {
@@ -105,8 +108,13 @@ async function runBuild() {
         fs.writeFileSync(outModel, banner("src/model/index.js") + await bundle(modelEntry, { format: "cjs", platform: "node" }), "utf8");
         fs.writeFileSync(outModelClient, banner("src/model/index.js") +
             "// Served to deployed pages as /nexa/_model.js (lib/screen-worker.js).\n" + await bundle(modelEntry, { globalName: "NexaModel" }), "utf8");
+        const runtimeCode = await bundle(runtimeEntry, { format: "iife" });
+        fs.writeFileSync(outRuntimeBundle, banner("src/runtime/index.js") +
+            "// Modular runtime client bundle for Nexa Dashboard.\n" + runtimeCode, "utf8");
+        fs.writeFileSync(outRuntimeClient, banner("src/runtime/index.js") +
+            "// Served to deployed pages as /nexa/_runtime.js (lib/screen-worker.js).\n" + runtimeCode, "utf8");
 
-        console.log(`[build] Built nexa-plugin.html, nexa-editor.bundle.js, nexa-sdk.bundle.js, nexa-sdk-kit.bundle.js nexa-registry-client.js & nexa-model(-client).js in ${Date.now() - startTime}ms`);
+        console.log(`[build] Built nexa-plugin.html, nexa-editor.bundle.js, nexa-sdk.bundle.js, nexa-sdk-kit.bundle.js, nexa-registry-client.js, nexa-model(-client).js, nexa-runtime.bundle.js & nexa-runtime-client.js in ${Date.now() - startTime}ms`);
     } catch (e) {
         console.error("[build] Build error:", e);
     }

@@ -91,3 +91,131 @@ export function templateContentHost(boxEl, template, instance) {
     else (window.requestAnimationFrame || setTimeout)(fit);
     return layer;
 }
+
+export var ACTIVE_DISPLAY_MODE_RESIZE = null;
+
+export function resetScreenStyles(artboard) {
+    if (ACTIVE_DISPLAY_MODE_RESIZE && typeof window !== "undefined" && window.removeEventListener) {
+        window.removeEventListener("resize", ACTIVE_DISPLAY_MODE_RESIZE);
+        ACTIVE_DISPLAY_MODE_RESIZE = null;
+    }
+
+    var body = typeof document !== "undefined" ? document.body : null;
+    if (body) {
+        if (body.classList) {
+            ["nexa-mode-fixed", "nexa-mode-fit", "nexa-mode-fitWidth", "nexa-mode-fill"].forEach(function (cls) {
+                body.classList.remove(cls);
+            });
+        }
+        if (body.style) {
+            body.style.overflow = "";
+            body.style.overflowX = "";
+            body.style.overflowY = "";
+            body.style.height = "";
+        }
+    }
+
+    if (artboard && artboard.style) {
+        artboard.style.position = "relative";
+        artboard.style.margin = "0";
+        artboard.style.boxShadow = "none";
+        artboard.style.transform = "none";
+        artboard.style.transformOrigin = "0 0";
+        artboard.style.left = "";
+        artboard.style.top = "";
+        artboard.style.width = "";
+        artboard.style.height = "";
+    }
+}
+
+export function applyDisplayMode(screen, artboard) {
+    resetScreenStyles(artboard);
+
+    var mode = screen.displayMode || "fixed";
+    var body = typeof document !== "undefined" ? document.body : null;
+    if (body && body.classList) {
+        body.classList.add("nexa-mode-" + mode);
+    }
+
+    var w = Number(screen.width) || 1024;
+    var h = Number(screen.height) || 768;
+    var st = artboard.style;
+
+    if (mode === "fill") {
+        st.position = "relative";
+        st.width = "100vw";
+        st.height = "100vh";
+        st.margin = "0";
+        st.boxShadow = "none";
+        st.transform = "none";
+        st.left = "";
+        st.top = "";
+        if (body) {
+            body.style.overflow = "hidden";
+            body.style.height = "100vh";
+        }
+        return;
+    }
+
+    if (mode === "fixed") {
+        st.position = "relative";
+        st.width = w + "px";
+        st.height = h + "px";
+        st.transform = "none";
+        st.left = "";
+        st.top = "";
+
+        if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+            st.margin = "";
+            st.boxShadow = "";
+            if (body) {
+                body.style.overflowX = "auto";
+                body.style.overflowY = "auto";
+                body.style.height = "auto";
+            }
+            return;
+        }
+
+        st.position = "relative";
+        st.width = w + "px";
+        st.height = h + "px";
+        st.margin = "20px auto";
+        st.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+        st.transform = "none";
+        st.left = "";
+        st.top = "";
+        if (body) {
+            body.style.overflowX = "auto";
+            body.style.overflowY = "auto";
+            body.style.height = "auto";
+        }
+        return;
+    }
+
+    st.position = "absolute";
+    st.width = w + "px";
+    st.height = h + "px";
+    st.margin = "0";
+    st.boxShadow = "none";
+    st.transformOrigin = "0 0";
+
+    function layout() {
+        var vw = (typeof window !== "undefined" && (window.innerWidth || (document.documentElement && document.documentElement.clientWidth))) || w;
+        var vh = (typeof window !== "undefined" && (window.innerHeight || (document.documentElement && document.documentElement.clientHeight))) || h;
+        var scale = mode === "fit" ? Math.min(vw / w, vh / h) : vw / w;
+        st.transform = "scale(" + scale + ")";
+        st.left = (mode === "fit" ? Math.max(0, (vw - w * scale) / 2) : 0) + "px";
+        st.top = (mode === "fit" ? Math.max(0, (vh - h * scale) / 2) : 0) + "px";
+        if (body) {
+            body.style.overflowX = "hidden";
+            body.style.overflowY = mode === "fit" ? "hidden" : "auto";
+            body.style.height = mode === "fit" ? "100vh" : (h * scale) + "px";
+        }
+    }
+    layout();
+
+    if (typeof window !== "undefined" && window.addEventListener) {
+        ACTIVE_DISPLAY_MODE_RESIZE = layout;
+        window.addEventListener("resize", layout);
+    }
+}

@@ -8,12 +8,18 @@ import { notifyWatchers, sameValue } from "../state/variable.js";
 import { markSparkplugKeysDirty, refreshAllSparkplugBoundComponents } from "./sparkplug.js";
 
 export function ioApplyFrame(buffer) {
-    const decoded = decodeDataFrame(buffer);
+    let decoded;
+    try {
+        decoded = decodeDataFrame(buffer);
+    } catch (e) {
+        return;
+    }
     if (!decoded) return;
 
+    const entries = decoded.entries || decoded.records || [];
     const changed = [];
-    for (let i = 0; i < decoded.records.length; i++) {
-        const rec = decoded.records[i];
+    for (let i = 0; i < entries.length; i++) {
+        const rec = entries[i];
         const L = state.io.layout[rec.idx];
         if (!L) continue;
 
@@ -38,8 +44,8 @@ export function ioApplyFrame(buffer) {
         state.sparkplugCache[L.key] = {
             value: rec.value,
             type: L.type,
-            isNull: rec.vtype === V.NULL,
-            online: rec.vtype !== V.OFFLINE,
+            isNull: typeof rec.isNull === "boolean" ? rec.isNull : (rec.vtype === V.NULL),
+            online: typeof rec.online === "boolean" ? rec.online : (rec.vtype !== V.OFFLINE),
             timestamp: rec.timestamp,
             properties: L.properties,
             metadata: L.metadata,

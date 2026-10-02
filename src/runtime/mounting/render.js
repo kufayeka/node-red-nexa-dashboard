@@ -10,6 +10,8 @@ import { sendSparkplugWrite } from "../io/client.js";
 import { findComponent, isStructural, walkNodes, isSlotHostNode, isContainerNode, findTemplateById } from "./slots.js";
 import { combineVisibility, getComponentTransform } from "./box.js";
 import { renderLitComponentInstance, coerceLitBindableValue } from "./lit.js";
+import { mountAndFlatten } from "../features/navigation.js";
+import { runLogicGraph, fireUiEvent } from "../logic/runner.js";
 
 export const LOGIC_GEOMETRY_KEYS = { x: 1, y: 1, w: 1, h: 1, rotation: 1, flipH: 1, flipV: 1 };
 export const LOCAL_TARGET_RE = /^\{(\$route\.query\.([A-Za-z_$][\w$]*)|([A-Za-z_][\w$]*)((?:\.[A-Za-z_$][\w$]*)*))\}$/;
@@ -188,9 +190,7 @@ export function makeCtx(screen, comp) {
         mode: "runtime",
         screen: screen,
         emit: function (eventName, payload) {
-            if (typeof window.__nexaFireUiEvent === "function") {
-                window.__nexaFireUiEvent(screen, comp.id, eventName, payload);
-            }
+            fireUiEvent(screen, comp.id, eventName, payload);
         },
         setBindableValue: function (name, value) {
             comp.props = comp.props || {};
@@ -330,9 +330,7 @@ export function fireParamInputForInstance(screen, namespacedInstanceId, paramSta
     screen.logic.nodes.filter(function (n) {
         return n.type === "param-input" && belongsDirectlyToInstance(n.id, namespacedInstanceId);
     }).forEach(function (n) {
-        if (typeof window.__nexaRunLogicGraph === "function") {
-            window.__nexaRunLogicGraph(screen, n, cloneMsg({ payload: paramState }));
-        }
+        runLogicGraph(screen, n, cloneMsg({ payload: paramState }));
     });
 }
 
@@ -397,9 +395,7 @@ export function reconcileVisibility(effectiveScreen) {
             if (!el) {
                 let before = null;
                 for (let j = i + 1; j < list.length && !before; j++) before = elOf(list[j].id);
-                if (typeof window.__nexaMountAndFlatten === "function") {
-                    window.__nexaMountAndFlatten(parentEl, node, inherited, effectiveScreen.__templates, node.id, [], effectiveScreen, scope, before);
-                }
+                mountAndFlatten(parentEl, node, inherited, effectiveScreen.__templates, node.id, [], effectiveScreen, scope, before);
                 return;
             }
             el.style.display = vis === "show" ? (node.type === "@frame" && window.NexaModel ? window.NexaModel.frameCss(node).display : "") : "none";
@@ -420,8 +416,9 @@ export function clearActiveScreenTimers() {
     state.activeScreenTimers = [];
 }
 
-export function setUpInjectNodes(effectiveScreen, runLogicGraph) {
-    effectiveScreen.logic.nodes.filter(function (n) { return n.type === "inject"; }).forEach(function (n) {
+export function setUpInjectNodes(effectiveScreen, runLogicGraphFn) {
+    const runner = runLogicGraphFn || runLogicGraph;
+    (effectiveScreen.logic && effectiveScreen.logic.nodes || []).filter(function (n) { return n.type === "inject"; }).forEach(function (n) {
         function getPayload() {
             const ptype = n.payloadType || (n.payload !== undefined ? "str" : "date");
             if (ptype === "json") {
@@ -441,17 +438,18 @@ export function setUpInjectNodes(effectiveScreen, runLogicGraph) {
             } else {
                 msg.text = String(p);
             }
-            runLogicGraph(effectiveScreen, n, cloneMsg(msg));
+            runner(effectiveScreen, n, cloneMsg(msg));
         }
 
-        if (n.once) {
-            const d = Number(n.onceDelay) || 0;
-            const t = setTimeout(triggerInject, d * 1000);
-            state.activeScreenTimers.push(t);
+        let intervalMs = parseInt(n.intervalMs, 10);
+        if (isNaN(intervalMs)) intervalMs = 5000;
+        if (intervalMs > 0) {
+            const tid = setInterval(triggerInject, Math.max(100, intervalMs));
+            state.activeScreenTimers.push(tid);
         }
-        if (n.repeat && Number(n.repeat) > 0) {
-            const iv = setInterval(triggerInject, Number(n.repeat) * 1000);
-            state.activeScreenTimers.push(iv);
+        if (n.once) {
+            const oid = setTimeout(triggerInject, Math.max(50, n.onceDelay || 100));
+            state.activeScreenTimers.push(oid);
         }
     });
 }

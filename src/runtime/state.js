@@ -6,8 +6,8 @@ export const VIS_RANK = { show: 0, hide: 1, remove: 2 };
 export const IO_WRITE_TIMEOUT_MS = 5000;
 export const IO_V = { OFFLINE: 0, NULL: 1, FALSE: 2, TRUE: 3, INT32: 4, FLOAT64: 5, STRING: 6, JSON: 7 };
 
-export const PERSIST_PREFIX = "nexa_var_";
-export const LOGIC_MAX_STEPS = 1000;
+export const PERSIST_PREFIX = "nexa:app:";
+export const LOGIC_MAX_STEPS = 2000;
 
 export const state = {
     // DOM & Pins
@@ -22,10 +22,10 @@ export const state = {
     // Sparkplug & Realtime IO
     sparkplugCache: {},
     sparkplugConnectionLost: false,
-    sparkplugBoundComponents: {},
+    sparkplugBoundComponents: [],
     sparkplugBindingIndex: {},
-    sparkplugIndexBatch: [],
-    sparkplugDirtyKeys: {},
+    sparkplugIndexBatch: 0,
+    sparkplugDirtyKeys: null,
     sparkplugFlushScheduled: false,
 
     io: {
@@ -70,3 +70,6 @@ export const state = {
     popstateWired: false,
     beforeunloadWired: false
 };
+
+export var activeScreenTimers = state.activeScreenTimers;
+

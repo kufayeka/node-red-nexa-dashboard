@@ -4,8 +4,10 @@
 import { state } from "../state.js";
 import { applyNodeBox, combineVisibility, templateContentHost } from "./box.js";
 import { isStructural, childNamespace, findTemplateById, getComponentTemplateTarget, mountSlotFrames } from "./slots.js";
-import { interpolateProps } from "../mounting/render.js";
-import { buildComponentClone, resolveInstanceParamState } from "../features/navigation.js";
+import { buildComponentClone } from "../features/navigation.js";
+import { resolveInstanceParamState } from "../state/scope.js";
+import { interpolateProps } from "./render.js";
+import { makeCtx } from "../logic/runner.js";
 
 export function hashLitSource(str) {
     let h = 0;
@@ -205,9 +207,7 @@ export function mountTemplateVisual(parentEl, comp, inheritedVis, templates, nam
 
     const namespacedComp = buildComponentClone(comp, namespace);
     if (comp.type === "@lit-component") {
-        if (typeof window.__nexaMakeCtx === "function") {
-            renderLitComponentInstance(el, comp, interpolateProps(comp.props || {}, paramState, namespacedComp), window.__nexaMakeCtx(screenForCtx, namespacedComp));
-        }
+        renderLitComponentInstance(el, comp, interpolateProps(comp.props || {}, paramState, namespacedComp), makeCtx(screenForCtx, namespacedComp));
         return;
     }
     const typeDef = window.NEXA && window.NEXA.getComponent(comp.type);
@@ -216,7 +216,7 @@ export function mountTemplateVisual(parentEl, comp, inheritedVis, templates, nam
         if (typeof el.removeAttribute === "function") el.removeAttribute("data-nexa-unknown");
         if (typeof typeDef.migrateProps === "function") namespacedComp.props = typeDef.migrateProps(namespacedComp.props || {});
         try {
-            const ctx = typeof window.__nexaMakeCtx === "function" ? window.__nexaMakeCtx(screenForCtx, namespacedComp) : null;
+            const ctx = makeCtx(screenForCtx, namespacedComp);
             typeDef.render(el, interpolateProps(namespacedComp.props || {}, paramState, namespacedComp), ctx);
             mountSlotFrames(el, comp, typeDef, function (host, child) {
                 mountTemplateVisual(host, child, vis, templates, childNamespace(namespace, child), visitedTemplateIds, screenForCtx, paramState);

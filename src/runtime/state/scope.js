@@ -1,7 +1,10 @@
 // Nexa Scope Hierarchy
 // Scopes chain: $route -> Shared Scope -> App Scope -> Screen Scope -> Container Scopes.
-
 import { state, PERSIST_PREFIX } from "../state.js";
+import { resolveBindableValue } from "./variable.js";
+import { refreshComponentRender, updateInstanceParam } from "../mounting/render.js";
+import { registerSparkplugBoundComponentsFrom } from "../io/sparkplug.js";
+import { isStructural } from "../mounting/slots.js";
 
 export function storeFor(kind) {
     try {
@@ -82,15 +85,40 @@ export function ownerOf(scope, name) {
     return s;
 }
 
-// Re-renders components on `screen` whose bound props or templates depend on variables in `scope`.
 export function refreshScope(screen, scope) {
-    if (!screen) return;
-    (screen.components || []).forEach(function (comp) {
-        // If the component is bound to variables or has variable expressions
-        if (comp.__boundScope === scope || (comp.props && comp.__hasVariableBindings)) {
-            if (typeof window.__nexaRefreshComponent === "function") {
-                window.__nexaRefreshComponent(screen, comp);
-            }
+    if (!screen || !Array.isArray(screen.components)) return;
+    screen.components.forEach(function (comp) {
+        const s = comp.__paramState;
+        if (!s || !(s === scope || Object.prototype.isPrototypeOf.call(scope, s))) return;
+        if (isStructural(comp)) return;
+        if (comp.type === "@template") {
+            const instState = screen.__paramStates && screen.__paramStates[comp.id];
+            if (!instState) return;
+            Object.keys(comp.paramValues || {}).forEach(function (name) {
+                const raw = comp.paramValues[name];
+                if (typeof raw !== "string" || raw.indexOf("{") === -1) return;
+                const resolved = resolveBindableValue(raw, s);
+                if (resolved !== instState[name]) updateInstanceParam(screen, comp.id, name, resolved);
+            });
+            return;
         }
+        refreshComponentRender(screen, comp);
     });
+    // a variable may be part of a tag address ({sparkplug:...::{line}/x})
+    registerSparkplugBoundComponentsFrom(screen);
+}
+
+export function resolveInstanceParamState(comp, template, enclosingParamState) {
+    const paramState = Object.create(state.currentAppScope || Object.prototype);
+    (template.variables || []).forEach(function (v) {
+        if (v && v.name) paramState[v.name] = window.NexaModel ? window.NexaModel.variableValue(v) : v.defaultValue;
+    });
+    (template.params || []).forEach(function (p) {
+        paramState[p.name] = p.defaultValue;
+    });
+    Object.keys(comp.paramValues || {}).forEach(function (name) {
+        const raw = comp.paramValues[name];
+        paramState[name] = (typeof raw === "string" && raw.indexOf("{") !== -1) ? resolveBindableValue(raw, enclosingParamState) : raw;
+    });
+    return paramState;
 }

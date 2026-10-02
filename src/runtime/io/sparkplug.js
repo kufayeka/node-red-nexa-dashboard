@@ -4,6 +4,8 @@
 import { state } from "../state.js";
 import { resolveBindableValue } from "../state/variable.js";
 import { ioSyncSubscription } from "./client.js";
+import { refreshComponentRender } from "../mounting/render.js";
+import { fireUiEvent } from "../logic/runner.js";
 
 export const SPARKPLUG_BINDING_PREFIX = "sparkplug:";
 export const EMBEDDED_TAG_RE = /\{sparkplug:[^{}]+\}/g;
@@ -128,10 +130,8 @@ export function registerSparkplugBoundComponentsFrom(effectiveScreen) {
 }
 
 export function refreshAllSparkplugBoundComponents() {
-    state.sparkplugBoundComponents.forEach(function (entry) {
-        if (typeof window.__nexaRefreshComponent === "function") {
-            window.__nexaRefreshComponent(entry.screen, entry.comp);
-        }
+    (state.sparkplugBoundComponents || []).forEach(function (entry) {
+        refreshComponentRender(entry.screen, entry.comp);
     });
 }
 
@@ -145,9 +145,7 @@ export function flushDirtySparkplugComponents() {
         (state.sparkplugBindingIndex[key] || []).forEach(function (entry) {
             if (!refreshedIds[entry.comp.id]) {
                 refreshedIds[entry.comp.id] = true;
-                if (typeof window.__nexaRefreshComponent === "function") {
-                    window.__nexaRefreshComponent(entry.screen, entry.comp);
-                }
+                refreshComponentRender(entry.screen, entry.comp);
             }
             const cached = state.sparkplugCache[key];
             const payload = {
@@ -163,9 +161,7 @@ export function flushDirtySparkplugComponents() {
                 properties: cached ? (cached.properties || null) : null,
                 metadata: cached ? (cached.metadata || null) : null
             };
-            if (typeof window.__nexaFireUiEvent === "function") {
-                window.__nexaFireUiEvent(entry.screen, entry.comp.id, "sparkplug-change", payload);
-            }
+            fireUiEvent(entry.screen, entry.comp.id, "sparkplug-change", payload);
         });
     });
 }

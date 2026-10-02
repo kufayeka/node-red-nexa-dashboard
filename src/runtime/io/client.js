@@ -199,7 +199,7 @@ export function setUpSparkplugSse() {
     const prefix = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
 
     function fetchSnapshotAndRefresh() {
-        const xhr = new XMLHttpRequest();
+        const xhr = new window.XMLHttpRequest();
         xhr.open("GET", prefix + "/_sparkplug-snapshot", true);
         xhr.onload = function () {
             if (xhr.status === 200) {
@@ -217,20 +217,23 @@ export function setUpSparkplugSse() {
     }
 
     const streamUrl = prefix + "/_sparkplug-stream";
-    const source = new EventSource(streamUrl);
+    const source = new window.EventSource(streamUrl);
 
-    source.onopen = function () {
-        fetchSnapshotAndRefresh();
-    };
+    source.onopen = fetchSnapshotAndRefresh;
 
     source.onerror = function () {
-        ioMarkLost();
+        if (!state.sparkplugConnectionLost) {
+            state.sparkplugConnectionLost = true;
+            refreshAllSparkplugBoundComponents();
+        }
     };
 
     source.onmessage = function (evt) {
-        if (!evt.data) return;
-        let delta;
-        try { delta = JSON.parse(evt.data); } catch (e) { return; }
-        applySparkplugDelta(delta);
+        if (!evt || !evt.data) return;
+        try { applySparkplugDelta(JSON.parse(evt.data)); } catch (e) {}
     };
+
+    if (typeof source.addEventListener === "function") {
+        source.addEventListener("resync", fetchSnapshotAndRefresh);
+    }
 }

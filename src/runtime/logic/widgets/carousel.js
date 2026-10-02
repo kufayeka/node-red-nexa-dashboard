@@ -3,6 +3,7 @@
 
 import { ownerOf } from "../../state/scope.js";
 import { writeVariable, cloneValue } from "../../state/variable.js";
+import { fireUiEvent } from "../runner.js";
 
 export const CAROUSEL_CSS = [
     ".nexa-carousel-track::-webkit-scrollbar { display: none; }",
@@ -98,13 +99,11 @@ export function setupCarousel(screen, el, comp, ns, scope, c) {
         const slide = slides()[i];
         const sid = slide && slide.getAttribute("data-id");
         const ps = sid && screen.__paramStates && screen.__paramStates[sid];
-        if (typeof window.__nexaFireUiEvent === "function") {
-            window.__nexaFireUiEvent(screen, ns, "slide-change", {
-                index: i,
-                value: i,
-                item: ps && Object.prototype.hasOwnProperty.call(ps, "item") ? cloneValue(ps.item) : undefined
-            });
-        }
+        fireUiEvent(screen, ns, "slide-change", {
+            index: i,
+            value: i,
+            item: ps && Object.prototype.hasOwnProperty.call(ps, "item") ? cloneValue(ps.item) : undefined
+        });
     }
     function goTo(i, smooth, fromOutside) {
         i = clamp(i);
