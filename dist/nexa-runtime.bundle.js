@@ -594,521 +594,137 @@
     return found || template.components[0];
   }
 
-  // src/runtime/logic/nodes/variable-nodes.js
-  function setVariable(screen2, node, msg) {
-    const scope = resolveScope(screen2, node.scope, node.id);
-    if (!scope) {
-      console.warn("[nexa-logic] set-variable: no such scope", node.scope, node.name);
-      return;
-    }
-    writeVariable(screen2, scope, node.name, valueFromMsg(node, msg), node.op);
-  }
-  function setVariablesMulti(screen2, node, msg) {
-    const assignments = Array.isArray(node.assignments) ? node.assignments : [];
-    assignments.forEach(function(a) {
-      if (!a || !a.name) return;
-      const scope = resolveScope(screen2, a.scope, node.id);
-      if (!scope) {
-        console.warn("[nexa-logic] set-variable-multi: no such scope", a.scope, a.name);
-        return;
-      }
-      writeVariable(screen2, scope, a.name, valueFromMsg(a, msg), a.op || "set");
+  // src/features/logic/registry.js
+  var metas = /* @__PURE__ */ new Map();
+  var runtimes = /* @__PURE__ */ new Map();
+  var FALLBACK_META = Object.freeze({ type: "?", label: "", color: "#607d8b", icon: "fa-cube", chipColor: "#e0e7ff", inputs: 1, outputs: 1 });
+  function defineLogicNodes(list) {
+    list.forEach(function(m) {
+      if (!m || !m.type) throw new Error("defineLogicNodes: a node needs a type");
+      metas.set(m.type, Object.freeze(Object.assign({}, FALLBACK_META, m)));
     });
   }
-  function getVariablesMulti(screen2, node, msg) {
-    const out = cloneMsg2(msg || {});
-    const reads = Array.isArray(node.reads) ? node.reads : [];
-    reads.forEach(function(r) {
-      if (!r || !r.name) return;
-      const gScope = resolveScope(screen2, r.scope, node.id);
-      const val = gScope ? cloneValue(gScope[r.name]) : void 0;
-      setMsgPath(out, r.target || "payload", val);
+  function defineLogicRuntimes(parts) {
+    Object.keys(parts).forEach(function(type) {
+      runtimes.set(type, parts[type]);
     });
-    return out;
+  }
+  function logicRuntime(type) {
+    return runtimes.get(type) || null;
   }
 
-  // src/runtime/logic/nodes/control-nodes.js
-  function resolveSwitchBindingValue(screen2, node, type, val, msg) {
-    if (type === "msg") {
-      if (!val || val === "payload") return msg ? msg.payload : void 0;
-      const path = String(val).replace(/^msg\./, "");
-      const parts = path.split(".");
-      let curr = msg;
-      for (let i = 0; i < parts.length && curr != null; i++) {
-        curr = curr[parts[i]];
-      }
-      return curr;
-    }
-    if (type === "var") {
-      const fnVars = varsFor(screen2, node);
-      const strVal = String(val || "");
-      if (strVal.startsWith("@app.")) {
-        return fnVars.get(strVal.slice(5), "@app");
-      }
-      if (strVal.startsWith("$")) {
-        return fnVars.get(strVal.slice(1));
-      }
-      return fnVars.get(strVal);
-    }
-    if (type === "tag") {
-      const ref = parseSparkplugBindingPath(val);
-      return ref ? formatSparkplugValue(ref) : void 0;
-    }
-    if (type === "num") {
-      const n = parseFloat(val);
-      return isFinite(n) ? n : 0;
-    }
-    if (type === "bool") {
-      return val === true || val === "true" || val === 1 || val === "1";
-    }
-    if (type === "json") {
-      try {
-        return JSON.parse(val);
-      } catch (e) {
-        return val;
-      }
-    }
-    return val;
-  }
-  function evaluateSwitchRule(lhs, rule, screen2, node, msg) {
-    const op = rule.t;
-    if (op === "true") return lhs === true || lhs === "true" || lhs === 1;
-    if (op === "false") return lhs === false || lhs === "false" || lhs === 0;
-    if (op === "null") return lhs === null || lhs === void 0;
-    if (op === "nnull") return lhs !== null && lhs !== void 0;
-    if (op === "empty") {
-      if (lhs === "" || lhs === null || lhs === void 0) return true;
-      if (Array.isArray(lhs) && lhs.length === 0) return true;
-      if (typeof lhs === "object" && Object.keys(lhs).length === 0) return true;
-      return false;
-    }
-    if (op === "nempty") {
-      if (lhs === "" || lhs === null || lhs === void 0) return false;
-      if (Array.isArray(lhs) && lhs.length === 0) return false;
-      if (typeof lhs === "object" && Object.keys(lhs).length === 0) return false;
-      return true;
-    }
-    if (op === "else") return false;
-    const rhs = resolveSwitchBindingValue(screen2, node, rule.vt || "str", rule.v, msg);
-    if (op === "eq") {
-      return lhs == rhs;
-    }
-    if (op === "neq") {
-      return lhs != rhs;
-    }
-    if (op === "lt") {
-      return Number(lhs) < Number(rhs);
-    }
-    if (op === "lte") {
-      return Number(lhs) <= Number(rhs);
-    }
-    if (op === "gt") {
-      return Number(lhs) > Number(rhs);
-    }
-    if (op === "gte") {
-      return Number(lhs) >= Number(rhs);
-    }
-    if (op === "btwn") {
-      const rhs2 = resolveSwitchBindingValue(screen2, node, rule.v2t || "num", rule.v2, msg);
-      const nLhs = Number(lhs);
-      const n1 = Number(rhs);
-      const n2 = Number(rhs2);
-      const min = Math.min(n1, n2);
-      const max = Math.max(n1, n2);
-      return nLhs >= min && nLhs <= max;
-    }
-    if (op === "cont") {
-      if (typeof lhs === "string") {
-        return lhs.indexOf(String(rhs)) !== -1;
-      }
-      if (Array.isArray(lhs)) {
-        return lhs.some(function(el) {
-          return el == rhs;
-        });
-      }
-      return false;
-    }
-    return false;
-  }
-  function runSwitchNode(screen2, node, msg, budget, continuePropagation2, runLogicGraph2) {
-    const propVal = resolveSwitchBindingValue(screen2, node, node.propertyType || "msg", node.property || "payload", msg);
-    const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
-    const checkall = node.checkall !== "false";
-    const matchedIndices = [];
-    let hadPriorMatch = false;
-    for (let i = 0; i < rules.length; i++) {
-      const r = rules[i];
-      let isMatch = false;
-      if (r.t === "else") {
-        isMatch = !hadPriorMatch;
-      } else {
-        isMatch = evaluateSwitchRule(propVal, r, screen2, node, msg);
-      }
-      if (isMatch) {
-        hadPriorMatch = true;
-        matchedIndices.push(i);
-        if (!checkall) break;
-      }
-    }
-    const rawWires = screen2.logic && screen2.logic.wires || [];
-    const outWires = rawWires.filter(function(w) {
-      return w && w.from === node.id && matchedIndices.indexOf(w.fromPort || 0) !== -1;
-    });
-    const targets = outWires.map(function(w) {
-      return findLogicNode(screen2, w.to);
-    }).filter(Boolean);
-    const msgs = targets.map(function(t, i) {
-      return i === 0 ? msg : cloneMsg(msg);
-    });
-    targets.forEach(function(targetNode, i) {
-      runLogicGraph2(screen2, targetNode, msgs[i], budget);
-    });
-  }
-  function runDelayNode(screen2, node, msg, budget, continuePropagation2) {
-    let delayMs = node.unit === "s" ? Number(node.delay) * 1e3 : Number(node.delay);
-    if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
-    if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
-      delayMs = msg.delay;
-    }
-    const dTimer = setTimeout(function() {
-      const idx = state.activeScreenTimers.indexOf(dTimer);
-      if (idx !== -1) state.activeScreenTimers.splice(idx, 1);
-      continuePropagation2(screen2, node, cloneMsg(msg), budget);
-    }, delayMs);
-    state.activeScreenTimers.push(dTimer);
-  }
+  // src/features/logic/lifecycle/meta.js
+  var meta_default = [
+    { type: "onload", label: "On Load", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "onrender", label: "On Render", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "onclose", label: "On Close", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "inject", label: "Inject", color: "#a5c261", icon: "fa-clock-o", chipColor: "#a6bbcf", inputs: 0, outputs: 1 }
+  ];
 
-  // src/runtime/logic/nodes/data-nodes.js
-  function bindText(screen2, node, msg, text) {
-    if (typeof text !== "string" || text.indexOf("{") === -1) return text;
-    const scope = Object.create(resolveScope(screen2, "", node.id) || null);
-    scope.msg = msg || {};
-    return resolveBindableValue(text, scope);
-  }
-  function parseHeaders(raw, screen2, node, msg) {
-    const h = {};
-    if (!raw) return h;
-    let obj = raw;
-    if (typeof raw === "string") {
-      try {
-        obj = JSON.parse(raw);
-      } catch (e) {
-        return h;
-      }
-    }
-    Object.keys(obj || {}).forEach(function(k) {
-      h[k] = String(bindText(screen2, node, msg, String(obj[k])));
-    });
-    return h;
-  }
-  function runHttpNode(screen2, node, msg, done) {
-    const method = String(msg && msg.method || node.method || "GET").toUpperCase();
-    const url = bindText(screen2, node, msg, msg && typeof msg.url === "string" && msg.url || node.url || "");
-    const headers = Object.assign(parseHeaders(node.headers, screen2, node, msg), msg && msg.headers && typeof msg.headers === "object" ? msg.headers : {});
-    const body = node.body === "none" || method === "GET" || method === "HEAD" ? void 0 : node.body === "binding" ? bindText(screen2, node, msg, node.bodyText || "") : msg ? msg.payload : void 0;
-    const out = cloneMsg(msg || {});
-    if (!url) {
-      out.error = "no URL";
-      out.ok = false;
-      done(out);
-      return;
-    }
-    BROWSER_API.http.request(method, String(url), body, {
-      headers,
-      timeout: Number(node.timeout) || 0,
-      credentials: node.credentials || void 0
-    }).then(function(res) {
-      out.payload = res.data;
-      out.statusCode = res.status;
-      out.headers = res.headers;
-      out.ok = res.ok;
-      if (!res.ok) out.error = "HTTP " + res.status;
-      else delete out.error;
-    }, function(e) {
-      out.ok = false;
-      out.statusCode = 0;
-      out.error = e && e.name === "AbortError" ? "timeout" : String(e && e.message || e);
-    }).then(function() {
-      done(out);
-    });
-  }
-  function runStorageNode(screen2, node, msg) {
-    const store = BROWSER_API.storage[node.store === "session" ? "session" : "local"];
-    const key = String(bindText(screen2, node, msg, node.key || ""));
-    const out = cloneMsg(msg || {});
-    if (!key) return out;
-    if (node.action === "set") store.set(key, node.valueSource === "static" ? node.value : msg && msg.payload);
-    else if (node.action === "remove") store.remove(key);
-    else setMsgPath(out, node.target || "payload", store.get(key));
-    return out;
-  }
-  function runCookieNode(screen2, node, msg) {
-    const name = String(bindText(screen2, node, msg, node.name || ""));
-    const out = cloneMsg(msg || {});
-    if (!name) return out;
-    const opts = { path: node.path || "/", sameSite: node.sameSite || "Lax", secure: !!node.secure };
-    if (node.days !== void 0 && node.days !== "" && node.days !== null) opts.days = Number(node.days);
-    if (node.action === "set") BROWSER_API.cookies.set(name, node.valueSource === "static" ? node.value : msg && msg.payload, opts);
-    else if (node.action === "remove") BROWSER_API.cookies.remove(name, opts);
-    else setMsgPath(out, node.target || "payload", BROWSER_API.cookies.get(name));
-    return out;
-  }
+  // src/features/logic/ui/meta.js
+  var meta_default2 = [
+    { type: "ui-event", label: "", color: "#3a6fb0", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "ui-update", label: "", color: "#b0663a", icon: "fa-pencil-square-o", chipColor: "#c0deed", inputs: 1, outputs: 0 },
+    { type: "layer-control", label: "Layer Control", color: "#c78a3a", icon: "fa-object-group", chipColor: "#f0dcb8", inputs: 1, outputs: 0 },
+    // a node drawn in a teleport target / on the page, or back home
+    { type: "teleport", label: "Teleport", color: "#8e44ad", icon: "fa-share", chipColor: "#e8d6f0", inputs: 1, outputs: 1 },
+    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
+    { type: "overlay-open", label: "Open", color: "#8a5a3a", icon: "fa-window-maximize", chipColor: "#f3dfcc", inputs: 1, outputs: 1 },
+    { type: "overlay-close", label: "Close", color: "#8a5a3a", icon: "fa-window-close-o", chipColor: "#f3dfcc", inputs: 1, outputs: 0 }
+  ];
 
-  // src/runtime/io/link.js
-  var F = __toESM(require_frame());
-  var SAFETY_MS = 2e3;
-  var DEFAULT_TIMEOUT_MS = 1e4;
-  var link = {
-    ws: null,
-    ready: null,
-    // Promise, resolved on "welcome"
-    channels: {},
-    // id -> {name, timeout, maxBytes}
-    pending: /* @__PURE__ */ new Map(),
-    // request msgId -> {resolve, reject, timer}
-    subs: [],
-    // channel ids this page listens to
-    nextId: 0,
-    reassembler: null,
-    rxChain: Promise.resolve(),
-    onPush: null,
-    // fn(channelId, payload, meta)
-    backoff: 1e3,
-    reconnectTimer: null
-  };
-  function canInflate() {
-    try {
-      return typeof DecompressionStream === "function" && !!new DecompressionStream("deflate-raw");
-    } catch (e) {
-      return false;
-    }
-  }
-  function prefix() {
-    return window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
-  }
-  function getInfo() {
-    return fetch(prefix() + "/_link-info", { cache: "no-store" }).then(function(r) {
-      if (!r.ok) throw new Error("Nexa Link info: HTTP " + r.status);
-      return r.json();
-    });
-  }
-  function rejectAll(reason) {
-    link.pending.forEach(function(p) {
-      clearTimeout(p.timer);
-      p.reject(new Error(reason));
-    });
-    link.pending.clear();
-  }
-  function scheduleReconnect() {
-    if (link.reconnectTimer || !link.subs.length) return;
-    link.reconnectTimer = setTimeout(function() {
-      link.reconnectTimer = null;
-      linkConnect().catch(function() {
-        scheduleReconnect();
-      });
-    }, link.backoff);
-    link.backoff = Math.min(link.backoff * 2, 15e3);
-  }
-  function linkConnect() {
-    if (link.ready) return link.ready;
-    link.ready = getInfo().then(function(info) {
-      if (!info || !info.port) throw new Error("Nexa Link is not running: deploy a flow with a Nexa channel (from Nexa / to Nexa node)");
-      return new Promise(function(resolve, reject) {
-        const loc = window.location || {};
-        const url = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + (loc.hostname || "localhost") + ":" + info.port + "/nexa/_link?t=" + encodeURIComponent(info.token) + (canInflate() ? "&z=1" : "");
-        const ws = new window.WebSocket(url);
-        ws.binaryType = "arraybuffer";
-        link.ws = ws;
-        link.reassembler = new F.Reassembler(function() {
-          return 1 << 30;
-        }, { maxPendingBytes: 1 << 30 });
-        let welcomed = false;
-        ws.onmessage = function(evt) {
-          if (typeof evt.data === "string") {
-            let msg;
-            try {
-              msg = JSON.parse(evt.data);
-            } catch (e) {
-              return;
-            }
-            if (msg.t === "welcome" || msg.t === "channels") link.channels = msg.channels || {};
-            if (msg.t === "welcome" && !welcomed) {
-              welcomed = true;
-              link.backoff = 1e3;
-              if (link.subs.length) ws.send(JSON.stringify({ t: "sub", ch: link.subs }));
-              resolve(ws);
-            } else if (msg.t === "error") {
-              console.warn("[nexa-link] the server refused message " + msg.re + ": " + msg.err);
-            } else if (msg.t === "gap") {
-              console.warn("[nexa-link] channel " + msg.ch + ": messages dropped (this page could not keep up)");
-            }
-            return;
-          }
-          let got;
-          try {
-            got = link.reassembler.push(new Uint8Array(evt.data));
-          } catch (e) {
-            return;
-          }
-          if (got && !got.error) receive(got);
-        };
-        ws.onclose = function() {
-          if (link.ws !== ws) return;
-          link.ws = null;
-          link.ready = null;
-          rejectAll("Nexa Link connection lost");
-          if (!welcomed) reject(new Error("Nexa Link: could not connect to port " + info.port));
-          scheduleReconnect();
-        };
-        ws.onerror = function() {
-        };
-      });
-    });
-    link.ready.catch(function() {
-      link.ready = null;
-    });
-    return link.ready;
-  }
-  function inflate(bytes) {
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    return new Response(stream).arrayBuffer().then(function(ab) {
-      return new Uint8Array(ab);
-    });
-  }
-  function payloadOf(flags, bytes) {
-    if (flags & F.F_BINARY) return bytes.buffer.byteLength === bytes.length && bytes.byteOffset === 0 ? bytes.buffer : bytes.slice().buffer;
-    if (!bytes.length) return null;
-    return JSON.parse(F.fromUtf8(bytes));
-  }
-  function receive(got) {
-    link.rxChain = link.rxChain.then(function() {
-      return got.flags & F.F_DEFLATE ? inflate(got.bytes) : got.bytes;
-    }).then(function(bytes) {
-      const meta = got.meta || {};
-      if (meta.t === "res") {
-        const p = link.pending.get(meta.re);
-        if (!p) return;
-        link.pending.delete(meta.re);
-        clearTimeout(p.timer);
-        if (meta.err) p.reject(new Error(meta.err));
-        else {
-          let value;
-          try {
-            value = payloadOf(got.flags, bytes);
-          } catch (e) {
-            p.reject(new Error("invalid JSON in the answer"));
-            return;
-          }
-          p.resolve(value);
-        }
-      } else if (meta.t === "push" && typeof link.onPush === "function") {
-        let value;
-        try {
-          value = payloadOf(got.flags, bytes);
-        } catch (e) {
-          console.warn("[nexa-link] invalid JSON pushed on " + meta.ch);
-          return;
-        }
-        link.onPush(meta.ch, value, meta);
+  // src/features/logic/control/meta.js
+  var meta_default3 = [
+    { type: "function", label: "Function", color: "#7a5aa8", icon: "fa-code", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
+    // one output per rule; exclusivePorts: its outputs are alternatives (the flow fan-out check counts one at a time)
+    {
+      type: "switch",
+      label: "Switch",
+      color: "#e2d96e",
+      icon: "fa-filter",
+      chipColor: "#e2d96e",
+      inputs: 1,
+      outputs: 1,
+      exclusivePorts: true,
+      ports: function(node) {
+        return node.rules && node.rules.length ? node.rules.length : 1;
       }
-    }).catch(function(e) {
-      console.error("[nexa-link] could not read a message:", e);
-    });
-  }
-  function encode(payload) {
-    if (payload instanceof ArrayBuffer) return { bytes: new Uint8Array(payload), flags: F.F_BINARY };
-    if (ArrayBuffer.isView(payload)) return { bytes: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength), flags: F.F_BINARY };
-    return { bytes: F.utf8(JSON.stringify(payload === void 0 ? null : payload)), flags: 0 };
-  }
-  function sendMessage(ws, meta, payload) {
-    const id = ++link.nextId;
-    const enc = encode(payload);
-    const ch = link.channels[meta.ch];
-    if (ch && enc.bytes.length > ch.maxBytes) throw new Error("payload is " + enc.bytes.length + ' bytes, channel "' + ch.name + '" allows ' + ch.maxBytes);
-    F.encodeMessage(id, meta, enc.bytes, enc.flags).forEach(function(fr) {
-      ws.send(fr);
-    });
-    return id;
-  }
-  function linkRequest(channelId, payload, screenId) {
-    return linkConnect().then(function(ws) {
-      return new Promise(function(resolve, reject) {
-        if (!link.channels[channelId]) {
-          reject(new Error("channel " + channelId + " is not deployed"));
-          return;
-        }
-        const id = sendMessage(ws, { t: "req", ch: channelId, screen: screenId || "" }, payload);
-        const timeout = (link.channels[channelId].timeout || DEFAULT_TIMEOUT_MS) + SAFETY_MS;
-        const timer = setTimeout(function() {
-          if (link.pending.delete(id)) reject(new Error("timeout: no answer within " + timeout + " ms"));
-        }, timeout);
-        link.pending.set(id, { resolve, reject, timer });
-      });
-    });
-  }
-  function linkSend(channelId, payload, screenId) {
-    return linkConnect().then(function(ws) {
-      if (!link.channels[channelId]) throw new Error("channel " + channelId + " is not deployed");
-      sendMessage(ws, { t: "send", ch: channelId, screen: screenId || "" }, payload);
-    });
-  }
-  function linkSetSubscriptions(channelIds, onPush2) {
-    const list = Array.from(new Set((channelIds || []).filter(Boolean))).sort();
-    if (onPush2) link.onPush = onPush2;
-    const same = list.join("\n") === link.subs.join("\n");
-    link.subs = list;
-    if (same) return;
-    if (link.ws && link.ws.readyState === 1) link.ws.send(JSON.stringify({ t: "sub", ch: list }));
-    else if (list.length) linkConnect().catch(function(e) {
-      console.warn("[nexa-link] " + e.message);
-      scheduleReconnect();
-    });
-  }
+    },
+    { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
+    // collects messages from several wires before it sends one. Editor only so far: the page passes each message on.
+    { type: "join", label: "Join", color: "#c8a03a", icon: "fa-compress", chipColor: "#fce8b2", inputs: 1, outputs: 1 },
+    { type: "debug", label: "Debug", color: "#777", icon: "fa-bug", chipColor: "#87a980", inputs: 1, outputs: 0 }
+  ];
 
-  // src/runtime/logic/nodes/link-nodes.js
-  function runLinkRequestNode(screen2, node, msg, budget, continueFromPort2) {
-    linkRequest(node.channel, msg ? msg.payload : null, screen2 && screen2.id).then(function(value) {
-      const out = cloneMsg(msg || {});
-      out.payload = value;
-      delete out.error;
-      continueFromPort2(screen2, node, out, 0, budget);
-    }, function(e) {
-      const out = cloneMsg(msg || {});
-      out.error = e && e.message ? e.message : String(e);
-      continueFromPort2(screen2, node, out, 1, budget);
-    });
-  }
-  function runLinkSendNode(screen2, node, msg, budget, continuePropagation2) {
-    linkSend(node.channel, msg ? msg.payload : null, screen2 && screen2.id).then(function() {
-      continuePropagation2(screen2, node, msg, budget);
-    }, function(e) {
-      console.error("[nexa-logic] To Node-RED node " + node.id + " failed: " + (e && e.message));
-    });
-  }
-  var listening = [];
-  var run = null;
-  function onPush(channelId, payload, meta) {
-    let first = true;
-    listening.forEach(function(screen2) {
-      (screen2 && screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
-        if (n.type !== "link-receive" || n.channel !== channelId) return;
-        const p = first || payload === null || typeof payload !== "object" ? payload : cloneMsg(payload);
-        first = false;
-        run(screen2, n, { payload: p, topic: n.channelName || "", retained: !!meta.retained });
-      });
-    });
-  }
-  function syncLinkSubscriptions(screens, runLogicGraph2) {
-    run = runLogicGraph2;
-    listening = (screens || []).filter(Boolean);
-    const ids = [];
-    listening.forEach(function(screen2) {
-      (screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
-        if (n.type === "link-receive" && n.channel) ids.push(n.channel);
-      });
-    });
-    linkSetSubscriptions(ids, onPush);
-  }
+  // src/features/logic/variables/meta.js
+  var meta_default4 = [
+    { type: "set-variable", label: "Set Variable", color: "#9c6b9e", icon: "fa-tag", chipColor: "#e3d3ee", inputs: 1, outputs: 1 },
+    { type: "get-variable", label: "Get Variable", color: "#9c6b9e", icon: "fa-tag", chipColor: "#e3d3ee", inputs: 1, outputs: 1 },
+    { type: "set-variable-multi", label: "Set Variables", color: "#9c6b9e", icon: "fa-tags", chipColor: "#dac8ee", inputs: 1, outputs: 1 },
+    { type: "get-variable-multi", label: "Get Variables", color: "#9c6b9e", icon: "fa-tags", chipColor: "#dac8ee", inputs: 1, outputs: 1 },
+    // a source: fires when a watched variable changes (payload = new, previous = old)
+    { type: "on-variable-change", label: "Watch Variable", color: "#4b7d4b", icon: "fa-eye", chipColor: "#c7e9c0", inputs: 0, outputs: 1 }
+  ];
+
+  // src/features/logic/templates/meta.js
+  var meta_default5 = [
+    // inside a template: the instance's params changed
+    { type: "param-input", label: "On Params Change", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    // inside a template: send a message out to where it is used
+    { type: "template-output", label: "Send to Host", color: "#9c6b9e", icon: "fa-sign-out", chipColor: "#e3d3ee", inputs: 1, outputs: 0 },
+    // around a placed instance: what it sent out
+    { type: "template-event", label: "On Template Output", color: "#4b7d4b", icon: "fa-sign-in", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "set-template-param", label: "", color: "#9c6b9e", icon: "fa-pencil-square-o", chipColor: "#c0deed", inputs: 1, outputs: 0 },
+    { type: "populate", label: "Populate", color: "#5b8a3a", icon: "fa-th-list", chipColor: "#d7ecc6", inputs: 1, outputs: 1 },
+    // a container (frame) as a node: Populate -> [Layout] fills it; its output is what its copies send
+    { type: "layout", label: "Layout", color: "#5b8a3a", icon: "fa-columns", chipColor: "#e8f3de", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/navigation/meta.js
+  var meta_default6 = [
+    { type: "navigate", label: "Goto Screen", color: "#458296", icon: "fa-compass", chipColor: "#a6bbcf", inputs: 1, outputs: 1 },
+    { type: "open-url", label: "Open URL", color: "#5a8f8f", icon: "fa-external-link", chipColor: "#a6bbcf", inputs: 1, outputs: 0 },
+    { type: "reload", label: "Reload Page", color: "#8a8a8a", icon: "fa-refresh", chipColor: "#e2d96e", inputs: 1, outputs: 0 },
+    // a flow's public entry point (one per flow)
+    { type: "route-trigger", label: "Route Trigger", color: "#a370f7", icon: "fa-road", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    // a sub-path under the flow matched no screen (one per flow)
+    { type: "route-not-found", label: "Route Not Found", color: "#e11d48", icon: "fa-ban", chipColor: "#fde2e7", inputs: 0, outputs: 1 },
+    { type: "render-screen", label: "Render Screen", color: "#0284c7", icon: "fa-desktop", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    // from a screen back to the active flow's Render Screen node
+    { type: "send-to-flow", label: "Send to Flow", color: "#0ea5e9", icon: "fa-paper-plane", chipColor: "#e3d3ee", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/web/meta.js
+  var meta_default7 = [
+    { type: "http-request", label: "HTTP Request", color: "#3a8fb0", icon: "fa-globe", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    { type: "storage", label: "Storage", color: "#3a8fb0", icon: "fa-database", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    { type: "cookie", label: "Cookie", color: "#3a8fb0", icon: "fa-key", chipColor: "#cde6f2", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/sparkplug/meta.js
+  var meta_default8 = [
+    { type: "sparkplug-write", label: "Sparkplug Write", color: "#2f8f6f", icon: "fa-upload", chipColor: "#bfe8d8", inputs: 1, outputs: 1 },
+    { type: "sparkplug-write-multi", label: "Sparkplug Write Multi", color: "#2f8f6f", icon: "fa-upload", chipColor: "#bfe8d8", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/link/meta.js
+  var meta_default9 = [
+    { type: "link-request", label: "Request", color: "#8f2f3a", icon: "fa-exchange", chipColor: "#f0d4d7", inputs: 1, outputs: 2, outputLabels: ["answer", "error"], exclusivePorts: true },
+    { type: "link-send", label: "To Node-RED", color: "#8f2f3a", icon: "fa-sign-out", chipColor: "#f0d4d7", inputs: 1, outputs: 1 },
+    { type: "link-receive", label: "From Node-RED", color: "#8f2f3a", icon: "fa-sign-in", chipColor: "#f0d4d7", inputs: 0, outputs: 1 }
+  ];
+
+  // src/features/logic/meta.js
+  var FAMILIES = { lifecycle: meta_default, ui: meta_default2, control: meta_default3, variables: meta_default4, templates: meta_default5, navigation: meta_default6, web: meta_default7, sparkplug: meta_default8, link: meta_default9 };
+  Object.keys(FAMILIES).forEach(function(f) {
+    defineLogicNodes(FAMILIES[f]);
+  });
+
+  // src/features/logic/lifecycle/runtime.js
+  var passOn = { run: function(node, msg) {
+    return msg;
+  } };
+  defineLogicRuntimes({ onload: passOn, onrender: passOn, onclose: passOn, inject: passOn });
 
   // src/runtime/mounting/pins.js
   function registerPin(el, comp) {
@@ -1579,6 +1195,330 @@
     if (typeof ResizeObserver === "function") new ResizeObserver(pin).observe(scopeEl);
     pin();
     return layer;
+  }
+
+  // src/runtime/features/overlays.js
+  var OVERLAYS = {};
+  var overlayStack = [];
+  var overlayZ = 1e3;
+  var overlayKeysWired = false;
+  var FLEX = { start: "flex-start", center: "center", end: "flex-end" };
+  function overlayModel(node) {
+    return window.NexaModel && window.NexaModel.overlayOf ? window.NexaModel.overlayOf(node) : null;
+  }
+  function setupOverlay(screen2, el, comp, ns, parentEl) {
+    var root = parentEl && parentEl.id === "nexa-runtime-artboard";
+    var layer = document.createElement("div");
+    layer.className = "nexa-overlay-layer";
+    layer.setAttribute("data-overlay", ns);
+    var ls = layer.style;
+    var scaled = root && typeof getComputedStyle === "function" && getComputedStyle(parentEl).transform && getComputedStyle(parentEl).transform !== "none";
+    ls.position = root && !scaled ? "fixed" : "absolute";
+    ls.left = ls.top = ls.right = ls.bottom = "0";
+    ls.display = "none";
+    ls.overflow = "hidden";
+    ls.boxSizing = "border-box";
+    var backdrop = document.createElement("div");
+    backdrop.className = "nexa-overlay-backdrop";
+    backdrop.style.position = "absolute";
+    backdrop.style.left = backdrop.style.top = backdrop.style.right = backdrop.style.bottom = "0";
+    parentEl.insertBefore(layer, el);
+    layer.appendChild(backdrop);
+    layer.appendChild(el);
+    var st = {
+      ns,
+      node: comp,
+      screen: screen2,
+      layer,
+      el,
+      backdrop,
+      open: false,
+      pending: null,
+      timer: null,
+      dx: 0,
+      dy: 0,
+      hideTimer: null,
+      scope: parentEl,
+      root,
+      fixedRoot: root && !scaled
+    };
+    st.place = function() {
+      placeOverlay(st);
+      if (st.open) st.pin();
+    };
+    st.pin = function() {
+      pinOverlayLayer(st);
+    };
+    if (!st.fixedRoot) {
+      var onScroll = function() {
+        if (st.open) st.pin();
+      };
+      if (root) {
+        window.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", onScroll);
+      } else if (typeof parentEl.addEventListener === "function") {
+        parentEl.addEventListener("scroll", onScroll, { passive: true });
+      }
+    }
+    el.__overlay = st;
+    OVERLAYS[ns] = st;
+    backdrop.addEventListener("click", function() {
+      var o = overlayModel(st.node);
+      if (o && o.closeOnBackdrop) closeOverlay(st, void 0, "backdrop");
+    });
+    wireOverlayDrag(st);
+    if (!overlayKeysWired && typeof document.addEventListener === "function") {
+      overlayKeysWired = true;
+      document.addEventListener("keydown", function(e) {
+        if (e.key !== "Escape") return;
+        for (var i = overlayStack.length - 1; i >= 0; i--) {
+          var o = overlayModel(overlayStack[i].node);
+          if (o && o.closeOnEsc) {
+            closeOverlay(overlayStack[i], void 0, "esc");
+            e.stopPropagation();
+            return;
+          }
+          if (o && o.modal) return;
+        }
+      });
+    }
+    placeOverlay(st);
+    var o0 = overlayModel(comp);
+    if (o0 && o0.startOpen) setTimeout(function() {
+      openOverlay(screen2, ns, null, null);
+    }, 0);
+    return st;
+  }
+  function pinOverlayLayer(st) {
+    if (st.fixedRoot) return;
+    var p = st.scope, ls = st.layer.style, left, top, w, h;
+    if (st.root) {
+      var r = p.getBoundingClientRect(), s = p.offsetWidth ? r.width / p.offsetWidth : 1;
+      var vw = window.innerWidth || r.right, vh = window.innerHeight || r.bottom;
+      left = -r.left / s;
+      top = -r.top / s;
+      w = vw / s;
+      h = vh / s;
+    } else {
+      left = p.scrollLeft || 0;
+      top = p.scrollTop || 0;
+      w = p.clientWidth;
+      h = p.clientHeight;
+    }
+    ls.right = ls.bottom = "auto";
+    ls.left = left + "px";
+    ls.top = top + "px";
+    ls.width = w + "px";
+    ls.height = h + "px";
+  }
+  function overlayHiddenTransform(o) {
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    if (anim === "slide-left") {
+      return o.kind === "drawer" && o.side === "left" ? "translateX(-100%)" : "translateX(-100vw)";
+    }
+    if (anim === "slide-right") {
+      return o.kind === "drawer" && o.side === "right" ? "translateX(100%)" : "translateX(100vw)";
+    }
+    if (anim === "slide-top" || anim === "slide-up") {
+      return o.kind === "drawer" && o.side === "top" ? "translateY(-100%)" : "translateY(-100vh)";
+    }
+    if (anim === "slide-bottom" || anim === "slide-down") {
+      return o.kind === "drawer" && o.side === "bottom" ? "translateY(100%)" : "translateY(100vh)";
+    }
+    if (anim === "slide") {
+      if (o.kind === "drawer") return { left: "translateX(-100%)", right: "translateX(100%)", top: "translateY(-100%)", bottom: "translateY(100%)" }[o.side] || "translateY(100%)";
+      return "translateY(100vh)";
+    }
+    if (anim === "scale") return "scale(0.94)";
+    return "";
+  }
+  function placeOverlay(st) {
+    var o = overlayModel(st.node);
+    if (!o) return;
+    var el = st.el, ls = st.layer.style, es = el.style;
+    var bd = st.backdrop.style;
+    bd.background = o.backdrop === "none" ? "transparent" : "rgba(0,0,0," + (o.backdrop === "blur" ? Math.min(o.backdropOpacity, 0.25) : o.backdropOpacity) + ")";
+    bd.backdropFilter = bd.webkitBackdropFilter = o.backdrop === "blur" ? "blur(4px)" : "";
+    var passThrough = !o.modal && o.backdrop === "none";
+    ls.overflow = o.draggable && o.dragWithin === "page" ? "visible" : "hidden";
+    ls.pointerEvents = passThrough ? "none" : "auto";
+    bd.pointerEvents = passThrough ? "none" : "auto";
+    es.pointerEvents = "auto";
+    es.right = es.bottom = "";
+    es.maxWidth = es.maxHeight = "";
+    if (o.kind === "drawer") {
+      ls.padding = "0";
+      es.position = "absolute";
+      var horizontal = o.side === "left" || o.side === "right";
+      es.top = horizontal || o.side === "top" ? "0" : "auto";
+      es.bottom = horizontal || o.side === "bottom" ? "0" : "";
+      es.left = !horizontal || o.side === "left" ? "0" : "auto";
+      es.right = !horizontal || o.side === "right" ? "0" : "";
+      es.width = horizontal ? (st.node.w || 320) + "px" : "auto";
+      es.height = horizontal ? "auto" : (st.node.h || 240) + "px";
+      es.maxWidth = "100%";
+      es.maxHeight = "100%";
+    } else {
+      ls.padding = o.margin + "px";
+      ls.justifyContent = FLEX[o.alignX] || "center";
+      ls.alignItems = FLEX[o.alignY] || "center";
+      es.position = "relative";
+      es.left = es.top = "auto";
+      es.width = (st.node.w || 320) + "px";
+      es.height = (st.node.h || 200) + "px";
+      es.maxWidth = "100%";
+      es.maxHeight = "100%";
+      es.flex = "0 0 auto";
+    }
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
+    es.transition = dur ? "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease" : "";
+    bd.transition = dur ? "opacity " + dur + "ms ease" : "";
+    applyOverlayState(st, o);
+  }
+  function applyOverlayState(st, o) {
+    var es = st.el.style, move = st.dx || st.dy ? "translate(" + st.dx + "px," + st.dy + "px) " : "";
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var isNone = anim === "none";
+    if (st.open) {
+      es.opacity = "1";
+      es.transform = move || "none";
+      st.backdrop.style.opacity = "1";
+    } else {
+      es.opacity = isNone ? "1" : "0";
+      var hidden = overlayHiddenTransform(o);
+      es.transform = move ? hidden ? move + " " + hidden : move : hidden || "none";
+      st.backdrop.style.opacity = "0";
+    }
+  }
+  function openOverlay(screen2, ns, msg, onClose) {
+    var st = OVERLAYS[ns];
+    if (!st) {
+      logicTrace("open: no overlay", ns);
+      return false;
+    }
+    var o = overlayModel(st.node);
+    if (!o) return false;
+    if (onClose) st.pending = { msg: msg || {}, onClose };
+    if (screen2) st.screen = screen2;
+    clearTimeout(st.hideTimer);
+    st.layer.style.zIndex = String(++overlayZ);
+    var i = overlayStack.indexOf(st);
+    if (i !== -1) overlayStack.splice(i, 1);
+    overlayStack.push(st);
+    if (o.autoClose) {
+      clearTimeout(st.timer);
+      st.timer = setTimeout(function() {
+        closeOverlay(st, void 0, "timer");
+      }, o.autoClose);
+    }
+    if (st.open) return true;
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
+    st.layer.style.display = o.kind === "drawer" ? "block" : "flex";
+    st.pin();
+    st.el.style.transition = "none";
+    st.backdrop.style.transition = "none";
+    st.open = false;
+    applyOverlayState(st, o);
+    void st.el.offsetWidth;
+    void st.backdrop.offsetWidth;
+    if (dur > 0) {
+      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease";
+      st.backdrop.style.transition = "opacity " + dur + "ms ease";
+    }
+    st.open = true;
+    applyOverlayState(st, o);
+    if (st.el.__carousel) st.el.__carousel.refresh();
+    if (st.el.__zoom) st.el.__zoom.refresh();
+    queuePins(true);
+    fireUiEvent(st.screen, ns, "open", msg ? msg.payload : void 0);
+    return true;
+  }
+  function closeOverlay(st, result, by) {
+    if (!st || !st.open) return false;
+    var o = overlayModel(st.node) || { duration: 0, animation: "none" };
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
+    st.open = false;
+    clearTimeout(st.timer);
+    var i = overlayStack.indexOf(st);
+    if (i !== -1) overlayStack.splice(i, 1);
+    if (dur > 0) {
+      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.4, 0, 0.2, 1), opacity " + dur + "ms ease";
+      st.backdrop.style.transition = "opacity " + dur + "ms ease";
+    } else {
+      st.el.style.transition = "none";
+      st.backdrop.style.transition = "none";
+    }
+    applyOverlayState(st, o);
+    st.hideTimer = setTimeout(function() {
+      if (st.open) return;
+      st.layer.style.display = "none";
+      st.dx = st.dy = 0;
+      st.el.style.transition = "";
+      st.backdrop.style.transition = "";
+    }, dur);
+    var p = st.pending;
+    st.pending = null;
+    fireUiEvent(st.screen, st.ns, "close", result === void 0 ? null : result);
+    if (p) {
+      var out = cloneMsg(p.msg || {});
+      out.payload = result === void 0 ? null : cloneValue(result);
+      out.closedBy = by;
+      p.onClose(out);
+    }
+    return true;
+  }
+  function overlayForNode(node) {
+    if (node.overlay) {
+      var cut = node.id.lastIndexOf("::");
+      return OVERLAYS[(cut === -1 ? "" : node.id.slice(0, cut + 2)) + node.overlay] || null;
+    }
+    return overlayStack[overlayStack.length - 1] || null;
+  }
+  function wireOverlayDrag(st) {
+    var el = st.el;
+    if (typeof el.addEventListener !== "function") return;
+    el.addEventListener("pointerdown", function(e) {
+      var o = overlayModel(st.node);
+      if (!o || !o.draggable || !st.open || e.button !== 0) return;
+      var path = typeof e.composedPath === "function" ? e.composedPath() : [e.target];
+      for (var i = 0; i < path.length && path[i] !== el; i++) {
+        var t = path[i];
+        if (t && t.matches && t.matches("button, input, select, textarea, a, [contenteditable], [role=button], [role=slider], [data-no-drag]")) return;
+      }
+      e.preventDefault();
+      var sx = e.clientX, sy = e.clientY, ox = st.dx, oy = st.dy;
+      var lr = st.layer.getBoundingClientRect(), er = el.getBoundingClientRect();
+      var bx = er.left - ox, by = er.top - oy;
+      var prevTransition = el.style.transition;
+      el.style.transition = "";
+      el.style.userSelect = "none";
+      function move(ev) {
+        var nx = ox + ev.clientX - sx, ny = oy + ev.clientY - sy;
+        if (o.dragWithin !== "page") {
+          nx = Math.min(lr.right - er.width - bx, Math.max(lr.left - bx, nx));
+          ny = Math.min(lr.bottom - er.height - by, Math.max(lr.top - by, ny));
+        }
+        st.dx = nx;
+        st.dy = ny;
+        applyOverlayState(st, o);
+      }
+      function up() {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        el.style.transition = prevTransition;
+        el.style.userSelect = "";
+      }
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    });
   }
 
   // src/runtime/logic/widgets/carousel.js
@@ -2174,330 +2114,6 @@
     return stage;
   }
 
-  // src/runtime/features/overlays.js
-  var OVERLAYS = {};
-  var overlayStack = [];
-  var overlayZ = 1e3;
-  var overlayKeysWired = false;
-  var FLEX = { start: "flex-start", center: "center", end: "flex-end" };
-  function overlayModel(node) {
-    return window.NexaModel && window.NexaModel.overlayOf ? window.NexaModel.overlayOf(node) : null;
-  }
-  function setupOverlay(screen2, el, comp, ns, parentEl) {
-    var root = parentEl && parentEl.id === "nexa-runtime-artboard";
-    var layer = document.createElement("div");
-    layer.className = "nexa-overlay-layer";
-    layer.setAttribute("data-overlay", ns);
-    var ls = layer.style;
-    var scaled = root && typeof getComputedStyle === "function" && getComputedStyle(parentEl).transform && getComputedStyle(parentEl).transform !== "none";
-    ls.position = root && !scaled ? "fixed" : "absolute";
-    ls.left = ls.top = ls.right = ls.bottom = "0";
-    ls.display = "none";
-    ls.overflow = "hidden";
-    ls.boxSizing = "border-box";
-    var backdrop = document.createElement("div");
-    backdrop.className = "nexa-overlay-backdrop";
-    backdrop.style.position = "absolute";
-    backdrop.style.left = backdrop.style.top = backdrop.style.right = backdrop.style.bottom = "0";
-    parentEl.insertBefore(layer, el);
-    layer.appendChild(backdrop);
-    layer.appendChild(el);
-    var st = {
-      ns,
-      node: comp,
-      screen: screen2,
-      layer,
-      el,
-      backdrop,
-      open: false,
-      pending: null,
-      timer: null,
-      dx: 0,
-      dy: 0,
-      hideTimer: null,
-      scope: parentEl,
-      root,
-      fixedRoot: root && !scaled
-    };
-    st.place = function() {
-      placeOverlay(st);
-      if (st.open) st.pin();
-    };
-    st.pin = function() {
-      pinOverlayLayer(st);
-    };
-    if (!st.fixedRoot) {
-      var onScroll = function() {
-        if (st.open) st.pin();
-      };
-      if (root) {
-        window.addEventListener("scroll", onScroll, { passive: true });
-        window.addEventListener("resize", onScroll);
-      } else if (typeof parentEl.addEventListener === "function") {
-        parentEl.addEventListener("scroll", onScroll, { passive: true });
-      }
-    }
-    el.__overlay = st;
-    OVERLAYS[ns] = st;
-    backdrop.addEventListener("click", function() {
-      var o = overlayModel(st.node);
-      if (o && o.closeOnBackdrop) closeOverlay(st, void 0, "backdrop");
-    });
-    wireOverlayDrag(st);
-    if (!overlayKeysWired && typeof document.addEventListener === "function") {
-      overlayKeysWired = true;
-      document.addEventListener("keydown", function(e) {
-        if (e.key !== "Escape") return;
-        for (var i = overlayStack.length - 1; i >= 0; i--) {
-          var o = overlayModel(overlayStack[i].node);
-          if (o && o.closeOnEsc) {
-            closeOverlay(overlayStack[i], void 0, "esc");
-            e.stopPropagation();
-            return;
-          }
-          if (o && o.modal) return;
-        }
-      });
-    }
-    placeOverlay(st);
-    var o0 = overlayModel(comp);
-    if (o0 && o0.startOpen) setTimeout(function() {
-      openOverlay(screen2, ns, null, null);
-    }, 0);
-    return st;
-  }
-  function pinOverlayLayer(st) {
-    if (st.fixedRoot) return;
-    var p = st.scope, ls = st.layer.style, left, top, w, h;
-    if (st.root) {
-      var r = p.getBoundingClientRect(), s = p.offsetWidth ? r.width / p.offsetWidth : 1;
-      var vw = window.innerWidth || r.right, vh = window.innerHeight || r.bottom;
-      left = -r.left / s;
-      top = -r.top / s;
-      w = vw / s;
-      h = vh / s;
-    } else {
-      left = p.scrollLeft || 0;
-      top = p.scrollTop || 0;
-      w = p.clientWidth;
-      h = p.clientHeight;
-    }
-    ls.right = ls.bottom = "auto";
-    ls.left = left + "px";
-    ls.top = top + "px";
-    ls.width = w + "px";
-    ls.height = h + "px";
-  }
-  function overlayHiddenTransform(o) {
-    var anim = o.animation || "auto";
-    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
-    if (anim === "slide-left") {
-      return o.kind === "drawer" && o.side === "left" ? "translateX(-100%)" : "translateX(-100vw)";
-    }
-    if (anim === "slide-right") {
-      return o.kind === "drawer" && o.side === "right" ? "translateX(100%)" : "translateX(100vw)";
-    }
-    if (anim === "slide-top" || anim === "slide-up") {
-      return o.kind === "drawer" && o.side === "top" ? "translateY(-100%)" : "translateY(-100vh)";
-    }
-    if (anim === "slide-bottom" || anim === "slide-down") {
-      return o.kind === "drawer" && o.side === "bottom" ? "translateY(100%)" : "translateY(100vh)";
-    }
-    if (anim === "slide") {
-      if (o.kind === "drawer") return { left: "translateX(-100%)", right: "translateX(100%)", top: "translateY(-100%)", bottom: "translateY(100%)" }[o.side] || "translateY(100%)";
-      return "translateY(100vh)";
-    }
-    if (anim === "scale") return "scale(0.94)";
-    return "";
-  }
-  function placeOverlay(st) {
-    var o = overlayModel(st.node);
-    if (!o) return;
-    var el = st.el, ls = st.layer.style, es = el.style;
-    var bd = st.backdrop.style;
-    bd.background = o.backdrop === "none" ? "transparent" : "rgba(0,0,0," + (o.backdrop === "blur" ? Math.min(o.backdropOpacity, 0.25) : o.backdropOpacity) + ")";
-    bd.backdropFilter = bd.webkitBackdropFilter = o.backdrop === "blur" ? "blur(4px)" : "";
-    var passThrough = !o.modal && o.backdrop === "none";
-    ls.overflow = o.draggable && o.dragWithin === "page" ? "visible" : "hidden";
-    ls.pointerEvents = passThrough ? "none" : "auto";
-    bd.pointerEvents = passThrough ? "none" : "auto";
-    es.pointerEvents = "auto";
-    es.right = es.bottom = "";
-    es.maxWidth = es.maxHeight = "";
-    if (o.kind === "drawer") {
-      ls.padding = "0";
-      es.position = "absolute";
-      var horizontal = o.side === "left" || o.side === "right";
-      es.top = horizontal || o.side === "top" ? "0" : "auto";
-      es.bottom = horizontal || o.side === "bottom" ? "0" : "";
-      es.left = !horizontal || o.side === "left" ? "0" : "auto";
-      es.right = !horizontal || o.side === "right" ? "0" : "";
-      es.width = horizontal ? (st.node.w || 320) + "px" : "auto";
-      es.height = horizontal ? "auto" : (st.node.h || 240) + "px";
-      es.maxWidth = "100%";
-      es.maxHeight = "100%";
-    } else {
-      ls.padding = o.margin + "px";
-      ls.justifyContent = FLEX[o.alignX] || "center";
-      ls.alignItems = FLEX[o.alignY] || "center";
-      es.position = "relative";
-      es.left = es.top = "auto";
-      es.width = (st.node.w || 320) + "px";
-      es.height = (st.node.h || 200) + "px";
-      es.maxWidth = "100%";
-      es.maxHeight = "100%";
-      es.flex = "0 0 auto";
-    }
-    var anim = o.animation || "auto";
-    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
-    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
-    es.transition = dur ? "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease" : "";
-    bd.transition = dur ? "opacity " + dur + "ms ease" : "";
-    applyOverlayState(st, o);
-  }
-  function applyOverlayState(st, o) {
-    var es = st.el.style, move = st.dx || st.dy ? "translate(" + st.dx + "px," + st.dy + "px) " : "";
-    var anim = o.animation || "auto";
-    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
-    var isNone = anim === "none";
-    if (st.open) {
-      es.opacity = "1";
-      es.transform = move || "none";
-      st.backdrop.style.opacity = "1";
-    } else {
-      es.opacity = isNone ? "1" : "0";
-      var hidden = overlayHiddenTransform(o);
-      es.transform = move ? hidden ? move + " " + hidden : move : hidden || "none";
-      st.backdrop.style.opacity = "0";
-    }
-  }
-  function openOverlay(screen2, ns, msg, onClose) {
-    var st = OVERLAYS[ns];
-    if (!st) {
-      logicTrace("open: no overlay", ns);
-      return false;
-    }
-    var o = overlayModel(st.node);
-    if (!o) return false;
-    if (onClose) st.pending = { msg: msg || {}, onClose };
-    if (screen2) st.screen = screen2;
-    clearTimeout(st.hideTimer);
-    st.layer.style.zIndex = String(++overlayZ);
-    var i = overlayStack.indexOf(st);
-    if (i !== -1) overlayStack.splice(i, 1);
-    overlayStack.push(st);
-    if (o.autoClose) {
-      clearTimeout(st.timer);
-      st.timer = setTimeout(function() {
-        closeOverlay(st, void 0, "timer");
-      }, o.autoClose);
-    }
-    if (st.open) return true;
-    var anim = o.animation || "auto";
-    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
-    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
-    st.layer.style.display = o.kind === "drawer" ? "block" : "flex";
-    st.pin();
-    st.el.style.transition = "none";
-    st.backdrop.style.transition = "none";
-    st.open = false;
-    applyOverlayState(st, o);
-    void st.el.offsetWidth;
-    void st.backdrop.offsetWidth;
-    if (dur > 0) {
-      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease";
-      st.backdrop.style.transition = "opacity " + dur + "ms ease";
-    }
-    st.open = true;
-    applyOverlayState(st, o);
-    if (st.el.__carousel) st.el.__carousel.refresh();
-    if (st.el.__zoom) st.el.__zoom.refresh();
-    queuePins(true);
-    fireUiEvent(st.screen, ns, "open", msg ? msg.payload : void 0);
-    return true;
-  }
-  function closeOverlay(st, result, by) {
-    if (!st || !st.open) return false;
-    var o = overlayModel(st.node) || { duration: 0, animation: "none" };
-    var anim = o.animation || "auto";
-    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
-    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
-    st.open = false;
-    clearTimeout(st.timer);
-    var i = overlayStack.indexOf(st);
-    if (i !== -1) overlayStack.splice(i, 1);
-    if (dur > 0) {
-      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.4, 0, 0.2, 1), opacity " + dur + "ms ease";
-      st.backdrop.style.transition = "opacity " + dur + "ms ease";
-    } else {
-      st.el.style.transition = "none";
-      st.backdrop.style.transition = "none";
-    }
-    applyOverlayState(st, o);
-    st.hideTimer = setTimeout(function() {
-      if (st.open) return;
-      st.layer.style.display = "none";
-      st.dx = st.dy = 0;
-      st.el.style.transition = "";
-      st.backdrop.style.transition = "";
-    }, dur);
-    var p = st.pending;
-    st.pending = null;
-    fireUiEvent(st.screen, st.ns, "close", result === void 0 ? null : result);
-    if (p) {
-      var out = cloneMsg(p.msg || {});
-      out.payload = result === void 0 ? null : cloneValue(result);
-      out.closedBy = by;
-      p.onClose(out);
-    }
-    return true;
-  }
-  function overlayForNode(node) {
-    if (node.overlay) {
-      var cut = node.id.lastIndexOf("::");
-      return OVERLAYS[(cut === -1 ? "" : node.id.slice(0, cut + 2)) + node.overlay] || null;
-    }
-    return overlayStack[overlayStack.length - 1] || null;
-  }
-  function wireOverlayDrag(st) {
-    var el = st.el;
-    if (typeof el.addEventListener !== "function") return;
-    el.addEventListener("pointerdown", function(e) {
-      var o = overlayModel(st.node);
-      if (!o || !o.draggable || !st.open || e.button !== 0) return;
-      var path = typeof e.composedPath === "function" ? e.composedPath() : [e.target];
-      for (var i = 0; i < path.length && path[i] !== el; i++) {
-        var t = path[i];
-        if (t && t.matches && t.matches("button, input, select, textarea, a, [contenteditable], [role=button], [role=slider], [data-no-drag]")) return;
-      }
-      e.preventDefault();
-      var sx = e.clientX, sy = e.clientY, ox = st.dx, oy = st.dy;
-      var lr = st.layer.getBoundingClientRect(), er = el.getBoundingClientRect();
-      var bx = er.left - ox, by = er.top - oy;
-      var prevTransition = el.style.transition;
-      el.style.transition = "";
-      el.style.userSelect = "none";
-      function move(ev) {
-        var nx = ox + ev.clientX - sx, ny = oy + ev.clientY - sy;
-        if (o.dragWithin !== "page") {
-          nx = Math.min(lr.right - er.width - bx, Math.max(lr.left - bx, nx));
-          ny = Math.min(lr.bottom - er.height - by, Math.max(lr.top - by, ny));
-        }
-        st.dx = nx;
-        st.dy = ny;
-        applyOverlayState(st, o);
-      }
-      function up() {
-        document.removeEventListener("pointermove", move);
-        document.removeEventListener("pointerup", up);
-        el.style.transition = prevTransition;
-        el.style.userSelect = "";
-      }
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-    });
-  }
-
   // src/runtime/mounting/lit.js
   function hashLitSource(str) {
     let h = 0;
@@ -2731,6 +2347,243 @@
         el.textContent = "(unknown component: " + comp.type + ")";
       }
     }
+  }
+
+  // src/runtime/io/link.js
+  var F = __toESM(require_frame());
+  var SAFETY_MS = 2e3;
+  var DEFAULT_TIMEOUT_MS = 1e4;
+  var link = {
+    ws: null,
+    ready: null,
+    // Promise, resolved on "welcome"
+    channels: {},
+    // id -> {name, timeout, maxBytes}
+    pending: /* @__PURE__ */ new Map(),
+    // request msgId -> {resolve, reject, timer}
+    subs: [],
+    // channel ids this page listens to
+    nextId: 0,
+    reassembler: null,
+    rxChain: Promise.resolve(),
+    onPush: null,
+    // fn(channelId, payload, meta)
+    backoff: 1e3,
+    reconnectTimer: null
+  };
+  function canInflate() {
+    try {
+      return typeof DecompressionStream === "function" && !!new DecompressionStream("deflate-raw");
+    } catch (e) {
+      return false;
+    }
+  }
+  function prefix() {
+    return window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+  }
+  function getInfo() {
+    return fetch(prefix() + "/_link-info", { cache: "no-store" }).then(function(r) {
+      if (!r.ok) throw new Error("Nexa Link info: HTTP " + r.status);
+      return r.json();
+    });
+  }
+  function rejectAll(reason) {
+    link.pending.forEach(function(p) {
+      clearTimeout(p.timer);
+      p.reject(new Error(reason));
+    });
+    link.pending.clear();
+  }
+  function scheduleReconnect() {
+    if (link.reconnectTimer || !link.subs.length) return;
+    link.reconnectTimer = setTimeout(function() {
+      link.reconnectTimer = null;
+      linkConnect().catch(function() {
+        scheduleReconnect();
+      });
+    }, link.backoff);
+    link.backoff = Math.min(link.backoff * 2, 15e3);
+  }
+  function linkConnect() {
+    if (link.ready) return link.ready;
+    link.ready = getInfo().then(function(info) {
+      if (!info || !info.port) throw new Error("Nexa Link is not running: deploy a flow with a Nexa channel (from Nexa / to Nexa node)");
+      return new Promise(function(resolve, reject) {
+        const loc = window.location || {};
+        const url = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + (loc.hostname || "localhost") + ":" + info.port + "/nexa/_link?t=" + encodeURIComponent(info.token) + (canInflate() ? "&z=1" : "");
+        const ws = new window.WebSocket(url);
+        ws.binaryType = "arraybuffer";
+        link.ws = ws;
+        link.reassembler = new F.Reassembler(function() {
+          return 1 << 30;
+        }, { maxPendingBytes: 1 << 30 });
+        let welcomed = false;
+        ws.onmessage = function(evt) {
+          if (typeof evt.data === "string") {
+            let msg;
+            try {
+              msg = JSON.parse(evt.data);
+            } catch (e) {
+              return;
+            }
+            if (msg.t === "welcome" || msg.t === "channels") link.channels = msg.channels || {};
+            if (msg.t === "welcome" && !welcomed) {
+              welcomed = true;
+              link.backoff = 1e3;
+              if (link.subs.length) ws.send(JSON.stringify({ t: "sub", ch: link.subs }));
+              resolve(ws);
+            } else if (msg.t === "error") {
+              console.warn("[nexa-link] the server refused message " + msg.re + ": " + msg.err);
+            } else if (msg.t === "gap") {
+              console.warn("[nexa-link] channel " + msg.ch + ": messages dropped (this page could not keep up)");
+            }
+            return;
+          }
+          let got;
+          try {
+            got = link.reassembler.push(new Uint8Array(evt.data));
+          } catch (e) {
+            return;
+          }
+          if (got && !got.error) receive(got);
+        };
+        ws.onclose = function() {
+          if (link.ws !== ws) return;
+          link.ws = null;
+          link.ready = null;
+          rejectAll("Nexa Link connection lost");
+          if (!welcomed) reject(new Error("Nexa Link: could not connect to port " + info.port));
+          scheduleReconnect();
+        };
+        ws.onerror = function() {
+        };
+      });
+    });
+    link.ready.catch(function() {
+      link.ready = null;
+    });
+    return link.ready;
+  }
+  function inflate(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).arrayBuffer().then(function(ab) {
+      return new Uint8Array(ab);
+    });
+  }
+  function payloadOf(flags, bytes) {
+    if (flags & F.F_BINARY) return bytes.buffer.byteLength === bytes.length && bytes.byteOffset === 0 ? bytes.buffer : bytes.slice().buffer;
+    if (!bytes.length) return null;
+    return JSON.parse(F.fromUtf8(bytes));
+  }
+  function receive(got) {
+    link.rxChain = link.rxChain.then(function() {
+      return got.flags & F.F_DEFLATE ? inflate(got.bytes) : got.bytes;
+    }).then(function(bytes) {
+      const meta = got.meta || {};
+      if (meta.t === "res") {
+        const p = link.pending.get(meta.re);
+        if (!p) return;
+        link.pending.delete(meta.re);
+        clearTimeout(p.timer);
+        if (meta.err) p.reject(new Error(meta.err));
+        else {
+          let value;
+          try {
+            value = payloadOf(got.flags, bytes);
+          } catch (e) {
+            p.reject(new Error("invalid JSON in the answer"));
+            return;
+          }
+          p.resolve(value);
+        }
+      } else if (meta.t === "push" && typeof link.onPush === "function") {
+        let value;
+        try {
+          value = payloadOf(got.flags, bytes);
+        } catch (e) {
+          console.warn("[nexa-link] invalid JSON pushed on " + meta.ch);
+          return;
+        }
+        link.onPush(meta.ch, value, meta);
+      }
+    }).catch(function(e) {
+      console.error("[nexa-link] could not read a message:", e);
+    });
+  }
+  function encode(payload) {
+    if (payload instanceof ArrayBuffer) return { bytes: new Uint8Array(payload), flags: F.F_BINARY };
+    if (ArrayBuffer.isView(payload)) return { bytes: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength), flags: F.F_BINARY };
+    return { bytes: F.utf8(JSON.stringify(payload === void 0 ? null : payload)), flags: 0 };
+  }
+  function sendMessage(ws, meta, payload) {
+    const id = ++link.nextId;
+    const enc = encode(payload);
+    const ch = link.channels[meta.ch];
+    if (ch && enc.bytes.length > ch.maxBytes) throw new Error("payload is " + enc.bytes.length + ' bytes, channel "' + ch.name + '" allows ' + ch.maxBytes);
+    F.encodeMessage(id, meta, enc.bytes, enc.flags).forEach(function(fr) {
+      ws.send(fr);
+    });
+    return id;
+  }
+  function linkRequest(channelId, payload, screenId) {
+    return linkConnect().then(function(ws) {
+      return new Promise(function(resolve, reject) {
+        if (!link.channels[channelId]) {
+          reject(new Error("channel " + channelId + " is not deployed"));
+          return;
+        }
+        const id = sendMessage(ws, { t: "req", ch: channelId, screen: screenId || "" }, payload);
+        const timeout = (link.channels[channelId].timeout || DEFAULT_TIMEOUT_MS) + SAFETY_MS;
+        const timer = setTimeout(function() {
+          if (link.pending.delete(id)) reject(new Error("timeout: no answer within " + timeout + " ms"));
+        }, timeout);
+        link.pending.set(id, { resolve, reject, timer });
+      });
+    });
+  }
+  function linkSend(channelId, payload, screenId) {
+    return linkConnect().then(function(ws) {
+      if (!link.channels[channelId]) throw new Error("channel " + channelId + " is not deployed");
+      sendMessage(ws, { t: "send", ch: channelId, screen: screenId || "" }, payload);
+    });
+  }
+  function linkSetSubscriptions(channelIds, onPush2) {
+    const list = Array.from(new Set((channelIds || []).filter(Boolean))).sort();
+    if (onPush2) link.onPush = onPush2;
+    const same = list.join("\n") === link.subs.join("\n");
+    link.subs = list;
+    if (same) return;
+    if (link.ws && link.ws.readyState === 1) link.ws.send(JSON.stringify({ t: "sub", ch: list }));
+    else if (list.length) linkConnect().catch(function(e) {
+      console.warn("[nexa-link] " + e.message);
+      scheduleReconnect();
+    });
+  }
+
+  // src/features/logic/link/link-ops.js
+  var listening = [];
+  var run = null;
+  function onPush(channelId, payload, meta) {
+    let first = true;
+    listening.forEach(function(screen2) {
+      (screen2 && screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
+        if (n.type !== "link-receive" || n.channel !== channelId) return;
+        const p = first || payload === null || typeof payload !== "object" ? payload : cloneMsg(payload);
+        first = false;
+        run(screen2, n, { payload: p, topic: n.channelName || "", retained: !!meta.retained });
+      });
+    });
+  }
+  function syncLinkSubscriptions(screens, runLogicGraph2) {
+    run = runLogicGraph2;
+    listening = (screens || []).filter(Boolean);
+    const ids = [];
+    listening.forEach(function(screen2) {
+      (screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
+        if (n.type === "link-receive" && n.channel) ids.push(n.channel);
+      });
+    });
+    linkSetSubscriptions(ids, onPush);
   }
 
   // src/runtime/features/breakpoints.js
@@ -4174,24 +4027,213 @@
     });
   }
 
-  // src/runtime/logic/runner.js
-  function runLogicGraph(screen2, node, msg, budget) {
-    budget = budget || { steps: 0 };
-    if (!node) {
-      logicTrace("runLogicGraph: a wire points at a node that no longer exists");
-      return;
+  // src/features/logic/ui/runtime.js
+  function namespaceOf(node) {
+    const cut = node.id.lastIndexOf("::");
+    return cut === -1 ? "" : node.id.slice(0, cut + 2);
+  }
+  defineLogicRuntimes({
+    // fired by fireUiEvent (src/runtime/logic/runner.js)
+    "ui-event": { run: function(node, msg) {
+      return msg;
+    } },
+    "ui-update": {
+      run: function(node, msg, ctx) {
+        runUiUpdateNode(ctx.screen, node, msg);
+        return msg;
+      }
+    },
+    "layer-control": {
+      run: function(node, msg, ctx) {
+        applyLayerControlUpdates(ctx.screen, msg && Array.isArray(msg.payload) ? msg.payload : node.states || []);
+        return msg;
+      }
+    },
+    "teleport": {
+      run: function(node, msg) {
+        const el = elById(namespaceOf(node) + node.node);
+        let to = node.toSource === "payload" ? msg && msg.payload : node.to;
+        to = to === void 0 || to === null ? "" : String(to).trim();
+        if (!el) logicTrace("teleport: no such node", node.node);
+        else if (!to || to === "home") teleportHome(el);
+        else if (!teleportEl(el, teleportTarget(to), to)) logicTrace("teleport: no target", to);
+        return msg;
+      }
+    },
+    // its output fires when the overlay closes (with the result) — and, as before the registry, also right away
+    "overlay-open": {
+      run: function(node, msg, ctx) {
+        const ns = namespaceOf(node) + node.overlay;
+        if (!openOverlay(ctx.screen, ns, msg, ctx.next)) logicTrace("overlay-open: no overlay", ns);
+        return msg;
+      }
+    },
+    "overlay-close": {
+      run: function(node, msg) {
+        closeOverlay(overlayForNode(node), node.valueSource === "none" ? void 0 : msg && msg.payload, "node");
+      }
     }
-    if (++budget.steps > LOGIC_MAX_STEPS) {
-      console.error("[nexa-logic] stopped after " + LOGIC_MAX_STEPS + " steps - this looks like an unbounded loop in the wiring");
-      return;
+  });
+
+  // src/features/logic/control/control-runtime-helpers.js
+  function resolveSwitchBindingValue(screen2, node, type, val, msg) {
+    if (type === "msg") {
+      if (!val || val === "payload") return msg ? msg.payload : void 0;
+      const path = String(val).replace(/^msg\./, "");
+      const parts = path.split(".");
+      let curr = msg;
+      for (let i = 0; i < parts.length && curr != null; i++) {
+        curr = curr[parts[i]];
+      }
+      return curr;
     }
-    logicTrace("running", node.type, node.id, "with msg =", msg);
-    var outMsg = msg;
-    if (node.type === "function") {
+    if (type === "var") {
+      const fnVars = varsFor(screen2, node);
+      const strVal = String(val || "");
+      if (strVal.startsWith("@app.")) {
+        return fnVars.get(strVal.slice(5), "@app");
+      }
+      if (strVal.startsWith("$")) {
+        return fnVars.get(strVal.slice(1));
+      }
+      return fnVars.get(strVal);
+    }
+    if (type === "tag") {
+      const ref = parseSparkplugBindingPath(val);
+      return ref ? formatSparkplugValue(ref) : void 0;
+    }
+    if (type === "num") {
+      const n = parseFloat(val);
+      return isFinite(n) ? n : 0;
+    }
+    if (type === "bool") {
+      return val === true || val === "true" || val === 1 || val === "1";
+    }
+    if (type === "json") {
       try {
-        var fnInput = cloneMsg(msg);
-        var fnVars = varsFor(screen2, node);
-        var result = new Function(
+        return JSON.parse(val);
+      } catch (e) {
+        return val;
+      }
+    }
+    return val;
+  }
+  function evaluateSwitchRule(lhs, rule, screen2, node, msg) {
+    const op = rule.t;
+    if (op === "true") return lhs === true || lhs === "true" || lhs === 1;
+    if (op === "false") return lhs === false || lhs === "false" || lhs === 0;
+    if (op === "null") return lhs === null || lhs === void 0;
+    if (op === "nnull") return lhs !== null && lhs !== void 0;
+    if (op === "empty") {
+      if (lhs === "" || lhs === null || lhs === void 0) return true;
+      if (Array.isArray(lhs) && lhs.length === 0) return true;
+      if (typeof lhs === "object" && Object.keys(lhs).length === 0) return true;
+      return false;
+    }
+    if (op === "nempty") {
+      if (lhs === "" || lhs === null || lhs === void 0) return false;
+      if (Array.isArray(lhs) && lhs.length === 0) return false;
+      if (typeof lhs === "object" && Object.keys(lhs).length === 0) return false;
+      return true;
+    }
+    if (op === "else") return false;
+    const rhs = resolveSwitchBindingValue(screen2, node, rule.vt || "str", rule.v, msg);
+    if (op === "eq") {
+      return lhs == rhs;
+    }
+    if (op === "neq") {
+      return lhs != rhs;
+    }
+    if (op === "lt") {
+      return Number(lhs) < Number(rhs);
+    }
+    if (op === "lte") {
+      return Number(lhs) <= Number(rhs);
+    }
+    if (op === "gt") {
+      return Number(lhs) > Number(rhs);
+    }
+    if (op === "gte") {
+      return Number(lhs) >= Number(rhs);
+    }
+    if (op === "btwn") {
+      const rhs2 = resolveSwitchBindingValue(screen2, node, rule.v2t || "num", rule.v2, msg);
+      const nLhs = Number(lhs);
+      const n1 = Number(rhs);
+      const n2 = Number(rhs2);
+      const min = Math.min(n1, n2);
+      const max = Math.max(n1, n2);
+      return nLhs >= min && nLhs <= max;
+    }
+    if (op === "cont") {
+      if (typeof lhs === "string") {
+        return lhs.indexOf(String(rhs)) !== -1;
+      }
+      if (Array.isArray(lhs)) {
+        return lhs.some(function(el) {
+          return el == rhs;
+        });
+      }
+      return false;
+    }
+    return false;
+  }
+  function runSwitchNode(screen2, node, msg, budget, continuePropagation2, runLogicGraph2) {
+    const propVal = resolveSwitchBindingValue(screen2, node, node.propertyType || "msg", node.property || "payload", msg);
+    const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
+    const checkall = node.checkall !== "false";
+    const matchedIndices = [];
+    let hadPriorMatch = false;
+    for (let i = 0; i < rules.length; i++) {
+      const r = rules[i];
+      let isMatch = false;
+      if (r.t === "else") {
+        isMatch = !hadPriorMatch;
+      } else {
+        isMatch = evaluateSwitchRule(propVal, r, screen2, node, msg);
+      }
+      if (isMatch) {
+        hadPriorMatch = true;
+        matchedIndices.push(i);
+        if (!checkall) break;
+      }
+    }
+    const rawWires = screen2.logic && screen2.logic.wires || [];
+    const outWires = rawWires.filter(function(w) {
+      return w && w.from === node.id && matchedIndices.indexOf(w.fromPort || 0) !== -1;
+    });
+    const targets = outWires.map(function(w) {
+      return findLogicNode(screen2, w.to);
+    }).filter(Boolean);
+    const msgs = targets.map(function(t, i) {
+      return i === 0 ? msg : cloneMsg(msg);
+    });
+    targets.forEach(function(targetNode, i) {
+      runLogicGraph2(screen2, targetNode, msgs[i], budget);
+    });
+  }
+  function runDelayNode(screen2, node, msg, budget, continuePropagation2) {
+    let delayMs = node.unit === "s" ? Number(node.delay) * 1e3 : Number(node.delay);
+    if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
+    if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
+      delayMs = msg.delay;
+    }
+    const dTimer = setTimeout(function() {
+      const idx = state.activeScreenTimers.indexOf(dTimer);
+      if (idx !== -1) state.activeScreenTimers.splice(idx, 1);
+      continuePropagation2(screen2, node, cloneMsg(msg), budget);
+    }, delayMs);
+    state.activeScreenTimers.push(dTimer);
+  }
+
+  // src/features/logic/control/runtime.js
+  defineLogicRuntimes({
+    // node.code is the body of an async function (msg, vars, route, storage, cookies, http, getVariable, setVariable)
+    "function": {
+      run: function(node, msg, ctx) {
+        const screen2 = ctx.screen;
+        const fnVars = varsFor(screen2, node);
+        const result = new Function(
           "msg",
           "vars",
           "route",
@@ -4202,7 +4244,7 @@
           "setVariable",
           "return (async function(){ " + (node.code || "return msg;") + " })();"
         )(
-          fnInput,
+          cloneMsg(msg),
           fnVars,
           cloneValue(((screen2.__scopes || {})["@app"] || {}).$route || makeRoute()),
           BROWSER_API.storage,
@@ -4215,249 +4257,461 @@
             return fnVars.set(name, value, scopeId, op);
           }
         );
-        result.then(function(resolved) {
-          continuePropagation(screen2, node, resolved, budget);
-        }).catch(function(e) {
+        result.then(ctx.next).catch(function(e) {
           console.error("[nexa-logic] function node " + node.id + " rejected:", e);
         });
-        return;
-      } catch (e) {
-        console.error("[nexa-logic] function node " + node.id + " threw:", e);
+      }
+    },
+    "switch": {
+      run: function(node, msg, ctx) {
+        runSwitchNode(ctx.screen, node, msg, ctx.budget, ctx.continuePropagation, ctx.runLogicGraph);
+      }
+    },
+    "delay": {
+      run: function(node, msg, ctx) {
+        runDelayNode(ctx.screen, node, msg, ctx.budget, ctx.continuePropagation);
+      }
+    },
+    // not built on the page yet: each message passes on as it comes
+    "join": { run: function(node, msg) {
+      return msg;
+    } },
+    "debug": {
+      run: function(node, msg) {
+        console.log("[nexa-logic debug]", msg);
+        return msg;
+      }
+    }
+  });
+
+  // src/features/logic/variables/variable-ops.js
+  function setVariable(screen2, node, msg) {
+    const scope = resolveScope(screen2, node.scope, node.id);
+    if (!scope) {
+      console.warn("[nexa-logic] set-variable: no such scope", node.scope, node.name);
+      return;
+    }
+    writeVariable(screen2, scope, node.name, valueFromMsg(node, msg), node.op);
+  }
+  function setVariablesMulti(screen2, node, msg) {
+    const assignments = Array.isArray(node.assignments) ? node.assignments : [];
+    assignments.forEach(function(a) {
+      if (!a || !a.name) return;
+      const scope = resolveScope(screen2, a.scope, node.id);
+      if (!scope) {
+        console.warn("[nexa-logic] set-variable-multi: no such scope", a.scope, a.name);
         return;
       }
-    } else if (node.type === "ui-update") {
-      runUiUpdateNode(screen2, node, msg);
-    } else if (node.type === "set-template-param") {
-      updateInstanceParam(screen2, node.instanceId, node.paramName, msg && msg.payload);
-    } else if (node.type === "set-variable") {
-      setVariable(screen2, node, msg);
-    } else if (node.type === "set-variable-multi") {
-      setVariablesMulti(screen2, node, msg);
-    } else if (node.type === "teleport") {
-      var cutT = node.id.lastIndexOf("::");
-      var tEl = elById((cutT === -1 ? "" : node.id.slice(0, cutT + 2)) + node.node);
-      var to = node.toSource === "payload" ? msg && msg.payload : node.to;
-      to = to === void 0 || to === null ? "" : String(to).trim();
-      if (!tEl) logicTrace("teleport: no such node", node.node);
-      else if (!to || to === "home") teleportHome(tEl);
-      else if (!teleportEl(tEl, teleportTarget(to), to)) logicTrace("teleport: no target", to);
-    } else if (node.type === "overlay-open") {
-      var cutO = node.id.lastIndexOf("::");
-      var oNs = (cutO === -1 ? "" : node.id.slice(0, cutO + 2)) + node.overlay;
-      if (!openOverlay(screen2, oNs, msg, function(res) {
-        continuePropagation(screen2, node, res, budget);
-      })) {
-        logicTrace("overlay-open: no overlay", oNs);
+      writeVariable(screen2, scope, a.name, valueFromMsg(a, msg), a.op || "set");
+    });
+  }
+  function getVariablesMulti(screen2, node, msg) {
+    const out = cloneMsg2(msg || {});
+    const reads = Array.isArray(node.reads) ? node.reads : [];
+    reads.forEach(function(r) {
+      if (!r || !r.name) return;
+      const gScope = resolveScope(screen2, r.scope, node.id);
+      const val = gScope ? cloneValue(gScope[r.name]) : void 0;
+      setMsgPath(out, r.target || "payload", val);
+    });
+    return out;
+  }
+
+  // src/features/logic/variables/runtime.js
+  defineLogicRuntimes({
+    "set-variable": {
+      run: function(node, msg, ctx) {
+        setVariable(ctx.screen, node, msg);
+        return msg;
       }
-    } else if (node.type === "overlay-close") {
-      closeOverlay(overlayForNode(node), node.valueSource === "none" ? void 0 : msg && msg.payload, "node");
-      outMsg = null;
-    } else if (node.type === "switch") {
-      runSwitchNode(screen2, node, msg, budget, continuePropagation, runLogicGraph);
-      return;
-    } else if (node.type === "delay") {
-      runDelayNode(screen2, node, msg, budget, continuePropagation);
-      return;
-    } else if (node.type === "route-trigger" || node.type === "route-not-found") {
-      continuePropagation(screen2, node, outMsg, budget);
-      return;
-    } else if (node.type === "http-request") {
-      runHttpNode(screen2, node, msg, function(res) {
-        continuePropagation(screen2, node, res, budget);
-      });
-      return;
-    } else if (node.type === "link-request") {
-      runLinkRequestNode(screen2, node, msg, budget, continueFromPort);
-      return;
-    } else if (node.type === "link-send") {
-      runLinkSendNode(screen2, node, msg, budget, continuePropagation);
-      return;
-    } else if (node.type === "link-receive") {
-      continuePropagation(screen2, node, outMsg, budget);
-      return;
-    } else if (node.type === "populate") {
-      if (node.container) runPopulate(screen2, node, msg);
-      else {
-        outMsg = Object.assign({}, msg || {});
-        var job = { template: node.template, itemParam: node.itemParam, mode: node.mode, key: node.key, fill: node.fill, virtualize: node.virtualize, items: valueFromMsg(node, msg) };
-        var before = msg && msg.populate ? [].concat(msg.populate).filter(function(j) {
+    },
+    "set-variable-multi": {
+      run: function(node, msg, ctx) {
+        setVariablesMulti(ctx.screen, node, msg);
+        return msg;
+      }
+    },
+    "get-variable": {
+      run: function(node, msg, ctx) {
+        const scope = resolveScope(ctx.screen, node.scope, node.id);
+        const out = cloneMsg(msg || {});
+        setMsgPath(out, node.target || "payload", scope ? cloneValue(scope[node.name]) : void 0);
+        return out;
+      }
+    },
+    "get-variable-multi": {
+      run: function(node, msg, ctx) {
+        return getVariablesMulti(ctx.screen, node, msg);
+      }
+    },
+    // fired by the variable watchers (src/runtime/state/variable.js)
+    "on-variable-change": { run: function(node, msg) {
+      return msg;
+    } }
+  });
+
+  // src/features/logic/templates/runtime.js
+  var passOn2 = { run: function(node, msg) {
+    return msg;
+  } };
+  defineLogicRuntimes({
+    // fired by fireParamInputForInstance (src/runtime/mounting/render.js)
+    "param-input": passOn2,
+    // fired by sendToHost (src/runtime/logic/widgets/populate.js)
+    "template-event": passOn2,
+    "set-template-param": {
+      run: function(node, msg, ctx) {
+        updateInstanceParam(ctx.screen, node.instanceId, node.paramName, msg && msg.payload);
+        return msg;
+      }
+    },
+    "template-output": {
+      run: function(node, msg, ctx) {
+        sendToHost(ctx.screen, node, msg, ctx.budget);
+      }
+    },
+    // with a container: fill it now. Without: add a job to msg.populate for the Layout node it is wired to.
+    "populate": {
+      run: function(node, msg, ctx) {
+        if (node.container) {
+          runPopulate(ctx.screen, node, msg);
+          return msg;
+        }
+        const out = Object.assign({}, msg || {});
+        const job = { template: node.template, itemParam: node.itemParam, mode: node.mode, key: node.key, fill: node.fill, virtualize: node.virtualize, items: valueFromMsg(node, msg) };
+        const before = msg && msg.populate ? [].concat(msg.populate).filter(function(j) {
           return j && typeof j === "object";
         }) : [];
-        outMsg.populate = before.length ? before.concat([job]) : job;
+        out.populate = before.length ? before.concat([job]) : job;
+        return out;
       }
-    } else if (node.type === "layout") {
-      if (msg && msg.populate && typeof msg.populate === "object") {
-        [].concat(msg.populate).forEach(function(job2) {
-          if (!job2 || typeof job2 !== "object") return;
-          runPopulate(screen2, {
+    },
+    // runs the msg.populate jobs into its frame; its output is what the copies send (template-output)
+    "layout": {
+      run: function(node, msg, ctx) {
+        if (!msg || !msg.populate || typeof msg.populate !== "object") return;
+        [].concat(msg.populate).forEach(function(job) {
+          if (!job || typeof job !== "object") return;
+          runPopulate(ctx.screen, {
             id: node.id,
             container: node.container,
-            template: job2.template,
-            itemParam: job2.itemParam,
-            mode: job2.mode,
-            key: job2.key,
-            fill: job2.fill,
-            virtualize: job2.virtualize,
+            template: job.template,
+            itemParam: job.itemParam,
+            mode: job.mode,
+            key: job.key,
+            fill: job.fill,
+            virtualize: job.virtualize,
             valueSource: "static",
-            value: job2.items
+            value: job.items
           }, msg);
         });
       }
-      outMsg = null;
-    } else if (node.type === "template-output") {
-      sendToHost(screen2, node, msg, budget);
-      outMsg = null;
-    } else if (node.type === "storage") {
-      outMsg = runStorageNode(screen2, node, msg);
-    } else if (node.type === "cookie") {
-      outMsg = runCookieNode(screen2, node, msg);
-    } else if (node.type === "get-variable") {
-      var gScope = resolveScope(screen2, node.scope, node.id);
-      outMsg = cloneMsg(msg || {});
-      setMsgPath(outMsg, node.target || "payload", gScope ? cloneValue(gScope[node.name]) : void 0);
-    } else if (node.type === "get-variable-multi") {
-      outMsg = getVariablesMulti(screen2, node, msg);
-    } else if (node.type === "debug") {
-      console.log("[nexa-logic debug]", msg);
-    } else if (node.type === "reload") {
-      window.location.reload();
-    } else if (node.type === "open-url") {
-      var rawTarget = msg && typeof msg.payload === "string" && msg.payload || msg && (msg.url || msg.endpoint) || node.url;
-      var navMode = msg && msg.mode || node.mode || "replace";
-      var newTab = msg && typeof msg.newTab === "boolean" ? msg.newTab : node.newTab;
-      if (rawTarget) {
-        var target = String(rawTarget).trim();
-        var finalUrl = target;
-        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(target) || /^\/\//.test(target)) {
-          finalUrl = target;
-        } else if (/^(localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?(\/.*)?$/i.test(target)) {
-          finalUrl = "http://" + target;
-        } else if (/^www\./i.test(target) || /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i.test(target)) {
-          finalUrl = "https://" + target;
-        } else if (navMode === "endpoint") {
-          if (target.charAt(0) === "/") {
-            var base = window.location.pathname.startsWith("/nexa") ? "/nexa" : "";
-            var sub = target.startsWith("/nexa") ? target.slice(5) : target;
-            finalUrl = base + sub;
-          } else {
-            var pathParts = window.location.pathname.split("/").filter(Boolean);
-            if (pathParts.length > 0) pathParts.pop();
-            pathParts.push(target);
-            finalUrl = "/" + pathParts.join("/");
-          }
+    }
+  });
+
+  // src/features/logic/navigation/runtime.js
+  function resolveUrl(target, mode) {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(target) || /^\/\//.test(target)) return target;
+    if (/^(localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?(\/.*)?$/i.test(target)) return "http://" + target;
+    if (/^www\./i.test(target) || /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i.test(target)) return "https://" + target;
+    if (mode !== "endpoint") return target;
+    if (target.charAt(0) === "/") {
+      const base = window.location.pathname.startsWith("/nexa") ? "/nexa" : "";
+      return base + (target.startsWith("/nexa") ? target.slice(5) : target);
+    }
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    if (parts.length > 0) parts.pop();
+    parts.push(target);
+    return "/" + parts.join("/");
+  }
+  defineLogicRuntimes({
+    "navigate": {
+      run: function(node, msg) {
+        const mode = msg && msg.mode || node.mode || "screen";
+        if (mode === "history") {
+          const action = msg && msg.action || node.historyAction || "back";
+          const h = typeof window.history !== "undefined" ? window.history : null;
+          if (action === "forward") {
+            if (h && typeof h.forward === "function") h.forward();
+          } else if (h && typeof h.back === "function") h.back();
+          return msg;
         }
-        if (newTab) window.open(finalUrl, "_blank");
-        else window.location.href = finalUrl;
+        const targetId = mode === "url" ? msg && (msg.url || msg.path || msg.endpoint) || node.url : msg && (msg.screenId || msg.screen) || node.screenId;
+        const payload = node.forwardPayload !== false ? msg && msg.payload : void 0;
+        navigateToScreen(targetId, payload, node.replace === true, true);
+        return msg;
       }
-    } else if (node.type === "delay") {
-      var delayMs = node.unit === "s" ? Number(node.delay) * 1e3 : Number(node.delay);
-      if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
-      if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
-        delayMs = msg.delay;
-      }
-      var dTimer = setTimeout(function() {
-        var idx = activeScreenTimers.indexOf(dTimer);
-        if (idx !== -1) activeScreenTimers.splice(idx, 1);
-        continuePropagation(screen2, node, cloneMsg(msg), budget);
-      }, delayMs);
-      activeScreenTimers.push(dTimer);
-      return;
-    } else if (node.type === "render-screen") {
-      var targetScreenId = msg && (msg.screenId || msg.screen) || node.screenId;
-      var fwd = node.forwardPayload !== false;
-      var pld = fwd ? msg && msg.payload : void 0;
-      var match = findScreenInProject(targetScreenId);
-      if (!match || !match.screen) {
-        console.warn("[nexa-runtime] render-screen: target screen not found:", targetScreenId);
-        return;
-      }
-      setActiveRenderScreen({
-        flowScreen: screen2,
-        flowNode: node,
-        screenId: match.screen.id
-      });
-      navigateToScreen(match.screen.id, pld, false, true, node.id);
-      return;
-    } else if (node.type === "send-to-flow") {
-      var sendMsg = cloneMsg(msg);
-      if (node.action) sendMsg.action = node.action;
-      var activeRender = getActiveRenderScreen();
-      var activeFlow = getActiveFlowScreen();
-      if (activeFlow && activeRender && activeRender.flowNode) {
-        logicTrace("send-to-flow dispatching to Flow node:", activeRender.flowNode.id);
-        continuePropagation(activeFlow, activeRender.flowNode, sendMsg, budget);
-      } else {
-        console.warn("[nexa-runtime] send-to-flow: no active Render Screen node to receive message in current flow");
-      }
-      continuePropagation(screen2, node, outMsg, budget);
-      return;
-    } else if (node.type === "navigate") {
-      var nMode = msg && msg.mode || node.mode || "screen";
-      if (nMode === "history") {
-        var action = msg && msg.action || node.historyAction || "back";
-        if (action === "forward") {
-          if (typeof window.history !== "undefined" && typeof window.history.forward === "function") window.history.forward();
-        } else {
-          if (typeof window.history !== "undefined" && typeof window.history.back === "function") window.history.back();
+    },
+    "open-url": {
+      run: function(node, msg) {
+        const raw = msg && typeof msg.payload === "string" && msg.payload || msg && (msg.url || msg.endpoint) || node.url;
+        const mode = msg && msg.mode || node.mode || "replace";
+        const newTab = msg && typeof msg.newTab === "boolean" ? msg.newTab : node.newTab;
+        if (raw) {
+          const url = resolveUrl(String(raw).trim(), mode);
+          if (newTab) window.open(url, "_blank");
+          else window.location.href = url;
         }
-        continuePropagation(screen2, node, outMsg, budget);
-      } else {
-        var targetId = nMode === "url" ? msg && (msg.url || msg.path || msg.endpoint) || node.url : msg && (msg.screenId || msg.screen) || node.screenId;
-        var fwdNav = node.forwardPayload !== false;
-        var pldNav = fwdNav ? msg && msg.payload : void 0;
-        navigateToScreen(targetId, pldNav, node.replace === true, true);
-        continuePropagation(screen2, node, outMsg, budget);
+        return msg;
       }
-      return;
-    } else if (node.type === "layer-control") {
-      var layerUpdates = msg && Array.isArray(msg.payload) ? msg.payload : node.states || [];
-      applyLayerControlUpdates(screen2, layerUpdates);
-    } else if (node.type === "sparkplug-write") {
-      var writeRef = parseSparkplugBindingPath(node.tag);
-      if (!writeRef) {
-        console.error("[nexa-logic] sparkplug-write node " + node.id + ': "' + node.tag + '" is not a valid {sparkplug:...} binding');
-        return;
+    },
+    "reload": {
+      run: function(node, msg) {
+        window.location.reload();
+        return msg;
       }
-      sendSparkplugWrite(writeRef.groupId, writeRef.edgeNodeId, writeRef.deviceId, [{ name: writeRef.metricName, value: msg && msg.payload }]).then(function() {
-        continuePropagation(screen2, node, outMsg, budget);
-      }).catch(function(e) {
-        console.error("[nexa-logic] sparkplug-write node " + node.id + " failed:", e);
-      });
-      return;
-    } else if (node.type === "sparkplug-write-multi") {
-      var writes = msg && Array.isArray(msg.writes) ? msg.writes : [];
-      if (!writes.length) {
-        console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": msg.writes must be a non-empty array of {tag, value}");
-        return;
-      }
-      var writeGroups = {};
-      var invalidTags = [];
-      writes.forEach(function(w) {
-        var ref = w && parseSparkplugBindingPath(w.tag);
-        if (!ref) {
-          invalidTags.push(w && w.tag);
+    },
+    // the flow's entry points: fired by the flow router (navigation.js runFlow / matchFlowAndExecute)
+    "route-trigger": { run: function(node, msg) {
+      return msg;
+    } },
+    "route-not-found": { run: function(node, msg) {
+      return msg;
+    } },
+    "render-screen": {
+      run: function(node, msg, ctx) {
+        const target = msg && (msg.screenId || msg.screen) || node.screenId;
+        const match = findScreenInProject(target);
+        if (!match || !match.screen) {
+          console.warn("[nexa-runtime] render-screen: target screen not found:", target);
           return;
         }
-        var key = ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "");
-        if (!writeGroups[key]) writeGroups[key] = { groupId: ref.groupId, edgeNodeId: ref.edgeNodeId, deviceId: ref.deviceId, metrics: [] };
-        writeGroups[key].metrics.push({ name: ref.metricName, value: w.value });
-      });
-      if (invalidTags.length) {
-        console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": ignoring invalid tag(s):", invalidTags);
+        setActiveRenderScreen({ flowScreen: ctx.screen, flowNode: node, screenId: match.screen.id });
+        navigateToScreen(match.screen.id, node.forwardPayload !== false ? msg && msg.payload : void 0, false, true, node.id);
       }
-      var groupKeys = Object.keys(writeGroups);
-      if (!groupKeys.length) return;
-      Promise.all(groupKeys.map(function(key) {
-        var g = writeGroups[key];
-        return sendSparkplugWrite(g.groupId, g.edgeNodeId, g.deviceId, g.metrics);
-      })).then(function() {
-        continuePropagation(screen2, node, outMsg, budget);
-      }).catch(function(e) {
-        console.error("[nexa-logic] sparkplug-write-multi node " + node.id + " failed:", e);
-      });
+    },
+    // from the screen to the active flow's Render Screen node; the screen's own chain goes on too
+    "send-to-flow": {
+      run: function(node, msg, ctx) {
+        const sendMsg = cloneMsg(msg);
+        if (node.action) sendMsg.action = node.action;
+        const render = getActiveRenderScreen();
+        const flow = getActiveFlowScreen();
+        if (flow && render && render.flowNode) {
+          logicTrace("send-to-flow dispatching to Flow node:", render.flowNode.id);
+          ctx.continuePropagation(flow, render.flowNode, sendMsg, ctx.budget);
+        } else {
+          console.warn("[nexa-runtime] send-to-flow: no active Render Screen node to receive message in current flow");
+        }
+        return msg;
+      }
+    }
+  });
+
+  // src/features/logic/web/web-ops.js
+  function bindText(screen2, node, msg, text) {
+    if (typeof text !== "string" || text.indexOf("{") === -1) return text;
+    const scope = Object.create(resolveScope(screen2, "", node.id) || null);
+    scope.msg = msg || {};
+    return resolveBindableValue(text, scope);
+  }
+  function parseHeaders(raw, screen2, node, msg) {
+    const h = {};
+    if (!raw) return h;
+    let obj = raw;
+    if (typeof raw === "string") {
+      try {
+        obj = JSON.parse(raw);
+      } catch (e) {
+        return h;
+      }
+    }
+    Object.keys(obj || {}).forEach(function(k) {
+      h[k] = String(bindText(screen2, node, msg, String(obj[k])));
+    });
+    return h;
+  }
+  function runHttpNode(screen2, node, msg, done) {
+    const method = String(msg && msg.method || node.method || "GET").toUpperCase();
+    const url = bindText(screen2, node, msg, msg && typeof msg.url === "string" && msg.url || node.url || "");
+    const headers = Object.assign(parseHeaders(node.headers, screen2, node, msg), msg && msg.headers && typeof msg.headers === "object" ? msg.headers : {});
+    const body = node.body === "none" || method === "GET" || method === "HEAD" ? void 0 : node.body === "binding" ? bindText(screen2, node, msg, node.bodyText || "") : msg ? msg.payload : void 0;
+    const out = cloneMsg(msg || {});
+    if (!url) {
+      out.error = "no URL";
+      out.ok = false;
+      done(out);
       return;
     }
-    continuePropagation(screen2, node, outMsg, budget);
+    BROWSER_API.http.request(method, String(url), body, {
+      headers,
+      timeout: Number(node.timeout) || 0,
+      credentials: node.credentials || void 0
+    }).then(function(res) {
+      out.payload = res.data;
+      out.statusCode = res.status;
+      out.headers = res.headers;
+      out.ok = res.ok;
+      if (!res.ok) out.error = "HTTP " + res.status;
+      else delete out.error;
+    }, function(e) {
+      out.ok = false;
+      out.statusCode = 0;
+      out.error = e && e.name === "AbortError" ? "timeout" : String(e && e.message || e);
+    }).then(function() {
+      done(out);
+    });
+  }
+  function runStorageNode(screen2, node, msg) {
+    const store = BROWSER_API.storage[node.store === "session" ? "session" : "local"];
+    const key = String(bindText(screen2, node, msg, node.key || ""));
+    const out = cloneMsg(msg || {});
+    if (!key) return out;
+    if (node.action === "set") store.set(key, node.valueSource === "static" ? node.value : msg && msg.payload);
+    else if (node.action === "remove") store.remove(key);
+    else setMsgPath(out, node.target || "payload", store.get(key));
+    return out;
+  }
+  function runCookieNode(screen2, node, msg) {
+    const name = String(bindText(screen2, node, msg, node.name || ""));
+    const out = cloneMsg(msg || {});
+    if (!name) return out;
+    const opts = { path: node.path || "/", sameSite: node.sameSite || "Lax", secure: !!node.secure };
+    if (node.days !== void 0 && node.days !== "" && node.days !== null) opts.days = Number(node.days);
+    if (node.action === "set") BROWSER_API.cookies.set(name, node.valueSource === "static" ? node.value : msg && msg.payload, opts);
+    else if (node.action === "remove") BROWSER_API.cookies.remove(name, opts);
+    else setMsgPath(out, node.target || "payload", BROWSER_API.cookies.get(name));
+    return out;
+  }
+
+  // src/features/logic/web/runtime.js
+  defineLogicRuntimes({
+    // passes on when the response is in
+    "http-request": { run: function(node, msg, ctx) {
+      runHttpNode(ctx.screen, node, msg, ctx.next);
+    } },
+    "storage": { run: function(node, msg, ctx) {
+      return runStorageNode(ctx.screen, node, msg);
+    } },
+    "cookie": { run: function(node, msg, ctx) {
+      return runCookieNode(ctx.screen, node, msg);
+    } }
+  });
+
+  // src/features/logic/sparkplug/runtime.js
+  defineLogicRuntimes({
+    // node.tag = "{sparkplug:group::edge::device::metric}", the value = msg.payload
+    "sparkplug-write": {
+      run: function(node, msg, ctx) {
+        const ref = parseSparkplugBindingPath(node.tag);
+        if (!ref) {
+          console.error("[nexa-logic] sparkplug-write node " + node.id + ': "' + node.tag + '" is not a valid {sparkplug:...} binding');
+          return;
+        }
+        sendSparkplugWrite(ref.groupId, ref.edgeNodeId, ref.deviceId, [{ name: ref.metricName, value: msg && msg.payload }]).then(function() {
+          ctx.next(msg);
+        }).catch(function(e) {
+          console.error("[nexa-logic] sparkplug-write node " + node.id + " failed:", e);
+        });
+      }
+    },
+    // msg.writes = [{tag, value}]: one publish per Edge Node / device
+    "sparkplug-write-multi": {
+      run: function(node, msg, ctx) {
+        const writes = msg && Array.isArray(msg.writes) ? msg.writes : [];
+        if (!writes.length) {
+          console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": msg.writes must be a non-empty array of {tag, value}");
+          return;
+        }
+        const groups = {};
+        const invalid = [];
+        writes.forEach(function(w) {
+          const ref = w && parseSparkplugBindingPath(w.tag);
+          if (!ref) {
+            invalid.push(w && w.tag);
+            return;
+          }
+          const key = ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "");
+          if (!groups[key]) groups[key] = { groupId: ref.groupId, edgeNodeId: ref.edgeNodeId, deviceId: ref.deviceId, metrics: [] };
+          groups[key].metrics.push({ name: ref.metricName, value: w.value });
+        });
+        if (invalid.length) console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": ignoring invalid tag(s):", invalid);
+        const keys = Object.keys(groups);
+        if (!keys.length) return;
+        Promise.all(keys.map(function(k) {
+          const g = groups[k];
+          return sendSparkplugWrite(g.groupId, g.edgeNodeId, g.deviceId, g.metrics);
+        })).then(function() {
+          ctx.next(msg);
+        }).catch(function(e) {
+          console.error("[nexa-logic] sparkplug-write-multi node " + node.id + " failed:", e);
+        });
+      }
+    }
+  });
+
+  // src/features/logic/link/runtime.js
+  defineLogicRuntimes({
+    // msg.payload to the flow; output 1: msg.payload = its answer, output 2: msg.error
+    "link-request": {
+      run: function(node, msg, ctx) {
+        linkRequest(node.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function(value) {
+          const out = cloneMsg(msg || {});
+          out.payload = value;
+          delete out.error;
+          ctx.nextPort(0, out);
+        }, function(e) {
+          const out = cloneMsg(msg || {});
+          out.error = e && e.message ? e.message : String(e);
+          ctx.nextPort(1, out);
+        });
+      }
+    },
+    // fire and forget; passes msg on once it is sent
+    "link-send": {
+      run: function(node, msg, ctx) {
+        linkSend(node.channel, msg ? msg.payload : null, ctx.screen && ctx.screen.id).then(function() {
+          ctx.next(msg);
+        }, function(e) {
+          console.error("[nexa-logic] To Node-RED node " + node.id + " failed: " + (e && e.message));
+        });
+      }
+    },
+    // fired by ./link-ops.js for every message the flow pushes
+    "link-receive": { run: function(node, msg) {
+      return msg;
+    } }
+  });
+
+  // src/runtime/logic/runner.js
+  function runCtx(screen2, node, budget) {
+    return {
+      screen: screen2,
+      budget,
+      next: function(m) {
+        continuePropagation(screen2, node, m, budget);
+      },
+      nextPort: function(port, m) {
+        continueFromPort(screen2, node, m, port, budget);
+      },
+      continuePropagation,
+      runLogicGraph
+    };
+  }
+  function runLogicGraph(screen2, node, msg, budget) {
+    budget = budget || { steps: 0 };
+    if (!node) {
+      logicTrace("runLogicGraph: a wire points at a node that no longer exists");
+      return;
+    }
+    if (++budget.steps > LOGIC_MAX_STEPS) {
+      console.error("[nexa-logic] stopped after " + LOGIC_MAX_STEPS + " steps - this looks like an unbounded loop in the wiring");
+      return;
+    }
+    logicTrace("running", node.type, node.id, "with msg =", msg);
+    var rt = logicRuntime(node.type);
+    if (!rt) {
+      continuePropagation(screen2, node, msg, budget);
+      return;
+    }
+    var out;
+    try {
+      out = rt.run(node, msg, runCtx(screen2, node, budget));
+    } catch (e) {
+      console.error("[nexa-logic] " + node.type + " node " + node.id + " threw:", e);
+      return;
+    }
+    if (out !== void 0 && out !== null) continuePropagation(screen2, node, out, budget);
   }
   function continuePropagation(screen2, sourceNode, msg, budget) {
     if (msg === null || msg === void 0) {

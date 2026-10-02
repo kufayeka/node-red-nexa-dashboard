@@ -1,4 +1,5 @@
-import { state, SVG_NS, LOGIC_NODE_W, LOGIC_NODE_H, LOGIC_NODE_KINDS, getActiveScreen, findLogicNode, genId, markDirty, logicOutputCount } from "../state.js";
+import { state, SVG_NS, LOGIC_NODE_W, LOGIC_NODE_H, getActiveScreen, findLogicNode, genId, markDirty } from "../state.js";
+import { logicMeta, logicOutputCount } from "../features/logic/registry.js";
 import { pushHistory } from "../history.js";
 import { logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
 
@@ -67,8 +68,7 @@ export function findNearestInputPort(screen, excludeNodeId, localX, localY) {
     var best = null, bestDist = LOGIC_PORT_HIT_RADIUS * LOGIC_PORT_HIT_RADIUS;
     (screen.logic.nodes || []).forEach(function (n) {
         if (n.id === excludeNodeId) return;
-        var kind = LOGIC_NODE_KINDS[n.type] || {};
-        if (!kind.hasInput) return;
+        if (!(logicMeta(n.type).inputs > 0)) return;
         var d = pointDistanceSq(logicNodePortPoint(n, "input"), { x: localX, y: localY });
         if (d <= bestDist) { bestDist = d; best = n; }
     });
@@ -123,8 +123,8 @@ export function hasIllegalRouteFanOut(startNodeId, nodes, wires) {
         var outWires = (wires || []).filter(function (w) { return w.from === currId; });
         if (!outWires.length) return 0;
 
-        if (node.type === "switch") {
-            // A switch node's outputs are conditional / mutually exclusive.
+        if (logicMeta(node.type).exclusivePorts) {
+            // its outputs are conditional / mutually exclusive (a Switch, a Request: answer or error).
             // Multiple wires on the SAME port fire in parallel.
             var portMap = {};
             outWires.forEach(function (w) {

@@ -1,4 +1,5 @@
 import { state, getActiveScreen, findTemplate, templateContains, Tree, Scope, Layout, getApp } from "../state.js";
+import { logicMeta } from "../features/logic/registry.js";
 
 function getComponentColor(category, typeId) {
     if (typeId === "@lit-component") return "#f3e8ff";
@@ -28,78 +29,10 @@ function getComponentIcon(label, typeId) {
     return "fa-cube";
 }
 
+// a palette chip's look comes from the node type's meta (src/features/logic/<family>/meta.js)
 function getLogicNodeMeta(type) {
-    if (type === "template-output") return { color: "#e3d3ee", icon: "fa-sign-out", portOut: false, portIn: true };
-    if (type === "template-event") return { color: "#e6e0f8", icon: "fa-sign-in", portOut: true, portIn: false };
-    if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
-        return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
-    }
-    if (type === "route-trigger") {
-        return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
-    }
-    if (type === "render-screen") {
-        return { color: "#cde6f2", icon: "fa-desktop", portOut: true, portIn: true };
-    }
-    if (type === "send-to-flow") {
-        return { color: "#e3d3ee", icon: "fa-paper-plane", portOut: true, portIn: true };
-    }
-    if (type === "function") {
-        return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
-    }
-    if (type === "switch") {
-        return { color: "#e2d96e", icon: "fa-filter", portOut: true, portIn: true };
-    }
-    if (type === "debug") {
-        return { color: "#87a980", icon: "fa-bug", portOut: false, portIn: true };
-    }
-    if (type === "inject") {
-        return { color: "#a6bbcf", icon: "fa-clock-o", portOut: true, portIn: false };
-    }
-    if (type === "reload") {
-        return { color: "#e2d96e", icon: "fa-refresh", portOut: true, portIn: true };
-    }
-    if (type === "open-url") {
-        return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
-    }
-    if (type === "delay") {
-        return { color: "#fdf0c2", icon: "fa-hourglass-half", portOut: true, portIn: true };
-    }
-    if (type === "navigate") {
-        return { color: "#a6bbcf", icon: "fa-compass", portOut: true, portIn: true };
-    }
-    if (type === "ui-update" || type === "set-template-param") {
-        return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
-    }
-    if (type === "layer-control") {
-        return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
-    }
-    if (type === "set-variable" || type === "get-variable") {
-        return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
-    }
-    if (type === "set-variable-multi" || type === "get-variable-multi") {
-        return { color: "#dac8ee", icon: "fa-tags", portOut: true, portIn: true };
-    }
-    if (type === "on-variable-change") {
-        return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
-    }
-    if (type === "join") {
-        return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
-    }
-    if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
-    if (type === "link-request") return { color: "#f0d4d7", icon: "fa-exchange", portOut: true, portIn: true };
-    if (type === "link-send") return { color: "#f0d4d7", icon: "fa-sign-out", portOut: true, portIn: true };
-    if (type === "link-receive") return { color: "#f0d4d7", icon: "fa-sign-in", portOut: true, portIn: false };
-    if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
-    if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
-    if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
-    if (type === "teleport") return { color: "#e8d6f0", icon: "fa-share", portOut: true, portIn: true };
-    if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
-    if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
-    if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
-    if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
-        return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
-    }
-    return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
+    var m = logicMeta(type);
+    return { color: m.chipColor, icon: m.icon, portOut: m.outputs > 0, portIn: m.inputs > 0 };
 }
 
 /** The output names a template sends to its host ("Send to Host" nodes), in order. */

@@ -21,7 +21,7 @@ import { interpolateProps, refreshComponentRender, fireParamInputForInstance, se
 import { makeCtx, fireLifecycle, runLogicGraph } from "../logic/runner.js";
 import { registerSparkplugBoundComponentsFrom } from "../io/sparkplug.js";
 import { setUpSparkplugLiveBinding } from "../io/client.js";
-import { syncLinkSubscriptions } from "../logic/nodes/link-nodes.js";
+import { syncLinkSubscriptions } from "../../features/logic/link/link-ops.js";
 import { cloneMsg } from "../logic/context.js";
 import { startBreakpoints } from "./breakpoints.js";
 import { startTheme } from "./theme.js";

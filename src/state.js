@@ -5,6 +5,8 @@ import * as Scope from "./model/scope.js";
 import * as Types from "./model/types.js";
 import * as Theme from "./model/theme.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
+import { logicMeta, logicTypes, logicOutputCount } from "./features/logic/registry.js";
+import "./features/logic/meta.js";
 
 export { Tree, Layout, Scope, Types, Theme };
 
@@ -21,78 +23,14 @@ export const LOGIC_GRID_SIZE = 20;
 /** A Logic node position on the canvas grid (hold Alt while dragging to place it freely). */
 export function snapLogic(v) { return Math.round(v / LOGIC_GRID_SIZE) * LOGIC_GRID_SIZE; }
 
-export const LOGIC_NODE_KINDS = {
-    onload: { label: "On Load", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    onrender: { label: "On Render", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    onclose: { label: "On Close", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    "ui-event": { hasInput: false, hasOutput: true, color: "#3a6fb0" },
-    "ui-update": { hasInput: true, hasOutput: false, color: "#b0663a" },
-    "function": { label: "Function", hasInput: true, hasOutput: true, color: "#7a5aa8" },
-    "switch": { label: "Switch", hasInput: true, hasOutput: true, color: "#e2d96e" },
-    "debug": { label: "Debug", hasInput: true, hasOutput: false, color: "#777" },
-    "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
-    "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
-    "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" },
-    "layer-control": { label: "Layer Control", hasInput: true, hasOutput: false, color: "#c78a3a" },
-    // Subflow-style parameter passing (see plan "Phase 3 revision"):
-    // param-input is a SOURCE, like onload/onrender — only meaningful while
-    // editing a Template, outputs that instance's current param snapshot.
-    // set-template-param is a SINK placed on any canvas that can see a
-    // "@template" instance, setting ONE of its declared params by name.
-    "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    // a template's output: inside the template, sends a message OUT to where it is used —
-    // a copy a Populate made: out of that Layout node; a placed instance: its
-    // "On Template Output" node on the surface around it (open a dialog, a popup…)
-    "template-output": { label: "Send to Host", hasInput: true, hasOutput: false, color: "#9c6b9e" },
-    "template-event": { label: "On Template Output", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
-    // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
-    "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    // multi-variable variants: apply / read several variables in one node
-    "set-variable-multi": { label: "Set Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    "get-variable-multi": { label: "Get Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    // a source: fires when the variable it watches changes (payload = new, previous = old)
-    "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    // web / data: an API call (async, continues when the response is in), browser storage, cookies
-    "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    // Nexa Link: a real Node-RED flow ("from Nexa" / "to Nexa" nodes, a channel config node); runs on the server
-    "link-request": { label: "Request", hasInput: true, hasOutput: true, outputs: 2, outputLabels: ["answer", "error"], color: "#8f2f3a" },
-    "link-send": { label: "To Node-RED", hasInput: true, hasOutput: true, color: "#8f2f3a" },
-    "link-receive": { label: "From Node-RED", hasInput: false, hasOutput: true, color: "#8f2f3a" },
-    // the repeater: a container filled with a template, one card per item
-    "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
-    // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
-    "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
-    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
-    "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
-    "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
-    // a node drawn in a teleport target / on the page, or back home
-    "teleport": { label: "Teleport", hasInput: true, hasOutput: true, color: "#8e44ad" },
-    "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
-    // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
-    // "function", they're asynchronous (an HTTP round-trip) and only
-    // continue the wire once the write is actually published; see
-    // lib/nexa-runtime-client.js's runLogicGraph.
-    "sparkplug-write": { hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    // timing / delay node: pauses execution for delay ms/s before continuing
-    "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
-    // join: collects messages from multiple upstream channels before emitting
-    "join": { label: "Join", hasInput: true, hasOutput: true, color: "#c8a03a" },
-    // SPA navigation: transition to a named screen, path, or history action without page reload
-    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
-    // public routing entrypoint for screen flows
-    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
-    // fallback handler for unmatched subpaths under a flow gateway
-    "route-not-found": { label: "Route Not Found", hasInput: false, hasOutput: true, color: "#e11d48" },
-    // renders and serves a screen inside a flow, waiting for send-to-flow messages
-    "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
-    // sends data back from a screen to the active flow's Render Screen node
-    "send-to-flow": { label: "Send to Flow", hasInput: true, hasOutput: true, color: "#0ea5e9" }
-};
+// Logic node types: the registry (src/features/logic/). LOGIC_NODE_KINDS is the old view of it,
+// kept for older callers and tests; new code asks logicMeta(type).
+export const LOGIC_NODE_KINDS = {};
+logicTypes().forEach(function (t) {
+    var m = logicMeta(t);
+    LOGIC_NODE_KINDS[t] = { label: m.label, hasInput: m.inputs > 0, hasOutput: m.outputs > 0, color: m.color, outputs: m.outputs, outputLabels: m.outputLabels };
+});
+export { logicOutputCount, logicMeta };
 
 export const state = {
     screens: [],
@@ -176,14 +114,6 @@ export const state = {
 
 // The editor's live state, reachable from the browser console and the tests.
 if (typeof window !== "undefined") window.__nexaEditorState = state;
-
-/** How many output ports a Logic node draws: a Switch has one per rule, a kind may declare `outputs`. */
-export function logicOutputCount(node) {
-    if (!node) return 1;
-    if (node.type === "switch") return (node.rules && node.rules.length) ? node.rules.length : 1;
-    var kind = LOGIC_NODE_KINDS[node.type];
-    return kind && kind.outputs > 1 ? kind.outputs : 1;
-}
 
 export function genId() {
     return "n" + Math.random().toString(16).slice(2, 10);

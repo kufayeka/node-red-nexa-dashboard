@@ -137,6 +137,7 @@
     isNodeInteractable: () => isNodeInteractable,
     isNodeLocked: () => isNodeLocked,
     isNodeVisible: () => isNodeVisible,
+    logicMeta: () => logicMeta,
     logicOutputCount: () => logicOutputCount,
     makeFlow: () => makeFlow,
     makeFolder: () => makeFolder,
@@ -2004,6 +2005,143 @@
     return surface;
   }
 
+  // src/features/logic/registry.js
+  var metas = /* @__PURE__ */ new Map();
+  var editors = /* @__PURE__ */ new Map();
+  var FALLBACK_META = Object.freeze({ type: "?", label: "", color: "#607d8b", icon: "fa-cube", chipColor: "#e0e7ff", inputs: 1, outputs: 1 });
+  function defineLogicNodes(list) {
+    list.forEach(function(m) {
+      if (!m || !m.type) throw new Error("defineLogicNodes: a node needs a type");
+      metas.set(m.type, Object.freeze(Object.assign({}, FALLBACK_META, m)));
+    });
+  }
+  function defineLogicEditors(parts) {
+    Object.keys(parts).forEach(function(type) {
+      editors.set(type, parts[type]);
+    });
+  }
+  function logicMeta(type) {
+    return metas.get(type) || FALLBACK_META;
+  }
+  function logicEditor(type) {
+    return editors.get(type) || null;
+  }
+  function logicTypes() {
+    return Array.from(metas.keys());
+  }
+  function logicOutputCount(node) {
+    if (!node) return 1;
+    const m = logicMeta(node.type);
+    return typeof m.ports === "function" ? m.ports(node) : m.outputs;
+  }
+
+  // src/features/logic/lifecycle/meta.js
+  var meta_default = [
+    { type: "onload", label: "On Load", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "onrender", label: "On Render", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "onclose", label: "On Close", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "inject", label: "Inject", color: "#a5c261", icon: "fa-clock-o", chipColor: "#a6bbcf", inputs: 0, outputs: 1 }
+  ];
+
+  // src/features/logic/ui/meta.js
+  var meta_default2 = [
+    { type: "ui-event", label: "", color: "#3a6fb0", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "ui-update", label: "", color: "#b0663a", icon: "fa-pencil-square-o", chipColor: "#c0deed", inputs: 1, outputs: 0 },
+    { type: "layer-control", label: "Layer Control", color: "#c78a3a", icon: "fa-object-group", chipColor: "#f0dcb8", inputs: 1, outputs: 0 },
+    // a node drawn in a teleport target / on the page, or back home
+    { type: "teleport", label: "Teleport", color: "#8e44ad", icon: "fa-share", chipColor: "#e8d6f0", inputs: 1, outputs: 1 },
+    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
+    { type: "overlay-open", label: "Open", color: "#8a5a3a", icon: "fa-window-maximize", chipColor: "#f3dfcc", inputs: 1, outputs: 1 },
+    { type: "overlay-close", label: "Close", color: "#8a5a3a", icon: "fa-window-close-o", chipColor: "#f3dfcc", inputs: 1, outputs: 0 }
+  ];
+
+  // src/features/logic/control/meta.js
+  var meta_default3 = [
+    { type: "function", label: "Function", color: "#7a5aa8", icon: "fa-code", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
+    // one output per rule; exclusivePorts: its outputs are alternatives (the flow fan-out check counts one at a time)
+    {
+      type: "switch",
+      label: "Switch",
+      color: "#e2d96e",
+      icon: "fa-filter",
+      chipColor: "#e2d96e",
+      inputs: 1,
+      outputs: 1,
+      exclusivePorts: true,
+      ports: function(node) {
+        return node.rules && node.rules.length ? node.rules.length : 1;
+      }
+    },
+    { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
+    // collects messages from several wires before it sends one. Editor only so far: the page passes each message on.
+    { type: "join", label: "Join", color: "#c8a03a", icon: "fa-compress", chipColor: "#fce8b2", inputs: 1, outputs: 1 },
+    { type: "debug", label: "Debug", color: "#777", icon: "fa-bug", chipColor: "#87a980", inputs: 1, outputs: 0 }
+  ];
+
+  // src/features/logic/variables/meta.js
+  var meta_default4 = [
+    { type: "set-variable", label: "Set Variable", color: "#9c6b9e", icon: "fa-tag", chipColor: "#e3d3ee", inputs: 1, outputs: 1 },
+    { type: "get-variable", label: "Get Variable", color: "#9c6b9e", icon: "fa-tag", chipColor: "#e3d3ee", inputs: 1, outputs: 1 },
+    { type: "set-variable-multi", label: "Set Variables", color: "#9c6b9e", icon: "fa-tags", chipColor: "#dac8ee", inputs: 1, outputs: 1 },
+    { type: "get-variable-multi", label: "Get Variables", color: "#9c6b9e", icon: "fa-tags", chipColor: "#dac8ee", inputs: 1, outputs: 1 },
+    // a source: fires when a watched variable changes (payload = new, previous = old)
+    { type: "on-variable-change", label: "Watch Variable", color: "#4b7d4b", icon: "fa-eye", chipColor: "#c7e9c0", inputs: 0, outputs: 1 }
+  ];
+
+  // src/features/logic/templates/meta.js
+  var meta_default5 = [
+    // inside a template: the instance's params changed
+    { type: "param-input", label: "On Params Change", color: "#4b7d4b", icon: "fa-play-circle-o", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    // inside a template: send a message out to where it is used
+    { type: "template-output", label: "Send to Host", color: "#9c6b9e", icon: "fa-sign-out", chipColor: "#e3d3ee", inputs: 1, outputs: 0 },
+    // around a placed instance: what it sent out
+    { type: "template-event", label: "On Template Output", color: "#4b7d4b", icon: "fa-sign-in", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    { type: "set-template-param", label: "", color: "#9c6b9e", icon: "fa-pencil-square-o", chipColor: "#c0deed", inputs: 1, outputs: 0 },
+    { type: "populate", label: "Populate", color: "#5b8a3a", icon: "fa-th-list", chipColor: "#d7ecc6", inputs: 1, outputs: 1 },
+    // a container (frame) as a node: Populate -> [Layout] fills it; its output is what its copies send
+    { type: "layout", label: "Layout", color: "#5b8a3a", icon: "fa-columns", chipColor: "#e8f3de", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/navigation/meta.js
+  var meta_default6 = [
+    { type: "navigate", label: "Goto Screen", color: "#458296", icon: "fa-compass", chipColor: "#a6bbcf", inputs: 1, outputs: 1 },
+    { type: "open-url", label: "Open URL", color: "#5a8f8f", icon: "fa-external-link", chipColor: "#a6bbcf", inputs: 1, outputs: 0 },
+    { type: "reload", label: "Reload Page", color: "#8a8a8a", icon: "fa-refresh", chipColor: "#e2d96e", inputs: 1, outputs: 0 },
+    // a flow's public entry point (one per flow)
+    { type: "route-trigger", label: "Route Trigger", color: "#a370f7", icon: "fa-road", chipColor: "#e6e0f8", inputs: 0, outputs: 1 },
+    // a sub-path under the flow matched no screen (one per flow)
+    { type: "route-not-found", label: "Route Not Found", color: "#e11d48", icon: "fa-ban", chipColor: "#fde2e7", inputs: 0, outputs: 1 },
+    { type: "render-screen", label: "Render Screen", color: "#0284c7", icon: "fa-desktop", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    // from a screen back to the active flow's Render Screen node
+    { type: "send-to-flow", label: "Send to Flow", color: "#0ea5e9", icon: "fa-paper-plane", chipColor: "#e3d3ee", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/web/meta.js
+  var meta_default7 = [
+    { type: "http-request", label: "HTTP Request", color: "#3a8fb0", icon: "fa-globe", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    { type: "storage", label: "Storage", color: "#3a8fb0", icon: "fa-database", chipColor: "#cde6f2", inputs: 1, outputs: 1 },
+    { type: "cookie", label: "Cookie", color: "#3a8fb0", icon: "fa-key", chipColor: "#cde6f2", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/sparkplug/meta.js
+  var meta_default8 = [
+    { type: "sparkplug-write", label: "Sparkplug Write", color: "#2f8f6f", icon: "fa-upload", chipColor: "#bfe8d8", inputs: 1, outputs: 1 },
+    { type: "sparkplug-write-multi", label: "Sparkplug Write Multi", color: "#2f8f6f", icon: "fa-upload", chipColor: "#bfe8d8", inputs: 1, outputs: 1 }
+  ];
+
+  // src/features/logic/link/meta.js
+  var meta_default9 = [
+    { type: "link-request", label: "Request", color: "#8f2f3a", icon: "fa-exchange", chipColor: "#f0d4d7", inputs: 1, outputs: 2, outputLabels: ["answer", "error"], exclusivePorts: true },
+    { type: "link-send", label: "To Node-RED", color: "#8f2f3a", icon: "fa-sign-out", chipColor: "#f0d4d7", inputs: 1, outputs: 1 },
+    { type: "link-receive", label: "From Node-RED", color: "#8f2f3a", icon: "fa-sign-in", chipColor: "#f0d4d7", inputs: 0, outputs: 1 }
+  ];
+
+  // src/features/logic/meta.js
+  var FAMILIES = { lifecycle: meta_default, ui: meta_default2, control: meta_default3, variables: meta_default4, templates: meta_default5, navigation: meta_default6, web: meta_default7, sparkplug: meta_default8, link: meta_default9 };
+  Object.keys(FAMILIES).forEach(function(f) {
+    defineLogicNodes(FAMILIES[f]);
+  });
+
   // src/state.js
   var ZOOM_MIN = 0.1;
   var ZOOM_MAX = 2;
@@ -2017,78 +2155,11 @@
   function snapLogic(v) {
     return Math.round(v / LOGIC_GRID_SIZE) * LOGIC_GRID_SIZE;
   }
-  var LOGIC_NODE_KINDS = {
-    onload: { label: "On Load", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    onrender: { label: "On Render", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    onclose: { label: "On Close", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    "ui-event": { hasInput: false, hasOutput: true, color: "#3a6fb0" },
-    "ui-update": { hasInput: true, hasOutput: false, color: "#b0663a" },
-    "function": { label: "Function", hasInput: true, hasOutput: true, color: "#7a5aa8" },
-    "switch": { label: "Switch", hasInput: true, hasOutput: true, color: "#e2d96e" },
-    "debug": { label: "Debug", hasInput: true, hasOutput: false, color: "#777" },
-    "inject": { label: "Inject", hasInput: false, hasOutput: true, color: "#a5c261" },
-    "reload": { label: "Reload Page", hasInput: true, hasOutput: false, color: "#8a8a8a" },
-    "open-url": { label: "Open URL", hasInput: true, hasOutput: false, color: "#5a8f8f" },
-    "layer-control": { label: "Layer Control", hasInput: true, hasOutput: false, color: "#c78a3a" },
-    // Subflow-style parameter passing (see plan "Phase 3 revision"):
-    // param-input is a SOURCE, like onload/onrender — only meaningful while
-    // editing a Template, outputs that instance's current param snapshot.
-    // set-template-param is a SINK placed on any canvas that can see a
-    // "@template" instance, setting ONE of its declared params by name.
-    "param-input": { label: "On Params Change", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    // a template's output: inside the template, sends a message OUT to where it is used —
-    // a copy a Populate made: out of that Layout node; a placed instance: its
-    // "On Template Output" node on the surface around it (open a dialog, a popup…)
-    "template-output": { label: "Send to Host", hasInput: true, hasOutput: false, color: "#9c6b9e" },
-    "template-event": { label: "On Template Output", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    "set-template-param": { hasInput: true, hasOutput: false, color: "#9c6b9e" },
-    // sets a variable (screen / group / frame, see src/model/scope.js); passes msg on
-    "set-variable": { label: "Set Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    "get-variable": { label: "Get Variable", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    // multi-variable variants: apply / read several variables in one node
-    "set-variable-multi": { label: "Set Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    "get-variable-multi": { label: "Get Variables", hasInput: true, hasOutput: true, color: "#9c6b9e" },
-    // a source: fires when the variable it watches changes (payload = new, previous = old)
-    "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
-    // web / data: an API call (async, continues when the response is in), browser storage, cookies
-    "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    // Nexa Link: a real Node-RED flow ("from Nexa" / "to Nexa" nodes, a channel config node); runs on the server
-    "link-request": { label: "Request", hasInput: true, hasOutput: true, outputs: 2, outputLabels: ["answer", "error"], color: "#8f2f3a" },
-    "link-send": { label: "To Node-RED", hasInput: true, hasOutput: true, color: "#8f2f3a" },
-    "link-receive": { label: "From Node-RED", hasInput: false, hasOutput: true, color: "#8f2f3a" },
-    // the repeater: a container filled with a template, one card per item
-    "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
-    // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
-    "layout": { label: "Layout", hasInput: true, hasOutput: true, color: "#5b8a3a" },
-    // a dialog / drawer: Open (its output fires when it closes, with the result) / Close
-    "overlay-open": { label: "Open", hasInput: true, hasOutput: true, color: "#8a5a3a" },
-    "overlay-close": { label: "Close", hasInput: true, hasOutput: false, color: "#8a5a3a" },
-    // a node drawn in a teleport target / on the page, or back home
-    "teleport": { label: "Teleport", hasInput: true, hasOutput: true, color: "#8e44ad" },
-    "storage": { label: "Storage", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    "cookie": { label: "Cookie", hasInput: true, hasOutput: true, color: "#3a8fb0" },
-    // Both write to a live Sparkplug tag (nodes/nexa-sparkplug.js's own MQTT
-    // connection, via a DCMD/NCMD publish) — hasOutput:true because, like
-    // "function", they're asynchronous (an HTTP round-trip) and only
-    // continue the wire once the write is actually published; see
-    // lib/nexa-runtime-client.js's runLogicGraph.
-    "sparkplug-write": { hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    "sparkplug-write-multi": { label: "Sparkplug Write Multi", hasInput: true, hasOutput: true, color: "#2f8f6f" },
-    // timing / delay node: pauses execution for delay ms/s before continuing
-    "delay": { label: "Delay", hasInput: true, hasOutput: true, color: "#c8b261" },
-    // join: collects messages from multiple upstream channels before emitting
-    "join": { label: "Join", hasInput: true, hasOutput: true, color: "#c8a03a" },
-    // SPA navigation: transition to a named screen, path, or history action without page reload
-    "navigate": { label: "Goto Screen", hasInput: true, hasOutput: true, color: "#458296" },
-    // public routing entrypoint for screen flows
-    "route-trigger": { label: "Route Trigger", hasInput: false, hasOutput: true, color: "#a370f7" },
-    // fallback handler for unmatched subpaths under a flow gateway
-    "route-not-found": { label: "Route Not Found", hasInput: false, hasOutput: true, color: "#e11d48" },
-    // renders and serves a screen inside a flow, waiting for send-to-flow messages
-    "render-screen": { label: "Render Screen", hasInput: true, hasOutput: true, color: "#0284c7" },
-    // sends data back from a screen to the active flow's Render Screen node
-    "send-to-flow": { label: "Send to Flow", hasInput: true, hasOutput: true, color: "#0ea5e9" }
-  };
+  var LOGIC_NODE_KINDS = {};
+  logicTypes().forEach(function(t2) {
+    var m = logicMeta(t2);
+    LOGIC_NODE_KINDS[t2] = { label: m.label, hasInput: m.inputs > 0, hasOutput: m.outputs > 0, color: m.color, outputs: m.outputs, outputLabels: m.outputLabels };
+  });
   var state = {
     screens: [],
     activeScreenId: null,
@@ -2161,12 +2232,6 @@
     templateParamsEl: null
   };
   if (typeof window !== "undefined") window.__nexaEditorState = state;
-  function logicOutputCount(node) {
-    if (!node) return 1;
-    if (node.type === "switch") return node.rules && node.rules.length ? node.rules.length : 1;
-    var kind = LOGIC_NODE_KINDS[node.type];
-    return kind && kind.outputs > 1 ? kind.outputs : 1;
-  }
   function genId() {
     return "n" + Math.random().toString(16).slice(2, 10);
   }
@@ -2416,10 +2481,10 @@
     return newFlow;
   }
   function convertScreenToTemplate(id2) {
-    var screen2 = state.screens.find(function(s) {
+    var screen = state.screens.find(function(s) {
       return s.id === id2;
     });
-    if (!screen2) return null;
+    if (!screen) return null;
     if (state.screens.length <= 1) {
       var replacement = makeScreen({ name: "Screen " + (state.screenCounter + 1) });
       state.screens.push(replacement);
@@ -2430,21 +2495,21 @@
     });
     state.templateCounter++;
     var template = {
-      id: screen2.id,
-      name: screen2.name,
-      identifier: (screen2.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
-      parentId: screen2.parentId || null,
-      width: screen2.width,
-      height: screen2.height,
-      gridSize: screen2.gridSize,
-      snap: screen2.snap !== false,
-      treeVersion: screen2.treeVersion || TREE_VERSION,
+      id: screen.id,
+      name: screen.name,
+      identifier: (screen.name || "template").toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+      parentId: screen.parentId || null,
+      width: screen.width,
+      height: screen.height,
+      gridSize: screen.gridSize,
+      snap: screen.snap !== false,
+      treeVersion: screen.treeVersion || TREE_VERSION,
       kind: "composite",
       params: [],
-      variables: screen2.variables || [],
-      components: screen2.components || [],
-      orphans: screen2.orphans || [],
-      logic: screen2.logic || { nodes: [], wires: [] }
+      variables: screen.variables || [],
+      components: screen.components || [],
+      orphans: screen.orphans || [],
+      logic: screen.logic || { nodes: [], wires: [] }
     };
     state.templates.push(template);
     return template;
@@ -2457,7 +2522,7 @@
     });
     state.screenCounter++;
     var slug2 = (template.identifier || template.name || "screen").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    var screen2 = {
+    var screen = {
       id: template.id,
       name: template.name,
       path: "/" + slug2,
@@ -2474,8 +2539,8 @@
       orphans: template.orphans || [],
       logic: template.logic || { nodes: [], wires: [] }
     };
-    state.screens.push(screen2);
-    return screen2;
+    state.screens.push(screen);
+    return screen;
   }
   function makeSurfaceBase(opts) {
     return {
@@ -2492,11 +2557,11 @@
   }
   function makeScreen(opts) {
     state.screenCounter++;
-    var screen2 = makeSurfaceBase(opts);
-    screen2.name = opts && opts.name || "Screen " + state.screenCounter;
-    screen2.path = opts && opts.path || "/screen" + state.screenCounter;
-    screen2.parentId = opts && opts.parentId || null;
-    return screen2;
+    var screen = makeSurfaceBase(opts);
+    screen.name = opts && opts.name || "Screen " + state.screenCounter;
+    screen.path = opts && opts.path || "/screen" + state.screenCounter;
+    screen.parentId = opts && opts.parentId || null;
+    return screen;
   }
   function makeTemplate(opts) {
     state.templateCounter++;
@@ -2736,15 +2801,15 @@
     return !!(surface && effectiveLocked(surface, id2));
   }
   function findLogicNode(screenOrId, maybeId) {
-    var screen2, id2;
+    var screen, id2;
     if (maybeId !== void 0) {
-      screen2 = screenOrId;
+      screen = screenOrId;
       id2 = maybeId;
     } else {
-      screen2 = getActiveScreen();
+      screen = getActiveScreen();
       id2 = screenOrId;
     }
-    return screen2 && screen2.logic && (screen2.logic.nodes || []).find(function(n) {
+    return screen && screen.logic && (screen.logic.nodes || []).find(function(n) {
       return n.id === id2;
     });
   }
@@ -2830,8 +2895,8 @@
     state.redoStack = [];
   }
   function applyHistoryMutation(ev, direction) {
-    var screen2 = findSurfaceById(ev.screenId);
-    if (!screen2) return;
+    var screen = findSurfaceById(ev.screenId);
+    if (!screen) return;
     if (ev.t === "multi") {
       var subs = direction === "undo" ? ev.events.slice().reverse() : ev.events;
       subs.forEach(function(sub) {
@@ -2839,73 +2904,73 @@
       });
     } else if (ev.t === "tree") {
       var snap2 = JSON.parse(direction === "undo" ? ev.before : ev.after);
-      restoreTree(screen2, snap2);
+      restoreTree(screen, snap2);
     } else if (ev.t === "move") {
-      var comp = tree_exports.find(screen2, ev.id);
+      var comp = tree_exports.find(screen, ev.id);
       if (!comp) return;
       var pos = direction === "undo" ? ev.from : ev.to;
       comp.x = pos.x;
       comp.y = pos.y;
-      tree_exports.refitGroupsUp(screen2, ev.id);
+      tree_exports.refitGroupsUp(screen, ev.id);
     } else if (ev.t === "resize") {
-      var rcomp = tree_exports.find(screen2, ev.id);
+      var rcomp = tree_exports.find(screen, ev.id);
       if (!rcomp) return;
       var box2 = direction === "undo" ? ev.from : ev.to;
       rcomp.x = box2.x;
       rcomp.y = box2.y;
       rcomp.w = box2.w;
       rcomp.h = box2.h;
-      tree_exports.refitGroupsUp(screen2, ev.id);
+      tree_exports.refitGroupsUp(screen, ev.id);
     } else if (ev.t === "rotate") {
-      var tcomp = tree_exports.find(screen2, ev.id);
+      var tcomp = tree_exports.find(screen, ev.id);
       if (!tcomp) return;
       tcomp.rotation = direction === "undo" ? ev.from : ev.to;
     } else if (ev.t === "flip") {
-      var fcomp = tree_exports.find(screen2, ev.id);
+      var fcomp = tree_exports.find(screen, ev.id);
       if (!fcomp) return;
       var fstate = direction === "undo" ? ev.from : ev.to;
       fcomp.flipH = fstate.flipH;
       fcomp.flipV = fstate.flipV;
     } else if (ev.t === "props") {
-      var pcomp = tree_exports.find(screen2, ev.id);
+      var pcomp = tree_exports.find(screen, ev.id);
       if (!pcomp) return;
       pcomp.props = pcomp.props || {};
       var pv = direction === "undo" ? ev.from : ev.to;
       if (pv === void 0) delete pcomp.props[ev.key];
       else pcomp.props[ev.key] = pv !== null && typeof pv === "object" ? JSON.parse(JSON.stringify(pv)) : pv;
     } else if (ev.t === "node") {
-      var ncomp = tree_exports.find(screen2, ev.id);
+      var ncomp = tree_exports.find(screen, ev.id);
       if (!ncomp) return;
       var nv = direction === "undo" ? ev.from : ev.to;
       if (nv === void 0) delete ncomp[ev.key];
       else ncomp[ev.key] = nv !== null && typeof nv === "object" ? JSON.parse(JSON.stringify(nv)) : nv;
     } else if (ev.t === "addLogicNode") {
       if (direction === "undo") {
-        screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
+        screen.logic.nodes = screen.logic.nodes.filter(function(n) {
           return n.id !== ev.node.id;
         });
       } else {
-        screen2.logic.nodes.push(ev.node);
+        screen.logic.nodes.push(ev.node);
       }
     } else if (ev.t === "deleteLogicNode") {
       if (direction === "undo") {
-        screen2.logic.nodes.push(ev.node);
+        screen.logic.nodes.push(ev.node);
         ev.wires.forEach(function(w) {
-          screen2.logic.wires.push(w);
+          screen.logic.wires.push(w);
         });
       } else {
-        screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
+        screen.logic.nodes = screen.logic.nodes.filter(function(n) {
           return n.id !== ev.node.id;
         });
         var removedWireIds = ev.wires.map(function(w) {
           return w.id;
         });
-        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+        screen.logic.wires = screen.logic.wires.filter(function(w) {
           return removedWireIds.indexOf(w.id) === -1;
         });
       }
     } else if (ev.t === "moveLogicNode") {
-      var lnode = screen2.logic.nodes.find(function(n) {
+      var lnode = screen.logic.nodes.find(function(n) {
         return n.id === ev.id;
       });
       if (!lnode) return;
@@ -2914,17 +2979,17 @@
       lnode.y = lpos.y;
     } else if (ev.t === "addLogicWire") {
       if (direction === "undo") {
-        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+        screen.logic.wires = screen.logic.wires.filter(function(w) {
           return w.id !== ev.wire.id;
         });
       } else {
-        screen2.logic.wires.push(ev.wire);
+        screen.logic.wires.push(ev.wire);
       }
     } else if (ev.t === "deleteLogicWire") {
       if (direction === "undo") {
-        screen2.logic.wires.push(ev.wire);
+        screen.logic.wires.push(ev.wire);
       } else {
-        screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+        screen.logic.wires = screen.logic.wires.filter(function(w) {
           return w.id !== ev.wire.id;
         });
       }
@@ -2936,9 +3001,9 @@
   }
   function applyHistoryEvent(ev, direction) {
     applyHistoryMutation(ev, direction);
-    var screen2 = findSurfaceById(ev.screenId);
+    var screen = findSurfaceById(ev.screenId);
     var active = getActiveScreen();
-    var isActiveSurface = screen2 && active && screen2.id === active.id;
+    var isActiveSurface = screen && active && screen.id === active.id;
     if (isLogicHistoryEvent(ev)) {
       state.logicSelectedIds = [];
       if (isActiveSurface && _renderLogicCanvasFn) _renderLogicCanvasFn();
@@ -3010,12 +3075,12 @@
     var el = state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
     return el && typeof el.offsetWidth === "number" && el.isConnected ? el : null;
   }
-  function readbackLayout(screen2) {
-    screen2 = screen2 || getActiveScreen();
+  function readbackLayout(screen) {
+    screen = screen || getActiveScreen();
     var changed3 = [];
     var redraw = false;
-    if (!screen2) return changed3;
-    tree_exports.walk(screen2, function(node, parent) {
+    if (!screen) return changed3;
+    tree_exports.walk(screen, function(node, parent) {
       if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
         if (node.slotUnused) return false;
         var sel = elementOf(node.id), hel = elementOf(parent.id);
@@ -3042,7 +3107,7 @@
       var inFlow = layout_exports.isInFlow(node, parent) || layout_exports.placeOf(node, parent) === "dock";
       var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
       if (!inFlow && !hugW && !hugH) return;
-      if (tree_exports.effectiveVisibility(screen2, node.id) !== "show") return false;
+      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
       var el = elementOf(node.id);
       if (!el || !el.getClientRects().length) return;
       var box2 = { x: node.x, y: node.y, w: node.w, h: node.h };
@@ -3067,29 +3132,29 @@
       }
     });
     changed3.forEach(function(id2) {
-      if (tree_exports.ancestors(screen2, id2).some(function(a) {
+      if (tree_exports.ancestors(screen, id2).some(function(a) {
         return a.type === "@group";
       })) redraw = true;
-      tree_exports.refitGroupsUp(screen2, id2);
+      tree_exports.refitGroupsUp(screen, id2);
     });
     changed3.redraw = redraw;
     return changed3;
   }
 
   // src/canvas/drop-target.js
-  function frameAt(screen2, x, y, excludeIds) {
+  function frameAt(screen, x, y, excludeIds) {
     var excluded = {};
     (excludeIds || []).forEach(function(id2) {
       excluded[id2] = true;
     });
     var hit = null;
-    tree_exports.walk(screen2, function(node) {
+    tree_exports.walk(screen, function(node) {
       if (excluded[node.id]) return false;
-      if (tree_exports.effectiveVisibility(screen2, node.id) !== "show") return false;
+      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
       if (node.slotUnused) return false;
       if (node.type !== "@frame" || isNodeLocked(node.id)) return;
       if (tree_exports.isSlotFrame(node) && !slotShown(node.id)) return false;
-      var b = tree_exports.absBox(screen2, node.id);
+      var b = tree_exports.absBox(screen, node.id);
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) hit = node;
     });
     return hit;
@@ -3104,12 +3169,12 @@
       return (excludeIds || []).indexOf(c.id) === -1 && layout_exports.isInFlow(c, frame);
     });
   }
-  function flowInsert(screen2, frame, x, y, excludeIds) {
+  function flowInsert(screen, frame, x, y, excludeIds) {
     var l = layout_exports.layoutOf(frame);
-    var fb = tree_exports.absBox(screen2, frame.id);
+    var fb = tree_exports.absBox(screen, frame.id);
     var list = flowKids(frame, excludeIds);
     var boxes = list.map(function(c) {
-      return tree_exports.absBox(screen2, c.id);
+      return tree_exports.absBox(screen, c.id);
     });
     var horizontal = layout_exports.flowAxis(frame) === "horizontal";
     var readingOrder = l.mode === "grid" || horizontal && l.wrap;
@@ -3146,53 +3211,53 @@
     }
     return { index, line };
   }
-  function reparentKeepingPlace(screen2, id2, parentId, index) {
-    var loc = tree_exports.locate(screen2, id2);
+  function reparentKeepingPlace(screen, id2, parentId, index) {
+    var loc = tree_exports.locate(screen, id2);
     if (!loc) return;
-    var abs = loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen2, id2);
+    var abs = loc.orphan ? { x: loc.node.x || 0, y: loc.node.y || 0 } : tree_exports.absBox(screen, id2);
     var oldParent = loc.parent ? loc.parent.id : null;
-    if (loc.orphan) tree_exports.placeOrphan(screen2, id2, parentId, index);
-    else tree_exports.move(screen2, id2, parentId, index);
-    var node = tree_exports.find(screen2, id2);
-    var p = parentId ? tree_exports.contentOrigin(screen2, parentId) : { x: 0, y: 0 };
+    if (loc.orphan) tree_exports.placeOrphan(screen, id2, parentId, index);
+    else tree_exports.move(screen, id2, parentId, index);
+    var node = tree_exports.find(screen, id2);
+    var p = parentId ? tree_exports.contentOrigin(screen, parentId) : { x: 0, y: 0 };
     node.x = abs.x - p.x;
     node.y = abs.y - p.y;
-    if (parentId) tree_exports.tidyContainer(screen2, parentId);
-    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen2, oldParent);
+    if (parentId) tree_exports.tidyContainer(screen, parentId);
+    if (oldParent && oldParent !== parentId) tree_exports.tidyContainer(screen, oldParent);
   }
-  function homeFrameOf(screen2, id2) {
-    var chain = tree_exports.ancestors(screen2, id2);
+  function homeFrameOf(screen, id2) {
+    var chain = tree_exports.ancestors(screen, id2);
     for (var i2 = chain.length - 1; i2 >= 0; i2--) if (chain[i2].type === "@frame") return chain[i2];
     return null;
   }
-  function planDrop(screen2, ids, p) {
+  function planDrop(screen, ids, p) {
     if (!ids.length || !p) return null;
-    var home = homeFrameOf(screen2, ids[0]);
+    var home = homeFrameOf(screen, ids[0]);
     var homeId = home ? home.id : null;
     if (ids.some(function(id2) {
-      var h = homeFrameOf(screen2, id2);
+      var h = homeFrameOf(screen, id2);
       return (h ? h.id : null) !== homeId;
     })) return null;
     if (ids.some(function(id2) {
-      var n = tree_exports.find(screen2, id2);
-      return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen2, id2)) === "dock";
+      var n = tree_exports.find(screen, id2);
+      return tree_exports.onScreen(n) || layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "dock";
     })) return null;
     if (ids.some(function(id2) {
-      var n = tree_exports.find(screen2, id2);
-      var h = homeFrameOf(screen2, id2);
-      return h && layout_exports.placeOf(n, tree_exports.parentOf(screen2, id2)) === "free";
+      var n = tree_exports.find(screen, id2);
+      var h = homeFrameOf(screen, id2);
+      return h && layout_exports.placeOf(n, tree_exports.parentOf(screen, id2)) === "free";
     })) return null;
-    var target = frameAt(screen2, p.x, p.y, ids);
+    var target = frameAt(screen, p.x, p.y, ids);
     var targetId = target ? target.id : null;
     return {
       targetId,
       change: targetId !== homeId,
-      flow: target && layout_exports.hasAutoLayout(target) ? flowInsert(screen2, target, p.x, p.y, ids) : null
+      flow: target && layout_exports.hasAutoLayout(target) ? flowInsert(screen, target, p.x, p.y, ids) : null
     };
   }
-  function applyDrop(screen2, ids, plan, places) {
+  function applyDrop(screen, ids, plan, places) {
     ids.forEach(function(id2, k) {
-      var loc = tree_exports.locate(screen2, id2);
+      var loc = tree_exports.locate(screen, id2);
       if (!loc) return;
       var sameList = !loc.orphan && (loc.parent ? loc.parent.id : null) === plan.targetId;
       var index = null;
@@ -3206,9 +3271,9 @@
         delete node.layoutChild.absolute;
         if (!Object.keys(node.layoutChild).length) delete node.layoutChild;
       }
-      reparentKeepingPlace(screen2, id2, plan.targetId, index);
+      reparentKeepingPlace(screen, id2, plan.targetId, index);
       if (places && places[id2] && !plan.flow) {
-        var p = plan.targetId ? tree_exports.contentOrigin(screen2, plan.targetId) : { x: 0, y: 0 };
+        var p = plan.targetId ? tree_exports.contentOrigin(screen, plan.targetId) : { x: 0, y: 0 };
         node.x = Math.round(places[id2].x - p.x);
         node.y = Math.round(places[id2].y - p.y);
       }
@@ -3225,12 +3290,12 @@
   function showDropFrame(frame) {
     if (!state.artboardEl) return;
     outlineEl = ensure(outlineEl, { border: "2px solid #0d99ff", "box-sizing": "border-box", "border-radius": "2px" });
-    var screen2 = getActiveScreen();
-    if (!frame || !screen2) {
+    var screen = getActiveScreen();
+    if (!frame || !screen) {
       outlineEl.css("display", "none");
       return;
     }
-    var b = tree_exports.absBox(screen2, frame.id);
+    var b = tree_exports.absBox(screen, frame.id);
     outlineEl.css({ display: "block", left: b.x + "px", top: b.y + "px", width: b.w + "px", height: b.h + "px" });
   }
   function showInsertLine(line) {
@@ -3570,10 +3635,10 @@
   // src/canvas/component-renderer.js
   var nodeScopes = /* @__PURE__ */ new WeakMap();
   function editorScopeFor(comp) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return void 0;
-    var scope = scope_exports.surfaceScope(screen2, state.editingMode === "template", appScope());
-    tree_exports.ancestors(screen2, comp.id).forEach(function(a) {
+    var screen = getActiveScreen();
+    if (!screen) return void 0;
+    var scope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
+    tree_exports.ancestors(screen, comp.id).forEach(function(a) {
       if (scope_exports.hasVariables(a)) scope = scope_exports.makeScope(scope, a.variables);
     });
     return scope;
@@ -3621,10 +3686,10 @@
     }
   }
   function revealSlotsOf(id2) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || !state.artboardEl) return false;
+    var screen = getActiveScreen();
+    if (!screen || !state.artboardEl) return false;
     var shown = false;
-    var chain = tree_exports.ancestors(screen2, id2).concat([tree_exports.find(screen2, id2)]);
+    var chain = tree_exports.ancestors(screen, id2).concat([tree_exports.find(screen, id2)]);
     chain.forEach(function(n, i2) {
       if (!n || !tree_exports.isSlotFrame(n) || i2 === 0 || !tree_exports.isSlotHost(chain[i2 - 1])) return;
       var host = chain[i2 - 1];
@@ -3638,9 +3703,9 @@
     });
     return shown;
   }
-  function buildSparkplugBindingIndex(screen2) {
+  function buildSparkplugBindingIndex(screen) {
     var index = {};
-    tree_exports.allNodes(screen2).forEach(function(comp) {
+    tree_exports.allNodes(screen).forEach(function(comp) {
       var list = [];
       if (comp.sparkplugBinding && typeof comp.sparkplugBinding === "string") {
         list.push(comp.sparkplugBinding);
@@ -3669,9 +3734,9 @@
     var keys = dirtySparkplugKeys;
     dirtySparkplugKeys = null;
     if (!keys) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    var index = buildSparkplugBindingIndex(screen2);
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var index = buildSparkplugBindingIndex(screen);
     var refreshedIds = {};
     Object.keys(keys).forEach(function(key) {
       (index[key] || []).forEach(function(comp) {
@@ -3703,32 +3768,32 @@
     });
   }
   function removeComponents(ids) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var targets2 = ids.filter(function(id2) {
-      return tree_exports.find(screen2, id2) && !isNodeLocked(id2);
+      return tree_exports.find(screen, id2) && !isNodeLocked(id2);
     });
     targets2 = targets2.filter(function(id2) {
       return !targets2.some(function(other) {
-        return other !== id2 && tree_exports.isAncestor(screen2, other, id2);
+        return other !== id2 && tree_exports.isAncestor(screen, other, id2);
       });
     });
     if (!targets2.length) return;
-    var before = treeSnapshot(screen2);
+    var before = treeSnapshot(screen);
     var parents = {};
     targets2.forEach(function(id2) {
-      var p = tree_exports.parentOf(screen2, id2);
+      var p = tree_exports.parentOf(screen, id2);
       if (p) parents[p.id] = true;
-      tree_exports.remove(screen2, id2);
+      tree_exports.remove(screen, id2);
       if (state.artboardEl) state.artboardEl.find('[data-id="' + id2 + '"]').remove();
     });
     Object.keys(parents).forEach(function(pid) {
-      tree_exports.tidyContainer(screen2, pid);
+      tree_exports.tidyContainer(screen, pid);
     });
     state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen2, id2) && !tree_exports.locate(screen2, id2).orphan;
+      return !!tree_exports.find(screen, id2) && !tree_exports.locate(screen, id2).orphan;
     });
-    pushTreeChange(screen2, before);
+    pushTreeChange(screen, before);
     if (Object.keys(parents).length && state.artboardEl) {
       var keep = state.selectedIds.slice();
       _renderScreen();
@@ -4100,8 +4165,8 @@
       transform: fit.transform
     });
   }
-  function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen2) {
-    var ps = parentNode ? layout_exports.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen2.width, h: screen2.height };
+  function placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen) {
+    var ps = parentNode ? layout_exports.innerSize(parentNode) : { w: parseFloat(state.artboardEl.css("width")) || screen.width, h: screen.height };
     var b = layout_exports.overlayBox(comp, ps.w, ps.h);
     comp.x = Math.round(b.x);
     comp.y = Math.round(b.y);
@@ -4124,8 +4189,8 @@
   }
   var hoverEl = null;
   function showHover(id2) {
-    var screen2 = getActiveScreen();
-    if (!state.artboardEl || !screen2) return;
+    var screen = getActiveScreen();
+    if (!state.artboardEl || !screen) return;
     if (!hoverEl || !hoverEl.closest("body").length || hoverEl.parent()[0] !== state.artboardEl[0]) {
       hoverEl = window.$("<div>", { "class": "nexa-hover-outline" }).css({ position: "absolute", "pointer-events": "none", "z-index": 9997, border: "1px solid #0d99ff", "box-sizing": "border-box", display: "none" }).appendTo(state.artboardEl);
       window.$("<span>", { "class": "nexa-hover-name" }).css({ position: "absolute", left: "-1px", bottom: "100%", background: "#0d99ff", color: "#fff", "font-size": "10px", padding: "1px 5px", "white-space": "nowrap", "border-radius": "2px 2px 0 0" }).appendTo(hoverEl);
@@ -4133,12 +4198,12 @@
         hideHover();
       });
     }
-    var node = id2 && tree_exports.find(screen2, id2);
+    var node = id2 && tree_exports.find(screen, id2);
     if (!node || isSelected(id2)) {
       hoverEl.hide();
       return;
     }
-    var b = tree_exports.absBox(screen2, id2);
+    var b = tree_exports.absBox(screen, id2);
     if (!b) {
       hoverEl.hide();
       return;
@@ -4151,17 +4216,17 @@
     if (hoverEl) hoverEl.hide();
   }
   function renderComponent(comp, parentEl, parentNode, scope) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || !state.artboardEl) return;
+    var screen = getActiveScreen();
+    if (!screen || !state.artboardEl) return;
     parentEl = parentEl || state.artboardEl;
-    if (parentNode === void 0) parentNode = tree_exports.parentOf(screen2, comp.id);
+    if (parentNode === void 0) parentNode = tree_exports.parentOf(screen, comp.id);
     if (scope === void 0) scope = editorScopeFor(comp);
     var inFlow = layout_exports.isInFlow(comp, parentNode);
     if (!shouldRenderNode(comp.id)) return;
     var overlay = layout_exports.overlayOf(comp);
     if (overlay) {
       if (!state.overlayPreview[comp.id]) return;
-      placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen2);
+      placeOverlayOnCanvas(comp, overlay, parentNode, parentEl, screen);
     }
     var hostDef = !layout_exports.inSlot(comp) && !tree_exports.CONTAINER_TYPES[comp.type] ? window.NEXA.getComponent(comp.type) : null;
     var slotHost = !!(hostDef && typeof hostDef.slotsOf === "function");
@@ -4246,8 +4311,8 @@
     var flowMode = false, plan = null, grab = {};
     var clampOf = function(c) {
       if (tree_exports.onScreen(c)) {
-        var sw = screen2.width || 1280;
-        var sh = screen2.height || 800;
+        var sw = screen.width || 1280;
+        var sh = screen.height || 800;
         var scw = c.w || 0;
         var sch = c.h || 0;
         return {
@@ -4257,14 +4322,14 @@
           maxY: Math.max(0, sh - sch)
         };
       }
-      var parent = tree_exports.parentOf(screen2, c.id);
+      var parent = tree_exports.parentOf(screen, c.id);
       var container2 = parent;
       while (container2 && container2.type === "@group") {
-        container2 = tree_exports.parentOf(screen2, container2.id);
+        container2 = tree_exports.parentOf(screen, container2.id);
       }
       if (container2) {
-        var pw = container2.w != null ? container2.w : container2.width || screen2.width;
-        var ph = container2.h != null ? container2.h : container2.height || screen2.height;
+        var pw = container2.w != null ? container2.w : container2.width || screen.width;
+        var ph = container2.h != null ? container2.h : container2.height || screen.height;
         if (container2.type === "@frame" && typeof layout_exports.innerSize === "function") {
           var isz = layout_exports.innerSize(container2);
           pw = isz.w;
@@ -4272,8 +4337,8 @@
         }
         var cw = c.w || 0;
         var ch = c.h || 0;
-        var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
-        var contOrigin = tree_exports.contentOrigin(screen2, container2.id);
+        var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+        var contOrigin = tree_exports.contentOrigin(screen, container2.id);
         var relX = origin.x - contOrigin.x;
         var relY = origin.y - contOrigin.y;
         return {
@@ -4283,11 +4348,11 @@
           maxY: Math.max(-relY, ph - relY - ch)
         };
       }
-      var sw = screen2.width || 1280;
-      var sh = screen2.height || 800;
+      var sw = screen.width || 1280;
+      var sh = screen.height || 800;
       var scw = c.w || 0;
       var sch = c.h || 0;
-      var rootOrigin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+      var rootOrigin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
       return {
         minX: -rootOrigin.x,
         minY: -rootOrigin.y,
@@ -4297,17 +4362,17 @@
     };
     var place = function(c, start, dx, dy) {
       var nx = start.x + dx, ny = start.y + dy;
-      if (screen2.snap) {
-        nx = snap(nx, screen2.gridSize);
-        ny = snap(ny, screen2.gridSize);
+      if (screen.snap) {
+        nx = snap(nx, screen.gridSize);
+        ny = snap(ny, screen.gridSize);
       }
       var lim = clampOf(c);
       c.x = Math.max(lim.minX, Math.min(nx, lim.maxX));
       c.y = Math.max(lim.minY, Math.min(ny, lim.maxY));
     };
     var feedback = function(e) {
-      plan = planDrop(screen2, movers, pointerOnArtboard(e));
-      showDropFrame(plan && plan.change && plan.targetId ? tree_exports.find(screen2, plan.targetId) : null);
+      plan = planDrop(screen, movers, pointerOnArtboard(e));
+      showDropFrame(plan && plan.change && plan.targetId ? tree_exports.find(screen, plan.targetId) : null);
       showInsertLine(plan && plan.flow && (plan.change || flowMode) ? plan.flow.line : null);
     };
     el.draggable({
@@ -4316,10 +4381,10 @@
         if (!isSelected(target)) selectOnly(target);
         dragStart = { x: comp.x, y: comp.y };
         dragStartPage = { x: e.pageX, y: e.pageY };
-        before = treeSnapshot(screen2);
+        before = treeSnapshot(screen);
         movers = state.selectedIds.filter(function(id2) {
-          return tree_exports.find(screen2, id2) && !isNodeLocked(id2) && !tree_exports.isSlotFrame(tree_exports.find(screen2, id2)) && !state.selectedIds.some(function(o) {
-            return o !== id2 && tree_exports.isAncestor(screen2, o, id2);
+          return tree_exports.find(screen, id2) && !isNodeLocked(id2) && !tree_exports.isSlotFrame(tree_exports.find(screen, id2)) && !state.selectedIds.some(function(o) {
+            return o !== id2 && tree_exports.isAncestor(screen, o, id2);
           });
         });
         starts = {};
@@ -4328,12 +4393,12 @@
           starts[id2] = { x: c.x, y: c.y };
         });
         flowMode = movers.length > 0 && movers.every(function(id2) {
-          return layout_exports.isInFlow(findComponent(id2), tree_exports.parentOf(screen2, id2));
+          return layout_exports.isInFlow(findComponent(id2), tree_exports.parentOf(screen, id2));
         });
         var p0 = pointerOnArtboard(e);
         grab = {};
         movers.forEach(function(id2) {
-          var b = tree_exports.absBox(screen2, id2);
+          var b = tree_exports.absBox(screen, id2);
           grab[id2] = p0 ? { x: p0.x - b.x, y: p0.y - b.y } : { x: 0, y: 0 };
         });
         plan = null;
@@ -4370,7 +4435,7 @@
       stop: function(e) {
         clearDragFeedback();
         var p = pointerOnArtboard(e);
-        var finalPlan = planDrop(screen2, movers, p) || plan;
+        var finalPlan = planDrop(screen, movers, p) || plan;
         var reparent = finalPlan && (finalPlan.change || flowMode && finalPlan.flow);
         if (flowMode || reparent) {
           if (reparent) {
@@ -4379,14 +4444,14 @@
               places[id2] = { x: p.x - grab[id2].x, y: p.y - grab[id2].y };
             });
             try {
-              applyDrop(screen2, movers, finalPlan, flowMode ? places : null);
+              applyDrop(screen, movers, finalPlan, flowMode ? places : null);
             } catch (err) {
               if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
             }
           }
           var keepSel = movers.slice();
           _renderScreen();
-          pushTreeChange(screen2, before);
+          pushTreeChange(screen, before);
           selectMultiple(keepSel);
           markDirty();
           return;
@@ -4397,28 +4462,28 @@
         });
         if (!moved.length) return;
         var inGroup = moved.some(function(id2) {
-          return tree_exports.ancestors(screen2, id2).some(function(a) {
+          return tree_exports.ancestors(screen, id2).some(function(a) {
             return a.type === "@group";
           });
         });
         if (inGroup) {
           moved.forEach(function(id2) {
-            tree_exports.refitGroupsUp(screen2, id2);
+            tree_exports.refitGroupsUp(screen, id2);
           });
-          pushTreeChange(screen2, before);
+          pushTreeChange(screen, before);
           var keep = state.selectedIds.slice();
           _renderScreen();
           selectMultiple(keep);
         } else if (moved.length === 1) {
           var c1 = findComponent(moved[0]);
-          pushHistory({ t: "move", screenId: screen2.id, id: moved[0], from: starts[moved[0]], to: { x: c1.x, y: c1.y } });
+          pushHistory({ t: "move", screenId: screen.id, id: moved[0], from: starts[moved[0]], to: { x: c1.x, y: c1.y } });
         } else {
           pushHistory({
             t: "multi",
-            screenId: screen2.id,
+            screenId: screen.id,
             events: moved.map(function(id2) {
               var c = findComponent(id2);
-              return { t: "move", screenId: screen2.id, id: id2, from: starts[id2], to: { x: c.x, y: c.y } };
+              return { t: "move", screenId: screen.id, id: id2, from: starts[id2], to: { x: c.x, y: c.y } };
             })
           });
         }
@@ -4428,28 +4493,28 @@
     var dom = typeof el.get === "function" ? el.get(0) : null;
     if (css2.position && dom && dom.style && dom.style.position !== css2.position) dom.style.position = css2.position;
   }
-  function placeNewNode(screen2, node, artboardX, artboardY) {
-    node.x = Math.max(0, screen2.snap ? snap(artboardX - node.w / 2, screen2.gridSize) : artboardX - node.w / 2);
-    node.y = Math.max(0, screen2.snap ? snap(artboardY - node.h / 2, screen2.gridSize) : artboardY - node.h / 2);
-    var before = treeSnapshot(screen2);
-    var frame = frameAt(screen2, artboardX, artboardY, []);
+  function placeNewNode(screen, node, artboardX, artboardY) {
+    node.x = Math.max(0, screen.snap ? snap(artboardX - node.w / 2, screen.gridSize) : artboardX - node.w / 2);
+    node.y = Math.max(0, screen.snap ? snap(artboardY - node.h / 2, screen.gridSize) : artboardY - node.h / 2);
+    var before = treeSnapshot(screen);
+    var frame = frameAt(screen, artboardX, artboardY, []);
     if (frame) {
-      var fb = tree_exports.contentOrigin(screen2, frame.id);
+      var fb = tree_exports.contentOrigin(screen, frame.id);
       node.x = Math.round(artboardX - node.w / 2 - fb.x);
       node.y = Math.round(artboardY - node.h / 2 - fb.y);
-      tree_exports.insert(screen2, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen2, frame, artboardX, artboardY, []).index : null, node);
+      tree_exports.insert(screen, frame.id, layout_exports.hasAutoLayout(frame) ? flowInsert(screen, frame, artboardX, artboardY, []).index : null, node);
       _renderScreen();
     } else {
-      tree_exports.insert(screen2, null, null, node);
+      tree_exports.insert(screen, null, null, node);
       renderComponent(node, null, null);
     }
     selectOnly(node.id);
-    pushTreeChange(screen2, before);
+    pushTreeChange(screen, before);
     markDirty();
   }
   function addComponentAt(type, artboardX, artboardY) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     if (typeof type === "string" && type.indexOf("@template:") === 0) {
       var templateId = type.slice("@template:".length);
       var template = findTemplate(templateId);
@@ -4479,7 +4544,7 @@
       if (targetComp && targetComp.layoutChild) {
         nodeToPlace.layoutChild = Object.assign({}, targetComp.layoutChild);
       }
-      placeNewNode(screen2, nodeToPlace, artboardX, artboardY);
+      placeNewNode(screen, nodeToPlace, artboardX, artboardY);
       return;
     }
     if (typeof type === "string" && type.indexOf("@asset:") === 0) {
@@ -4495,7 +4560,7 @@
         imgProps[key] = imgDef.defaults[key].value;
       });
       imgProps.src = "{asset:" + assetName + "}";
-      placeNewNode(screen2, { id: genId(), type: "kufayeka-image", w: Math.max(8, Math.round(iw * k)), h: Math.max(8, Math.round(ih * k)), rotation: 0, locked: false, props: imgProps }, artboardX, artboardY);
+      placeNewNode(screen, { id: genId(), type: "kufayeka-image", w: Math.max(8, Math.round(iw * k)), h: Math.max(8, Math.round(ih * k)), rotation: 0, locked: false, props: imgProps }, artboardX, artboardY);
       return;
     }
     if (typeof type === "string" && type.indexOf("@frame:") === 0) {
@@ -4503,11 +4568,11 @@
       var frame = layout_exports.makeFrame(mode, mode === "vertical" ? 160 : mode === "carousel" ? 360 : 240, mode === "horizontal" ? 80 : mode === "carousel" ? 200 : 160);
       frame.id = genId();
       frame.name = { none: "Frame", horizontal: "Row", vertical: "Column", grid: "Grid", carousel: "Carousel" }[mode] || "Frame";
-      placeNewNode(screen2, frame, artboardX, artboardY);
+      placeNewNode(screen, frame, artboardX, artboardY);
       return;
     }
     if (type === "@lit-component") {
-      placeNewNode(screen2, {
+      placeNewNode(screen, {
         id: genId(),
         type: "@lit-component",
         w: 220,
@@ -4531,12 +4596,12 @@
     Object.keys(def.defaults || {}).forEach(function(k2) {
       props[k2] = def.defaults[k2].value;
     });
-    placeNewNode(screen2, { id: genId(), type, w: size.w, h: size.h, rotation: 0, locked: false, props }, artboardX, artboardY);
+    placeNewNode(screen, { id: genId(), type, w: size.w, h: size.h, rotation: 0, locked: false, props }, artboardX, artboardY);
   }
   var SPARKPLUG_TEXT_COMPONENT_TYPE = "kufayeka-text-label";
   function addSparkplugMetricComponentAt(ref, artboardX, artboardY) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var def = window.NEXA.getComponent(SPARKPLUG_TEXT_COMPONENT_TYPE);
     if (!def) {
       if (window.RED && window.RED.notify) {
@@ -4551,7 +4616,7 @@
     });
     var bindingPath = makeSparkplugBindingPath(ref);
     props.text = bindingPath;
-    placeNewNode(screen2, {
+    placeNewNode(screen, {
       id: genId(),
       type: SPARKPLUG_TEXT_COMPONENT_TYPE,
       w: size.w,
@@ -4566,14 +4631,14 @@
 
   // src/canvas/selection-handles.js
   function boxOf(comp) {
-    var screen2 = getActiveScreen();
-    return screen2 && tree_exports.absBox(screen2, comp.id) || { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
+    var screen = getActiveScreen();
+    return screen && tree_exports.absBox(screen, comp.id) || { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
   }
   function capabilitiesOf(comp) {
     if (comp.type === "@group") return { resizable: false, rotatable: false, flippable: false, lockable: true };
     if (tree_exports.isSlotFrame(comp)) return { resizable: false, rotatable: false, flippable: false, lockable: true };
-    var screen2 = getActiveScreen();
-    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+    var screen = getActiveScreen();
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     var caps;
     if (comp.type === "@frame" || comp.type === "@template") caps = { resizable: true, rotatable: true, flippable: false, lockable: true };
     else {
@@ -4593,24 +4658,24 @@
   function updateComponentBox(comp) {
     if (!state.artboardEl) return;
     var el = state.artboardEl.find('[data-id="' + comp.id + '"]');
-    var screen2 = getActiveScreen();
-    var css2 = nodeCss(comp, screen2 ? tree_exports.parentOf(screen2, comp.id) : null);
+    var screen = getActiveScreen();
+    var css2 = nodeCss(comp, screen ? tree_exports.parentOf(screen, comp.id) : null);
     if (!isNodeVisible(comp.id)) css2.display = "none";
     el.css(css2);
     if (comp.type === "@template") {
       var template = findTemplate(comp.templateId);
       if (template) layoutTemplateInner(el.find(".nexa-template-instance-inner"), template, comp);
     }
-    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
-    if (screen2 && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen2, comp.id).some(layout_exports.hasAutoLayout))) {
-      readbackLayout(screen2);
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
+    if (screen && (layout_exports.hasAutoLayout(parent) || layout_exports.hasAutoLayout(comp) || tree_exports.ancestors(screen, comp.id).some(layout_exports.hasAutoLayout))) {
+      readbackLayout(screen);
     }
     syncSelectionHandles();
   }
   function syncSelectionHandles() {
     if (!state.selectionHandlesEl || state.selectedIds.length !== 1) return;
-    var screen2 = getActiveScreen();
-    var sel = screen2 && tree_exports.find(screen2, state.selectedIds[0]);
+    var screen = getActiveScreen();
+    var sel = screen && tree_exports.find(screen, state.selectedIds[0]);
     if (!sel) return;
     if (layout_exports.hasAutoLayout(sel)) {
       state.selectionHandlesEl.find(".nexa-layout-band").remove();
@@ -4629,16 +4694,16 @@
     handle.get(0).addEventListener("mousedown", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      var screen2 = getActiveScreen();
+      var screen = getActiveScreen();
       var minSize = 20;
       var start = { x: e.clientX, y: e.clientY };
       var orig = { x: comp.x, y: comp.y, w: comp.w, h: comp.h };
       var origKids = comp.type === "@frame" ? snapshotBoxes(comp) : null;
-      var before = screen2 ? treeSnapshot(screen2) : null;
-      var inGroup = screen2 && tree_exports.ancestors(screen2, comp.id).some(function(a) {
+      var before = screen ? treeSnapshot(screen) : null;
+      var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
         return a.type === "@group";
       });
-      var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+      var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
       var layoutAware = comp.type === "@frame" || layout_exports.hasAutoLayout(parent);
       if (layoutAware) {
         var axisW = /[ew]/.test(handleName), axisH = /[ns]/.test(handleName);
@@ -4672,25 +4737,25 @@
           nh = Math.max(minSize, orig.h - dy);
           ny = orig.y + (orig.h - nh);
         }
-        if (screen2 && screen2.snap) {
-          nx = snap(nx, screen2.gridSize);
-          ny = snap(ny, screen2.gridSize);
-          nw = snap(nw, screen2.gridSize);
-          nh = snap(nh, screen2.gridSize);
+        if (screen && screen.snap) {
+          nx = snap(nx, screen.gridSize);
+          ny = snap(ny, screen.gridSize);
+          nw = snap(nw, screen.gridSize);
+          nh = snap(nh, screen.gridSize);
         }
-        var parent2 = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+        var parent2 = screen ? tree_exports.parentOf(screen, comp.id) : null;
         var container = parent2;
         while (container && container.type === "@group") {
-          container = tree_exports.parentOf(screen2, container.id);
+          container = tree_exports.parentOf(screen, container.id);
         }
         var maxW, maxH;
         if (container && !tree_exports.onScreen(comp)) {
           var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
-          maxW = isz ? isz.w : container.w != null ? container.w : container.width || (screen2 ? screen2.width : 1280);
-          maxH = isz ? isz.h : container.h != null ? container.h : container.height || (screen2 ? screen2.height : 800);
+          maxW = isz ? isz.w : container.w != null ? container.w : container.width || (screen ? screen.width : 1280);
+          maxH = isz ? isz.h : container.h != null ? container.h : container.height || (screen ? screen.height : 800);
         } else {
-          maxW = screen2 ? screen2.width : 1280;
-          maxH = screen2 ? screen2.height : 800;
+          maxW = screen ? screen.width : 1280;
+          maxH = screen ? screen.height : 800;
         }
         if (handleName.indexOf("w") !== -1 && nx < 0) {
           nw = Math.max(minSize, nw + nx);
@@ -4711,7 +4776,7 @@
         updateComponentBox(comp);
         if (origKids) {
           Object.keys(origKids).forEach(function(id2) {
-            var n = tree_exports.find(screen2, id2);
+            var n = tree_exports.find(screen, id2);
             if (n) {
               n.x = origKids[id2].x;
               n.y = origKids[id2].y;
@@ -4720,7 +4785,7 @@
             }
           });
           constrainFrameChildren(comp, orig, origKids).forEach(function(id2) {
-            var n = tree_exports.find(screen2, id2);
+            var n = tree_exports.find(screen, id2);
             if (n) updateComponentBox(n);
           });
         }
@@ -4730,20 +4795,20 @@
         document.removeEventListener("mouseup", onUp);
         if (orig.x !== comp.x || orig.y !== comp.y || orig.w !== comp.w || orig.h !== comp.h) {
           if (layoutAware) {
-            readbackLayout(screen2);
-            tree_exports.refitGroupsUp(screen2, comp.id);
-            pushTreeChange(screen2, before);
+            readbackLayout(screen);
+            tree_exports.refitGroupsUp(screen, comp.id);
+            pushTreeChange(screen, before);
             renderActiveScreen();
             selectOnly(comp.id);
           } else if (inGroup) {
-            tree_exports.refitGroupsUp(screen2, comp.id);
-            pushTreeChange(screen2, before);
+            tree_exports.refitGroupsUp(screen, comp.id);
+            pushTreeChange(screen, before);
             renderActiveScreen();
             selectOnly(comp.id);
           } else {
             pushHistory({
               t: "resize",
-              screenId: screen2 ? screen2.id : "",
+              screenId: screen ? screen.id : "",
               id: comp.id,
               from: orig,
               to: { x: comp.x, y: comp.y, w: comp.w, h: comp.h }
@@ -4760,7 +4825,7 @@
     handle.get(0).addEventListener("mousedown", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      var screen2 = getActiveScreen();
+      var screen = getActiveScreen();
       var origRotation = comp.rotation || 0;
       var artboardOffset = state.artboardEl.offset();
       var b = boxOf(comp);
@@ -4778,7 +4843,7 @@
         document.removeEventListener("mousemove", onMove2);
         document.removeEventListener("mouseup", onUp);
         if (comp.rotation !== origRotation) {
-          pushHistory({ t: "rotate", screenId: screen2 ? screen2.id : "", id: comp.id, from: origRotation, to: comp.rotation });
+          pushHistory({ t: "rotate", screenId: screen ? screen.id : "", id: comp.id, from: origRotation, to: comp.rotation });
           markDirty();
         }
       }
@@ -4788,8 +4853,8 @@
   }
   function renderLayoutOverlay(comp, box2) {
     if (!layout_exports.hasAutoLayout(comp)) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var l = layout_exports.layoutOf(comp), bw = Number(layout_exports.styleOf(comp).strokeWidth) > 0 && layout_exports.styleOf(comp).stroke ? Number(layout_exports.styleOf(comp).strokeWidth) : 0;
     var band = function(x, y, w, h, cls) {
       if (w <= 0 || h <= 0) return;
@@ -4813,7 +4878,7 @@
     var kids2 = tree_exports.kids(comp).filter(function(c) {
       return layout_exports.isInFlow(c, comp);
     }).map(function(c) {
-      var b2 = tree_exports.absBox(screen2, c.id);
+      var b2 = tree_exports.absBox(screen, c.id);
       return { x: b2.x - box2.x, y: b2.y - box2.y, w: b2.w, h: b2.h };
     });
     for (var i2 = 1; i2 < kids2.length; i2++) {
@@ -5405,18 +5470,18 @@
       return 0;
     }
     static split(text, target) {
-      let part = [], len = -1;
+      let part2 = [], len = -1;
       for (let line of text) {
-        part.push(line);
+        part2.push(line);
         len += line.length + 1;
-        if (part.length == 32) {
-          target.push(new _TextLeaf(part, len));
-          part = [];
+        if (part2.length == 32) {
+          target.push(new _TextLeaf(part2, len));
+          part2 = [];
           len = -1;
         }
       }
       if (len > -1)
-        target.push(new _TextLeaf(part, len));
+        target.push(new _TextLeaf(part2, len));
       return target;
     }
   };
@@ -6142,18 +6207,18 @@
         throw new RangeError("Invalid JSON representation of ChangeSet");
       let sections = [], inserted = [];
       for (let i2 = 0; i2 < json.length; i2++) {
-        let part = json[i2];
-        if (typeof part == "number") {
-          sections.push(part, -1);
-        } else if (!Array.isArray(part) || typeof part[0] != "number" || part.some((e, i3) => i3 && typeof e != "string")) {
+        let part2 = json[i2];
+        if (typeof part2 == "number") {
+          sections.push(part2, -1);
+        } else if (!Array.isArray(part2) || typeof part2[0] != "number" || part2.some((e, i3) => i3 && typeof e != "string")) {
           throw new RangeError("Invalid JSON representation of ChangeSet");
-        } else if (part.length == 1) {
-          sections.push(part[0], 0);
+        } else if (part2.length == 1) {
+          sections.push(part2[0], 0);
         } else {
           while (inserted.length < i2)
             inserted.push(Text.empty);
-          inserted[i2] = Text.of(part.slice(1));
-          sections.push(part[0], inserted[i2].length);
+          inserted[i2] = Text.of(part2.slice(1));
+          sections.push(part2[0], inserted[i2].length);
         }
       }
       return new _ChangeSet(sections, inserted);
@@ -8622,7 +8687,7 @@
           let value = spec2[prop2];
           if (/&/.test(prop2)) {
             render(
-              prop2.split(/,\s*/).map((part) => selectors.map((sel) => part.replace(/&/, sel))).reduce((a, b) => a.concat(b)),
+              prop2.split(/,\s*/).map((part2) => selectors.map((sel) => part2.replace(/&/, sel))).reduce((a, b) => a.concat(b)),
               value,
               target
             );
@@ -19850,33 +19915,33 @@
       let tags3 = spec[prop2];
       if (!Array.isArray(tags3))
         tags3 = [tags3];
-      for (let part of prop2.split(" "))
-        if (part) {
-          let pieces = [], mode = 2, rest = part;
+      for (let part2 of prop2.split(" "))
+        if (part2) {
+          let pieces = [], mode = 2, rest = part2;
           for (let pos = 0; ; ) {
-            if (rest == "..." && pos > 0 && pos + 3 == part.length) {
+            if (rest == "..." && pos > 0 && pos + 3 == part2.length) {
               mode = 1;
               break;
             }
             let m = /^"(?:[^"\\]|\\.)*?"|[^\/!]+/.exec(rest);
             if (!m)
-              throw new RangeError("Invalid path: " + part);
+              throw new RangeError("Invalid path: " + part2);
             pieces.push(m[0] == "*" ? "" : m[0][0] == '"' ? JSON.parse(m[0]) : m[0]);
             pos += m[0].length;
-            if (pos == part.length)
+            if (pos == part2.length)
               break;
-            let next = part[pos++];
-            if (pos == part.length && next == "!") {
+            let next = part2[pos++];
+            if (pos == part2.length && next == "!") {
               mode = 0;
               break;
             }
             if (next != "/")
-              throw new RangeError("Invalid path: " + part);
-            rest = part.slice(pos);
+              throw new RangeError("Invalid path: " + part2);
+            rest = part2.slice(pos);
           }
           let last2 = pieces.length - 1, inner = pieces[last2];
           if (!inner)
-            throw new RangeError("Invalid path: " + part);
+            throw new RangeError("Invalid path: " + part2);
           let rule = new Rule(tags3, mode, last2 > 0 ? pieces.slice(0, last2) : null);
           byName[inner] = rule.sort(byName[inner]);
         }
@@ -21661,28 +21726,28 @@
     ["property", "propertyName"]
   ])
     defaultTable[legacyName] = /* @__PURE__ */ createTokenType(noTokens, name2);
-  function warnForPart(part, msg) {
-    if (warned.indexOf(part) > -1)
+  function warnForPart(part2, msg) {
+    if (warned.indexOf(part2) > -1)
       return;
-    warned.push(part);
+    warned.push(part2);
     console.warn(msg);
   }
   function createTokenType(extra, tagStr) {
     let tags$1 = [];
     for (let name3 of tagStr.split(" ")) {
       let found = [];
-      for (let part of name3.split(".")) {
-        let value = extra[part] || tags[part];
+      for (let part2 of name3.split(".")) {
+        let value = extra[part2] || tags[part2];
         if (!value) {
-          warnForPart(part, `Unknown highlighting tag ${part}`);
+          warnForPart(part2, `Unknown highlighting tag ${part2}`);
         } else if (typeof value == "function") {
           if (!found.length)
-            warnForPart(part, `Modifier ${part} used at start of tag`);
+            warnForPart(part2, `Modifier ${part2} used at start of tag`);
           else
             found = found.map(value);
         } else {
           if (found.length)
-            warnForPart(part, `Tag ${part} used as modifier`);
+            warnForPart(part2, `Tag ${part2} used as modifier`);
           else
             found = Array.isArray(value) ? value : [value];
         }
@@ -22970,8 +23035,8 @@
       for (let p = 0; p < pattern.length; ) {
         let char = codePointAt2(pattern, p), size = codePointSize2(char);
         this.chars.push(char);
-        let part = pattern.slice(p, p + size), upper = part.toUpperCase();
-        this.folded.push(codePointAt2(upper == part ? part.toLowerCase() : upper, 0));
+        let part2 = pattern.slice(p, p + size), upper = part2.toUpperCase();
+        this.folded.push(codePointAt2(upper == part2 ? part2.toLowerCase() : upper, 0));
         p += size;
       }
       this.astral = pattern.length != this.chars.length;
@@ -26339,8 +26404,8 @@
     parseDialect(dialect) {
       let values2 = Object.keys(this.dialects), flags = values2.map(() => false);
       if (dialect)
-        for (let part of dialect.split(" ")) {
-          let id2 = values2.indexOf(part);
+        for (let part2 of dialect.split(" ")) {
+          let id2 = values2.indexOf(part2);
           if (id2 >= 0)
             flags[id2] = true;
         }
@@ -28286,77 +28351,8 @@
     return "fa-cube";
   }
   function getLogicNodeMeta(type) {
-    if (type === "template-output") return { color: "#e3d3ee", icon: "fa-sign-out", portOut: false, portIn: true };
-    if (type === "template-event") return { color: "#e6e0f8", icon: "fa-sign-in", portOut: true, portIn: false };
-    if (type === "onload" || type === "onrender" || type === "onclose" || type === "param-input" || type === "ui-event") {
-      return { color: "#e6e0f8", icon: "fa-play-circle-o", portOut: true, portIn: false };
-    }
-    if (type === "route-trigger") {
-      return { color: "#e6e0f8", icon: "fa-road", portOut: true, portIn: false };
-    }
-    if (type === "render-screen") {
-      return { color: "#cde6f2", icon: "fa-desktop", portOut: true, portIn: true };
-    }
-    if (type === "send-to-flow") {
-      return { color: "#e3d3ee", icon: "fa-paper-plane", portOut: true, portIn: true };
-    }
-    if (type === "function") {
-      return { color: "#fdf0c2", icon: "fa-code", portOut: true, portIn: true };
-    }
-    if (type === "switch") {
-      return { color: "#e2d96e", icon: "fa-filter", portOut: true, portIn: true };
-    }
-    if (type === "debug") {
-      return { color: "#87a980", icon: "fa-bug", portOut: false, portIn: true };
-    }
-    if (type === "inject") {
-      return { color: "#a6bbcf", icon: "fa-clock-o", portOut: true, portIn: false };
-    }
-    if (type === "reload") {
-      return { color: "#e2d96e", icon: "fa-refresh", portOut: true, portIn: true };
-    }
-    if (type === "open-url") {
-      return { color: "#a6bbcf", icon: "fa-external-link", portOut: true, portIn: true };
-    }
-    if (type === "delay") {
-      return { color: "#fdf0c2", icon: "fa-hourglass-half", portOut: true, portIn: true };
-    }
-    if (type === "navigate") {
-      return { color: "#a6bbcf", icon: "fa-compass", portOut: true, portIn: true };
-    }
-    if (type === "ui-update" || type === "set-template-param") {
-      return { color: "#c0deed", icon: "fa-pencil-square-o", portOut: false, portIn: true };
-    }
-    if (type === "layer-control") {
-      return { color: "#f0dcb8", icon: "fa-object-group", portOut: false, portIn: true };
-    }
-    if (type === "set-variable" || type === "get-variable") {
-      return { color: "#e3d3ee", icon: "fa-tag", portOut: true, portIn: true };
-    }
-    if (type === "set-variable-multi" || type === "get-variable-multi") {
-      return { color: "#dac8ee", icon: "fa-tags", portOut: true, portIn: true };
-    }
-    if (type === "on-variable-change") {
-      return { color: "#c7e9c0", icon: "fa-eye", portOut: true, portIn: false };
-    }
-    if (type === "join") {
-      return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
-    }
-    if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
-    if (type === "link-request") return { color: "#f0d4d7", icon: "fa-exchange", portOut: true, portIn: true };
-    if (type === "link-send") return { color: "#f0d4d7", icon: "fa-sign-out", portOut: true, portIn: true };
-    if (type === "link-receive") return { color: "#f0d4d7", icon: "fa-sign-in", portOut: true, portIn: false };
-    if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
-    if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
-    if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
-    if (type === "teleport") return { color: "#e8d6f0", icon: "fa-share", portOut: true, portIn: true };
-    if (type === "overlay-close") return { color: "#f3dfcc", icon: "fa-window-close-o", portOut: false, portIn: true };
-    if (type === "storage") return { color: "#cde6f2", icon: "fa-database", portOut: true, portIn: true };
-    if (type === "cookie") return { color: "#cde6f2", icon: "fa-key", portOut: true, portIn: true };
-    if (type === "sparkplug-write" || type === "sparkplug-write-multi") {
-      return { color: "#bfe8d8", icon: "fa-upload", portOut: true, portIn: true };
-    }
-    return { color: "#e0e7ff", icon: "fa-cube", portOut: true, portIn: true };
+    var m = logicMeta(type);
+    return { color: m.chipColor, icon: m.icon, portOut: m.outputs > 0, portIn: m.inputs > 0 };
   }
   function templateOutputs(template) {
     var out = [];
@@ -28540,7 +28536,7 @@
   function renderEventsPanel() {
     if (!state.eventsPane) return;
     state.eventsPane.empty();
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     function chip(container, label, makeNode, compId, nodeType, disabled, disabledReason) {
       var meta2 = getLogicNodeMeta(nodeType);
       var isDisabled = Boolean(disabled);
@@ -28839,7 +28835,7 @@
       }
       return false;
     }
-    var overlays = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
+    var overlays = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return !!layout_exports.overlayOf(n);
     }) : [];
     sectionHeader(state.eventsPane, "Overlays (dialogs, drawers)");
@@ -28863,7 +28859,7 @@
     }, "", "overlay-close");
     if (!overlays.length) window.$("<div>").css({ "font-size": "11px", color: "#999", margin: "2px 0 6px" }).text("Make a frame a Dialog or a Drawer: Properties \u2192 Overlay \u2192 Show as.").appendTo(state.eventsPane);
     sectionHeader(state.eventsPane, "Teleport");
-    var teleporting = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
+    var teleporting = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return typeof n.teleport === "string" && n.teleport;
     }) : [];
     teleporting.forEach(function(n) {
@@ -28878,7 +28874,7 @@
     chip(state.eventsPane, "Teleport a node (choose)", function() {
       return { type: "teleport", node: "", to: "@page", toSource: "static" };
     }, "", "teleport");
-    var frames = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
+    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return n.type === "@frame";
     }) : [];
     if (frames.length) {
@@ -28899,7 +28895,7 @@
         }
       });
     }
-    var eventComps = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
+    var eventComps = screen ? tree_exports.allNodes(screen).filter(function(n) {
       return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
     }) : [];
     if (eventComps.length) {
@@ -28909,19 +28905,19 @@
         if (comp.type === "@template") {
           var template = findTemplate(comp.templateId);
           var baseName = comp.name || (template ? template.name : "Instance");
-          var instanceName = comp.name ? comp.name : baseName + " #" + shortId;
+          var instanceName2 = comp.name ? comp.name : baseName + " #" + shortId;
           if (hasSparkplugBinding(comp)) {
-            chip(state.eventsPane, instanceName + " \u2192 on Sparkplug Update", function() {
+            chip(state.eventsPane, instanceName2 + " \u2192 on Sparkplug Update", function() {
               return { type: "ui-event", compId: comp.id, event: "sparkplug-change" };
             }, comp.id, "ui-event");
           }
           templateOutputs(template).forEach(function(name3) {
-            chip(state.eventsPane, instanceName + " \u2192 on " + name3, function() {
+            chip(state.eventsPane, instanceName2 + " \u2192 on " + name3, function() {
               return { type: "template-event", instanceId: comp.id, output: name3 };
             }, comp.id, "template-event");
           });
           (template && template.params || []).forEach(function(param) {
-            chip(state.eventsPane, instanceName + " \u2192 Set " + param.label, function() {
+            chip(state.eventsPane, instanceName2 + " \u2192 Set " + param.label, function() {
               return { type: "set-template-param", instanceId: comp.id, paramName: param.name };
             }, comp.id, "set-template-param");
           });
@@ -29071,26 +29067,26 @@
   function breakpointList() {
     return breakpointsOf(app()).slice().reverse();
   }
-  function designId(screen2) {
-    return designBreakpoint(app(), screen2 || getActiveScreen());
+  function designId(screen) {
+    return designBreakpoint(app(), screen || getActiveScreen());
   }
   function activeBreakpointId() {
     return session ? session.id : designId();
   }
-  function isDesign(id2, screen2) {
-    return !id2 || id2 === designId(screen2);
+  function isDesign(id2, screen) {
+    return !id2 || id2 === designId(screen);
   }
   function rangeOf2(id2) {
     return rangeOf(app(), id2);
   }
-  function previewWidth(screen2) {
-    return session && screen2 && session.screenId === screen2.id ? session.preview.w : screen2 ? screen2.width : 0;
+  function previewWidth(screen) {
+    return session && screen && session.screenId === screen.id ? session.preview.w : screen ? screen.width : 0;
   }
-  function bandPreviewWidth(screen2, id2) {
-    return isDesign(id2, screen2) ? screen2.width : previewWidthOf(app(), id2);
+  function bandPreviewWidth(screen, id2) {
+    return isDesign(id2, screen) ? screen.width : previewWidthOf(app(), id2);
   }
-  function chainFor2(screen2, id2) {
-    return chainFor(app(), screen2, id2);
+  function chainFor2(screen, id2) {
+    return chainFor(app(), screen, id2);
   }
   function each(list, parent, fn) {
     (list || []).forEach(function(n) {
@@ -29126,21 +29122,21 @@
   function tidy(n) {
     if (n.overrides && !Object.keys(n.overrides).length) delete n.overrides;
   }
-  function enterBreakpoint(screen2, id2) {
+  function enterBreakpoint(screen, id2) {
     leaveBreakpoint();
-    if (!screen2 || !id2 || isDesign(id2, screen2) || state.editingMode === "template") return;
+    if (!screen || !id2 || isDesign(id2, screen) || state.editingMode === "template") return;
     if (!breakpointsOf(app()).some(function(b) {
       return b.id === id2;
     })) return;
-    migrateOverrideKeys(screen2.components);
+    migrateOverrideKeys(screen.components);
     session = {
-      screenId: screen2.id,
+      screenId: screen.id,
       id: id2,
-      chain: chainFor2(screen2, id2),
-      design: { w: screen2.width, h: screen2.height },
-      preview: { w: bandPreviewWidth(screen2, id2), h: screen2.height }
+      chain: chainFor2(screen, id2),
+      design: { w: screen.width, h: screen.height },
+      preview: { w: bandPreviewWidth(screen, id2), h: screen.height }
     };
-    each(screen2.components, null, function(n, p) {
+    each(screen.components, null, function(n, p) {
       setBase(n, baseOf(n));
       applyOverrides(n, n.__bpBase, session.chain);
       toPreview(n, p);
@@ -29149,10 +29145,10 @@
   }
   function leaveBreakpoint() {
     if (!session) return;
-    var screen2 = screenOf(session.screenId);
-    if (screen2) {
+    var screen = screenOf(session.screenId);
+    if (screen) {
       syncBreakpoint();
-      each(screen2.components, null, function(n) {
+      each(screen.components, null, function(n) {
         if (n.__bpBase) {
           applyOverrides(n, n.__bpBase, []);
           delete n.__bpBase;
@@ -29164,10 +29160,10 @@
   }
   function syncBreakpoint() {
     if (!session) return;
-    var screen2 = screenOf(session.screenId);
-    if (!screen2) return;
+    var screen = screenOf(session.screenId);
+    if (!screen) return;
     var inheritChain = session.chain.slice(0, -1);
-    each(screen2.components, null, function(n, p) {
+    each(screen.components, null, function(n, p) {
       var live = baseOf(n);
       var d = toDesign(n, p);
       live.x = d.x;
@@ -29235,34 +29231,34 @@
     applyOverrides(node, node.__bpBase || baseOf(node), session.chain);
     toPreview(node, parent);
   }
-  function checkSession(screen2) {
-    if (session && (!screen2 || screen2.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
+  function checkSession(screen) {
+    if (session && (!screen || screen.id !== session.screenId || state.editingMode === "template")) leaveBreakpoint();
   }
   function baseFor(node) {
     return node.__bpBase || baseOf(node);
   }
-  function resolvedAt(node, id2, screen2) {
-    screen2 = screen2 || getActiveScreen();
-    var copy = resolveNode(node, isDesign(id2, screen2) ? [] : chainFor2(screen2, id2), baseFor(node));
+  function resolvedAt(node, id2, screen) {
+    screen = screen || getActiveScreen();
+    var copy = resolveNode(node, isDesign(id2, screen) ? [] : chainFor2(screen, id2), baseFor(node));
     copy.children = [];
     return copy;
   }
   function editAt(node, parent, id2, fn) {
-    var screen2 = getActiveScreen();
-    if (!node || !screen2) return;
+    var screen = getActiveScreen();
+    if (!node || !screen) return;
     if (parent && !parent.type) parent = null;
-    if (isDesign(id2, screen2)) {
+    if (isDesign(id2, screen)) {
       if (!session) {
         fn(node);
         return;
       }
-      var d = resolvedAt(node, id2, screen2);
+      var d = resolvedAt(node, id2, screen);
       fn(d);
       setBase(node, baseOf(d));
     } else {
-      var chain = chainFor2(screen2, id2);
+      var chain = chainFor2(screen, id2);
       var inherited = resolveNode(node, chain.slice(0, -1), baseFor(node));
-      var current2 = resolvedAt(node, id2, screen2);
+      var current2 = resolvedAt(node, id2, screen);
       fn(current2);
       var diff = overrideDiff(inherited, current2);
       node.overrides = node.overrides || {};
@@ -29277,15 +29273,15 @@
     }
   }
   function responsiveHost(node, parent, view, write, canVary, commitFn) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || state.editingMode === "template" || !node || !isOnScreen(screen2, node)) return null;
+    var screen = getActiveScreen();
+    if (!screen || state.editingMode === "template" || !node || !isOnScreen(screen, node)) return null;
     var at = {}, inh = {};
     function viewAt(id2) {
-      if (!(id2 in at)) at[id2] = view(resolvedAt(node, id2, screen2));
+      if (!(id2 in at)) at[id2] = view(resolvedAt(node, id2, screen));
       return at[id2];
     }
     function inheritedAt(id2) {
-      if (!(id2 in inh)) inh[id2] = view(resolveNode(node, chainFor2(screen2, id2).slice(0, -1), baseFor(node)));
+      if (!(id2 in inh)) inh[id2] = view(resolveNode(node, chainFor2(screen, id2).slice(0, -1), baseFor(node)));
       return inh[id2];
     }
     function forget() {
@@ -29295,7 +29291,7 @@
     return {
       begin: forget,
       list: function() {
-        var d = designId(screen2);
+        var d = designId(screen);
         return breakpointList().map(function(b) {
           return { id: b.id, name: b.name, design: b.id === d, range: rangeOf2(b.id) };
         });
@@ -29311,7 +29307,7 @@
       },
       /** Whether band `id` changes `key` (from what it inherits). */
       has: function(key, id2) {
-        if (isDesign(id2, screen2)) return false;
+        if (isDesign(id2, screen)) return false;
         return JSON.stringify(viewAt(id2)[key]) !== JSON.stringify(inheritedAt(id2)[key]);
       },
       setAt: function(key, id2, v) {
@@ -29324,7 +29320,7 @@
         forget();
       },
       clearAt: function(key, id2) {
-        if (isDesign(id2, screen2)) return;
+        if (isDesign(id2, screen)) return;
         var inherited = inheritedAt(id2)[key];
         forget();
         commitFn(function() {
@@ -29336,9 +29332,9 @@
       }
     };
   }
-  function isOnScreen(screen2, node) {
+  function isOnScreen(screen, node) {
     var found = false;
-    each(screen2.components, null, function(n) {
+    each(screen.components, null, function(n) {
       if (n === node) found = true;
     });
     return found;
@@ -29361,12 +29357,12 @@
       // what the selected node can bind to as {name}: its containers' variables,
       // the screen's (a template: its params and variables), nearest first
       listVariables: function() {
-        var screen2 = getActiveScreen();
+        var screen = getActiveScreen();
         var id2 = state.selectedIds.length === 1 ? state.selectedIds[0] : null;
-        if (!screen2 || !id2) return [];
-        var list = scope_exports.visibleVariables(screen2, tree_exports.ancestors(screen2, id2), state.editingMode === "template", tree_exports.find(screen2, id2), getApp());
+        if (!screen || !id2) return [];
+        var list = scope_exports.visibleVariables(screen, tree_exports.ancestors(screen, id2), state.editingMode === "template", tree_exports.find(screen, id2), getApp());
         var route = { id: "$route", name: "the URL", kind: "route" };
-        ((screen2.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
+        ((screen.path || "").match(/:([A-Za-z_$][\w$]*)/g) || []).forEach(function(p) {
           list.push({ name: "$route.params." + p.slice(1), type: "string", value: "(from the URL)", owner: route });
         });
         list.push({ name: "$route.query", type: "object", value: "(?a=1&b=2 \u2192 {a, b})", owner: route });
@@ -29391,18 +29387,18 @@
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function setComponentProp(comp, key, value) {
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     comp.props = comp.props || {};
     var from = comp.props[key];
     comp.props[key] = value;
     var now = Date.now();
     var last2 = state.undoStack[state.undoStack.length - 1];
-    if (screen2 && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen2.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
+    if (screen && last2 && last2.t === "props" && last2.id === comp.id && last2.key === key && last2.screenId === screen.id && now - last2.at < PROP_HISTORY_MERGE_MS) {
       last2.to = clone5(value);
       last2.at = now;
       state.redoStack = [];
-    } else if (screen2) {
-      pushHistory({ t: "props", screenId: screen2.id, id: comp.id, key, from: clone5(from), to: clone5(value), at: now });
+    } else if (screen) {
+      pushHistory({ t: "props", screenId: screen.id, id: comp.id, key, from: clone5(from), to: clone5(value), at: now });
     }
     markDirty();
     refreshComponentRender(comp);
@@ -29411,10 +29407,10 @@
     if (!typeDef || !typeDef.nexa || !window.NexaKit) return false;
     ensureKitHost();
     comp.props = comp.props || {};
-    var screen2 = getActiveScreen();
-    var responsive = screen2 ? responsiveHost(
+    var screen = getActiveScreen();
+    var responsive = screen ? responsiveHost(
       comp,
-      tree_exports.parentOf(screen2, comp.id),
+      tree_exports.parentOf(screen, comp.id),
       function(n) {
         return n.props || {};
       },
@@ -29427,9 +29423,9 @@
         return key !== "__previewState" && key !== "__fallback";
       },
       function(fn) {
-        var before = treeSnapshot(screen2);
+        var before = treeSnapshot(screen);
         fn();
-        pushTreeChange(screen2, before);
+        pushTreeChange(screen, before);
         markDirty();
         refreshComponentRender(comp);
       }
@@ -29839,12 +29835,12 @@
     else delete node.layoutChild;
   }
   function commit(node, fn, rebuild) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || isNodeLocked(node.id)) return;
-    var before = treeSnapshot(screen2);
+    var screen = getActiveScreen();
+    if (!screen || isNodeLocked(node.id)) return;
+    var before = treeSnapshot(screen);
     fn();
-    tree_exports.refitGroupsUp(screen2, node.id);
-    pushTreeChange(screen2, before);
+    tree_exports.refitGroupsUp(screen, node.id);
+    pushTreeChange(screen, before);
     markDirty();
     if (rebuild) {
       renderActiveScreen();
@@ -29860,8 +29856,8 @@
       Object.assign(current2, view());
       handle.update();
     };
-    var screen2 = getActiveScreen();
-    var responsive = r && screen2 ? responsiveHost(
+    var screen = getActiveScreen();
+    var responsive = r && screen ? responsiveHost(
       r.node,
       r.parent,
       r.view,
@@ -30087,8 +30083,8 @@
       if (!v) delete node.dock.stretch;
     }
   }
-  function changePlace(screen2, node, parent, v) {
-    var abs = tree_exports.absBox(screen2, node.id);
+  function changePlace(screen, node, parent, v) {
+    var abs = tree_exports.absBox(screen, node.id);
     var lc = Object.assign({}, node.layoutChild || {});
     delete lc.absolute;
     delete node.place;
@@ -30097,15 +30093,15 @@
     if (Object.keys(lc).length) node.layoutChild = lc;
     else delete node.layoutChild;
     if (v === "screen") {
-      node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen2.width - (node.w || 0))));
-      node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen2.height - (node.h || 0))));
+      node.x = Math.max(0, Math.min(Math.round(abs.x), Math.max(0, screen.width - (node.w || 0))));
+      node.y = Math.max(0, Math.min(Math.round(abs.y), Math.max(0, screen.height - (node.h || 0))));
     } else if (v === "free") {
-      var o = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+      var o = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
       var nx = Math.round(abs.x - o.x);
       var ny = Math.round(abs.y - o.y);
       if (parent) {
-        var pw = parent.w != null ? parent.w : parent.width || screen2.width;
-        var ph = parent.h != null ? parent.h : parent.height || screen2.height;
+        var pw = parent.w != null ? parent.w : parent.width || screen.width;
+        var ph = parent.h != null ? parent.h : parent.height || screen.height;
         if (parent.type === "@frame" && typeof layout_exports.innerSize === "function") {
           var isz = layout_exports.innerSize(parent);
           pw = isz.w;
@@ -30114,12 +30110,12 @@
         node.x = Math.max(0, Math.min(nx, Math.max(0, pw - (node.w || 0))));
         node.y = Math.max(0, Math.min(ny, Math.max(0, ph - (node.h || 0))));
       } else {
-        node.x = Math.max(0, Math.min(nx, Math.max(0, screen2.width - (node.w || 0))));
-        node.y = Math.max(0, Math.min(ny, Math.max(0, screen2.height - (node.h || 0))));
+        node.x = Math.max(0, Math.min(nx, Math.max(0, screen.width - (node.w || 0))));
+        node.y = Math.max(0, Math.min(ny, Math.max(0, screen.height - (node.h || 0))));
       }
     } else if (v === "dock" && !node.dock) {
-      var ps = parent ? layout_exports.innerSize(parent) : { w: screen2.width, h: screen2.height };
-      var o2 = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+      var ps = parent ? layout_exports.innerSize(parent) : { w: screen.width, h: screen.height };
+      var o2 = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
       var cx = abs.x - o2.x + abs.w / 2, cy = abs.y - o2.y + abs.h / 2;
       var third = function(c, size) {
         return c < size / 3 ? "start" : c > size * 2 / 3 ? "end" : "center";
@@ -30131,7 +30127,7 @@
   function renderPositionInspector(container, node, parent) {
     if (!window.NexaKit || !lit() || layout_exports.inSlot(node) || layout_exports.overlayOf(node)) return false;
     var html = lit().html, nothing = lit().nothing;
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     var options = [];
     if (layout_exports.hasAutoLayout(parent)) options.push(PLACE_OPTIONS.flow);
     options.push(PLACE_OPTIONS.free);
@@ -30143,7 +30139,7 @@
         var p = o.p, bind = o.bind;
         var edge = p.place === "dock" && p.dockAt.x === "center" !== (p.dockAt.y === "center");
         var arrange = function(to) {
-          var sibs = (parent ? tree_exports.kids(parent) : screen2.components).filter(function(s) {
+          var sibs = (parent ? tree_exports.kids(parent) : screen.components).filter(function(s) {
             return s !== node;
           }).map(layout_exports.zOf);
           var z = to === "front" ? Math.max.apply(null, sibs.concat([0])) + 1 : Math.min.apply(null, sibs.concat([0])) - 1;
@@ -30178,7 +30174,7 @@
         if (key === "place") {
           if (v === layout_exports.placeOf(node, parent)) return;
           commit(node, function() {
-            changePlace(screen2, node, parent, v);
+            changePlace(screen, node, parent, v);
           }, true);
           return;
         }
@@ -30215,8 +30211,8 @@
   function renderInstanceInspector(container, comp, template) {
     if (!window.NexaKit || !lit() || !template) return false;
     var html = lit().html;
-    var screen2 = getActiveScreen();
-    var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+    var screen = getActiveScreen();
+    var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
     var inFlow = layout_exports.isInFlow(comp, parent && parent.type ? parent : null);
     var meta2 = Object.assign({}, INSTANCE_META, {
       inspector: function(o) {
@@ -30521,8 +30517,8 @@
         var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
         if (next.length || isApp) owner.variables = next;
         else delete owner.variables;
-        var screen2 = getActiveScreen();
-        if (!isSurface && screen2) pushHistory({ t: "node", screenId: screen2.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
+        var screen = getActiveScreen();
+        if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: owner.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
         markDirty();
         current2.variables = view().variables;
         handle.update();
@@ -30534,9 +30530,9 @@
 
   // src/sidebar/properties-panel.js
   function renderLayoutChildSection(comp) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    var parent = tree_exports.parentOf(screen2, comp.id);
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var parent = tree_exports.parentOf(screen, comp.id);
     var host = function() {
       return window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(state.propertiesPane);
     };
@@ -30798,25 +30794,25 @@
       input.on("change", function() {
         var val = parseFloat(input.val()) || 0;
         if (field === "x" || field === "y") {
-          var screen2 = getActiveScreen();
-          var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+          var screen = getActiveScreen();
+          var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
           var container = parent;
           while (container && container.type === "@group") {
-            container = tree_exports.parentOf(screen2, container.id);
+            container = tree_exports.parentOf(screen, container.id);
           }
           var maxBound, minBound = 0;
           var compSize = field === "x" ? comp.w || 0 : comp.h || 0;
           if (container && !tree_exports.onScreen(comp)) {
             var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
             var dim = isz ? field === "x" ? isz.w : isz.h : field === "x" ? container.w || 0 : container.h || 0;
-            var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
-            var contOrigin = tree_exports.contentOrigin(screen2, container.id);
+            var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+            var contOrigin = tree_exports.contentOrigin(screen, container.id);
             var rel = field === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
             minBound = -rel;
             maxBound = Math.max(minBound, dim - rel - compSize);
           } else {
-            var screenDim = screen2 ? field === "x" ? screen2.width : screen2.height : field === "x" ? 1280 : 800;
-            var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+            var screenDim = screen ? field === "x" ? screen.width : screen.height : field === "x" ? 1280 : 800;
+            var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
             var rootRel = field === "x" ? rootOrigin.x : rootOrigin.y;
             minBound = -rootRel;
             maxBound = Math.max(minBound, screenDim - rootRel - compSize);
@@ -30862,8 +30858,8 @@
     var input = window.$("<input>", { type: "text", placeholder: comp.type }).css({ width: "100%", "box-sizing": "border-box" }).val(comp.name || "").appendTo(row);
     input.on("change", function() {
       var next = String(input.val()).trim();
-      var screen2 = getActiveScreen();
-      pushHistory({ t: "node", screenId: screen2.id, id: comp.id, key: "name", from: comp.name, to: next || void 0 });
+      var screen = getActiveScreen();
+      pushHistory({ t: "node", screenId: screen.id, id: comp.id, key: "name", from: comp.name, to: next || void 0 });
       if (next) comp.name = next;
       else delete comp.name;
       markDirty();
@@ -30878,12 +30874,12 @@
     if (hierarchyRefresher) hierarchyRefresher();
   }
   function afterGeometryEdit(comp) {
-    var screen2 = getActiveScreen();
-    var inGroup = screen2 && tree_exports.ancestors(screen2, comp.id).some(function(a) {
+    var screen = getActiveScreen();
+    var inGroup = screen && tree_exports.ancestors(screen, comp.id).some(function(a) {
       return a.type === "@group";
     });
     if (inGroup) {
-      tree_exports.refitGroupsUp(screen2, comp.id);
+      tree_exports.refitGroupsUp(screen, comp.id);
       renderActiveScreen();
       selectOnly(comp.id);
     } else {
@@ -30891,11 +30887,11 @@
     }
   }
   function renderContainerProperties(comp) {
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     var pane = state.propertiesPane;
     var isFrame = comp.type === "@frame";
     if (tree_exports.isSlotFrame(comp)) {
-      var host = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+      var host = screen ? tree_exports.parentOf(screen, comp.id) : null;
       var hostDef = host && window.NEXA.getComponent(host.type);
       window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "8px" }).text("Slot \u201C" + (comp.slotLabel || comp.inSlot) + "\u201D of " + (host && host.name || hostDef && hostDef.label || "its component") + " \u2014 " + tree_exports.kids(comp).length + " children").appendTo(pane);
       if (comp.slotUnused) window.$("<div>").css({ "font-size": "11px", color: "#b35c00", "margin-bottom": "8px" }).text("Not used now: its slot is gone (a tab removed). Its content is kept; the slot coming back shows it again.").appendTo(pane);
@@ -30926,24 +30922,24 @@
       input.on("change", function() {
         var val = parseFloat(input.val()) || 0;
         var fld = pair2[0];
-        var parent = screen2 ? tree_exports.parentOf(screen2, comp.id) : null;
+        var parent = screen ? tree_exports.parentOf(screen, comp.id) : null;
         var container = parent;
         while (container && container.type === "@group") {
-          container = tree_exports.parentOf(screen2, container.id);
+          container = tree_exports.parentOf(screen, container.id);
         }
         var maxBound, minBound = 0;
         var compSize = fld === "x" ? comp.w || 0 : comp.h || 0;
         if (container && !tree_exports.onScreen(comp)) {
           var isz = container.type === "@frame" && typeof layout_exports.innerSize === "function" ? layout_exports.innerSize(container) : null;
           var dim = isz ? fld === "x" ? isz.w : isz.h : fld === "x" ? container.w || 0 : container.h || 0;
-          var origin = parent ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
-          var contOrigin = tree_exports.contentOrigin(screen2, container.id);
+          var origin = parent ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
+          var contOrigin = tree_exports.contentOrigin(screen, container.id);
           var rel = fld === "x" ? origin.x - contOrigin.x : origin.y - contOrigin.y;
           minBound = -rel;
           maxBound = Math.max(minBound, dim - rel - compSize);
         } else {
-          var screenDim = screen2 ? fld === "x" ? screen2.width : screen2.height : fld === "x" ? 1280 : 800;
-          var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen2, parent.id) : { x: 0, y: 0 };
+          var screenDim = screen ? fld === "x" ? screen.width : screen.height : fld === "x" ? 1280 : 800;
+          var rootOrigin = parent && !tree_exports.onScreen(comp) ? tree_exports.contentOrigin(screen, parent.id) : { x: 0, y: 0 };
           var rootRel = fld === "x" ? rootOrigin.x : rootOrigin.y;
           minBound = -rootRel;
           maxBound = Math.max(minBound, screenDim - rootRel - compSize);
@@ -30956,45 +30952,18 @@
       });
     });
     window.$("<div>").css({ "font-size": "11px", color: "#888" }).text("Size " + Math.round(comp.w) + " \xD7 " + Math.round(comp.h) + " (follows the children)").appendTo(pane);
-    if (screen2 && tree_exports.parentOf(screen2, comp.id)) {
-      window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Inside: " + (tree_exports.parentOf(screen2, comp.id).name || tree_exports.parentOf(screen2, comp.id).type)).appendTo(pane);
+    if (screen && tree_exports.parentOf(screen, comp.id)) {
+      window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Inside: " + (tree_exports.parentOf(screen, comp.id).name || tree_exports.parentOf(screen, comp.id).type)).appendTo(pane);
     }
   }
 
-  // src/dialogs/link-dialog.js
-  var TITLES = { "link-request": "Request", "link-send": "To Node-RED", "link-receive": "From Node-RED" };
-  var HELP = {
-    "link-request": 'Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel) and waits for its answer (a "to Nexa" node). The flow runs on the server: database queries and API keys stay there. Output 1: msg.payload = the answer. Output 2: msg.error (the flow answered with an error, the channel timeout passed, or the link is down).',
-    "link-send": `Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel). It doesn't wait for an answer; msg goes on once it is sent.`,
-    "link-receive": 'Fires for every message a Node-RED flow pushes to this channel (a "to Nexa" node). msg.payload = the message. Only while this screen is open.'
-  };
-  function listLinkChannels() {
-    var out = [];
-    var RED2 = window.RED;
-    if (RED2 && RED2.nodes && typeof RED2.nodes.eachConfig === "function") {
-      RED2.nodes.eachConfig(function(n) {
-        if (n.type === "kufayeka-nexa-channel") out.push({ id: n.id, name: n.name || n.id });
-      });
-    }
-    out.sort(function(a, b) {
-      return a.name.localeCompare(b.name);
-    });
-    return out;
-  }
-  function channelName(node) {
-    var RED2 = window.RED;
-    var cfg = node.channel && RED2 && RED2.nodes && typeof RED2.nodes.node === "function" ? RED2.nodes.node(node.channel) : null;
-    return cfg && cfg.name || node.channelName || (node.channel ? "(missing channel)" : "(no channel)");
-  }
-  function linkNodeLabel(node) {
-    return (TITLES[node.type] || node.type) + ": " + channelName(node);
-  }
-  function openLinkNodeEditor(node) {
-    var d = { channel: node.channel || "" };
+  // src/features/logic/lifecycle/inject-dialog.js
+  function openInjectNodeEditor(node) {
+    var intervalInput, payloadTypeSelect, payloadInput, onceInput;
     window.RED.tray.show({
-      id: "nexa-logic-link-editor",
-      title: "Configure " + TITLES[node.type] + " Node",
-      width: 480,
+      id: "nexa-logic-inject-editor",
+      title: "Configure Inject Node",
+      width: 450,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
@@ -31003,11 +30972,10 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            node.channel = d.channel;
-            var picked = listLinkChannels().filter(function(c) {
-              return c.id === d.channel;
-            })[0];
-            node.channelName = picked ? picked.name : "";
+            node.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
+            node.payloadType = payloadTypeSelect.val();
+            node.payload = payloadInput.val();
+            node.once = onceInput.is(":checked");
             markDirty();
             renderLogicCanvas();
             window.RED.tray.close();
@@ -31016,271 +30984,54 @@
       ],
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP[node.type]).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text("Channel").appendTo(body);
-        var channels = listLinkChannels();
-        if (!channels.length) {
-          window.$("<div>").css({ "font-size": "12px", color: "#b45309" }).text(
-            'No channel yet. In a Node-RED flow, add a "from Nexa" or "to Nexa" node and create a channel in it (the pencil next to Channel). It shows up here right away.'
-          ).appendTo(body);
-          return;
-        }
-        if (!d.channel || !channels.some(function(c) {
-          return c.id === d.channel;
-        })) d.channel = channels[0].id;
-        var input = window.$("<input>", { type: "text" }).css({ width: "calc(100% - 4px)" }).appendTo(body);
-        input.typedInput({ types: [{ value: "channel", options: channels.map(function(c) {
-          return { value: c.id, label: c.name };
-        }) }] });
-        input.typedInput("value", d.channel);
-        input.on("change", function() {
-          d.channel = input.typedInput("value");
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Fires on the deployed page \u2014 can emit a string, JSON object (e.g. { "text": "Hello" }), number, or timestamp.').appendTo(body);
+        var typeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload Type").appendTo(typeRow);
+        payloadTypeSelect = window.$("<select>").css({ width: "100%" }).appendTo(typeRow);
+        [
+          ["json", 'JSON Object (e.g. {"text": "Hello"})'],
+          ["str", "String (Text)"],
+          ["num", "Number"],
+          ["date", "Timestamp (Date.now())"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.payloadType || "json") === opt[0]).appendTo(payloadTypeSelect);
         });
-        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "10px" }).text(
-          "Timeout, size limit, delivery and compression are set on the channel (in Node-RED). Links use their own connection, apart from the tags."
-        ).appendTo(body);
+        var valRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload").appendTo(valRow);
+        payloadInput = window.$("<textarea>").css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" }).val(node.payload !== void 0 ? node.payload : '{"text": "Hello World"}').appendTo(valRow);
+        function updatePayloadUi() {
+          var t2 = payloadTypeSelect.val();
+          if (t2 === "date") {
+            valRow.hide();
+          } else {
+            valRow.show();
+          }
+        }
+        payloadTypeSelect.on("change", updatePayloadUi);
+        updatePayloadUi();
+        var intervalRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Repeat every (ms, 0 to disable repeat)").appendTo(intervalRow);
+        intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.intervalMs !== void 0 ? node.intervalMs : 5e3).appendTo(intervalRow);
+        var onceRow = window.$("<div>").css({ "margin-top": "10px" }).appendTo(body);
+        onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.once).css({ "margin-right": "6px" });
+        onceRow.append(onceInput).append(window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Fire once on startup"));
       }
     });
   }
 
-  // src/logic/logic-wires.js
-  var LOGIC_PORT_HIT_RADIUS = 26;
-  function logicNodePortPoint(node, role, portIndex) {
-    var nodeH = typeof logicNodeHeight === "function" ? logicNodeHeight(node) : LOGIC_NODE_H;
-    if (role === "input") {
-      return { x: node.x, y: node.y + nodeH / 2 };
-    }
-    var numPorts = logicOutputCount(node);
-    if (numPorts > 1) {
-      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
-      var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
-      return { x: node.x + logicNodeWidth(node), y: node.y + yOffset };
-    }
-    return { x: node.x + logicNodeWidth(node), y: node.y + nodeH / 2 };
-  }
-  function logicWirePath(p1, p2) {
-    var dx = p2.x - p1.x;
-    var scale = Math.abs(dx) < LOGIC_NODE_W ? 0.75 - 0.75 * ((LOGIC_NODE_W - Math.abs(dx)) / LOGIC_NODE_W) : 0.75;
-    var cp1x = p1.x + scale * LOGIC_NODE_W, cp2x = p2.x - scale * LOGIC_NODE_W;
-    return "M " + p1.x + " " + p1.y + " C " + cp1x + " " + p1.y + " " + cp2x + " " + p2.y + " " + p2.x + " " + p2.y;
-  }
-  function removeLogicWire(id2) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    var wire = screen2.logic.wires.find(function(w) {
-      return w.id === id2;
-    });
-    if (!wire) return;
-    screen2.logic.wires = screen2.logic.wires.filter(function(w) {
-      return w.id !== id2;
-    });
-    pushHistory({ t: "deleteLogicWire", screenId: screen2.id, wire });
-    renderLogicWires();
-    markDirty();
-  }
-  function renderLogicWires() {
-    if (!state.logicSvgEl) return;
-    state.logicSvgEl.empty();
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    (screen2.logic.wires || []).forEach(function(w) {
-      var fromNode = findLogicNode(screen2, w.from);
-      var toNode = findLogicNode(screen2, w.to);
-      if (!fromNode || !toNode) return;
-      var p1 = logicNodePortPoint(fromNode, "output", w.fromPort);
-      var p2 = logicNodePortPoint(toNode, "input");
-      var line = window.$(document.createElementNS(SVG_NS, "path")).attr({
-        d: logicWirePath(p1, p2),
-        fill: "none"
-      }).css({ stroke: "var(--red-ui-node-border, #888)", "stroke-width": "2", cursor: "pointer", "pointer-events": "auto" }).appendTo(state.logicSvgEl);
-      line.attr("title", "Click to delete this wire" + (w.fromPort !== void 0 ? " (Port " + (w.fromPort + 1) + ")" : ""));
-      line.on("mouseenter", function() {
-        line.css("stroke", "#d32f2f");
-      });
-      line.on("mouseleave", function() {
-        line.css("stroke", "var(--red-ui-node-border, #888)");
-      });
-      line.on("click", function() {
-        removeLogicWire(w.id);
-      });
-    });
-  }
-  function pointDistanceSq(a, b) {
-    var dx = a.x - b.x, dy = a.y - b.y;
-    return dx * dx + dy * dy;
-  }
-  function findNearestInputPort(screen2, excludeNodeId, localX, localY) {
-    var best = null, bestDist = LOGIC_PORT_HIT_RADIUS * LOGIC_PORT_HIT_RADIUS;
-    (screen2.logic.nodes || []).forEach(function(n) {
-      if (n.id === excludeNodeId) return;
-      var kind = LOGIC_NODE_KINDS[n.type] || {};
-      if (!kind.hasInput) return;
-      var d = pointDistanceSq(logicNodePortPoint(n, "input"), { x: localX, y: localY });
-      if (d <= bestDist) {
-        bestDist = d;
-        best = n;
-      }
-    });
-    return best;
-  }
-  function hasIllegalRouteFanOut(startNodeId, nodes, wires) {
-    var nodeMap = {};
-    (nodes || []).forEach(function(n) {
-      if (n && n.id) nodeMap[n.id] = n;
-    });
-    var visited = {};
-    function countParallelRenders(currId) {
-      if (visited[currId]) return 0;
-      visited[currId] = true;
-      var node = nodeMap[currId];
-      if (!node) return 0;
-      var outWires = (wires || []).filter(function(w) {
-        return w.from === currId;
-      });
-      if (!outWires.length) return 0;
-      if (node.type === "switch") {
-        var portMap = {};
-        outWires.forEach(function(w) {
-          var p2 = w.fromPort || 0;
-          if (!portMap[p2]) portMap[p2] = [];
-          portMap[p2].push(w);
-        });
-        var maxForAnyPort = 0;
-        for (var p in portMap) {
-          var portWires = portMap[p];
-          var portTotal = 0;
-          portWires.forEach(function(w) {
-            var target = nodeMap[w.to];
-            if (target) {
-              if (target.type === "render-screen") {
-                portTotal += 1;
-              } else {
-                portTotal += countParallelRenders(target.id);
-              }
-            }
-          });
-          if (portTotal > maxForAnyPort) maxForAnyPort = portTotal;
-        }
-        visited[currId] = false;
-        return maxForAnyPort;
-      } else {
-        var total = 0;
-        outWires.forEach(function(w) {
-          var target = nodeMap[w.to];
-          if (target) {
-            if (target.type === "render-screen") {
-              total += 1;
-            } else {
-              total += countParallelRenders(target.id);
-            }
-          }
-        });
-        visited[currId] = false;
-        return total;
-      }
-    }
-    var maxConcurrent = countParallelRenders(startNodeId);
-    return maxConcurrent > 1;
-  }
-  function wireLogicOutputPort(outDot, node, portIndex) {
-    outDot.get(0).addEventListener("mousedown", function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
-      var start = logicNodePortPoint(node, "output", pIdx);
-      var tempLine = window.$(document.createElementNS(SVG_NS, "path")).attr({
-        d: logicWirePath(start, start),
-        fill: "none"
-      }).css({ stroke: "#2196f3", "stroke-width": "2", "stroke-dasharray": "4,3", "pointer-events": "none" }).appendTo(state.logicSvgEl);
-      var artboardOffset = state.logicArtboardEl.offset();
-      var hovered = null;
-      function onMove2(ev) {
-        var localX = (ev.clientX - artboardOffset.left) / state.logicZoomLevel;
-        var localY = (ev.clientY - artboardOffset.top) / state.logicZoomLevel;
-        var screen2 = getActiveScreen();
-        hovered = findNearestInputPort(screen2, node.id, localX, localY);
-        var end = hovered ? logicNodePortPoint(hovered, "input") : { x: localX, y: localY };
-        tempLine.attr({ d: logicWirePath(start, end) }).css("stroke", hovered ? "#4caf50" : "#2196f3");
-      }
-      function onUp() {
-        document.removeEventListener("mousemove", onMove2);
-        document.removeEventListener("mouseup", onUp);
-        tempLine.remove();
-        if (!hovered) return;
-        var screen2 = getActiveScreen();
-        var alreadyWired = screen2.logic.wires.some(function(w) {
-          return w.from === node.id && w.to === hovered.id && (w.fromPort || 0) === pIdx;
-        });
-        if (alreadyWired) return;
-        if (state.editingMode === "flow") {
-          var testWires = (screen2.logic.wires || []).concat([{ from: node.id, to: hovered.id, fromPort: pIdx }]);
-          var triggerNodes = (screen2.logic.nodes || []).filter(function(n) {
-            return n.type === "route-trigger";
-          });
-          var hasFanOutConflict = false;
-          triggerNodes.forEach(function(trig) {
-            if (hasIllegalRouteFanOut(trig.id, screen2.logic.nodes, testWires)) {
-              hasFanOutConflict = true;
-            }
-          });
-          if (hasFanOutConflict) {
-            if (window.RED && window.RED.notify) {
-              window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes on the same execution path. Ambiguous entry screen: which screen should be rendered first?", "error");
-            }
-            return;
-          }
-        }
-        var wire = { id: genId(), from: node.id, to: hovered.id, fromPort: pIdx };
-        screen2.logic.wires.push(wire);
-        pushHistory({ t: "addLogicWire", screenId: screen2.id, wire });
-        renderLogicWires();
-        markDirty();
-      }
-      document.addEventListener("mousemove", onMove2);
-      document.addEventListener("mouseup", onUp);
-    });
-  }
-
-  // src/dialogs/function-dialog.js
-  function openFunctionNodeEditor(node) {
-    var codeEditor = null;
-    window.RED.tray.show({
-      id: "nexa-logic-function-editor",
-      title: "Edit Function",
-      width: 700,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Done",
-          "class": "primary",
-          click: function() {
-            if (codeEditor) node.code = codeEditor.getValue();
-            markDirty();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
-        window.$("<div>").css({ padding: "0 0 8px 0", "font-size": "12px", color: "#888", "flex-shrink": "0" }).text("Receives msg (e.g. msg.payload from the node before this one). Return a new msg object to pass along the wire, or null to stop here.").appendTo(body);
-        var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
-        codeEditor = createCM6Editor({
-          parent: editorContainer.get(0),
-          value: node.code || "return msg;",
-          language: "javascript",
-          completionSource: sparkplugBindingCompletionSource
-        });
-        codeEditor.focus();
+  // src/features/logic/lifecycle/editor.js
+  defineLogicEditors({
+    "inject": {
+      label: function(node) {
+        const p = node.payloadType === "json" ? "JSON" : node.payloadType === "str" ? node.payload || "str" : node.payloadType || "date";
+        return "Inject (" + p + ")";
       },
-      close: function() {
-        if (codeEditor) codeEditor.destroy();
-      }
-    });
-  }
+      edit: openInjectNodeEditor,
+      hint: "Double-click to configure"
+    }
+  });
 
-  // src/dialogs/ui-update-dialog.js
+  // src/features/logic/ui/ui-update-dialog.js
   function openUiUpdateNodeEditor(node) {
     var comp = findComponent(node.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
@@ -31445,126 +31196,7 @@
   }
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { openUiUpdateNodeEditor });
 
-  // src/dialogs/inject-dialog.js
-  function openInjectNodeEditor(node) {
-    var intervalInput, payloadTypeSelect, payloadInput, onceInput;
-    window.RED.tray.show({
-      id: "nexa-logic-inject-editor",
-      title: "Configure Inject Node",
-      width: 450,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.intervalMs = Math.max(0, parseInt(intervalInput.val(), 10) || 0);
-            node.payloadType = payloadTypeSelect.val();
-            node.payload = payloadInput.val();
-            node.once = onceInput.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Fires on the deployed page \u2014 can emit a string, JSON object (e.g. { "text": "Hello" }), number, or timestamp.').appendTo(body);
-        var typeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload Type").appendTo(typeRow);
-        payloadTypeSelect = window.$("<select>").css({ width: "100%" }).appendTo(typeRow);
-        [
-          ["json", 'JSON Object (e.g. {"text": "Hello"})'],
-          ["str", "String (Text)"],
-          ["num", "Number"],
-          ["date", "Timestamp (Date.now())"]
-        ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.payloadType || "json") === opt[0]).appendTo(payloadTypeSelect);
-        });
-        var valRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Payload").appendTo(valRow);
-        payloadInput = window.$("<textarea>").css({ width: "100%", height: "60px", "box-sizing": "border-box", "font-family": "monospace", "font-size": "12px" }).val(node.payload !== void 0 ? node.payload : '{"text": "Hello World"}').appendTo(valRow);
-        function updatePayloadUi() {
-          var t2 = payloadTypeSelect.val();
-          if (t2 === "date") {
-            valRow.hide();
-          } else {
-            valRow.show();
-          }
-        }
-        payloadTypeSelect.on("change", updatePayloadUi);
-        updatePayloadUi();
-        var intervalRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Repeat every (ms, 0 to disable repeat)").appendTo(intervalRow);
-        intervalInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.intervalMs !== void 0 ? node.intervalMs : 5e3).appendTo(intervalRow);
-        var onceRow = window.$("<div>").css({ "margin-top": "10px" }).appendTo(body);
-        onceInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.once).css({ "margin-right": "6px" });
-        onceRow.append(onceInput).append(window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Fire once on startup"));
-      }
-    });
-  }
-
-  // src/dialogs/open-url-dialog.js
-  function openOpenUrlNodeEditor(node) {
-    var modeSelect, urlInput, newTabInput;
-    window.RED.tray.show({
-      id: "nexa-logic-openurl-editor",
-      title: "Configure Open URL Node",
-      width: 450,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.mode = modeSelect.val();
-            node.url = urlInput.val();
-            node.newTab = newTabInput.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Configure how the deployed page navigates. Can be overridden at runtime via msg.payload.").appendTo(body);
-        var modeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Navigation Mode").appendTo(modeRow);
-        modeSelect = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
-        [
-          ["replace", "Replace Whole URL (e.g. https://... or /full/path)"],
-          ["endpoint", "Endpoint / Sub-path only (e.g. /screen2 or screen2)"]
-        ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "replace") === opt[0]).appendTo(modeSelect);
-        });
-        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-        var urlLabel = window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("URL or Endpoint").appendTo(row);
-        urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(row);
-        function updateUrlPlaceholder() {
-          if (modeSelect.val() === "endpoint") {
-            urlLabel.text("Endpoint / Screen Sub-path (e.g. /screen2)");
-            urlInput.attr("placeholder", "/screen2 or screen2");
-          } else {
-            urlLabel.text("Full URL (e.g. https://example.com or /nexa/screen2)");
-            urlInput.attr("placeholder", "https://example.com or /nexa/screen2");
-          }
-        }
-        modeSelect.on("change", updateUrlPlaceholder);
-        updateUrlPlaceholder();
-        var tabRow = window.$("<label>").css({ "font-size": "11px", color: "#888", "margin-top": "6px", display: "block" }).appendTo(body);
-        newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
-        tabRow.append("Open in a new tab");
-      }
-    });
-  }
-
-  // src/dialogs/layer-control-dialog.js
+  // src/features/logic/ui/layer-control-dialog.js
   function openLayerControlNodeEditor(node) {
     var statesInput;
     window.RED.tray.show({
@@ -31610,1333 +31242,7 @@
     });
   }
 
-  // src/dialogs/set-variable-dialog.js
-  var TITLES2 = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "Watch Variable" };
-  var HELP2 = {
-    "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "Watch Variable" nodes watching it fire. The message goes on unchanged.',
-    "get-variable": "Puts the variable's current value into the message and passes it on.",
-    "on-variable-change": "Watches one or more variables and starts a flow whenever any of them changes (like a useEffect dependency array). msg.payload = new value, msg.previous = old value, msg.variable = variable name, msg.scope = variable scope."
-  };
-  var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
-  function openSetVariableNodeEditor(node) {
-    var type = node.type in TITLES2 ? node.type : "set-variable";
-    var screen2 = getActiveScreen();
-    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
-    var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
-    var draft = {
-      scope: node.scope || "",
-      name: node.name || "",
-      op: node.op || "set",
-      valueSource: node.valueSource || "payload",
-      value: node.value,
-      msgPath: node.msgPath || "payload.data",
-      target: node.target || "payload",
-      variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : node.name ? [{ scope: node.scope || "", name: node.name }] : []
-    };
-    var nameSel;
-    var trayEl = null;
-    function namesIn(scopeId) {
-      return decls.filter(function(d) {
-        return d.scopeId === scopeId;
-      }).map(function(d) {
-        return d.variable.name;
-      });
-    }
-    function fillNames() {
-      if (!nameSel) return;
-      nameSel.empty();
-      var names = namesIn(draft.scope);
-      if (draft.name && names.indexOf(draft.name) === -1) names.unshift(draft.name);
-      if (!names.length) window.$("<option>", { value: "" }).text("(no variables declared here)").appendTo(nameSel);
-      names.forEach(function(n) {
-        window.$("<option>", { value: n }).text(n).appendTo(nameSel);
-      });
-      nameSel.val(draft.name || names[0] || "");
-      draft.name = nameSel.val() || "";
-    }
-    var scopes = [
-      { id: "@shared", name: "Shared / Server (Realtime across all devices)" },
-      { id: "@app", name: "App (every screen)" },
-      { id: "", name: surfaceLabel }
-    ];
-    decls.forEach(function(d) {
-      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
-        return s.id === d.scopeId;
-      })) scopes.push({ id: d.scopeId, name: d.scopeName });
-    });
-    if (draft.scope && !scopes.some(function(s) {
-      return s.id === draft.scope;
-    })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
-    window.RED.tray.show({
-      id: "nexa-logic-variable-editor",
-      title: "Configure " + TITLES2[type] + " Node",
-      width: 520,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            if (type === "on-variable-change") {
-              var gathered = [];
-              var nxListInst = trayEl && trayEl.find("nx-list").get(0);
-              var rawItems = nxListInst && (nxListInst.items || nxListInst.value) || draft.variables || [];
-              rawItems.forEach(function(item) {
-                if (item && item.name) {
-                  if (!gathered.some(function(g) {
-                    return g.scope === item.scope && g.name === item.name;
-                  })) {
-                    gathered.push({ scope: item.scope || "", name: item.name });
-                  }
-                }
-              });
-              node.variables = gathered;
-              node.scope = gathered[0] ? gathered[0].scope : "";
-              node.name = gathered[0] ? gathered[0].name : "";
-            } else {
-              node.scope = draft.scope;
-              node.name = draft.name;
-              if (type === "set-variable") {
-                node.op = draft.op;
-                node.valueSource = draft.valueSource;
-                if (draft.valueSource === "static") node.value = draft.value;
-                else delete node.value;
-                if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
-                else delete node.msgPath;
-              }
-              if (type === "get-variable") node.target = draft.target || "payload";
-            }
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        trayEl = tray;
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP2[type]).appendTo(body);
-        var label = function(text, parent) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
-        };
-        if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") {
-          window.NexaKit.ensureStyles();
-        }
-        if (type === "on-variable-change") {
-          label("Watched Variables (Dependencies)");
-          window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-bottom": "8px" }).text("Select the variables to watch. Whenever any of these variables changes, this node fires (like a useEffect dependency array).").appendTo(body);
-          var listContainer = window.$("<div>", { "class": "nx-kit" }).css({ "margin-bottom": "12px" }).appendTo(body);
-          var defaultScope = scopes[0] ? scopes[0].id : "";
-          var defaultNames = namesIn(defaultScope);
-          var defaultName = defaultNames[0] || "";
-          var initialVars = draft.variables && draft.variables.length ? JSON.parse(JSON.stringify(draft.variables)) : [{ scope: defaultScope, name: defaultName }];
-          var html = window.NEXA_LIT && window.NEXA_LIT.html || function() {
-            return "";
-          };
-          var nxList = document.createElement("nx-list");
-          nxList.setAttribute("add-label", "Add variable dependency");
-          nxList.setAttribute("empty-text", "No variables watched. Click Add variable dependency below.");
-          nxList.sortable = true;
-          nxList.value = initialVars;
-          nxList.newItem = function() {
-            var s = scopes[0] ? scopes[0].id : "";
-            var n = namesIn(s);
-            return { scope: s, name: n[0] || "" };
-          };
-          nxList.renderItem = function(item, index, setItem) {
-            var curScope = item ? item.scope !== void 0 ? item.scope : "" : "";
-            var curName = item ? item.name !== void 0 ? item.name : "" : "";
-            var scopeOptions = scopes.map(function(s) {
-              return { value: s.id, label: s.name };
-            });
-            var names = namesIn(curScope);
-            if (!curName && names.length) {
-              curName = names[0];
-              if (item) item.name = curName;
-            }
-            if (curName && names.indexOf(curName) === -1) names.unshift(curName);
-            var nameOptions = names.map(function(n) {
-              return { value: n, label: n };
-            });
-            if (!nameOptions.length) {
-              nameOptions = [{ value: "", label: "(no variables declared)" }];
-            }
-            return html`<nx-row cols="2" style="width:100%;gap:8px;">
-                        <nx-select
-                            label="Scope"
-                            .value="${curScope}"
-                            .options="${scopeOptions}"
-                            @nx-change="${function(e) {
-              e.stopPropagation();
-              var newScope = e.detail.value;
-              var newNames = namesIn(newScope);
-              setItem({ scope: newScope, name: newNames[0] || "" });
-            }}">
-                        </nx-select>
-                        <nx-select
-                            label="Variable"
-                            .value="${curName}"
-                            .options="${nameOptions}"
-                            @nx-change="${function(e) {
-              e.stopPropagation();
-              setItem({ scope: curScope, name: e.detail.value });
-            }}">
-                        </nx-select>
-                    </nx-row>`;
-          };
-          listContainer.append(nxList);
-          return;
-        }
-        label("Scope (where the variable is declared)");
-        var scopeSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body);
-        scopes.forEach(function(s) {
-          window.$("<option>", { value: s.id }).text(s.name).appendTo(scopeSel);
-        });
-        scopeSel.val(draft.scope).on("change", function() {
-          draft.scope = scopeSel.val();
-          draft.name = "";
-          fillNames();
-          if (typeof refreshStaticWidget === "function") refreshStaticWidget();
-        });
-        label("Variable");
-        nameSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body).on("change", function() {
-          draft.name = nameSel.val();
-          if (typeof refreshStaticWidget === "function") refreshStaticWidget();
-        });
-        fillNames();
-        if (type === "get-variable") {
-          label("Into msg property");
-          var targetRow = window.$("<div>").css({ width: "100%", "margin-top": "4px" }).appendTo(body);
-          var targetInput = window.$("<input>", { type: "text" }).appendTo(targetRow);
-          if (typeof targetInput.typedInput === "function") {
-            targetInput.typedInput({
-              default: "msg",
-              types: ["msg"],
-              width: "100%"
-            });
-            targetInput.typedInput("value", draft.target || "payload");
-            targetInput.on("change", function() {
-              draft.target = targetInput.typedInput("value").trim() || "payload";
-            });
-          } else {
-            targetInput.css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(draft.target || "payload").on("change", function() {
-              draft.target = this.value.trim() || "payload";
-            });
-          }
-        }
-        if (type === "set-variable") {
-          label("Operation");
-          var opSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body);
-          OPS.forEach(function(o) {
-            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(opSel);
-          });
-          opSel.val(draft.op);
-          var valueWrap = window.$("<div>").appendTo(body);
-          label("Value", valueWrap);
-          var srcSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(valueWrap);
-          [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed value"]].forEach(function(o) {
-            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(srcSel);
-          });
-          srcSel.val(draft.valueSource);
-          var pathRow = window.$("<div>").css({ width: "100%", "margin-top": "6px" }).appendTo(valueWrap);
-          var pathInput = window.$("<input>", { type: "text" }).appendTo(pathRow);
-          if (typeof pathInput.typedInput === "function") {
-            pathInput.typedInput({
-              default: "msg",
-              types: ["msg"],
-              width: "100%"
-            });
-            pathInput.typedInput("value", draft.msgPath || "payload.data");
-            pathInput.on("change", function() {
-              draft.msgPath = pathInput.typedInput("value").trim();
-            });
-          } else {
-            pathInput.css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(draft.msgPath || "payload.data").on("change", function() {
-              draft.msgPath = this.value.trim();
-            });
-          }
-          var staticRow = window.$("<div>").css({ "margin-top": "6px" }).appendTo(valueWrap);
-          var refreshStaticWidget = function() {
-            staticRow.empty();
-            var decl = decls.filter(function(d) {
-              return d.scopeId === draft.scope && d.variable.name === draft.name;
-            })[0];
-            var varType = decl && decl.variable && decl.variable.type || "string";
-            buildTypedInputWidget(staticRow, varType, draft.value !== void 0 ? draft.value : "", function(v) {
-              draft.value = v;
-            });
-          };
-          refreshStaticWidget();
-          var sync = function() {
-            valueWrap.toggle(draft.op !== "toggle");
-            pathRow.toggle(draft.valueSource === "msg");
-            staticRow.toggle(draft.valueSource === "static");
-          };
-          opSel.on("change", function() {
-            draft.op = opSel.val();
-            sync();
-          });
-          srcSel.on("change", function() {
-            draft.valueSource = srcSel.val();
-            sync();
-          });
-          sync();
-        }
-      }
-    });
-  }
-
-  // src/dialogs/set-variable-multi-dialog.js
-  var OPS2 = [
-    ["set", "Set to value"],
-    ["merge", "Merge into (object)"],
-    ["append", "Append to (array)"],
-    ["remove", "Remove from (array / object key)"],
-    ["toggle", "Toggle (boolean)"],
-    ["increment", "Increment by (number, default 1)"]
-  ];
-  var CSS_SEL = {
-    width: "100%",
-    "box-sizing": "border-box",
-    padding: "4px 6px",
-    "border-radius": "3px",
-    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
-    "font-size": "12px",
-    background: "var(--red-ui-secondary-background,#fff)",
-    color: "var(--red-ui-primary-text-color,#333)"
-  };
-  var CSS_LABEL = {
-    display: "block",
-    "font-size": "11px",
-    "font-weight": "600",
-    color: "var(--red-ui-secondary-text-color,#475569)",
-    "margin-bottom": "3px"
-  };
-  function openSetVariableMultiNodeEditor(node) {
-    var screen2 = getActiveScreen();
-    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
-    var surface = state.editingMode === "template" ? "This template" : "This screen";
-    var scopes = [
-      { id: "@shared", name: "Shared / Server (realtime)" },
-      { id: "@app", name: "App (every screen)" },
-      { id: "", name: surface }
-    ];
-    decls.forEach(function(d) {
-      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
-        return s.id === d.scopeId;
-      })) {
-        scopes.push({ id: d.scopeId, name: d.scopeName });
-      }
-    });
-    function namesIn(scopeId) {
-      return decls.filter(function(d) {
-        return d.scopeId === scopeId;
-      }).map(function(d) {
-        return d.variable.name;
-      });
-    }
-    var listEl = null;
-    window.RED.tray.show({
-      id: "nexa-logic-set-variable-multi-editor",
-      title: "Configure Set Variables Node",
-      width: 640,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            if (!listEl) {
-              window.RED.tray.close();
-              return;
-            }
-            var assignments = [];
-            listEl.editableList("items").each(function() {
-              var d = window.$(this).data("nexaRow");
-              if (!d || !d.name) return;
-              var out = { scope: d.scope || "", name: d.name, op: d.op || "set" };
-              var t2 = d.valueType, v = d.valueRaw;
-              if (t2 === "msg") {
-                out.valueSource = "msg";
-                out.msgPath = v || "payload";
-              } else {
-                out.valueSource = "static";
-                out.staticType = t2;
-                if (t2 === "num") {
-                  out.value = parseFloat(v);
-                  if (isNaN(out.value)) out.value = 0;
-                } else if (t2 === "bool") {
-                  out.value = v === "true" || v === true;
-                } else if (t2 === "json") {
-                  try {
-                    out.value = JSON.parse(v);
-                  } catch (_) {
-                    out.value = v;
-                  }
-                } else {
-                  out.value = v;
-                }
-              }
-              assignments.push(out);
-            });
-            node.assignments = assignments;
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({
-          "font-size": "12px",
-          color: "var(--red-ui-secondary-text-color,#64748b)",
-          "margin-bottom": "14px",
-          "line-height": "1.5"
-        }).text(
-          "Each row sets one variable when a message arrives. Choose the target variable, the operation, and the value \u2014 either a message property (msg) or a static value (string, number, boolean, JSON object/array). The message is passed on unchanged after all assignments."
-        ).appendTo(body);
-        listEl = window.$("<ol>").appendTo(body);
-        listEl.editableList({
-          addLabel: "Add assignment",
-          sortable: true,
-          removable: true,
-          height: "auto",
-          addItem: function(container, _i, data) {
-            var defScope = scopes[0] ? scopes[0].id : "";
-            var defNames = namesIn(defScope);
-            var row = {
-              scope: data.scope !== void 0 ? data.scope : defScope,
-              name: data.name !== void 0 ? data.name : defNames[0] || "",
-              op: data.op || "set",
-              valueType: data.valueSource === "msg" ? "msg" : data.staticType || "str",
-              valueRaw: data.valueSource === "msg" ? data.msgPath || "payload" : data.value !== void 0 ? String(data.value) : ""
-            };
-            container.data("nexaRow", row);
-            var grid = window.$("<div>").css({
-              display: "grid",
-              "grid-template-columns": "1fr 1fr",
-              gap: "8px"
-            }).appendTo(container);
-            var scopeWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL).text("Scope").appendTo(scopeWrap);
-            var scopeSel = window.$("<select>").css(CSS_SEL).appendTo(scopeWrap);
-            scopes.forEach(function(s) {
-              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
-            });
-            var varWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL).text("Variable").appendTo(varWrap);
-            var varSel = window.$("<select>").css(CSS_SEL).appendTo(varWrap);
-            function fillVarSel(scope, current2) {
-              varSel.empty();
-              var names = namesIn(scope);
-              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
-              if (!names.length) {
-                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
-              }
-              names.forEach(function(n) {
-                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
-              });
-              row.name = varSel.val() || "";
-            }
-            fillVarSel(row.scope, row.name);
-            var opWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL).text("Operation").appendTo(opWrap);
-            var opSel = window.$("<select>").css(CSS_SEL).appendTo(opWrap);
-            OPS2.forEach(function(o) {
-              window.$("<option>", { value: o[0] }).text(o[1]).prop("selected", o[0] === row.op).appendTo(opSel);
-            });
-            var valWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL).text("Value").appendTo(valWrap);
-            var valInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(valWrap);
-            if (typeof valInput.typedInput === "function") {
-              valInput.typedInput({
-                types: ["msg", "str", "num", "bool", "json"],
-                width: "100%"
-              });
-              valInput.typedInput("type", row.valueType);
-              valInput.typedInput("value", row.valueRaw);
-              valInput.on("change", function() {
-                row.valueType = valInput.typedInput("type");
-                row.valueRaw = valInput.typedInput("value");
-              });
-            } else {
-              valInput.css(CSS_SEL).val(row.valueRaw);
-              valInput.on("change input", function() {
-                row.valueRaw = valInput.val();
-              });
-            }
-            scopeSel.on("change", function() {
-              row.scope = scopeSel.val();
-              row.name = "";
-              fillVarSel(row.scope, "");
-            });
-            varSel.on("change", function() {
-              row.name = varSel.val();
-            });
-            opSel.on("change", function() {
-              row.op = opSel.val();
-            });
-          }
-        });
-        var existing = Array.isArray(node.assignments) ? node.assignments : [];
-        if (existing.length) {
-          existing.forEach(function(a) {
-            listEl.editableList("addItem", a);
-          });
-        } else {
-          listEl.editableList("addItem", {});
-        }
-      }
-    });
-  }
-
-  // src/dialogs/get-variable-multi-dialog.js
-  var CSS_SEL2 = {
-    width: "100%",
-    "box-sizing": "border-box",
-    padding: "4px 6px",
-    "border-radius": "3px",
-    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
-    "font-size": "12px",
-    background: "var(--red-ui-secondary-background,#fff)",
-    color: "var(--red-ui-primary-text-color,#333)"
-  };
-  var CSS_LABEL2 = {
-    display: "block",
-    "font-size": "11px",
-    "font-weight": "600",
-    color: "var(--red-ui-secondary-text-color,#475569)",
-    "margin-bottom": "3px"
-  };
-  function openGetVariableMultiNodeEditor(node) {
-    var screen2 = getActiveScreen();
-    var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
-    var surface = state.editingMode === "template" ? "This template" : "This screen";
-    var scopes = [
-      { id: "@shared", name: "Shared / Server (realtime)" },
-      { id: "@app", name: "App (every screen)" },
-      { id: "", name: surface }
-    ];
-    decls.forEach(function(d) {
-      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
-        return s.id === d.scopeId;
-      })) {
-        scopes.push({ id: d.scopeId, name: d.scopeName });
-      }
-    });
-    function namesIn(scopeId) {
-      return decls.filter(function(d) {
-        return d.scopeId === scopeId;
-      }).map(function(d) {
-        return d.variable.name;
-      });
-    }
-    var listEl = null;
-    window.RED.tray.show({
-      id: "nexa-logic-get-variable-multi-editor",
-      title: "Configure Get Variables Node",
-      width: 580,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            if (!listEl) {
-              window.RED.tray.close();
-              return;
-            }
-            var reads = [];
-            listEl.editableList("items").each(function() {
-              var d = window.$(this).data("nexaRow");
-              if (!d || !d.name) return;
-              reads.push({
-                scope: d.scope || "",
-                name: d.name,
-                target: d.target || "payload"
-              });
-            });
-            node.reads = reads;
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({
-          "font-size": "12px",
-          color: "var(--red-ui-secondary-text-color,#64748b)",
-          "margin-bottom": "14px",
-          "line-height": "1.5"
-        }).text(
-          "Reads multiple variables and injects their values into the outgoing message. Each row: pick the variable and the msg property it should be written into. The enriched message is passed on."
-        ).appendTo(body);
-        listEl = window.$("<ol>").appendTo(body);
-        listEl.editableList({
-          addLabel: "Add variable read",
-          sortable: true,
-          removable: true,
-          height: "auto",
-          addItem: function(container, _i, data) {
-            var defScope = scopes[0] ? scopes[0].id : "";
-            var defNames = namesIn(defScope);
-            var row = {
-              scope: data.scope !== void 0 ? data.scope : defScope,
-              name: data.name !== void 0 ? data.name : defNames[0] || "",
-              target: data.target !== void 0 ? data.target : "payload"
-            };
-            container.data("nexaRow", row);
-            var grid = window.$("<div>").css({
-              display: "grid",
-              "grid-template-columns": "1fr 1fr 1fr",
-              gap: "8px",
-              "align-items": "end"
-            }).appendTo(container);
-            var scopeWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL2).text("Scope").appendTo(scopeWrap);
-            var scopeSel = window.$("<select>").css(CSS_SEL2).appendTo(scopeWrap);
-            scopes.forEach(function(s) {
-              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
-            });
-            var varWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL2).text("Variable").appendTo(varWrap);
-            var varSel = window.$("<select>").css(CSS_SEL2).appendTo(varWrap);
-            function fillVarSel(scope, current2) {
-              varSel.empty();
-              var names = namesIn(scope);
-              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
-              if (!names.length) {
-                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
-              }
-              names.forEach(function(n) {
-                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
-              });
-              row.name = varSel.val() || "";
-            }
-            fillVarSel(row.scope, row.name);
-            var targetWrap = window.$("<div>").appendTo(grid);
-            window.$("<label>").css(CSS_LABEL2).text("Into msg.\u2026").appendTo(targetWrap);
-            var targetInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(targetWrap);
-            if (typeof targetInput.typedInput === "function") {
-              targetInput.typedInput({ types: ["msg"], width: "100%" });
-              targetInput.typedInput("value", row.target || "payload");
-              targetInput.on("change", function() {
-                row.target = targetInput.typedInput("value") || "payload";
-              });
-            } else {
-              targetInput.css(CSS_SEL2).val(row.target || "payload");
-              targetInput.on("change input", function() {
-                row.target = targetInput.val() || "payload";
-              });
-            }
-            scopeSel.on("change", function() {
-              row.scope = scopeSel.val();
-              row.name = "";
-              fillVarSel(row.scope, "");
-            });
-            varSel.on("change", function() {
-              row.name = varSel.val();
-            });
-          }
-        });
-        var existing = Array.isArray(node.reads) ? node.reads : [];
-        if (existing.length) {
-          existing.forEach(function(r) {
-            listEl.editableList("addItem", r);
-          });
-        } else {
-          listEl.editableList("addItem", {});
-        }
-      }
-    });
-  }
-
-  // src/dialogs/join-dialog.js
-  function openJoinNodeEditor(node) {
-    var trayEl = null;
-    var draft = {
-      mode: node.mode || "wait-all",
-      slots: Array.isArray(node.slots) ? JSON.parse(JSON.stringify(node.slots)) : [],
-      count: typeof node.count === "number" ? node.count : 2,
-      outputFormat: node.outputFormat || "object",
-      timeout: typeof node.timeout === "number" ? node.timeout : 0
-    };
-    var MODE_HELP = {
-      "wait-all": "Waits until every configured slot has received at least one message, then emits the combined result and resets. Great for parallel async operations (HTTP + timer, etc.).",
-      "combine-latest": "Stores the latest message for each slot. Emits every time any slot fires, always including the most-recent value from all slots. Great for watching several variables together.",
-      "sequence-n": "Collects N consecutive messages (from any source) and emits them as an array every N messages. Great for batching events."
-    };
-    var OUTPUT_OPTIONS = [
-      { value: "object", label: "Object \u2013 { [topic]: msg }" },
-      { value: "array", label: "Array  \u2013 [ msg0, msg1, \u2026 ] (slot order)" },
-      { value: "forward", label: "Forward first msg + .join \u2013 pass triggering msg, attach .join with all values" }
-    ];
-    function buildBody(tray) {
-      trayEl = tray;
-      var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-      var helpDiv = window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color,#64748b)", "margin-bottom": "14px", "line-height": "1.4" }).appendTo(body);
-      function label(text, parent) {
-        return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color,#475569)", margin: "12px 0 4px" }).text(text).appendTo(parent || body);
-      }
-      if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") window.NexaKit.ensureStyles();
-      label("Mode");
-      var modeWrap = window.$("<div>").css({ display: "flex", gap: "8px", "flex-wrap": "wrap", "margin-bottom": "6px" }).appendTo(body);
-      ["wait-all", "combine-latest", "sequence-n"].forEach(function(m) {
-        var mLabel = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Sequence N" }[m];
-        var btn = window.$("<button>", { type: "button" }).css({
-          padding: "4px 12px",
-          "border-radius": "4px",
-          "font-size": "12px",
-          cursor: "pointer",
-          border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)",
-          background: draft.mode === m ? "var(--red-ui-primary-background,#1d4ed8)" : "var(--red-ui-secondary-background,#f8fafc)",
-          color: draft.mode === m ? "#fff" : "var(--red-ui-primary-text-color,#333)"
-        }).text(mLabel).appendTo(modeWrap);
-        btn.on("click", function() {
-          draft.mode = m;
-          body.empty();
-          buildBody(tray);
-        });
-      });
-      helpDiv.text(MODE_HELP[draft.mode]);
-      if (draft.mode !== "sequence-n") {
-        label("Slots (upstream channels)");
-        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-bottom": "6px" }).text("Add one slot per upstream branch. Set msg.topic = the slot topic in each upstream node so the Join can route it.").appendTo(body);
-        var listContainer = window.$("<div>", { "class": "nx-kit" }).css({ "margin-bottom": "8px" }).appendTo(body);
-        var html = window.NEXA_LIT && window.NEXA_LIT.html || function() {
-          return "";
-        };
-        var nxList = document.createElement("nx-list");
-        nxList.setAttribute("add-label", "Add slot");
-        nxList.setAttribute("empty-text", "No slots configured. Add at least 2 slots.");
-        nxList.sortable = true;
-        nxList.value = draft.slots.length ? JSON.parse(JSON.stringify(draft.slots)) : [];
-        nxList.newItem = function() {
-          return { topic: "slot" + Date.now() % 1e3, label: "Slot" };
-        };
-        nxList.renderItem = function(item, _idx, setItem) {
-          var curTopic = item ? item.topic || "" : "";
-          var curLabel = item ? item.label || "" : "";
-          return html`
-                    <nx-row cols="2" style="width:100%;gap:8px;">
-                        <nx-input label="Topic (msg.topic value)"  .value="${curTopic}"
-                            @nx-change="${function(e) {
-            e.stopPropagation();
-            setItem(Object.assign({}, item, { topic: e.detail.value }));
-          }}">
-                        </nx-input>
-                        <nx-input label="Label (for output key in object mode)" .value="${curLabel}"
-                            @nx-change="${function(e) {
-            e.stopPropagation();
-            setItem(Object.assign({}, item, { label: e.detail.value }));
-          }}">
-                        </nx-input>
-                    </nx-row>
-                `;
-        };
-        listContainer.append(nxList);
-      }
-      if (draft.mode === "sequence-n") {
-        label("Collect N messages");
-        var countInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 2, max: 100 }).val(draft.count).on("change", function() {
-          draft.count = Math.max(2, parseInt(this.value, 10) || 2);
-        }).appendTo(body);
-      }
-      label("Output format");
-      var fmtSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).appendTo(body);
-      OUTPUT_OPTIONS.forEach(function(o) {
-        window.$("<option>", { value: o.value }).text(o.label).prop("selected", draft.outputFormat === o.value).appendTo(fmtSel);
-      });
-      fmtSel.on("change", function() {
-        draft.outputFormat = fmtSel.val();
-      });
-      if (draft.mode === "wait-all") {
-        label("Timeout (ms, 0 = wait forever)");
-        window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 0 }).val(draft.timeout).on("change", function() {
-          draft.timeout = Math.max(0, parseInt(this.value, 10) || 0);
-        }).appendTo(body);
-        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-top": "4px" }).text("If all slots do not arrive within this time the node emits partial results (missing slots get null).").appendTo(body);
-      }
-    }
-    window.RED.tray.show({
-      id: "nexa-logic-join-editor",
-      title: "Configure Join Node",
-      width: 560,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.mode = draft.mode;
-            node.outputFormat = draft.outputFormat;
-            node.timeout = draft.timeout;
-            if (draft.mode === "sequence-n") {
-              node.count = draft.count;
-              delete node.slots;
-            } else {
-              var nxListEl = trayEl && trayEl.find("nx-list").get(0);
-              var rawSlots = nxListEl && (nxListEl.items || nxListEl.value) || draft.slots || [];
-              node.slots = rawSlots.filter(function(s) {
-                return s && s.topic;
-              });
-              delete node.count;
-            }
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: buildBody
-    });
-  }
-
-  // src/dialogs/web-io-dialog.js
-  var TITLES3 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
-  var HELP3 = {
-    "http-request": "Calls a web API. The URL and header values take bindings \u2014 {variable}, {$route.params.id}, {msg.payload.id}. The request body is msg.payload (JSON). Out: msg.payload = the response (parsed JSON or text), msg.statusCode, msg.ok and msg.error (non-2xx, network error or timeout). msg.url / msg.method / msg.headers override the node's.",
-    storage: `Reads or writes the browser's storage. "Local" is kept across visits, "session" until the tab closes. Values are stored as JSON.`,
-    cookie: "Reads, writes or removes a cookie \u2014 for example a session token after a login. Set / remove run in the page, so they are not HttpOnly (a server-set HttpOnly cookie is sent with HTTP Request calls automatically)."
-  };
-  function openWebIoNodeEditor(node) {
-    var type = node.type;
-    var d = JSON.parse(JSON.stringify(node));
-    window.RED.tray.show({
-      id: "nexa-logic-webio-editor",
-      title: "Configure " + TITLES3[type] + " Node",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            Object.keys(d).forEach(function(k) {
-              if (k !== "id" && k !== "x" && k !== "y" && k !== "type") node[k] = d[k];
-            });
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP3[type]).appendTo(body);
-        var label = function(text2, parent) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
-        };
-        var text = function(key, placeholder, parent) {
-          return window.$("<input>", { type: "text", placeholder: placeholder || "" }).css({ width: "100%", "box-sizing": "border-box" }).val(d[key] === void 0 ? "" : d[key]).appendTo(parent || body).on("change", function() {
-            d[key] = this.value;
-          });
-        };
-        var select = function(key, options, parent, onChange) {
-          var sel = window.$("<select>").css({ width: "100%" }).appendTo(parent || body);
-          options.forEach(function(o) {
-            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
-          });
-          sel.val(d[key] !== void 0 ? d[key] : options[0][0]);
-          d[key] = sel.val();
-          sel.on("change", function() {
-            d[key] = sel.val();
-            if (onChange) onChange();
-          });
-          return sel;
-        };
-        if (type === "http-request") {
-          label("Method");
-          select("method", [["GET", "GET"], ["POST", "POST"], ["PUT", "PUT"], ["PATCH", "PATCH"], ["DELETE", "DELETE"]]);
-          label("URL");
-          text("url", "https://api.example.com/orders/{msg.payload.id}?line={line}");
-          label("Headers (JSON \u2014 values take bindings)");
-          var h = window.$("<textarea>", { rows: 3, placeholder: '{"Authorization": "Bearer {token}"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(typeof d.headers === "string" ? d.headers : d.headers ? JSON.stringify(d.headers, null, 1) : "").appendTo(body).on("change", function() {
-            d.headers = this.value.trim();
-          });
-          h.attr("spellcheck", "false");
-          label("Body");
-          var bodyText;
-          select("body", [["payload", "msg.payload (JSON)"], ["binding", "A binding / text, e.g. {item}"], ["none", "No body"]], body, function() {
-            bodyText.toggle(d.body === "binding");
-          });
-          bodyText = text("bodyText", '{item}  \u2014 or {"qty": 1, "id": "{item.id}"} as text');
-          bodyText.toggle(d.body === "binding");
-          label("Timeout (ms, 0 = none)");
-          text("timeout", "10000");
-          label("Cookies");
-          select("credentials", [["same-origin", "Same site only (default)"], ["include", "Always send (cross-site API with cookies)"], ["omit", "Never"]]);
-          return;
-        }
-        label("Action");
-        var valueWrap, targetWrap, cookieOpts;
-        var sync = function() {
-          if (valueWrap) valueWrap.toggle(d.action === "set");
-          if (targetWrap) targetWrap.toggle(!d.action || d.action === "get");
-          if (cookieOpts) cookieOpts.toggle(d.action !== "get");
-        };
-        select("action", [["get", "Get (into the message)"], ["set", "Set"], ["remove", "Remove"]], body, sync);
-        if (type === "storage") {
-          label("Store");
-          select("store", [["local", "Local (kept across visits)"], ["session", "Session (until the tab closes)"]]);
-          label("Key");
-          text("key", "e.g. cart or prefs-{user}");
-        } else {
-          label("Cookie name");
-          text("name", "e.g. session");
-        }
-        targetWrap = window.$("<div>").appendTo(body);
-        label("Into msg property", targetWrap);
-        text("target", "payload", targetWrap);
-        valueWrap = window.$("<div>").appendTo(body);
-        label("Value", valueWrap);
-        var staticRow = window.$("<div>").css({ "margin-top": "6px" });
-        select("valueSource", [["payload", "msg.payload"], ["static", "A fixed value"]], valueWrap, function() {
-          staticRow.toggle(d.valueSource === "static");
-        });
-        staticRow.appendTo(valueWrap);
-        buildTypedInputWidget(staticRow, "string", d.value !== void 0 ? d.value : "", function(v) {
-          d.value = v;
-        });
-        staticRow.toggle(d.valueSource === "static");
-        if (type === "cookie") {
-          cookieOpts = window.$("<div>").appendTo(body);
-          label("Expires after (days; empty = when the browser closes)", cookieOpts);
-          text("days", "7", cookieOpts);
-          label("Path", cookieOpts);
-          text("path", "/", cookieOpts);
-          label("SameSite", cookieOpts);
-          select("sameSite", [["Lax", "Lax (default)"], ["Strict", "Strict"], ["None", "None (needs Secure)"]], cookieOpts);
-          var secRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "8px", "font-size": "12px" }).appendTo(cookieOpts);
-          window.$("<input>", { type: "checkbox" }).prop("checked", !!d.secure).appendTo(secRow).on("change", function() {
-            d.secure = this.checked;
-          });
-          window.$("<span>").text("Secure (HTTPS only)").appendTo(secRow);
-        }
-        sync();
-      }
-    });
-  }
-
-  // src/dialogs/populate-dialog.js
-  var MODES = [
-    ["replace", "Replace the list (kept / updated / added / removed by key)"],
-    ["append", "Append (always adds)"],
-    ["prepend", "Prepend (always adds)"],
-    ["upsert", "Update by key (add when new)"],
-    ["remove", "Remove by key"],
-    ["clear", "Clear"]
-  ];
-  function frameLabel(f) {
-    return (f.name || "Frame") + " #" + f.id.slice(-4) + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children";
-  }
-  function openLayoutNodeEditor(node) {
-    var screen2 = getActiveScreen();
-    var frames = screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
-      return n.type === "@frame";
-    }) : [];
-    var chosen = node.container || "";
-    window.RED.tray.show({
-      id: "nexa-logic-layout-editor",
-      title: "Configure Layout Node",
-      width: 420,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        { text: "Save", "class": "primary", click: function() {
-          node.container = chosen;
-          markDirty();
-          renderLogicCanvas();
-          window.RED.tray.close();
-        } }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a "Send to Host" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.').appendTo(body);
-        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-        if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
-        frames.forEach(function(f) {
-          window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel);
-        });
-        sel.val(chosen);
-        chosen = sel.val() || "";
-        sel.on("change", function() {
-          chosen = sel.val();
-        });
-      }
-    });
-  }
-  function openPopulateNodeEditor(node) {
-    var templates = (state.templates || []).filter(function(t2) {
-      return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
-    });
-    var d = {
-      template: node.template || "",
-      mode: node.mode || "replace",
-      key: node.key === void 0 ? "id" : node.key,
-      valueSource: node.valueSource || "payload",
-      msgPath: node.msgPath || "payload.items",
-      value: node.value,
-      fill: !!node.fill,
-      virtualize: !!node.virtualize,
-      itemParam: node.itemParam
-    };
-    function paramsOf(tid) {
-      var t2 = templates.filter(function(x) {
-        return x.id === tid;
-      })[0];
-      return (t2 && t2.params || []).map(function(p) {
-        return p.name;
-      }).filter(Boolean);
-    }
-    window.RED.tray.show({
-      id: "nexa-logic-populate-editor",
-      title: "Configure Populate Node",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            Object.keys(d).forEach(function(k) {
-              node[k] = d[k];
-            });
-            delete node.container;
-            if (d.valueSource !== "static") delete node.value;
-            if (d.valueSource !== "msg") delete node.msgPath;
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button \u2192 HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.").appendTo(body);
-        var label = function(text) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
-        };
-        var select = function(key, options, onChange) {
-          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-          options.forEach(function(o) {
-            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
-          });
-          sel.val(d[key]);
-          if (!sel.val() && options[0]) {
-            sel.val(options[0][0]);
-            d[key] = options[0][0];
-          }
-          sel.on("change", function() {
-            d[key] = sel.val();
-            if (onChange) onChange();
-          });
-          return sel;
-        };
-        label("Template (one copy per item)");
-        select("template", templates.length ? templates.map(function(t2) {
-          return [t2.id, t2.name + (t2.kind === "component" ? " (Component)" : "")];
-        }) : [["", "(no templates yet)"]], function() {
-          d.itemParam = void 0;
-          fillParams2();
-        });
-        label("Pass each item into the template's param");
-        var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function() {
-          d.itemParam = paramSel.val();
-        });
-        var paramHint = window.$("<div>").css({ "font-size": "11px", color: "#b00", "margin-top": "4px" }).appendTo(body);
-        function fillParams2() {
-          paramSel.empty();
-          var names = paramsOf(d.template);
-          if (names.indexOf(d.itemParam) === -1) d.itemParam = names[0];
-          names.forEach(function(n) {
-            window.$("<option>", { value: n }).text(n + "   \u2192 in the template: {" + n + ".field}").appendTo(paramSel);
-          });
-          paramSel.val(d.itemParam || "");
-          paramSel.toggle(names.length > 0);
-          paramHint.text(names.length ? "" : "This template declares no params yet: add one in the Templates tab (e.g. product), then bind {product.name} inside it.");
-        }
-        fillParams2();
-        label("Mode");
-        select("mode", MODES);
-        label("Key (the item field that identifies it, e.g. id; a string / number item \u2014 an image URL \u2014 is its own key)");
-        window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.key).appendTo(body).on("change", function() {
-          d.key = this.value.trim();
-        });
-        label("Items");
-        var srcSel = select("valueSource", [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed list (JSON)"]], function() {
-          sync();
-        });
-        var path = window.$("<input>", { type: "text", placeholder: "payload.data.items" }).css({ width: "100%", "box-sizing": "border-box", "margin-top": "6px" }).val(d.msgPath).appendTo(body).on("change", function() {
-          d.msgPath = this.value.trim();
-        });
-        var json = window.$("<textarea>", { rows: 4, placeholder: '[{"id": 1, "name": "Kopi", "price": 45000}]' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace", "margin-top": "6px" }).val(d.value !== void 0 ? JSON.stringify(d.value, null, 1) : "").appendTo(body).on("change", function() {
-          try {
-            d.value = this.value.trim() ? JSON.parse(this.value) : [];
-            window.$(this).css("border-color", "");
-          } catch (e) {
-            window.$(this).css("border-color", "#d00");
-          }
-        });
-        var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
-        window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function() {
-          d.fill = this.checked;
-        });
-        window.$("<span>").text("Each copy fills the frame's width (or once, on the template: On the live page \u2192 Width: Fill)").appendTo(fillRow);
-        var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
-        window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function() {
-          d.virtualize = this.checked;
-        });
-        window.$("<span>").html(`Virtualize: only the copies in view are drawn, for thousands of items. The frame scrolls; every copy has the template's size.<br><span style="color:#888">A copy's own variables reset when it scrolls out: keep such state in the item or a screen / app variable.</span>`).appendTo(virtRow);
-        function sync() {
-          path.toggle(d.valueSource === "msg");
-          json.toggle(d.valueSource === "static");
-        }
-        sync();
-        srcSel.trigger("blur");
-      }
-    });
-  }
-
-  // src/dialogs/template-output-dialog.js
-  var NAME_RE2 = /^[A-Za-z_][\w-]*$/;
-  function openTemplateOutputNodeEditor(node) {
-    var sending = node.type === "template-output";
-    var d = { output: node.output === void 0 ? sending ? "out" : "" : node.output };
-    var inst = sending ? null : findComponent(node.instanceId);
-    var names = inst ? templateOutputs(findTemplate(inst.templateId)) : [];
-    window.RED.tray.show({
-      id: "nexa-logic-template-output-editor",
-      title: sending ? "Configure Send to Host" : "Configure On Template Output",
-      width: 420,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            if (sending && !NAME_RE2.test(d.output)) return;
-            node.output = d.output;
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        var help = window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.5" }).appendTo(body);
-        if (sending) {
-          help.html("Sends the message <b>out of this template</b>, to where it is used:<br>\u2022 a copy a Populate made \u2192 out of the <b>Layout</b> node on the screen, with <code>msg.item</code> and <code>msg.index</code>;<br>\u2022 an instance placed on a screen \u2192 its <b>On Template Output</b> node there.<br><code>msg.output</code> is the name below: give each output its own (e.g. <code>open-dialog</code>, <code>delete</code>).");
-          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output name").appendTo(body);
-          var input = window.$("<input>", { type: "text", placeholder: "out" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.output).appendTo(body);
-          var err = window.$("<div>").css({ color: "#c00", "font-size": "11px", "margin-top": "4px" }).appendTo(body);
-          input.on("input change", function() {
-            d.output = this.value.trim();
-            err.text(NAME_RE2.test(d.output) ? "" : "A name: letters, digits, _ or -, not starting with a digit");
-          });
-        } else {
-          help.html("Fires when this instance's template sends a message out (a <b>Send to Host</b> node inside it). Wire it to what should happen here: open a dialog, a popup, set a variable\u2026");
-          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output").appendTo(body);
-          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-          window.$("<option>", { value: "" }).text("(any output)").appendTo(sel);
-          names.concat(d.output && names.indexOf(d.output) === -1 ? [d.output] : []).forEach(function(n) {
-            window.$("<option>", { value: n }).text(n).appendTo(sel);
-          });
-          sel.val(d.output);
-          sel.on("change", function() {
-            d.output = sel.val();
-          });
-          if (!names.length) window.$("<div>").css({ "font-size": "11px", color: "#a60", "margin-top": "6px" }).text("This template has no Send to Host node yet.").appendTo(body);
-        }
-      }
-    });
-  }
-
-  // src/dialogs/sparkplug-write-dialog.js
-  function openSparkplugWriteNodeEditor(node) {
-    var tagInput, listSelect;
-    window.RED.tray.show({
-      id: "nexa-logic-sparkplug-write-editor",
-      title: "Configure Sparkplug Write",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.tag = (tagInput.val() || "").trim();
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Publishes a Sparkplug DCMD/NCMD write when this node runs, with the value taken from msg.payload. Wire a "ui-event" (e.g. a button click) into this node.').appendTo(body);
-        var knownBindings = listKnownSparkplugBindings();
-        if (knownBindings.length) {
-          var pickRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Pick a known tag (optional shortcut)").appendTo(pickRow);
-          listSelect = window.$("<select>").css({ width: "100%" }).appendTo(pickRow);
-          window.$("<option>", { value: "" }).text("(select to fill in below)").appendTo(listSelect);
-          knownBindings.forEach(function(b) {
-            window.$("<option>", { value: b.binding }).text(b.label).appendTo(listSelect);
-          });
-          listSelect.on("change", function() {
-            var v = listSelect.val();
-            if (v) tagInput.val(v);
-          });
-        } else {
-          window.$("<div>").css({ "font-size": "11px", color: "#a66", "margin-bottom": "8px" }).text('No Sparkplug tags seen yet \u2014 open the "MQTT Sparkplug" sidebar tab first so tags show up here, or just type the binding below.').appendTo(body);
-        }
-        var row = window.$("<div>").css({ "margin-bottom": "4px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Sparkplug Tag").appendTo(row);
-        tagInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).attr("placeholder", "{sparkplug:group::edgeNode::device::metric}").val(node.tag || "").appendTo(row);
-        var hint = window.$("<div>").css({ "font-size": "11px", "margin-top": "4px" }).appendTo(body);
-        function updateHint() {
-          var ref = parseSparkplugBindingPath(tagInput.val());
-          if (!tagInput.val()) {
-            hint.text("");
-            return;
-          }
-          hint.css("color", ref ? "#2f8f6f" : "#a66").text(ref ? "Valid tag." : "Not a valid {sparkplug:...} binding.");
-        }
-        tagInput.on("input", updateHint);
-        updateHint();
-      }
-    });
-  }
-
-  // src/dialogs/sparkplug-write-multi-dialog.js
-  function openSparkplugWriteMultiNodeEditor(node) {
-    window.RED.tray.show({
-      id: "nexa-logic-sparkplug-write-multi-editor",
-      title: "Sparkplug Write Multi",
-      width: 520,
-      buttons: [
-        { text: "Close", "class": "primary", click: function() {
-          window.RED.tray.close();
-        } }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('This node has no per-tag configuration of its own \u2014 wire a "function" node in front of it that sets msg.writes to an array, then wire that into this node:').appendTo(body);
-        window.$("<pre>").css({
-          "font-size": "11px",
-          background: "var(--red-ui-tertiary-background, #f5f5f5)",
-          padding: "8px",
-          "border-radius": "4px",
-          "white-space": "pre-wrap",
-          "word-break": "break-all"
-        }).text(
-          'msg.writes = [\n  { tag: "{sparkplug:Group::Edge::Device::metricA}", value: 1 },\n  { tag: "{sparkplug:Group::Edge::Device::metricB}", value: 2 }\n];\nreturn msg;'
-        ).appendTo(body);
-        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin": "10px 0 4px" }).text("Tags with different group/edge/device get batched into separate publishes automatically; tags sharing the same one are sent together in a single Sparkplug message.").appendTo(body);
-        var knownBindings = listKnownSparkplugBindings();
-        if (knownBindings.length) {
-          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "10px", "font-weight": "bold" }).text("Tags seen so far (click to copy):").appendTo(body);
-          var listWrap = window.$("<div>").css({ "max-height": "160px", "overflow-y": "auto", border: "1px solid #ddd", "border-radius": "4px", "margin-top": "4px" }).appendTo(body);
-          knownBindings.forEach(function(b) {
-            window.$("<div>").css({
-              "font-size": "11px",
-              padding: "4px 8px",
-              cursor: "pointer",
-              "font-family": "monospace"
-            }).text(b.label).attr("title", "Click to copy: " + b.binding).on("click", function() {
-              if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(b.binding);
-                if (window.RED && window.RED.notify) window.RED.notify("Copied: " + b.binding, { type: "success", timeout: 1500 });
-              }
-            }).appendTo(listWrap);
-          });
-        }
-      }
-    });
-  }
-
-  // src/dialogs/overlay-dialog.js
-  function overlaysOf(screen2) {
-    return screen2 ? tree_exports.allNodes(screen2).filter(function(n) {
-      return !!layout_exports.overlayOf(n);
-    }) : [];
-  }
-  function overlayLabel(n) {
-    var o = layout_exports.overlayOf(n);
-    return (n.name || (o && o.kind === "drawer" ? "Drawer" : "Dialog")) + " #" + n.id.slice(-4);
-  }
-  function openOverlayNodeEditor(node) {
-    var screen2 = getActiveScreen();
-    var list = overlaysOf(screen2);
-    var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
-    var close = node.type === "overlay-close";
-    window.RED.tray.show({
-      id: "nexa-logic-overlay-editor",
-      title: close ? "Configure Close Node" : "Configure Open Node",
-      width: 440,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        { text: "Save", "class": "primary", click: function() {
-          node.overlay = d.overlay;
-          if (close) node.valueSource = d.valueSource;
-          markDirty();
-          renderLogicCanvas();
-          window.RED.tray.close();
-        } }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text(close ? 'Closes a dialog / drawer. The Open node that opened it continues with msg.payload = the result (below), msg.closedBy = "node".' : "Opens a dialog / drawer on top of any open one. This node's output fires when it closes: msg.payload = the result (a Close node's), msg.closedBy = backdrop / esc / timer / node. The message it was opened with is in its On Open event.").appendTo(body);
-        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
-        if (close) window.$("<option>", { value: "" }).text("The one on top (the last opened)").appendTo(sel);
-        if (!list.length && !close) window.$("<option>", { value: "" }).text("(no dialog / drawer here: Frame \u2192 Overlay \u2192 Show as)").appendTo(sel);
-        list.forEach(function(n) {
-          window.$("<option>", { value: n.id }).text(overlayLabel(n)).appendTo(sel);
-        });
-        sel.val(d.overlay);
-        d.overlay = sel.val() || "";
-        sel.on("change", function() {
-          d.overlay = sel.val();
-        });
-        if (close) {
-          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "12px 0 4px" }).text("Result").appendTo(body);
-          var rs = window.$("<select>").css({ width: "100%" }).appendTo(body);
-          [["payload", "msg.payload (e.g. the form's data)"], ["none", "None (null: cancelled)"]].forEach(function(o) {
-            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(rs);
-          });
-          rs.val(d.valueSource).on("change", function() {
-            d.valueSource = rs.val();
-          });
-        }
-      }
-    });
-  }
-
-  // src/dialogs/teleport-dialog.js
+  // src/features/logic/ui/teleport-dialog.js
   function nodeName(n) {
     return (n.name || n.type.replace(/^@/, "")) + " #" + n.id.slice(-4);
   }
@@ -32954,15 +31260,15 @@
     return Object.keys(names).sort();
   }
   function teleportNodeLabel(node) {
-    var screen2 = getActiveScreen();
-    var n = node.node && screen2 ? tree_exports.find(screen2, node.node) : null;
+    var screen = getActiveScreen();
+    var n = node.node && screen ? tree_exports.find(screen, node.node) : null;
     var who = n ? nodeName(n) : node.node ? "(missing node)" : "?";
     if (node.toSource === "payload") return "Teleport " + who + " \u2192 msg.payload";
     return node.to ? "Teleport " + who + " \u2192 " + (node.to === "@page" ? "page" : node.to) : "Send " + who + " home";
   }
   function openTeleportNodeEditor(node) {
-    var screen2 = getActiveScreen();
-    var all = screen2 ? tree_exports.allNodes(screen2) : [];
+    var screen = getActiveScreen();
+    var all = screen ? tree_exports.allNodes(screen) : [];
     var d = { node: node.node || "", to: node.to === void 0 ? "@page" : node.to, toSource: node.toSource || "static" };
     window.RED.tray.show({
       id: "nexa-logic-teleport-editor",
@@ -33025,342 +31331,163 @@
     });
   }
 
-  // src/dialogs/delay-dialog.js
-  function openDelayNodeEditor(node) {
-    var delayInput, unitSelect;
-    window.RED.tray.show({
-      id: "nexa-logic-delay-editor",
-      title: "Configure Delay Node",
-      width: 400,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            var val = parseInt(delayInput.val(), 10);
-            node.delay = isNaN(val) || val < 0 ? 500 : val;
-            node.unit = unitSelect.val() || "ms";
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Pauses message execution for the specified duration before forwarding to the next node.").appendTo(body);
-        var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
-        var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Delay Time").appendTo(delayCol);
-        delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" }).val(node.delay != null ? node.delay : 500).appendTo(delayCol);
-        var unitCol = window.$("<div>").css({ flex: "0 0 120px" }).appendTo(row);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Unit").appendTo(unitCol);
-        unitSelect = window.$("<select>").css({ width: "100%" }).appendTo(unitCol);
-        [
-          ["ms", "Milliseconds (ms)"],
-          ["s", "Seconds (s)"]
-        ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.unit || "ms") === opt[0]).appendTo(unitSelect);
-        });
-      }
-    });
+  // src/features/logic/ui/overlay-dialog.js
+  function overlaysOf(screen) {
+    return screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return !!layout_exports.overlayOf(n);
+    }) : [];
   }
-
-  // src/dialogs/navigate-dialog.js
-  function openNavigateNodeEditor(node) {
-    var modeSelect, screenSelect, urlInput, historySelect, forwardPayloadCheck;
-    window.RED.tray.show({
-      id: "nexa-logic-navigate-editor",
-      title: "Configure Goto Screen (SPA)",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.mode = modeSelect.val();
-            node.screenId = screenSelect.val();
-            node.url = urlInput.val();
-            node.historyAction = historySelect.val();
-            node.forwardPayload = forwardPayloadCheck.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Navigates to another screen seamlessly in SPA mode, preserving active WebSocket & Sparkplug connections.").appendTo(body);
-        var modeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Navigation Mode").appendTo(modeRow);
-        modeSelect = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
-        [
-          ["screen", "Named Screen (from Project)"],
-          ["url", "Dynamic Route / Path (Expression / Payload)"],
-          ["history", "Browser History (Back / Forward)"]
-        ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "screen") === opt[0]).appendTo(modeSelect);
-        });
-        var screenRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Target Screen").appendTo(screenRow);
-        screenSelect = window.$("<select>").css({ width: "100%" }).appendTo(screenRow);
-        var screens = state.screens || [];
-        if (!screens.length) {
-          window.$("<option>", { value: "" }).text("(No screens available)").appendTo(screenSelect);
-        } else {
-          screens.forEach(function(s) {
-            window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
-          });
-        }
-        var urlRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Template / Sub-path").appendTo(urlRow);
-        urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(urlRow);
-        var historyRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("History Action").appendTo(historyRow);
-        historySelect = window.$("<select>").css({ width: "100%" }).appendTo(historyRow);
-        [
-          ["back", "Back (-1)"],
-          ["forward", "Forward (+1)"]
-        ].forEach(function(opt) {
-          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.historyAction || "back") === opt[0]).appendTo(historySelect);
-        });
-        function updateVisibility() {
-          var m = modeSelect.val();
-          screenRow.toggle(m === "screen");
-          urlRow.toggle(m === "url");
-          historyRow.toggle(m === "history");
-        }
-        modeSelect.on("change", updateVisibility);
-        updateVisibility();
-        var payloadRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "8px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
-        payloadRow.append("Forward current msg.payload into destination screen's On Load");
-      }
-    });
+  function overlayLabel(n) {
+    var o = layout_exports.overlayOf(n);
+    return (n.name || (o && o.kind === "drawer" ? "Drawer" : "Dialog")) + " #" + n.id.slice(-4);
   }
-
-  // src/dialogs/route-trigger-dialog.js
-  function openRouteTriggerNodeEditor(node) {
-    var cookiesInput, includeDeviceCheck;
-    var flow = getActiveScreen();
-    var flowEp = flow && flow.endpoint || "/flow";
+  function openOverlayNodeEditor(node) {
+    var screen = getActiveScreen();
+    var list = overlaysOf(screen);
+    var d = { overlay: node.overlay || "", valueSource: node.valueSource || "payload" };
+    var close = node.type === "overlay-close";
     window.RED.tray.show({
-      id: "nexa-logic-route-trigger-editor",
-      title: "Configure Route Trigger",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.path = flowEp;
-            node.cookies = (cookiesInput.val() || "").trim();
-            node.includeDevice = includeDeviceCheck.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
-        var endpointBanner = window.$("<div>").css({
-          padding: "10px 12px",
-          background: "var(--red-ui-secondary-background, #f1f5f9)",
-          border: "1px solid var(--red-ui-secondary-border-color, #cbd5e1)",
-          "border-radius": "6px",
-          "margin-bottom": "14px",
-          "font-size": "12px",
-          color: "var(--red-ui-primary-text-color, #334155)"
-        }).appendTo(body);
-        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-road" style="color: #a855f7;"></i> Flow Entrypoint: <code>' + flowEp + "</code>").appendTo(endpointBanner);
-        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text("This Route Trigger is automatically bound to the Flow's starting endpoint. Incoming visits to /nexa" + flowEp + " initiate this flow sequence.").appendTo(endpointBanner);
-        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
-        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
-        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
-        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
-        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
-      }
-    });
-  }
-
-  // src/dialogs/route-not-found-dialog.js
-  function openRouteNotFoundNodeEditor(node) {
-    var cookiesInput, includeDeviceCheck;
-    var flow = getActiveScreen();
-    var flowEp = flow && flow.endpoint || "/flow";
-    window.RED.tray.show({
-      id: "nexa-logic-route-not-found-editor",
-      title: "Configure Route Not Found (404)",
-      width: 480,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.cookies = (cookiesInput.val() || "").trim();
-            node.includeDevice = includeDeviceCheck.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Triggered when an incoming route under this Flow does not match any valid screen (404 catch-all). Emits route path, query, selective cookies, and error payload.").appendTo(body);
-        var endpointBanner = window.$("<div>").css({
-          padding: "10px 12px",
-          background: "#fff1f2",
-          border: "1px solid #fecdd3",
-          "border-radius": "6px",
-          "margin-bottom": "14px",
-          "font-size": "12px",
-          color: "#9f1239"
-        }).appendTo(body);
-        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-exclamation-triangle" style="color: #e11d48;"></i> Flow Catch-All: <code>/nexa' + flowEp + "/*</code>").appendTo(endpointBanner);
-        window.$("<div>").css({ "font-size": "11px", color: "#881337" }).text("Connect this node's output to a Render Screen (e.g. custom 404 page) or navigation logic to handle unmatched routes gracefully.").appendTo(endpointBanner);
-        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
-        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
-        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
-        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
-        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
-        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
-        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
-      }
-    });
-  }
-
-  // src/dialogs/render-screen-dialog.js
-  function openRenderScreenNodeEditor(node) {
-    var screenSelect, forwardPayloadCheck;
-    window.RED.tray.show({
-      id: "nexa-logic-render-screen-editor",
-      title: "Configure Render Screen",
-      width: 460,
-      buttons: [
-        { text: "Cancel", click: function() {
-          window.RED.tray.close();
-        } },
-        {
-          text: "Save",
-          "class": "primary",
-          click: function() {
-            node.screenId = screenSelect.val();
-            node.forwardPayload = forwardPayloadCheck.is(":checked");
-            markDirty();
-            renderLogicCanvas();
-            window.RED.tray.close();
-          }
-        }
-      ],
-      open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({
-          "font-size": "12px",
-          color: "var(--red-ui-secondary-text-color, #64748b)",
-          "margin-bottom": "14px",
-          "line-height": "1.5"
-        }).html("Serves and renders a screen view in the browser when triggered by the flow.<br>When components inside the screen call <strong>Send to Flow</strong>, this node emits the message downstream.").appendTo(body);
-        var screenRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
-        window.$("<label>").css({
-          display: "block",
-          "font-size": "11px",
-          "font-weight": "600",
-          "margin-bottom": "6px",
-          color: "var(--red-ui-secondary-text-color, #475569)"
-        }).text("Screen View to Render").appendTo(screenRow);
-        screenSelect = window.$("<select>").css({ width: "100%", padding: "6px" }).appendTo(screenRow);
-        var screens = state.screens || [];
-        if (!screens.length) {
-          window.$("<option>", { value: "" }).text("(No screens available in project)").appendTo(screenSelect);
-        } else {
-          screens.forEach(function(s) {
-            window.$("<option>", { value: s.id }).text(s.name + " (" + (s.path || "/" + s.id) + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
-          });
-        }
-        var payloadRow = window.$("<label>").css({
-          "font-size": "12px",
-          color: "var(--red-ui-primary-text-color, #333)",
-          "margin-top": "12px",
-          display: "flex",
-          "align-items": "center",
-          cursor: "pointer"
-        }).appendTo(body);
-        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
-        payloadRow.append("Forward current msg.payload into screen's On Load lifecycle");
-      }
-    });
-  }
-
-  // src/dialogs/send-to-flow-dialog.js
-  function openSendToFlowNodeEditor(node) {
-    var actionInput;
-    window.RED.tray.show({
-      id: "nexa-logic-send-to-flow-editor",
-      title: "Configure Send to Flow",
+      id: "nexa-logic-overlay-editor",
+      title: close ? "Configure Close Node" : "Configure Open Node",
       width: 440,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
         } },
+        { text: "Save", "class": "primary", click: function() {
+          node.overlay = d.overlay;
+          if (close) node.valueSource = d.valueSource;
+          markDirty();
+          renderLogicCanvas();
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.45" }).text(close ? 'Closes a dialog / drawer. The Open node that opened it continues with msg.payload = the result (below), msg.closedBy = "node".' : "Opens a dialog / drawer on top of any open one. This node's output fires when it closes: msg.payload = the result (a Close node's), msg.closedBy = backdrop / esc / timer / node. The message it was opened with is in its On Open event.").appendTo(body);
+        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        if (close) window.$("<option>", { value: "" }).text("The one on top (the last opened)").appendTo(sel);
+        if (!list.length && !close) window.$("<option>", { value: "" }).text("(no dialog / drawer here: Frame \u2192 Overlay \u2192 Show as)").appendTo(sel);
+        list.forEach(function(n) {
+          window.$("<option>", { value: n.id }).text(overlayLabel(n)).appendTo(sel);
+        });
+        sel.val(d.overlay);
+        d.overlay = sel.val() || "";
+        sel.on("change", function() {
+          d.overlay = sel.val();
+        });
+        if (close) {
+          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "12px 0 4px" }).text("Result").appendTo(body);
+          var rs = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          [["payload", "msg.payload (e.g. the form's data)"], ["none", "None (null: cancelled)"]].forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(rs);
+          });
+          rs.val(d.valueSource).on("change", function() {
+            d.valueSource = rs.val();
+          });
+        }
+      }
+    });
+  }
+
+  // src/features/logic/ui/editor.js
+  function componentName(compId) {
+    const comp = findComponent(compId);
+    const def = comp && window.NEXA && window.NEXA.getComponent(comp.type);
+    if (comp && comp.name) return { name: comp.name, def };
+    const typeLabel = !comp ? "?" : comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? "Frame" : def ? def.label : comp.type;
+    return { name: typeLabel + " #" + (comp ? comp.id.slice(-4) : "?"), def };
+  }
+  function overlayNodeLabel(node) {
+    const screen = getActiveScreen();
+    const of = node.overlay && screen ? tree_exports.find(screen, node.overlay) : null;
+    const verb = node.type === "overlay-open" ? "Open " : "Close ";
+    return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
+  }
+  defineLogicEditors({
+    "ui-event": {
+      label: function(node) {
+        const c = componentName(node.compId);
+        if (node.event === "sparkplug-change" || node.event === "sparkplug-update") return c.name + " on Sparkplug Update";
+        if (node.event === "slide-change") return c.name + " on Slide Change";
+        const evt = c.def && c.def.events && c.def.events.find(function(e) {
+          return e.name === node.event;
+        });
+        return c.name + " " + (evt ? evt.label : "on " + node.event);
+      }
+    },
+    "ui-update": {
+      label: function(node) {
+        return "Update " + componentName(node.compId).name;
+      },
+      edit: openUiUpdateNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "layer-control": {
+      label: function(node) {
+        const n = (node.states || []).length;
+        return "Layer Control" + (n ? " (" + n + ")" : "");
+      },
+      edit: openLayerControlNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "teleport": {
+      label: teleportNodeLabel,
+      edit: openTeleportNodeEditor,
+      hint: "Double-click to choose the node and where it goes"
+    },
+    "overlay-open": {
+      label: overlayNodeLabel,
+      edit: openOverlayNodeEditor,
+      hint: "Double-click to choose the dialog / drawer. Its output fires when it closes (msg.payload = the result)."
+    },
+    "overlay-close": {
+      label: overlayNodeLabel,
+      edit: openOverlayNodeEditor,
+      hint: "Double-click to choose what it closes and its result"
+    }
+  });
+
+  // src/features/logic/control/function-dialog.js
+  function openFunctionNodeEditor(node) {
+    var codeEditor = null;
+    window.RED.tray.show({
+      id: "nexa-logic-function-editor",
+      title: "Edit Function",
+      width: 700,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
         {
-          text: "Save",
+          text: "Done",
           "class": "primary",
           click: function() {
-            node.action = (actionInput.val() || "").trim();
+            if (codeEditor) node.code = codeEditor.getValue();
             markDirty();
-            renderLogicCanvas();
             window.RED.tray.close();
           }
         }
       ],
       open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({
-          "font-size": "12px",
-          color: "var(--red-ui-secondary-text-color, #64748b)",
-          "margin-bottom": "14px",
-          "line-height": "1.5"
-        }).html("Dispatches a message from this screen back to the host <strong>Render Screen</strong> node in the active Flow logic canvas.<br>The host node emits this message out of its output port.").appendTo(body);
-        var actionRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-        window.$("<label>").css({
-          display: "block",
-          "font-size": "11px",
-          "font-weight": "600",
-          "margin-bottom": "6px",
-          color: "var(--red-ui-secondary-text-color, #475569)"
-        }).text("Action / Event Name (Optional)").appendTo(actionRow);
-        actionInput = window.$("<input>", {
-          type: "text",
-          placeholder: "e.g. submit, cancel, next, login"
-        }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(node.action || "").appendTo(actionRow);
-        window.$("<div>").css({
-          "font-size": "11px",
-          color: "#64748b",
-          "margin-top": "4px"
-        }).text("If specified, this is attached as msg.action so the flow can switch or branch.").appendTo(actionRow);
+        var body = tray.find(".red-ui-tray-body").css({ padding: "8px 12px", height: "100%", display: "flex", "flex-direction": "column", "box-sizing": "border-box" });
+        window.$("<div>").css({ padding: "0 0 8px 0", "font-size": "12px", color: "#888", "flex-shrink": "0" }).text("Receives msg (e.g. msg.payload from the node before this one). Return a new msg object to pass along the wire, or null to stop here.").appendTo(body);
+        var editorContainer = window.$("<div>", { id: "nexa-logic-function-editor-mount" }).css({ flex: "1 1 auto", "min-height": "0" }).appendTo(body);
+        codeEditor = createCM6Editor({
+          parent: editorContainer.get(0),
+          value: node.code || "return msg;",
+          language: "javascript",
+          completionSource: sparkplugBindingCompletionSource
+        });
+        codeEditor.focus();
+      },
+      close: function() {
+        if (codeEditor) codeEditor.destroy();
       }
     });
   }
 
-  // src/dialogs/switch-dialog.js
+  // src/features/logic/control/switch-dialog.js
   var OPERATORS = [
     { v: "eq", label: "==" },
     { v: "neq", label: "!=" },
@@ -33420,9 +31547,9 @@
             }
             node.rules = gatheredRules;
             node.outputs = gatheredRules.length;
-            var screen2 = getActiveScreen();
-            if (screen2 && screen2.logic && screen2.logic.wires) {
-              screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+            var screen = getActiveScreen();
+            if (screen && screen.logic && screen.logic.wires) {
+              screen.logic.wires = screen.logic.wires.filter(function(w) {
                 if (w.from === node.id) {
                   return (w.fromPort || 0) < gatheredRules.length;
                 }
@@ -33632,171 +31759,2235 @@
     });
   }
 
+  // src/features/logic/control/delay-dialog.js
+  function openDelayNodeEditor(node) {
+    var delayInput, unitSelect;
+    window.RED.tray.show({
+      id: "nexa-logic-delay-editor",
+      title: "Configure Delay Node",
+      width: 400,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = parseInt(delayInput.val(), 10);
+            node.delay = isNaN(val) || val < 0 ? 500 : val;
+            node.unit = unitSelect.val() || "ms";
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Pauses message execution for the specified duration before forwarding to the next node.").appendTo(body);
+        var row = window.$("<div>").css({ display: "flex", gap: "8px", "align-items": "flex-end", "margin-bottom": "12px" }).appendTo(body);
+        var delayCol = window.$("<div>").css({ flex: "1 1 auto" }).appendTo(row);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Delay Time").appendTo(delayCol);
+        delayInput = window.$("<input>", { type: "number", min: 0 }).css({ width: "100%", "box-sizing": "border-box" }).val(node.delay != null ? node.delay : 500).appendTo(delayCol);
+        var unitCol = window.$("<div>").css({ flex: "0 0 120px" }).appendTo(row);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Unit").appendTo(unitCol);
+        unitSelect = window.$("<select>").css({ width: "100%" }).appendTo(unitCol);
+        [
+          ["ms", "Milliseconds (ms)"],
+          ["s", "Seconds (s)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.unit || "ms") === opt[0]).appendTo(unitSelect);
+        });
+      }
+    });
+  }
+
+  // src/features/logic/control/join-dialog.js
+  function openJoinNodeEditor(node) {
+    var trayEl = null;
+    var draft = {
+      mode: node.mode || "wait-all",
+      slots: Array.isArray(node.slots) ? JSON.parse(JSON.stringify(node.slots)) : [],
+      count: typeof node.count === "number" ? node.count : 2,
+      outputFormat: node.outputFormat || "object",
+      timeout: typeof node.timeout === "number" ? node.timeout : 0
+    };
+    var MODE_HELP = {
+      "wait-all": "Waits until every configured slot has received at least one message, then emits the combined result and resets. Great for parallel async operations (HTTP + timer, etc.).",
+      "combine-latest": "Stores the latest message for each slot. Emits every time any slot fires, always including the most-recent value from all slots. Great for watching several variables together.",
+      "sequence-n": "Collects N consecutive messages (from any source) and emits them as an array every N messages. Great for batching events."
+    };
+    var OUTPUT_OPTIONS = [
+      { value: "object", label: "Object \u2013 { [topic]: msg }" },
+      { value: "array", label: "Array  \u2013 [ msg0, msg1, \u2026 ] (slot order)" },
+      { value: "forward", label: "Forward first msg + .join \u2013 pass triggering msg, attach .join with all values" }
+    ];
+    function buildBody(tray) {
+      trayEl = tray;
+      var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+      var helpDiv = window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color,#64748b)", "margin-bottom": "14px", "line-height": "1.4" }).appendTo(body);
+      function label(text, parent) {
+        return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color,#475569)", margin: "12px 0 4px" }).text(text).appendTo(parent || body);
+      }
+      if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") window.NexaKit.ensureStyles();
+      label("Mode");
+      var modeWrap = window.$("<div>").css({ display: "flex", gap: "8px", "flex-wrap": "wrap", "margin-bottom": "6px" }).appendTo(body);
+      ["wait-all", "combine-latest", "sequence-n"].forEach(function(m) {
+        var mLabel = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Sequence N" }[m];
+        var btn = window.$("<button>", { type: "button" }).css({
+          padding: "4px 12px",
+          "border-radius": "4px",
+          "font-size": "12px",
+          cursor: "pointer",
+          border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)",
+          background: draft.mode === m ? "var(--red-ui-primary-background,#1d4ed8)" : "var(--red-ui-secondary-background,#f8fafc)",
+          color: draft.mode === m ? "#fff" : "var(--red-ui-primary-text-color,#333)"
+        }).text(mLabel).appendTo(modeWrap);
+        btn.on("click", function() {
+          draft.mode = m;
+          body.empty();
+          buildBody(tray);
+        });
+      });
+      helpDiv.text(MODE_HELP[draft.mode]);
+      if (draft.mode !== "sequence-n") {
+        label("Slots (upstream channels)");
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-bottom": "6px" }).text("Add one slot per upstream branch. Set msg.topic = the slot topic in each upstream node so the Join can route it.").appendTo(body);
+        var listContainer = window.$("<div>", { "class": "nx-kit" }).css({ "margin-bottom": "8px" }).appendTo(body);
+        var html = window.NEXA_LIT && window.NEXA_LIT.html || function() {
+          return "";
+        };
+        var nxList = document.createElement("nx-list");
+        nxList.setAttribute("add-label", "Add slot");
+        nxList.setAttribute("empty-text", "No slots configured. Add at least 2 slots.");
+        nxList.sortable = true;
+        nxList.value = draft.slots.length ? JSON.parse(JSON.stringify(draft.slots)) : [];
+        nxList.newItem = function() {
+          return { topic: "slot" + Date.now() % 1e3, label: "Slot" };
+        };
+        nxList.renderItem = function(item, _idx, setItem) {
+          var curTopic = item ? item.topic || "" : "";
+          var curLabel = item ? item.label || "" : "";
+          return html`
+                    <nx-row cols="2" style="width:100%;gap:8px;">
+                        <nx-input label="Topic (msg.topic value)"  .value="${curTopic}"
+                            @nx-change="${function(e) {
+            e.stopPropagation();
+            setItem(Object.assign({}, item, { topic: e.detail.value }));
+          }}">
+                        </nx-input>
+                        <nx-input label="Label (for output key in object mode)" .value="${curLabel}"
+                            @nx-change="${function(e) {
+            e.stopPropagation();
+            setItem(Object.assign({}, item, { label: e.detail.value }));
+          }}">
+                        </nx-input>
+                    </nx-row>
+                `;
+        };
+        listContainer.append(nxList);
+      }
+      if (draft.mode === "sequence-n") {
+        label("Collect N messages");
+        var countInput = window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 2, max: 100 }).val(draft.count).on("change", function() {
+          draft.count = Math.max(2, parseInt(this.value, 10) || 2);
+        }).appendTo(body);
+      }
+      label("Output format");
+      var fmtSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).appendTo(body);
+      OUTPUT_OPTIONS.forEach(function(o) {
+        window.$("<option>", { value: o.value }).text(o.label).prop("selected", draft.outputFormat === o.value).appendTo(fmtSel);
+      });
+      fmtSel.on("change", function() {
+        draft.outputFormat = fmtSel.val();
+      });
+      if (draft.mode === "wait-all") {
+        label("Timeout (ms, 0 = wait forever)");
+        window.$("<input>", { type: "number" }).css({ width: "100%", "box-sizing": "border-box", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color,#cbd5e1)" }).attr({ min: 0 }).val(draft.timeout).on("change", function() {
+          draft.timeout = Math.max(0, parseInt(this.value, 10) || 0);
+        }).appendTo(body);
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color,#94a3b8)", "margin-top": "4px" }).text("If all slots do not arrive within this time the node emits partial results (missing slots get null).").appendTo(body);
+      }
+    }
+    window.RED.tray.show({
+      id: "nexa-logic-join-editor",
+      title: "Configure Join Node",
+      width: 560,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.mode = draft.mode;
+            node.outputFormat = draft.outputFormat;
+            node.timeout = draft.timeout;
+            if (draft.mode === "sequence-n") {
+              node.count = draft.count;
+              delete node.slots;
+            } else {
+              var nxListEl = trayEl && trayEl.find("nx-list").get(0);
+              var rawSlots = nxListEl && (nxListEl.items || nxListEl.value) || draft.slots || [];
+              node.slots = rawSlots.filter(function(s) {
+                return s && s.topic;
+              });
+              delete node.count;
+            }
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: buildBody
+    });
+  }
+
+  // src/features/logic/control/editor.js
+  var JOIN_MODES = { "wait-all": "Wait All", "combine-latest": "Combine Latest" };
+  defineLogicEditors({
+    "function": { edit: openFunctionNodeEditor, hint: "Double-click to edit code" },
+    "switch": {
+      label: function(node) {
+        const prop2 = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
+        return (node.name || "Switch") + " [" + prop2 + " : " + (node.rules || []).length + "]";
+      },
+      edit: openSwitchNodeEditor,
+      hint: "Double-click to configure switch rules",
+      portTitle: function(node, i2) {
+        const rules = node.rules && node.rules.length ? node.rules : [{ t: "eq" }];
+        return rules[i2] ? rules[i2].t || "rule" : "";
+      }
+    },
+    "delay": {
+      label: function(node) {
+        return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")";
+      },
+      edit: openDelayNodeEditor,
+      hint: "Double-click to configure delay"
+    },
+    "join": {
+      label: function(node) {
+        const mode = node.mode || "wait-all";
+        const word = mode === "sequence-n" ? "Seq " + (node.count || 2) : JOIN_MODES[mode] || "Join";
+        const n = (node.slots || []).length;
+        return "Join [" + word + (n ? ": " + n : "") + "]";
+      },
+      edit: openJoinNodeEditor,
+      hint: "Double-click to configure join mode and slots"
+    }
+  });
+
+  // src/features/logic/variables/set-variable-dialog.js
+  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "Watch Variable" };
+  var HELP = {
+    "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "Watch Variable" nodes watching it fire. The message goes on unchanged.',
+    "get-variable": "Puts the variable's current value into the message and passes it on.",
+    "on-variable-change": "Watches one or more variables and starts a flow whenever any of them changes (like a useEffect dependency array). msg.payload = new value, msg.previous = old value, msg.variable = variable name, msg.scope = variable scope."
+  };
+  var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
+  function openSetVariableNodeEditor(node) {
+    var type = node.type in TITLES ? node.type : "set-variable";
+    var screen = getActiveScreen();
+    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
+    var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
+    var draft = {
+      scope: node.scope || "",
+      name: node.name || "",
+      op: node.op || "set",
+      valueSource: node.valueSource || "payload",
+      value: node.value,
+      msgPath: node.msgPath || "payload.data",
+      target: node.target || "payload",
+      variables: Array.isArray(node.variables) ? JSON.parse(JSON.stringify(node.variables)) : node.name ? [{ scope: node.scope || "", name: node.name }] : []
+    };
+    var nameSel;
+    var trayEl = null;
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    function fillNames() {
+      if (!nameSel) return;
+      nameSel.empty();
+      var names = namesIn(draft.scope);
+      if (draft.name && names.indexOf(draft.name) === -1) names.unshift(draft.name);
+      if (!names.length) window.$("<option>", { value: "" }).text("(no variables declared here)").appendTo(nameSel);
+      names.forEach(function(n) {
+        window.$("<option>", { value: n }).text(n).appendTo(nameSel);
+      });
+      nameSel.val(draft.name || names[0] || "");
+      draft.name = nameSel.val() || "";
+    }
+    var scopes = [
+      { id: "@shared", name: "Shared / Server (Realtime across all devices)" },
+      { id: "@app", name: "App (every screen)" },
+      { id: "", name: surfaceLabel }
+    ];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) scopes.push({ id: d.scopeId, name: d.scopeName });
+    });
+    if (draft.scope && !scopes.some(function(s) {
+      return s.id === draft.scope;
+    })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
+    window.RED.tray.show({
+      id: "nexa-logic-variable-editor",
+      title: "Configure " + TITLES[type] + " Node",
+      width: 520,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (type === "on-variable-change") {
+              var gathered = [];
+              var nxListInst = trayEl && trayEl.find("nx-list").get(0);
+              var rawItems = nxListInst && (nxListInst.items || nxListInst.value) || draft.variables || [];
+              rawItems.forEach(function(item) {
+                if (item && item.name) {
+                  if (!gathered.some(function(g) {
+                    return g.scope === item.scope && g.name === item.name;
+                  })) {
+                    gathered.push({ scope: item.scope || "", name: item.name });
+                  }
+                }
+              });
+              node.variables = gathered;
+              node.scope = gathered[0] ? gathered[0].scope : "";
+              node.name = gathered[0] ? gathered[0].name : "";
+            } else {
+              node.scope = draft.scope;
+              node.name = draft.name;
+              if (type === "set-variable") {
+                node.op = draft.op;
+                node.valueSource = draft.valueSource;
+                if (draft.valueSource === "static") node.value = draft.value;
+                else delete node.value;
+                if (draft.valueSource === "msg") node.msgPath = draft.msgPath;
+                else delete node.msgPath;
+              }
+              if (type === "get-variable") node.target = draft.target || "payload";
+            }
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        trayEl = tray;
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
+        var label = function(text, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
+        };
+        if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") {
+          window.NexaKit.ensureStyles();
+        }
+        if (type === "on-variable-change") {
+          label("Watched Variables (Dependencies)");
+          window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-bottom": "8px" }).text("Select the variables to watch. Whenever any of these variables changes, this node fires (like a useEffect dependency array).").appendTo(body);
+          var listContainer = window.$("<div>", { "class": "nx-kit" }).css({ "margin-bottom": "12px" }).appendTo(body);
+          var defaultScope = scopes[0] ? scopes[0].id : "";
+          var defaultNames = namesIn(defaultScope);
+          var defaultName = defaultNames[0] || "";
+          var initialVars = draft.variables && draft.variables.length ? JSON.parse(JSON.stringify(draft.variables)) : [{ scope: defaultScope, name: defaultName }];
+          var html = window.NEXA_LIT && window.NEXA_LIT.html || function() {
+            return "";
+          };
+          var nxList = document.createElement("nx-list");
+          nxList.setAttribute("add-label", "Add variable dependency");
+          nxList.setAttribute("empty-text", "No variables watched. Click Add variable dependency below.");
+          nxList.sortable = true;
+          nxList.value = initialVars;
+          nxList.newItem = function() {
+            var s = scopes[0] ? scopes[0].id : "";
+            var n = namesIn(s);
+            return { scope: s, name: n[0] || "" };
+          };
+          nxList.renderItem = function(item, index, setItem) {
+            var curScope = item ? item.scope !== void 0 ? item.scope : "" : "";
+            var curName = item ? item.name !== void 0 ? item.name : "" : "";
+            var scopeOptions = scopes.map(function(s) {
+              return { value: s.id, label: s.name };
+            });
+            var names = namesIn(curScope);
+            if (!curName && names.length) {
+              curName = names[0];
+              if (item) item.name = curName;
+            }
+            if (curName && names.indexOf(curName) === -1) names.unshift(curName);
+            var nameOptions = names.map(function(n) {
+              return { value: n, label: n };
+            });
+            if (!nameOptions.length) {
+              nameOptions = [{ value: "", label: "(no variables declared)" }];
+            }
+            return html`<nx-row cols="2" style="width:100%;gap:8px;">
+                        <nx-select
+                            label="Scope"
+                            .value="${curScope}"
+                            .options="${scopeOptions}"
+                            @nx-change="${function(e) {
+              e.stopPropagation();
+              var newScope = e.detail.value;
+              var newNames = namesIn(newScope);
+              setItem({ scope: newScope, name: newNames[0] || "" });
+            }}">
+                        </nx-select>
+                        <nx-select
+                            label="Variable"
+                            .value="${curName}"
+                            .options="${nameOptions}"
+                            @nx-change="${function(e) {
+              e.stopPropagation();
+              setItem({ scope: curScope, name: e.detail.value });
+            }}">
+                        </nx-select>
+                    </nx-row>`;
+          };
+          listContainer.append(nxList);
+          return;
+        }
+        label("Scope (where the variable is declared)");
+        var scopeSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body);
+        scopes.forEach(function(s) {
+          window.$("<option>", { value: s.id }).text(s.name).appendTo(scopeSel);
+        });
+        scopeSel.val(draft.scope).on("change", function() {
+          draft.scope = scopeSel.val();
+          draft.name = "";
+          fillNames();
+          if (typeof refreshStaticWidget === "function") refreshStaticWidget();
+        });
+        label("Variable");
+        nameSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body).on("change", function() {
+          draft.name = nameSel.val();
+          if (typeof refreshStaticWidget === "function") refreshStaticWidget();
+        });
+        fillNames();
+        if (type === "get-variable") {
+          label("Into msg property");
+          var targetRow = window.$("<div>").css({ width: "100%", "margin-top": "4px" }).appendTo(body);
+          var targetInput = window.$("<input>", { type: "text" }).appendTo(targetRow);
+          if (typeof targetInput.typedInput === "function") {
+            targetInput.typedInput({
+              default: "msg",
+              types: ["msg"],
+              width: "100%"
+            });
+            targetInput.typedInput("value", draft.target || "payload");
+            targetInput.on("change", function() {
+              draft.target = targetInput.typedInput("value").trim() || "payload";
+            });
+          } else {
+            targetInput.css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(draft.target || "payload").on("change", function() {
+              draft.target = this.value.trim() || "payload";
+            });
+          }
+        }
+        if (type === "set-variable") {
+          label("Operation");
+          var opSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(body);
+          OPS.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(opSel);
+          });
+          opSel.val(draft.op);
+          var valueWrap = window.$("<div>").appendTo(body);
+          label("Value", valueWrap);
+          var srcSel = window.$("<select>").css({ width: "100%", padding: "5px 8px", "border-radius": "4px", border: "1px solid var(--red-ui-form-input-border-color, #cbd5e1)" }).appendTo(valueWrap);
+          [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed value"]].forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(srcSel);
+          });
+          srcSel.val(draft.valueSource);
+          var pathRow = window.$("<div>").css({ width: "100%", "margin-top": "6px" }).appendTo(valueWrap);
+          var pathInput = window.$("<input>", { type: "text" }).appendTo(pathRow);
+          if (typeof pathInput.typedInput === "function") {
+            pathInput.typedInput({
+              default: "msg",
+              types: ["msg"],
+              width: "100%"
+            });
+            pathInput.typedInput("value", draft.msgPath || "payload.data");
+            pathInput.on("change", function() {
+              draft.msgPath = pathInput.typedInput("value").trim();
+            });
+          } else {
+            pathInput.css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(draft.msgPath || "payload.data").on("change", function() {
+              draft.msgPath = this.value.trim();
+            });
+          }
+          var staticRow = window.$("<div>").css({ "margin-top": "6px" }).appendTo(valueWrap);
+          var refreshStaticWidget = function() {
+            staticRow.empty();
+            var decl = decls.filter(function(d) {
+              return d.scopeId === draft.scope && d.variable.name === draft.name;
+            })[0];
+            var varType = decl && decl.variable && decl.variable.type || "string";
+            buildTypedInputWidget(staticRow, varType, draft.value !== void 0 ? draft.value : "", function(v) {
+              draft.value = v;
+            });
+          };
+          refreshStaticWidget();
+          var sync = function() {
+            valueWrap.toggle(draft.op !== "toggle");
+            pathRow.toggle(draft.valueSource === "msg");
+            staticRow.toggle(draft.valueSource === "static");
+          };
+          opSel.on("change", function() {
+            draft.op = opSel.val();
+            sync();
+          });
+          srcSel.on("change", function() {
+            draft.valueSource = srcSel.val();
+            sync();
+          });
+          sync();
+        }
+      }
+    });
+  }
+
+  // src/features/logic/variables/set-variable-multi-dialog.js
+  var OPS2 = [
+    ["set", "Set to value"],
+    ["merge", "Merge into (object)"],
+    ["append", "Append to (array)"],
+    ["remove", "Remove from (array / object key)"],
+    ["toggle", "Toggle (boolean)"],
+    ["increment", "Increment by (number, default 1)"]
+  ];
+  var CSS_SEL = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "4px 6px",
+    "border-radius": "3px",
+    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
+    "font-size": "12px",
+    background: "var(--red-ui-secondary-background,#fff)",
+    color: "var(--red-ui-primary-text-color,#333)"
+  };
+  var CSS_LABEL = {
+    display: "block",
+    "font-size": "11px",
+    "font-weight": "600",
+    color: "var(--red-ui-secondary-text-color,#475569)",
+    "margin-bottom": "3px"
+  };
+  function openSetVariableMultiNodeEditor(node) {
+    var screen = getActiveScreen();
+    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
+    var surface = state.editingMode === "template" ? "This template" : "This screen";
+    var scopes = [
+      { id: "@shared", name: "Shared / Server (realtime)" },
+      { id: "@app", name: "App (every screen)" },
+      { id: "", name: surface }
+    ];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) {
+        scopes.push({ id: d.scopeId, name: d.scopeName });
+      }
+    });
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    var listEl = null;
+    window.RED.tray.show({
+      id: "nexa-logic-set-variable-multi-editor",
+      title: "Configure Set Variables Node",
+      width: 640,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (!listEl) {
+              window.RED.tray.close();
+              return;
+            }
+            var assignments = [];
+            listEl.editableList("items").each(function() {
+              var d = window.$(this).data("nexaRow");
+              if (!d || !d.name) return;
+              var out = { scope: d.scope || "", name: d.name, op: d.op || "set" };
+              var t2 = d.valueType, v = d.valueRaw;
+              if (t2 === "msg") {
+                out.valueSource = "msg";
+                out.msgPath = v || "payload";
+              } else {
+                out.valueSource = "static";
+                out.staticType = t2;
+                if (t2 === "num") {
+                  out.value = parseFloat(v);
+                  if (isNaN(out.value)) out.value = 0;
+                } else if (t2 === "bool") {
+                  out.value = v === "true" || v === true;
+                } else if (t2 === "json") {
+                  try {
+                    out.value = JSON.parse(v);
+                  } catch (_) {
+                    out.value = v;
+                  }
+                } else {
+                  out.value = v;
+                }
+              }
+              assignments.push(out);
+            });
+            node.assignments = assignments;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color,#64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).text(
+          "Each row sets one variable when a message arrives. Choose the target variable, the operation, and the value \u2014 either a message property (msg) or a static value (string, number, boolean, JSON object/array). The message is passed on unchanged after all assignments."
+        ).appendTo(body);
+        listEl = window.$("<ol>").appendTo(body);
+        listEl.editableList({
+          addLabel: "Add assignment",
+          sortable: true,
+          removable: true,
+          height: "auto",
+          addItem: function(container, _i, data) {
+            var defScope = scopes[0] ? scopes[0].id : "";
+            var defNames = namesIn(defScope);
+            var row = {
+              scope: data.scope !== void 0 ? data.scope : defScope,
+              name: data.name !== void 0 ? data.name : defNames[0] || "",
+              op: data.op || "set",
+              valueType: data.valueSource === "msg" ? "msg" : data.staticType || "str",
+              valueRaw: data.valueSource === "msg" ? data.msgPath || "payload" : data.value !== void 0 ? String(data.value) : ""
+            };
+            container.data("nexaRow", row);
+            var grid = window.$("<div>").css({
+              display: "grid",
+              "grid-template-columns": "1fr 1fr",
+              gap: "8px"
+            }).appendTo(container);
+            var scopeWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Scope").appendTo(scopeWrap);
+            var scopeSel = window.$("<select>").css(CSS_SEL).appendTo(scopeWrap);
+            scopes.forEach(function(s) {
+              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
+            });
+            var varWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Variable").appendTo(varWrap);
+            var varSel = window.$("<select>").css(CSS_SEL).appendTo(varWrap);
+            function fillVarSel(scope, current2) {
+              varSel.empty();
+              var names = namesIn(scope);
+              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
+              if (!names.length) {
+                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
+              }
+              names.forEach(function(n) {
+                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
+              });
+              row.name = varSel.val() || "";
+            }
+            fillVarSel(row.scope, row.name);
+            var opWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Operation").appendTo(opWrap);
+            var opSel = window.$("<select>").css(CSS_SEL).appendTo(opWrap);
+            OPS2.forEach(function(o) {
+              window.$("<option>", { value: o[0] }).text(o[1]).prop("selected", o[0] === row.op).appendTo(opSel);
+            });
+            var valWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL).text("Value").appendTo(valWrap);
+            var valInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(valWrap);
+            if (typeof valInput.typedInput === "function") {
+              valInput.typedInput({
+                types: ["msg", "str", "num", "bool", "json"],
+                width: "100%"
+              });
+              valInput.typedInput("type", row.valueType);
+              valInput.typedInput("value", row.valueRaw);
+              valInput.on("change", function() {
+                row.valueType = valInput.typedInput("type");
+                row.valueRaw = valInput.typedInput("value");
+              });
+            } else {
+              valInput.css(CSS_SEL).val(row.valueRaw);
+              valInput.on("change input", function() {
+                row.valueRaw = valInput.val();
+              });
+            }
+            scopeSel.on("change", function() {
+              row.scope = scopeSel.val();
+              row.name = "";
+              fillVarSel(row.scope, "");
+            });
+            varSel.on("change", function() {
+              row.name = varSel.val();
+            });
+            opSel.on("change", function() {
+              row.op = opSel.val();
+            });
+          }
+        });
+        var existing = Array.isArray(node.assignments) ? node.assignments : [];
+        if (existing.length) {
+          existing.forEach(function(a) {
+            listEl.editableList("addItem", a);
+          });
+        } else {
+          listEl.editableList("addItem", {});
+        }
+      }
+    });
+  }
+
+  // src/features/logic/variables/get-variable-multi-dialog.js
+  var CSS_SEL2 = {
+    width: "100%",
+    "box-sizing": "border-box",
+    padding: "4px 6px",
+    "border-radius": "3px",
+    border: "1px solid var(--red-ui-form-input-border-color,#ccc)",
+    "font-size": "12px",
+    background: "var(--red-ui-secondary-background,#fff)",
+    color: "var(--red-ui-primary-text-color,#333)"
+  };
+  var CSS_LABEL2 = {
+    display: "block",
+    "font-size": "11px",
+    "font-weight": "600",
+    color: "var(--red-ui-secondary-text-color,#475569)",
+    "margin-bottom": "3px"
+  };
+  function openGetVariableMultiNodeEditor(node) {
+    var screen = getActiveScreen();
+    var decls = screen ? scope_exports.allDeclarations(screen, tree_exports.walk, getApp()) : [];
+    var surface = state.editingMode === "template" ? "This template" : "This screen";
+    var scopes = [
+      { id: "@shared", name: "Shared / Server (realtime)" },
+      { id: "@app", name: "App (every screen)" },
+      { id: "", name: surface }
+    ];
+    decls.forEach(function(d) {
+      if (d.scopeId && d.scopeId !== "@app" && d.scopeId !== "@shared" && !scopes.some(function(s) {
+        return s.id === d.scopeId;
+      })) {
+        scopes.push({ id: d.scopeId, name: d.scopeName });
+      }
+    });
+    function namesIn(scopeId) {
+      return decls.filter(function(d) {
+        return d.scopeId === scopeId;
+      }).map(function(d) {
+        return d.variable.name;
+      });
+    }
+    var listEl = null;
+    window.RED.tray.show({
+      id: "nexa-logic-get-variable-multi-editor",
+      title: "Configure Get Variables Node",
+      width: 580,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (!listEl) {
+              window.RED.tray.close();
+              return;
+            }
+            var reads = [];
+            listEl.editableList("items").each(function() {
+              var d = window.$(this).data("nexaRow");
+              if (!d || !d.name) return;
+              reads.push({
+                scope: d.scope || "",
+                name: d.name,
+                target: d.target || "payload"
+              });
+            });
+            node.reads = reads;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color,#64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).text(
+          "Reads multiple variables and injects their values into the outgoing message. Each row: pick the variable and the msg property it should be written into. The enriched message is passed on."
+        ).appendTo(body);
+        listEl = window.$("<ol>").appendTo(body);
+        listEl.editableList({
+          addLabel: "Add variable read",
+          sortable: true,
+          removable: true,
+          height: "auto",
+          addItem: function(container, _i, data) {
+            var defScope = scopes[0] ? scopes[0].id : "";
+            var defNames = namesIn(defScope);
+            var row = {
+              scope: data.scope !== void 0 ? data.scope : defScope,
+              name: data.name !== void 0 ? data.name : defNames[0] || "",
+              target: data.target !== void 0 ? data.target : "payload"
+            };
+            container.data("nexaRow", row);
+            var grid = window.$("<div>").css({
+              display: "grid",
+              "grid-template-columns": "1fr 1fr 1fr",
+              gap: "8px",
+              "align-items": "end"
+            }).appendTo(container);
+            var scopeWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Scope").appendTo(scopeWrap);
+            var scopeSel = window.$("<select>").css(CSS_SEL2).appendTo(scopeWrap);
+            scopes.forEach(function(s) {
+              window.$("<option>", { value: s.id }).text(s.name).prop("selected", s.id === row.scope).appendTo(scopeSel);
+            });
+            var varWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Variable").appendTo(varWrap);
+            var varSel = window.$("<select>").css(CSS_SEL2).appendTo(varWrap);
+            function fillVarSel(scope, current2) {
+              varSel.empty();
+              var names = namesIn(scope);
+              if (current2 && names.indexOf(current2) === -1) names.unshift(current2);
+              if (!names.length) {
+                window.$("<option>", { value: "" }).text("(no variables declared)").appendTo(varSel);
+              }
+              names.forEach(function(n) {
+                window.$("<option>", { value: n }).text(n).prop("selected", n === current2).appendTo(varSel);
+              });
+              row.name = varSel.val() || "";
+            }
+            fillVarSel(row.scope, row.name);
+            var targetWrap = window.$("<div>").appendTo(grid);
+            window.$("<label>").css(CSS_LABEL2).text("Into msg.\u2026").appendTo(targetWrap);
+            var targetInput = window.$("<input>", { type: "text" }).css({ width: "100%" }).appendTo(targetWrap);
+            if (typeof targetInput.typedInput === "function") {
+              targetInput.typedInput({ types: ["msg"], width: "100%" });
+              targetInput.typedInput("value", row.target || "payload");
+              targetInput.on("change", function() {
+                row.target = targetInput.typedInput("value") || "payload";
+              });
+            } else {
+              targetInput.css(CSS_SEL2).val(row.target || "payload");
+              targetInput.on("change input", function() {
+                row.target = targetInput.val() || "payload";
+              });
+            }
+            scopeSel.on("change", function() {
+              row.scope = scopeSel.val();
+              row.name = "";
+              fillVarSel(row.scope, "");
+            });
+            varSel.on("change", function() {
+              row.name = varSel.val();
+            });
+          }
+        });
+        var existing = Array.isArray(node.reads) ? node.reads : [];
+        if (existing.length) {
+          existing.forEach(function(r) {
+            listEl.editableList("addItem", r);
+          });
+        } else {
+          listEl.editableList("addItem", {});
+        }
+      }
+    });
+  }
+
+  // src/features/logic/variables/editor.js
+  var OPS3 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
+  function varRef(scope, name2) {
+    const screen = getActiveScreen();
+    const owner = scope && scope !== "@app" && screen ? tree_exports.find(screen, scope) : null;
+    const where = scope === "@app" ? "App" : scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
+    return where + "." + name2;
+  }
+  var varHint = "Double-click to configure";
+  defineLogicEditors({
+    "set-variable": {
+      label: function(node) {
+        if (!node.name) return "Set Variable";
+        const value = node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "";
+        return (OPS3[node.op] || "Set ") + varRef(node.scope, node.name) + value;
+      },
+      edit: openSetVariableNodeEditor,
+      hint: varHint
+    },
+    "get-variable": {
+      label: function(node) {
+        if (!node.name) return "Get Variable";
+        return "Get " + varRef(node.scope, node.name) + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
+      },
+      edit: openSetVariableNodeEditor,
+      hint: varHint
+    },
+    "on-variable-change": {
+      label: function(node) {
+        if (Array.isArray(node.variables) && node.variables.length) {
+          return "Watch (" + node.variables.map(function(v) {
+            return v ? varRef(v.scope, v.name) : "?";
+          }).join(", ") + ")";
+        }
+        return node.name ? "Watch " + varRef(node.scope, node.name) : "Watch Variable";
+      },
+      edit: openSetVariableNodeEditor,
+      hint: varHint
+    },
+    "set-variable-multi": {
+      label: function(node) {
+        const n = (node.assignments || []).length;
+        return "Set Variables" + (n ? " (" + n + ")" : "");
+      },
+      edit: openSetVariableMultiNodeEditor,
+      hint: "Double-click to configure variable assignments"
+    },
+    "get-variable-multi": {
+      label: function(node) {
+        const n = (node.reads || []).length;
+        return "Get Variables" + (n ? " (" + n + ")" : "");
+      },
+      edit: openGetVariableMultiNodeEditor,
+      hint: "Double-click to configure variable reads"
+    }
+  });
+
+  // src/features/logic/templates/populate-dialog.js
+  var MODES = [
+    ["replace", "Replace the list (kept / updated / added / removed by key)"],
+    ["append", "Append (always adds)"],
+    ["prepend", "Prepend (always adds)"],
+    ["upsert", "Update by key (add when new)"],
+    ["remove", "Remove by key"],
+    ["clear", "Clear"]
+  ];
+  function frameLabel(f) {
+    return (f.name || "Frame") + " #" + f.id.slice(-4) + "  \xB7  " + (layout_exports.hasAutoLayout(f) ? { horizontal: "row", vertical: "column", grid: "grid" }[layout_exports.layoutOf(f).mode] : "no auto layout") + "  \xB7  " + tree_exports.kids(f).length + " children";
+  }
+  function openLayoutNodeEditor(node) {
+    var screen = getActiveScreen();
+    var frames = screen ? tree_exports.allNodes(screen).filter(function(n) {
+      return n.type === "@frame";
+    }) : [];
+    var chosen = node.container || "";
+    window.RED.tray.show({
+      id: "nexa-logic-layout-editor",
+      title: "Configure Layout Node",
+      width: 420,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        { text: "Save", "class": "primary", click: function() {
+          node.container = chosen;
+          markDirty();
+          renderLogicCanvas();
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('A frame of this screen as a Logic node. Wire a Populate node into it: the copies go into this frame. Its output sends what a copy sends to its host (a "Send to Host" node in the template), with msg.item, msg.index and msg.output. Tip: select the frame on the canvas \u2014 its chip lights up in the Events tab.').appendTo(body);
+        var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+        if (!frames.length) window.$("<option>", { value: "" }).text("(no frame on this surface)").appendTo(sel);
+        frames.forEach(function(f) {
+          window.$("<option>", { value: f.id }).text(frameLabel(f)).appendTo(sel);
+        });
+        sel.val(chosen);
+        chosen = sel.val() || "";
+        sel.on("change", function() {
+          chosen = sel.val();
+        });
+      }
+    });
+  }
+  function openPopulateNodeEditor(node) {
+    var templates = (state.templates || []).filter(function(t2) {
+      return !(state.editingMode === "template" && t2.id === state.activeTemplateId);
+    });
+    var d = {
+      template: node.template || "",
+      mode: node.mode || "replace",
+      key: node.key === void 0 ? "id" : node.key,
+      valueSource: node.valueSource || "payload",
+      msgPath: node.msgPath || "payload.items",
+      value: node.value,
+      fill: !!node.fill,
+      virtualize: !!node.virtualize,
+      itemParam: node.itemParam
+    };
+    function paramsOf(tid) {
+      var t2 = templates.filter(function(x) {
+        return x.id === tid;
+      })[0];
+      return (t2 && t2.params || []).map(function(p) {
+        return p.name;
+      }).filter(Boolean);
+    }
+    window.RED.tray.show({
+      id: "nexa-logic-populate-editor",
+      title: "Configure Populate Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            Object.keys(d).forEach(function(k) {
+              node[k] = d[k];
+            });
+            delete node.container;
+            if (d.valueSource !== "static") delete node.value;
+            if (d.valueSource !== "msg") delete node.msgPath;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button \u2192 HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.").appendTo(body);
+        var label = function(text) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
+        };
+        var select = function(key, options, onChange) {
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          options.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+          });
+          sel.val(d[key]);
+          if (!sel.val() && options[0]) {
+            sel.val(options[0][0]);
+            d[key] = options[0][0];
+          }
+          sel.on("change", function() {
+            d[key] = sel.val();
+            if (onChange) onChange();
+          });
+          return sel;
+        };
+        label("Template (one copy per item)");
+        select("template", templates.length ? templates.map(function(t2) {
+          return [t2.id, t2.name + (t2.kind === "component" ? " (Component)" : "")];
+        }) : [["", "(no templates yet)"]], function() {
+          d.itemParam = void 0;
+          fillParams2();
+        });
+        label("Pass each item into the template's param");
+        var paramSel = window.$("<select>").css({ width: "100%" }).appendTo(body).on("change", function() {
+          d.itemParam = paramSel.val();
+        });
+        var paramHint = window.$("<div>").css({ "font-size": "11px", color: "#b00", "margin-top": "4px" }).appendTo(body);
+        function fillParams2() {
+          paramSel.empty();
+          var names = paramsOf(d.template);
+          if (names.indexOf(d.itemParam) === -1) d.itemParam = names[0];
+          names.forEach(function(n) {
+            window.$("<option>", { value: n }).text(n + "   \u2192 in the template: {" + n + ".field}").appendTo(paramSel);
+          });
+          paramSel.val(d.itemParam || "");
+          paramSel.toggle(names.length > 0);
+          paramHint.text(names.length ? "" : "This template declares no params yet: add one in the Templates tab (e.g. product), then bind {product.name} inside it.");
+        }
+        fillParams2();
+        label("Mode");
+        select("mode", MODES);
+        label("Key (the item field that identifies it, e.g. id; a string / number item \u2014 an image URL \u2014 is its own key)");
+        window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.key).appendTo(body).on("change", function() {
+          d.key = this.value.trim();
+        });
+        label("Items");
+        var srcSel = select("valueSource", [["payload", "msg.payload"], ["msg", "A msg property\u2026"], ["static", "A fixed list (JSON)"]], function() {
+          sync();
+        });
+        var path = window.$("<input>", { type: "text", placeholder: "payload.data.items" }).css({ width: "100%", "box-sizing": "border-box", "margin-top": "6px" }).val(d.msgPath).appendTo(body).on("change", function() {
+          d.msgPath = this.value.trim();
+        });
+        var json = window.$("<textarea>", { rows: 4, placeholder: '[{"id": 1, "name": "Kopi", "price": 45000}]' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace", "margin-top": "6px" }).val(d.value !== void 0 ? JSON.stringify(d.value, null, 1) : "").appendTo(body).on("change", function() {
+          try {
+            d.value = this.value.trim() ? JSON.parse(this.value) : [];
+            window.$(this).css("border-color", "");
+          } catch (e) {
+            window.$(this).css("border-color", "#d00");
+          }
+        });
+        var fillRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "10px", "font-size": "12px" }).appendTo(body);
+        window.$("<input>", { type: "checkbox" }).prop("checked", d.fill).appendTo(fillRow).on("change", function() {
+          d.fill = this.checked;
+        });
+        window.$("<span>").text("Each copy fills the frame's width (or once, on the template: On the live page \u2192 Width: Fill)").appendTo(fillRow);
+        var virtRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "flex-start", "margin-top": "8px", "font-size": "12px" }).appendTo(body);
+        window.$("<input>", { type: "checkbox" }).prop("checked", d.virtualize).appendTo(virtRow).on("change", function() {
+          d.virtualize = this.checked;
+        });
+        window.$("<span>").html(`Virtualize: only the copies in view are drawn, for thousands of items. The frame scrolls; every copy has the template's size.<br><span style="color:#888">A copy's own variables reset when it scrolls out: keep such state in the item or a screen / app variable.</span>`).appendTo(virtRow);
+        function sync() {
+          path.toggle(d.valueSource === "msg");
+          json.toggle(d.valueSource === "static");
+        }
+        sync();
+        srcSel.trigger("blur");
+      }
+    });
+  }
+
+  // src/features/logic/templates/template-output-dialog.js
+  var NAME_RE2 = /^[A-Za-z_][\w-]*$/;
+  function openTemplateOutputNodeEditor(node) {
+    var sending = node.type === "template-output";
+    var d = { output: node.output === void 0 ? sending ? "out" : "" : node.output };
+    var inst = sending ? null : findComponent(node.instanceId);
+    var names = inst ? templateOutputs(findTemplate(inst.templateId)) : [];
+    window.RED.tray.show({
+      id: "nexa-logic-template-output-editor",
+      title: sending ? "Configure Send to Host" : "Configure On Template Output",
+      width: 420,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            if (sending && !NAME_RE2.test(d.output)) return;
+            node.output = d.output;
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        var help = window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px", "line-height": "1.5" }).appendTo(body);
+        if (sending) {
+          help.html("Sends the message <b>out of this template</b>, to where it is used:<br>\u2022 a copy a Populate made \u2192 out of the <b>Layout</b> node on the screen, with <code>msg.item</code> and <code>msg.index</code>;<br>\u2022 an instance placed on a screen \u2192 its <b>On Template Output</b> node there.<br><code>msg.output</code> is the name below: give each output its own (e.g. <code>open-dialog</code>, <code>delete</code>).");
+          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output name").appendTo(body);
+          var input = window.$("<input>", { type: "text", placeholder: "out" }).css({ width: "100%", "box-sizing": "border-box" }).val(d.output).appendTo(body);
+          var err = window.$("<div>").css({ color: "#c00", "font-size": "11px", "margin-top": "4px" }).appendTo(body);
+          input.on("input change", function() {
+            d.output = this.value.trim();
+            err.text(NAME_RE2.test(d.output) ? "" : "A name: letters, digits, _ or -, not starting with a digit");
+          });
+        } else {
+          help.html("Fires when this instance's template sends a message out (a <b>Send to Host</b> node inside it). Wire it to what should happen here: open a dialog, a popup, set a variable\u2026");
+          window.$("<div>").css({ "font-size": "12px", "font-weight": "600", "margin-bottom": "4px" }).text("Output").appendTo(body);
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
+          window.$("<option>", { value: "" }).text("(any output)").appendTo(sel);
+          names.concat(d.output && names.indexOf(d.output) === -1 ? [d.output] : []).forEach(function(n) {
+            window.$("<option>", { value: n }).text(n).appendTo(sel);
+          });
+          sel.val(d.output);
+          sel.on("change", function() {
+            d.output = sel.val();
+          });
+          if (!names.length) window.$("<div>").css({ "font-size": "11px", color: "#a60", "margin-top": "6px" }).text("This template has no Send to Host node yet.").appendTo(body);
+        }
+      }
+    });
+  }
+
+  // src/features/logic/templates/editor.js
+  var POPULATE_WORDS = { append: "Append ", prepend: "Prepend ", upsert: "Update ", remove: "Remove ", clear: "Clear " };
+  var POPULATE_INTO = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " };
+  function instanceName(instanceId, fallback) {
+    const comp = findComponent(instanceId);
+    if (comp && comp.name) return comp.name;
+    const tpl = comp && findTemplate(comp.templateId);
+    return (fallback || (tpl ? tpl.name : "Instance")) + " #" + (comp ? comp.id.slice(-4) : "?");
+  }
+  defineLogicEditors({
+    "template-output": {
+      label: function(node) {
+        return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
+      },
+      edit: openTemplateOutputNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "template-event": {
+      label: function(node) {
+        return instanceName(node.instanceId) + " on " + (node.output || "any output");
+      },
+      edit: openTemplateOutputNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "set-template-param": {
+      label: function(node) {
+        const comp = findComponent(node.instanceId);
+        const tpl = comp && findTemplate(comp.templateId);
+        const param = tpl && (tpl.params || []).find(function(p) {
+          return p.name === node.paramName;
+        });
+        return instanceName(node.instanceId, "Instance") + " \u2192 Set " + (param ? param.label : node.paramName);
+      }
+    },
+    "populate": {
+      label: function(node) {
+        const tpl = node.template ? findTemplate(node.template) : null;
+        const noItems = node.mode === "clear" || node.mode === "remove";
+        if (!node.container) {
+          return (POPULATE_WORDS[node.mode] || "Populate ") + (noItems ? "items" : (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : "")) + " \u2192 layout";
+        }
+        const screen = getActiveScreen();
+        const target = screen ? tree_exports.find(screen, node.container) : null;
+        return (POPULATE_INTO[node.mode] || "Populate ") + (target ? target.name || "Frame" : "?") + (noItems ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : ""));
+      },
+      edit: openPopulateNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "layout": {
+      label: function(node) {
+        const screen = getActiveScreen();
+        const frame = node.container && screen ? tree_exports.find(screen, node.container) : null;
+        return frame ? frame.name || "Frame #" + frame.id.slice(-4) : "Layout (missing frame)";
+      },
+      edit: openLayoutNodeEditor,
+      hint: "Double-click to choose the frame. Its output: what its copies send (Send to Host)."
+    }
+  });
+
+  // src/logic/logic-wires.js
+  var LOGIC_PORT_HIT_RADIUS = 26;
+  function logicNodePortPoint(node, role, portIndex) {
+    var nodeH = typeof logicNodeHeight === "function" ? logicNodeHeight(node) : LOGIC_NODE_H;
+    if (role === "input") {
+      return { x: node.x, y: node.y + nodeH / 2 };
+    }
+    var numPorts = logicOutputCount(node);
+    if (numPorts > 1) {
+      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
+      var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
+      return { x: node.x + logicNodeWidth(node), y: node.y + yOffset };
+    }
+    return { x: node.x + logicNodeWidth(node), y: node.y + nodeH / 2 };
+  }
+  function logicWirePath(p1, p2) {
+    var dx = p2.x - p1.x;
+    var scale = Math.abs(dx) < LOGIC_NODE_W ? 0.75 - 0.75 * ((LOGIC_NODE_W - Math.abs(dx)) / LOGIC_NODE_W) : 0.75;
+    var cp1x = p1.x + scale * LOGIC_NODE_W, cp2x = p2.x - scale * LOGIC_NODE_W;
+    return "M " + p1.x + " " + p1.y + " C " + cp1x + " " + p1.y + " " + cp2x + " " + p2.y + " " + p2.x + " " + p2.y;
+  }
+  function removeLogicWire(id2) {
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var wire = screen.logic.wires.find(function(w) {
+      return w.id === id2;
+    });
+    if (!wire) return;
+    screen.logic.wires = screen.logic.wires.filter(function(w) {
+      return w.id !== id2;
+    });
+    pushHistory({ t: "deleteLogicWire", screenId: screen.id, wire });
+    renderLogicWires();
+    markDirty();
+  }
+  function renderLogicWires() {
+    if (!state.logicSvgEl) return;
+    state.logicSvgEl.empty();
+    var screen = getActiveScreen();
+    if (!screen) return;
+    (screen.logic.wires || []).forEach(function(w) {
+      var fromNode = findLogicNode(screen, w.from);
+      var toNode = findLogicNode(screen, w.to);
+      if (!fromNode || !toNode) return;
+      var p1 = logicNodePortPoint(fromNode, "output", w.fromPort);
+      var p2 = logicNodePortPoint(toNode, "input");
+      var line = window.$(document.createElementNS(SVG_NS, "path")).attr({
+        d: logicWirePath(p1, p2),
+        fill: "none"
+      }).css({ stroke: "var(--red-ui-node-border, #888)", "stroke-width": "2", cursor: "pointer", "pointer-events": "auto" }).appendTo(state.logicSvgEl);
+      line.attr("title", "Click to delete this wire" + (w.fromPort !== void 0 ? " (Port " + (w.fromPort + 1) + ")" : ""));
+      line.on("mouseenter", function() {
+        line.css("stroke", "#d32f2f");
+      });
+      line.on("mouseleave", function() {
+        line.css("stroke", "var(--red-ui-node-border, #888)");
+      });
+      line.on("click", function() {
+        removeLogicWire(w.id);
+      });
+    });
+  }
+  function pointDistanceSq(a, b) {
+    var dx = a.x - b.x, dy = a.y - b.y;
+    return dx * dx + dy * dy;
+  }
+  function findNearestInputPort(screen, excludeNodeId, localX, localY) {
+    var best = null, bestDist = LOGIC_PORT_HIT_RADIUS * LOGIC_PORT_HIT_RADIUS;
+    (screen.logic.nodes || []).forEach(function(n) {
+      if (n.id === excludeNodeId) return;
+      if (!(logicMeta(n.type).inputs > 0)) return;
+      var d = pointDistanceSq(logicNodePortPoint(n, "input"), { x: localX, y: localY });
+      if (d <= bestDist) {
+        bestDist = d;
+        best = n;
+      }
+    });
+    return best;
+  }
+  function hasIllegalRouteFanOut(startNodeId, nodes, wires) {
+    var nodeMap = {};
+    (nodes || []).forEach(function(n) {
+      if (n && n.id) nodeMap[n.id] = n;
+    });
+    var visited = {};
+    function countParallelRenders(currId) {
+      if (visited[currId]) return 0;
+      visited[currId] = true;
+      var node = nodeMap[currId];
+      if (!node) return 0;
+      var outWires = (wires || []).filter(function(w) {
+        return w.from === currId;
+      });
+      if (!outWires.length) return 0;
+      if (logicMeta(node.type).exclusivePorts) {
+        var portMap = {};
+        outWires.forEach(function(w) {
+          var p2 = w.fromPort || 0;
+          if (!portMap[p2]) portMap[p2] = [];
+          portMap[p2].push(w);
+        });
+        var maxForAnyPort = 0;
+        for (var p in portMap) {
+          var portWires = portMap[p];
+          var portTotal = 0;
+          portWires.forEach(function(w) {
+            var target = nodeMap[w.to];
+            if (target) {
+              if (target.type === "render-screen") {
+                portTotal += 1;
+              } else {
+                portTotal += countParallelRenders(target.id);
+              }
+            }
+          });
+          if (portTotal > maxForAnyPort) maxForAnyPort = portTotal;
+        }
+        visited[currId] = false;
+        return maxForAnyPort;
+      } else {
+        var total = 0;
+        outWires.forEach(function(w) {
+          var target = nodeMap[w.to];
+          if (target) {
+            if (target.type === "render-screen") {
+              total += 1;
+            } else {
+              total += countParallelRenders(target.id);
+            }
+          }
+        });
+        visited[currId] = false;
+        return total;
+      }
+    }
+    var maxConcurrent = countParallelRenders(startNodeId);
+    return maxConcurrent > 1;
+  }
+  function wireLogicOutputPort(outDot, node, portIndex) {
+    outDot.get(0).addEventListener("mousedown", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
+      var start = logicNodePortPoint(node, "output", pIdx);
+      var tempLine = window.$(document.createElementNS(SVG_NS, "path")).attr({
+        d: logicWirePath(start, start),
+        fill: "none"
+      }).css({ stroke: "#2196f3", "stroke-width": "2", "stroke-dasharray": "4,3", "pointer-events": "none" }).appendTo(state.logicSvgEl);
+      var artboardOffset = state.logicArtboardEl.offset();
+      var hovered = null;
+      function onMove2(ev) {
+        var localX = (ev.clientX - artboardOffset.left) / state.logicZoomLevel;
+        var localY = (ev.clientY - artboardOffset.top) / state.logicZoomLevel;
+        var screen = getActiveScreen();
+        hovered = findNearestInputPort(screen, node.id, localX, localY);
+        var end = hovered ? logicNodePortPoint(hovered, "input") : { x: localX, y: localY };
+        tempLine.attr({ d: logicWirePath(start, end) }).css("stroke", hovered ? "#4caf50" : "#2196f3");
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove2);
+        document.removeEventListener("mouseup", onUp);
+        tempLine.remove();
+        if (!hovered) return;
+        var screen = getActiveScreen();
+        var alreadyWired = screen.logic.wires.some(function(w) {
+          return w.from === node.id && w.to === hovered.id && (w.fromPort || 0) === pIdx;
+        });
+        if (alreadyWired) return;
+        if (state.editingMode === "flow") {
+          var testWires = (screen.logic.wires || []).concat([{ from: node.id, to: hovered.id, fromPort: pIdx }]);
+          var triggerNodes = (screen.logic.nodes || []).filter(function(n) {
+            return n.type === "route-trigger";
+          });
+          var hasFanOutConflict = false;
+          triggerNodes.forEach(function(trig) {
+            if (hasIllegalRouteFanOut(trig.id, screen.logic.nodes, testWires)) {
+              hasFanOutConflict = true;
+            }
+          });
+          if (hasFanOutConflict) {
+            if (window.RED && window.RED.notify) {
+              window.RED.notify("Route Trigger cannot fan out to multiple Render Screen nodes on the same execution path. Ambiguous entry screen: which screen should be rendered first?", "error");
+            }
+            return;
+          }
+        }
+        var wire = { id: genId(), from: node.id, to: hovered.id, fromPort: pIdx };
+        screen.logic.wires.push(wire);
+        pushHistory({ t: "addLogicWire", screenId: screen.id, wire });
+        renderLogicWires();
+        markDirty();
+      }
+      document.addEventListener("mousemove", onMove2);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
+  // src/features/logic/navigation/navigate-dialog.js
+  function openNavigateNodeEditor(node) {
+    var modeSelect, screenSelect, urlInput, historySelect, forwardPayloadCheck;
+    window.RED.tray.show({
+      id: "nexa-logic-navigate-editor",
+      title: "Configure Goto Screen (SPA)",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.mode = modeSelect.val();
+            node.screenId = screenSelect.val();
+            node.url = urlInput.val();
+            node.historyAction = historySelect.val();
+            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "12px" }).text("Navigates to another screen seamlessly in SPA mode, preserving active WebSocket & Sparkplug connections.").appendTo(body);
+        var modeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Navigation Mode").appendTo(modeRow);
+        modeSelect = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
+        [
+          ["screen", "Named Screen (from Project)"],
+          ["url", "Dynamic Route / Path (Expression / Payload)"],
+          ["history", "Browser History (Back / Forward)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "screen") === opt[0]).appendTo(modeSelect);
+        });
+        var screenRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Target Screen").appendTo(screenRow);
+        screenSelect = window.$("<select>").css({ width: "100%" }).appendTo(screenRow);
+        var screens = state.screens || [];
+        if (!screens.length) {
+          window.$("<option>", { value: "" }).text("(No screens available)").appendTo(screenSelect);
+        } else {
+          screens.forEach(function(s) {
+            window.$("<option>", { value: s.id }).text(s.name + " (" + s.id + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+          });
+        }
+        var urlRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Route Template / Sub-path").appendTo(urlRow);
+        urlInput = window.$("<input>", { type: "text", placeholder: "/devices/{msg.params.id} or screen2" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(urlRow);
+        var historyRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("History Action").appendTo(historyRow);
+        historySelect = window.$("<select>").css({ width: "100%" }).appendTo(historyRow);
+        [
+          ["back", "Back (-1)"],
+          ["forward", "Forward (+1)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.historyAction || "back") === opt[0]).appendTo(historySelect);
+        });
+        function updateVisibility() {
+          var m = modeSelect.val();
+          screenRow.toggle(m === "screen");
+          urlRow.toggle(m === "url");
+          historyRow.toggle(m === "history");
+        }
+        modeSelect.on("change", updateVisibility);
+        updateVisibility();
+        var payloadRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "8px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        payloadRow.append("Forward current msg.payload into destination screen's On Load");
+      }
+    });
+  }
+
+  // src/features/logic/navigation/open-url-dialog.js
+  function openOpenUrlNodeEditor(node) {
+    var modeSelect, urlInput, newTabInput;
+    window.RED.tray.show({
+      id: "nexa-logic-openurl-editor",
+      title: "Configure Open URL Node",
+      width: 450,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.mode = modeSelect.val();
+            node.url = urlInput.val();
+            node.newTab = newTabInput.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Configure how the deployed page navigates. Can be overridden at runtime via msg.payload.").appendTo(body);
+        var modeRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Navigation Mode").appendTo(modeRow);
+        modeSelect = window.$("<select>").css({ width: "100%" }).appendTo(modeRow);
+        [
+          ["replace", "Replace Whole URL (e.g. https://... or /full/path)"],
+          ["endpoint", "Endpoint / Sub-path only (e.g. /screen2 or screen2)"]
+        ].forEach(function(opt) {
+          window.$("<option>", { value: opt[0] }).text(opt[1]).prop("selected", (node.mode || "replace") === opt[0]).appendTo(modeSelect);
+        });
+        var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+        var urlLabel = window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("URL or Endpoint").appendTo(row);
+        urlInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.url || "").appendTo(row);
+        function updateUrlPlaceholder() {
+          if (modeSelect.val() === "endpoint") {
+            urlLabel.text("Endpoint / Screen Sub-path (e.g. /screen2)");
+            urlInput.attr("placeholder", "/screen2 or screen2");
+          } else {
+            urlLabel.text("Full URL (e.g. https://example.com or /nexa/screen2)");
+            urlInput.attr("placeholder", "https://example.com or /nexa/screen2");
+          }
+        }
+        modeSelect.on("change", updateUrlPlaceholder);
+        updateUrlPlaceholder();
+        var tabRow = window.$("<label>").css({ "font-size": "11px", color: "#888", "margin-top": "6px", display: "block" }).appendTo(body);
+        newTabInput = window.$("<input>", { type: "checkbox" }).prop("checked", !!node.newTab).css({ "margin-right": "6px" }).appendTo(tabRow);
+        tabRow.append("Open in a new tab");
+      }
+    });
+  }
+
+  // src/features/logic/navigation/route-trigger-dialog.js
+  function openRouteTriggerNodeEditor(node) {
+    var cookiesInput, includeDeviceCheck;
+    var flow = getActiveScreen();
+    var flowEp = flow && flow.endpoint || "/flow";
+    window.RED.tray.show({
+      id: "nexa-logic-route-trigger-editor",
+      title: "Configure Route Trigger",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.path = flowEp;
+            node.cookies = (cookiesInput.val() || "").trim();
+            node.includeDevice = includeDeviceCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Entrypoint for public web routing. Emits route path, params, query, selective cookies, and client device context.").appendTo(body);
+        var endpointBanner = window.$("<div>").css({
+          padding: "10px 12px",
+          background: "var(--red-ui-secondary-background, #f1f5f9)",
+          border: "1px solid var(--red-ui-secondary-border-color, #cbd5e1)",
+          "border-radius": "6px",
+          "margin-bottom": "14px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #334155)"
+        }).appendTo(body);
+        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-road" style="color: #a855f7;"></i> Flow Entrypoint: <code>' + flowEp + "</code>").appendTo(endpointBanner);
+        window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #64748b)" }).text("This Route Trigger is automatically bound to the Flow's starting endpoint. Incoming visits to /nexa" + flowEp + " initiate this flow sequence.").appendTo(endpointBanner);
+        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
+        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
+      }
+    });
+  }
+
+  // src/features/logic/navigation/route-not-found-dialog.js
+  function openRouteNotFoundNodeEditor(node) {
+    var cookiesInput, includeDeviceCheck;
+    var flow = getActiveScreen();
+    var flowEp = flow && flow.endpoint || "/flow";
+    window.RED.tray.show({
+      id: "nexa-logic-route-not-found-editor",
+      title: "Configure Route Not Found (404)",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.cookies = (cookiesInput.val() || "").trim();
+            node.includeDevice = includeDeviceCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px" }).text("Triggered when an incoming route under this Flow does not match any valid screen (404 catch-all). Emits route path, query, selective cookies, and error payload.").appendTo(body);
+        var endpointBanner = window.$("<div>").css({
+          padding: "10px 12px",
+          background: "#fff1f2",
+          border: "1px solid #fecdd3",
+          "border-radius": "6px",
+          "margin-bottom": "14px",
+          "font-size": "12px",
+          color: "#9f1239"
+        }).appendTo(body);
+        window.$("<div>").css({ "font-weight": "600", "margin-bottom": "4px" }).html('<i class="fa fa-exclamation-triangle" style="color: #e11d48;"></i> Flow Catch-All: <code>/nexa' + flowEp + "/*</code>").appendTo(endpointBanner);
+        window.$("<div>").css({ "font-size": "11px", color: "#881337" }).text("Connect this node's output to a Render Screen (e.g. custom 404 page) or navigation logic to handle unmatched routes gracefully.").appendTo(endpointBanner);
+        var cookiesRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Selective Cookies to Extract").appendTo(cookiesRow);
+        cookiesInput = window.$("<input>", { type: "text", placeholder: "token, session_id, user_role (or * for all)" }).css({ width: "100%", "box-sizing": "border-box" }).val(node.cookies || "").appendTo(cookiesRow);
+        window.$("<div>").css({ "font-size": "11px", color: "#94a3b8", "margin-top": "3px" }).text("Comma-separated cookie names. Extracted cookies appear on msg.cookies.").appendTo(cookiesRow);
+        var deviceRow = window.$("<label>").css({ "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", "margin-top": "10px", display: "flex", "align-items": "center", cursor: "pointer" }).appendTo(body);
+        includeDeviceCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.includeDevice !== false).css({ "margin-right": "8px" }).appendTo(deviceRow);
+        deviceRow.append("Include client device metadata (mobile/desktop, screen size, userAgent, client IP) in msg.device");
+      }
+    });
+  }
+
+  // src/features/logic/navigation/render-screen-dialog.js
+  function openRenderScreenNodeEditor(node) {
+    var screenSelect, forwardPayloadCheck;
+    window.RED.tray.show({
+      id: "nexa-logic-render-screen-editor",
+      title: "Configure Render Screen",
+      width: 460,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.screenId = screenSelect.val();
+            node.forwardPayload = forwardPayloadCheck.is(":checked");
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color, #64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).html("Serves and renders a screen view in the browser when triggered by the flow.<br>When components inside the screen call <strong>Send to Flow</strong>, this node emits the message downstream.").appendTo(body);
+        var screenRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({
+          display: "block",
+          "font-size": "11px",
+          "font-weight": "600",
+          "margin-bottom": "6px",
+          color: "var(--red-ui-secondary-text-color, #475569)"
+        }).text("Screen View to Render").appendTo(screenRow);
+        screenSelect = window.$("<select>").css({ width: "100%", padding: "6px" }).appendTo(screenRow);
+        var screens = state.screens || [];
+        if (!screens.length) {
+          window.$("<option>", { value: "" }).text("(No screens available in project)").appendTo(screenSelect);
+        } else {
+          screens.forEach(function(s) {
+            window.$("<option>", { value: s.id }).text(s.name + " (" + (s.path || "/" + s.id) + ")").prop("selected", (node.screenId || screens[0] && screens[0].id) === s.id).appendTo(screenSelect);
+          });
+        }
+        var payloadRow = window.$("<label>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          "margin-top": "12px",
+          display: "flex",
+          "align-items": "center",
+          cursor: "pointer"
+        }).appendTo(body);
+        forwardPayloadCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.forwardPayload !== false).css({ "margin-right": "8px" }).appendTo(payloadRow);
+        payloadRow.append("Forward current msg.payload into screen's On Load lifecycle");
+      }
+    });
+  }
+
+  // src/features/logic/navigation/send-to-flow-dialog.js
+  function openSendToFlowNodeEditor(node) {
+    var actionInput;
+    window.RED.tray.show({
+      id: "nexa-logic-send-to-flow-editor",
+      title: "Configure Send to Flow",
+      width: 440,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.action = (actionInput.val() || "").trim();
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
+        window.$("<div>").css({
+          "font-size": "12px",
+          color: "var(--red-ui-secondary-text-color, #64748b)",
+          "margin-bottom": "14px",
+          "line-height": "1.5"
+        }).html("Dispatches a message from this screen back to the host <strong>Render Screen</strong> node in the active Flow logic canvas.<br>The host node emits this message out of its output port.").appendTo(body);
+        var actionRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({
+          display: "block",
+          "font-size": "11px",
+          "font-weight": "600",
+          "margin-bottom": "6px",
+          color: "var(--red-ui-secondary-text-color, #475569)"
+        }).text("Action / Event Name (Optional)").appendTo(actionRow);
+        actionInput = window.$("<input>", {
+          type: "text",
+          placeholder: "e.g. submit, cancel, next, login"
+        }).css({ width: "100%", "box-sizing": "border-box", padding: "6px" }).val(node.action || "").appendTo(actionRow);
+        window.$("<div>").css({
+          "font-size": "11px",
+          color: "#64748b",
+          "margin-top": "4px"
+        }).text("If specified, this is attached as msg.action so the flow can switch or branch.").appendTo(actionRow);
+      }
+    });
+  }
+
+  // src/features/logic/navigation/editor.js
+  function screenName(id2) {
+    const s = (state.screens || []).find(function(x) {
+      return x.id === id2;
+    });
+    return s ? s.name : id2 || "?";
+  }
+  function onePerFlow(type, label) {
+    return function(screen) {
+      if (state.editingMode !== "flow") return label + " can only be used in a Screen Flow.";
+      const taken = (screen.logic && screen.logic.nodes || []).some(function(n) {
+        return n.type === type;
+      });
+      return taken ? "Only 1 " + label + " node is allowed per flow." : null;
+    };
+  }
+  defineLogicEditors({
+    "navigate": {
+      label: function(node) {
+        if (node.mode === "history") return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
+        if (node.mode === "url") return "Goto Route" + (node.url ? " (" + node.url + ")" : "");
+        return "Goto Screen (" + screenName(node.screenId) + ")";
+      },
+      edit: openNavigateNodeEditor,
+      hint: "Double-click to configure navigation"
+    },
+    "open-url": {
+      label: function(node) {
+        return "Open URL" + (node.url ? " (" + node.url + ")" : "");
+      },
+      edit: openOpenUrlNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "route-trigger": {
+      label: function(node) {
+        const flow = getActiveScreen();
+        return "Route Trigger (" + (flow && flow.endpoint || node.path || "/") + ")";
+      },
+      edit: openRouteTriggerNodeEditor,
+      hint: "Double-click to configure route trigger",
+      canAdd: onePerFlow("route-trigger", "Route Trigger"),
+      onAdd: function(nodeData, screen) {
+        nodeData.path = screen.endpoint || "/";
+      },
+      // a red "!" when the trigger fans out to several Render Screens on the same path
+      decorate: function(box2, node, screen) {
+        if (state.editingMode !== "flow" || !screen || !screen.logic) return;
+        if (!hasIllegalRouteFanOut(node.id, screen.logic.nodes, screen.logic.wires)) return;
+        box2.css("border", "2px solid #ef4444");
+        window.$("<div>").css({
+          position: "absolute",
+          right: "-8px",
+          top: "-8px",
+          background: "#ef4444",
+          color: "#fff",
+          "border-radius": "50%",
+          width: "18px",
+          height: "18px",
+          "font-size": "11px",
+          "font-weight": "bold",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "center",
+          cursor: "help"
+        }).text("!").attr("title", "Fan-out error: Route Trigger branches to multiple concurrent Render Screen nodes on the same path!").appendTo(box2);
+      }
+    },
+    "route-not-found": {
+      label: function() {
+        return "Route Not Found (404)";
+      },
+      edit: openRouteNotFoundNodeEditor,
+      hint: "Double-click to configure route not found",
+      canAdd: onePerFlow("route-not-found", "Route Not Found")
+    },
+    "render-screen": {
+      label: function(node) {
+        return "Render Screen (" + screenName(node.screenId) + ")";
+      },
+      edit: openRenderScreenNodeEditor,
+      hint: "Double-click to choose screen to render"
+    },
+    "send-to-flow": {
+      label: function(node) {
+        return "Send to Flow" + (node.action ? " (" + node.action + ")" : "");
+      },
+      edit: openSendToFlowNodeEditor,
+      hint: "Double-click to configure message to flow"
+    }
+  });
+
+  // src/features/logic/web/web-io-dialog.js
+  var TITLES2 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
+  var HELP2 = {
+    "http-request": "Calls a web API. The URL and header values take bindings \u2014 {variable}, {$route.params.id}, {msg.payload.id}. The request body is msg.payload (JSON). Out: msg.payload = the response (parsed JSON or text), msg.statusCode, msg.ok and msg.error (non-2xx, network error or timeout). msg.url / msg.method / msg.headers override the node's.",
+    storage: `Reads or writes the browser's storage. "Local" is kept across visits, "session" until the tab closes. Values are stored as JSON.`,
+    cookie: "Reads, writes or removes a cookie \u2014 for example a session token after a login. Set / remove run in the page, so they are not HttpOnly (a server-set HttpOnly cookie is sent with HTTP Request calls automatically)."
+  };
+  function openWebIoNodeEditor(node) {
+    var type = node.type;
+    var d = JSON.parse(JSON.stringify(node));
+    window.RED.tray.show({
+      id: "nexa-logic-webio-editor",
+      title: "Configure " + TITLES2[type] + " Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            Object.keys(d).forEach(function(k) {
+              if (k !== "id" && k !== "x" && k !== "y" && k !== "type") node[k] = d[k];
+            });
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
+        var label = function(text2, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
+        };
+        var text = function(key, placeholder, parent) {
+          return window.$("<input>", { type: "text", placeholder: placeholder || "" }).css({ width: "100%", "box-sizing": "border-box" }).val(d[key] === void 0 ? "" : d[key]).appendTo(parent || body).on("change", function() {
+            d[key] = this.value;
+          });
+        };
+        var select = function(key, options, parent, onChange) {
+          var sel = window.$("<select>").css({ width: "100%" }).appendTo(parent || body);
+          options.forEach(function(o) {
+            window.$("<option>", { value: o[0] }).text(o[1]).appendTo(sel);
+          });
+          sel.val(d[key] !== void 0 ? d[key] : options[0][0]);
+          d[key] = sel.val();
+          sel.on("change", function() {
+            d[key] = sel.val();
+            if (onChange) onChange();
+          });
+          return sel;
+        };
+        if (type === "http-request") {
+          label("Method");
+          select("method", [["GET", "GET"], ["POST", "POST"], ["PUT", "PUT"], ["PATCH", "PATCH"], ["DELETE", "DELETE"]]);
+          label("URL");
+          text("url", "https://api.example.com/orders/{msg.payload.id}?line={line}");
+          label("Headers (JSON \u2014 values take bindings)");
+          var h = window.$("<textarea>", { rows: 3, placeholder: '{"Authorization": "Bearer {token}"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(typeof d.headers === "string" ? d.headers : d.headers ? JSON.stringify(d.headers, null, 1) : "").appendTo(body).on("change", function() {
+            d.headers = this.value.trim();
+          });
+          h.attr("spellcheck", "false");
+          label("Body");
+          var bodyText;
+          select("body", [["payload", "msg.payload (JSON)"], ["binding", "A binding / text, e.g. {item}"], ["none", "No body"]], body, function() {
+            bodyText.toggle(d.body === "binding");
+          });
+          bodyText = text("bodyText", '{item}  \u2014 or {"qty": 1, "id": "{item.id}"} as text');
+          bodyText.toggle(d.body === "binding");
+          label("Timeout (ms, 0 = none)");
+          text("timeout", "10000");
+          label("Cookies");
+          select("credentials", [["same-origin", "Same site only (default)"], ["include", "Always send (cross-site API with cookies)"], ["omit", "Never"]]);
+          return;
+        }
+        label("Action");
+        var valueWrap, targetWrap, cookieOpts;
+        var sync = function() {
+          if (valueWrap) valueWrap.toggle(d.action === "set");
+          if (targetWrap) targetWrap.toggle(!d.action || d.action === "get");
+          if (cookieOpts) cookieOpts.toggle(d.action !== "get");
+        };
+        select("action", [["get", "Get (into the message)"], ["set", "Set"], ["remove", "Remove"]], body, sync);
+        if (type === "storage") {
+          label("Store");
+          select("store", [["local", "Local (kept across visits)"], ["session", "Session (until the tab closes)"]]);
+          label("Key");
+          text("key", "e.g. cart or prefs-{user}");
+        } else {
+          label("Cookie name");
+          text("name", "e.g. session");
+        }
+        targetWrap = window.$("<div>").appendTo(body);
+        label("Into msg property", targetWrap);
+        text("target", "payload", targetWrap);
+        valueWrap = window.$("<div>").appendTo(body);
+        label("Value", valueWrap);
+        var staticRow = window.$("<div>").css({ "margin-top": "6px" });
+        select("valueSource", [["payload", "msg.payload"], ["static", "A fixed value"]], valueWrap, function() {
+          staticRow.toggle(d.valueSource === "static");
+        });
+        staticRow.appendTo(valueWrap);
+        buildTypedInputWidget(staticRow, "string", d.value !== void 0 ? d.value : "", function(v) {
+          d.value = v;
+        });
+        staticRow.toggle(d.valueSource === "static");
+        if (type === "cookie") {
+          cookieOpts = window.$("<div>").appendTo(body);
+          label("Expires after (days; empty = when the browser closes)", cookieOpts);
+          text("days", "7", cookieOpts);
+          label("Path", cookieOpts);
+          text("path", "/", cookieOpts);
+          label("SameSite", cookieOpts);
+          select("sameSite", [["Lax", "Lax (default)"], ["Strict", "Strict"], ["None", "None (needs Secure)"]], cookieOpts);
+          var secRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "8px", "font-size": "12px" }).appendTo(cookieOpts);
+          window.$("<input>", { type: "checkbox" }).prop("checked", !!d.secure).appendTo(secRow).on("change", function() {
+            d.secure = this.checked;
+          });
+          window.$("<span>").text("Secure (HTTPS only)").appendTo(secRow);
+        }
+        sync();
+      }
+    });
+  }
+
+  // src/features/logic/web/editor.js
+  var ACTION = { set: "Set ", remove: "Remove " };
+  defineLogicEditors({
+    "http-request": {
+      label: function(node) {
+        const u = node.url || "";
+        return (node.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
+      },
+      edit: openWebIoNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "storage": {
+      label: function(node) {
+        return (ACTION[node.action] || "Get ") + (node.store === "session" ? "session" : "local") + " " + (node.key || "?");
+      },
+      edit: openWebIoNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "cookie": {
+      label: function(node) {
+        return (ACTION[node.action] || "Get ") + "cookie " + (node.name || "?");
+      },
+      edit: openWebIoNodeEditor,
+      hint: "Double-click to configure"
+    }
+  });
+
+  // src/features/logic/sparkplug/sparkplug-write-dialog.js
+  function openSparkplugWriteNodeEditor(node) {
+    var tagInput, listSelect;
+    window.RED.tray.show({
+      id: "nexa-logic-sparkplug-write-editor",
+      title: "Configure Sparkplug Write",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.tag = (tagInput.val() || "").trim();
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('Publishes a Sparkplug DCMD/NCMD write when this node runs, with the value taken from msg.payload. Wire a "ui-event" (e.g. a button click) into this node.').appendTo(body);
+        var knownBindings = listKnownSparkplugBindings();
+        if (knownBindings.length) {
+          var pickRow = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
+          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Pick a known tag (optional shortcut)").appendTo(pickRow);
+          listSelect = window.$("<select>").css({ width: "100%" }).appendTo(pickRow);
+          window.$("<option>", { value: "" }).text("(select to fill in below)").appendTo(listSelect);
+          knownBindings.forEach(function(b) {
+            window.$("<option>", { value: b.binding }).text(b.label).appendTo(listSelect);
+          });
+          listSelect.on("change", function() {
+            var v = listSelect.val();
+            if (v) tagInput.val(v);
+          });
+        } else {
+          window.$("<div>").css({ "font-size": "11px", color: "#a66", "margin-bottom": "8px" }).text('No Sparkplug tags seen yet \u2014 open the "MQTT Sparkplug" sidebar tab first so tags show up here, or just type the binding below.').appendTo(body);
+        }
+        var row = window.$("<div>").css({ "margin-bottom": "4px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Sparkplug Tag").appendTo(row);
+        tagInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).attr("placeholder", "{sparkplug:group::edgeNode::device::metric}").val(node.tag || "").appendTo(row);
+        var hint = window.$("<div>").css({ "font-size": "11px", "margin-top": "4px" }).appendTo(body);
+        function updateHint() {
+          var ref = parseSparkplugBindingPath(tagInput.val());
+          if (!tagInput.val()) {
+            hint.text("");
+            return;
+          }
+          hint.css("color", ref ? "#2f8f6f" : "#a66").text(ref ? "Valid tag." : "Not a valid {sparkplug:...} binding.");
+        }
+        tagInput.on("input", updateHint);
+        updateHint();
+      }
+    });
+  }
+
+  // src/features/logic/sparkplug/sparkplug-write-multi-dialog.js
+  function openSparkplugWriteMultiNodeEditor(node) {
+    window.RED.tray.show({
+      id: "nexa-logic-sparkplug-write-multi-editor",
+      title: "Sparkplug Write Multi",
+      width: 520,
+      buttons: [
+        { text: "Close", "class": "primary", click: function() {
+          window.RED.tray.close();
+        } }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text('This node has no per-tag configuration of its own \u2014 wire a "function" node in front of it that sets msg.writes to an array, then wire that into this node:').appendTo(body);
+        window.$("<pre>").css({
+          "font-size": "11px",
+          background: "var(--red-ui-tertiary-background, #f5f5f5)",
+          padding: "8px",
+          "border-radius": "4px",
+          "white-space": "pre-wrap",
+          "word-break": "break-all"
+        }).text(
+          'msg.writes = [\n  { tag: "{sparkplug:Group::Edge::Device::metricA}", value: 1 },\n  { tag: "{sparkplug:Group::Edge::Device::metricB}", value: 2 }\n];\nreturn msg;'
+        ).appendTo(body);
+        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin": "10px 0 4px" }).text("Tags with different group/edge/device get batched into separate publishes automatically; tags sharing the same one are sent together in a single Sparkplug message.").appendTo(body);
+        var knownBindings = listKnownSparkplugBindings();
+        if (knownBindings.length) {
+          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "10px", "font-weight": "bold" }).text("Tags seen so far (click to copy):").appendTo(body);
+          var listWrap = window.$("<div>").css({ "max-height": "160px", "overflow-y": "auto", border: "1px solid #ddd", "border-radius": "4px", "margin-top": "4px" }).appendTo(body);
+          knownBindings.forEach(function(b) {
+            window.$("<div>").css({
+              "font-size": "11px",
+              padding: "4px 8px",
+              cursor: "pointer",
+              "font-family": "monospace"
+            }).text(b.label).attr("title", "Click to copy: " + b.binding).on("click", function() {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(b.binding);
+                if (window.RED && window.RED.notify) window.RED.notify("Copied: " + b.binding, { type: "success", timeout: 1500 });
+              }
+            }).appendTo(listWrap);
+          });
+        }
+      }
+    });
+  }
+
+  // src/features/logic/sparkplug/editor.js
+  defineLogicEditors({
+    "sparkplug-write": {
+      label: function(node) {
+        const ref = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
+        return "Sparkplug Write" + (ref ? " (" + ref + ")" : "");
+      },
+      edit: openSparkplugWriteNodeEditor,
+      hint: "Double-click to configure"
+    },
+    "sparkplug-write-multi": { edit: openSparkplugWriteMultiNodeEditor, hint: "Double-click for usage" }
+  });
+
+  // src/features/logic/link/link-dialog.js
+  var TITLES3 = { "link-request": "Request", "link-send": "To Node-RED", "link-receive": "From Node-RED" };
+  var HELP3 = {
+    "link-request": 'Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel) and waits for its answer (a "to Nexa" node). The flow runs on the server: database queries and API keys stay there. Output 1: msg.payload = the answer. Output 2: msg.error (the flow answered with an error, the channel timeout passed, or the link is down).',
+    "link-send": `Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel). It doesn't wait for an answer; msg goes on once it is sent.`,
+    "link-receive": 'Fires for every message a Node-RED flow pushes to this channel (a "to Nexa" node). msg.payload = the message. Only while this screen is open.'
+  };
+  function listLinkChannels() {
+    var out = [];
+    var RED2 = window.RED;
+    if (RED2 && RED2.nodes && typeof RED2.nodes.eachConfig === "function") {
+      RED2.nodes.eachConfig(function(n) {
+        if (n.type === "kufayeka-nexa-channel") out.push({ id: n.id, name: n.name || n.id });
+      });
+    }
+    out.sort(function(a, b) {
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function channelName(node) {
+    var RED2 = window.RED;
+    var cfg = node.channel && RED2 && RED2.nodes && typeof RED2.nodes.node === "function" ? RED2.nodes.node(node.channel) : null;
+    return cfg && cfg.name || node.channelName || (node.channel ? "(missing channel)" : "(no channel)");
+  }
+  function linkNodeLabel(node) {
+    return (TITLES3[node.type] || node.type) + ": " + channelName(node);
+  }
+  function openLinkNodeEditor(node) {
+    var d = { channel: node.channel || "" };
+    window.RED.tray.show({
+      id: "nexa-logic-link-editor",
+      title: "Configure " + TITLES3[node.type] + " Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.channel = d.channel;
+            var picked = listLinkChannels().filter(function(c) {
+              return c.id === d.channel;
+            })[0];
+            node.channelName = picked ? picked.name : "";
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP3[node.type]).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text("Channel").appendTo(body);
+        var channels = listLinkChannels();
+        if (!channels.length) {
+          window.$("<div>").css({ "font-size": "12px", color: "#b45309" }).text(
+            'No channel yet. In a Node-RED flow, add a "from Nexa" or "to Nexa" node and create a channel in it (the pencil next to Channel). It shows up here right away.'
+          ).appendTo(body);
+          return;
+        }
+        if (!d.channel || !channels.some(function(c) {
+          return c.id === d.channel;
+        })) d.channel = channels[0].id;
+        var input = window.$("<input>", { type: "text" }).css({ width: "calc(100% - 4px)" }).appendTo(body);
+        input.typedInput({ types: [{ value: "channel", options: channels.map(function(c) {
+          return { value: c.id, label: c.name };
+        }) }] });
+        input.typedInput("value", d.channel);
+        input.on("change", function() {
+          d.channel = input.typedInput("value");
+        });
+        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "10px" }).text(
+          "Timeout, size limit, delivery and compression are set on the channel (in Node-RED). Links use their own connection, apart from the tags."
+        ).appendTo(body);
+      }
+    });
+  }
+
+  // src/features/logic/link/editor.js
+  var part = { label: linkNodeLabel, edit: openLinkNodeEditor, hint: "Double-click to choose the channel" };
+  defineLogicEditors({ "link-request": part, "link-send": part, "link-receive": part });
+
   // src/logic/logic-nodes.js
   function logicNodeLabel(node) {
-    var kind = LOGIC_NODE_KINDS[node.type] || {};
-    if (node.type === "ui-event" || node.type === "ui-update") {
-      var comp = findComponent(node.compId);
-      var typeDef = comp && window.NEXA.getComponent(comp.type);
-      var typeLabel = comp ? comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? comp.name || "Frame" : typeDef ? typeDef.label : comp.type : "?";
-      var name2 = comp && comp.name ? comp.name : typeLabel + " #" + (comp ? comp.id.slice(-4) : "?");
-      if (node.type === "ui-event") {
-        if (node.event === "sparkplug-change" || node.event === "sparkplug-update") {
-          return name2 + " on Sparkplug Update";
-        }
-        if (node.event === "slide-change") return name2 + " on Slide Change";
-        var evtDef = typeDef && typeDef.events && typeDef.events.find(function(e) {
-          return e.name === node.event;
-        });
-        return name2 + " " + (evtDef ? evtDef.label : "on " + node.event);
-      }
-      return "Update " + name2;
-    }
-    if (node.type === "inject") {
-      var pLabel = node.payloadType === "json" ? "JSON" : node.payloadType === "str" ? node.payload || "str" : node.payloadType || "date";
-      return "Inject (" + pLabel + ")";
-    }
-    if (node.type === "open-url") {
-      return "Open URL" + (node.url ? " (" + node.url + ")" : "");
-    }
-    if (node.type === "delay") {
-      return "Delay (" + (node.delay != null ? node.delay : 500) + (node.unit || "ms") + ")";
-    }
-    if (node.type === "navigate") {
-      if (node.mode === "history") {
-        return "Goto (" + (node.historyAction === "forward" ? "Forward" : "Back") + ")";
-      }
-      if (node.mode === "url") {
-        return "Goto Route" + (node.url ? " (" + node.url + ")" : "");
-      }
-      var s = (state.screens || []).find(function(x) {
-        return x.id === node.screenId;
-      });
-      return "Goto Screen (" + (s ? s.name : node.screenId || "?") + ")";
-    }
-    if (node.type === "route-trigger") {
-      var activeFl = getActiveScreen();
-      var ep = activeFl && activeFl.endpoint || node.path || "/";
-      return "Route Trigger (" + ep + ")";
-    }
-    if (node.type === "route-not-found") {
-      return "Route Not Found (404)";
-    }
-    if (node.type === "render-screen") {
-      var rScreen = (state.screens || []).find(function(x) {
-        return x.id === node.screenId;
-      });
-      return "Render Screen (" + (rScreen ? rScreen.name : node.screenId || "?") + ")";
-    }
-    if (node.type === "send-to-flow") {
-      return "Send to Flow" + (node.action ? " (" + node.action + ")" : "");
-    }
-    if (node.type === "sparkplug-write") {
-      var tagRef = node.tag && node.tag.replace(/^\{sparkplug:/, "").replace(/\}$/, "");
-      return "Sparkplug Write" + (tagRef ? " (" + tagRef + ")" : "");
-    }
-    if (node.type === "layer-control") {
-      var n = (node.states || []).length;
-      return "Layer Control" + (n ? " (" + n + ")" : "");
-    }
-    if (node.type === "layout") {
-      var lScreen = getActiveScreen();
-      var lf = node.container && lScreen ? tree_exports.find(lScreen, node.container) : null;
-      return lf ? lf.name || "Frame #" + lf.id.slice(-4) : "Layout (missing frame)";
-    }
-    if (node.type === "teleport") return teleportNodeLabel(node);
-    if (node.type === "overlay-open" || node.type === "overlay-close") {
-      var oScreen = getActiveScreen();
-      var of = node.overlay && oScreen ? tree_exports.find(oScreen, node.overlay) : null;
-      var verb = node.type === "overlay-open" ? "Open " : "Close ";
-      return verb + (of ? overlayLabel(of) : node.type === "overlay-close" && !node.overlay ? "the top overlay" : "(missing overlay)");
-    }
-    if (node.type === "populate" && !node.container) {
-      var tplP = node.template ? findTemplate(node.template) : null;
-      var mw = { append: "Append ", prepend: "Prepend ", upsert: "Update ", remove: "Remove ", clear: "Clear " }[node.mode] || "Populate ";
-      return mw + (node.mode === "clear" || node.mode === "remove" ? "items" : (tplP ? tplP.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : "")) + " \u2192 layout";
-    }
-    if (node.type === "populate") {
-      var pScreen = getActiveScreen();
-      var target = node.container && pScreen ? tree_exports.find(pScreen, node.container) : null;
-      var tpl = node.template ? findTemplate(node.template) : null;
-      var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
-      return modeWord + (target ? target.name || "Frame" : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : ""));
-    }
-    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
-      return linkNodeLabel(node);
-    }
-    if (node.type === "http-request") {
-      var u = node.url || "";
-      return (node.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
-    }
-    if (node.type === "storage" || node.type === "cookie") {
-      var what = node.type === "storage" ? (node.store === "session" ? "session" : "local") + " " + (node.key || "?") : "cookie " + (node.name || "?");
-      return ({ set: "Set ", remove: "Remove " }[node.action] || "Get ") + what;
-    }
-    if (node.type === "set-variable-multi") {
-      var n = (node.assignments || []).length;
-      return "Set Variables" + (n ? " (" + n + ")" : "");
-    }
-    if (node.type === "get-variable-multi") {
-      var n = (node.reads || []).length;
-      return "Get Variables" + (n ? " (" + n + ")" : "");
-    }
-    if (node.type === "join") {
-      var modeLabels = { "wait-all": "Wait All", "combine-latest": "Combine Latest", "sequence-n": "Seq " + (node.count || 2) };
-      var mLabel = modeLabels[node.mode || "wait-all"] || "Join";
-      var sCount = (node.slots || []).length;
-      return "Join [" + mLabel + (sCount ? ": " + sCount : "") + "]";
-    }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
-      var vScreen = getActiveScreen();
-      var formatVarRef = function(vScope, vName) {
-        var owner2 = vScope && vScope !== "@app" && vScreen ? tree_exports.find(vScreen, vScope) : null;
-        var where2 = vScope === "@app" ? "App" : vScope ? owner2 ? owner2.name || owner2.type : "?" : state.editingMode === "template" ? "template" : "screen";
-        return where2 + "." + vName;
-      };
-      if (node.type === "on-variable-change") {
-        if (Array.isArray(node.variables) && node.variables.length > 0) {
-          var deps = node.variables.map(function(v) {
-            return v ? formatVarRef(v.scope, v.name) : "?";
-          });
-          return "Watch (" + deps.join(", ") + ")";
-        }
-        if (node.name) {
-          return "Watch " + formatVarRef(node.scope, node.name);
-        }
-        return "Watch Variable";
-      }
-      var owner = node.scope && node.scope !== "@app" && vScreen ? tree_exports.find(vScreen, node.scope) : null;
-      var where = node.scope === "@app" ? "App" : node.scope ? owner ? owner.name || owner.type : "?" : state.editingMode === "template" ? "template" : "screen";
-      var ref = where + "." + node.name;
-      if (!node.name) return kind.label;
-      if (node.type === "get-variable") return "Get " + ref + (node.target && node.target !== "payload" ? " \u2192 msg." + node.target : "");
-      var OPS3 = { merge: "Merge into ", append: "Append to ", remove: "Remove from ", toggle: "Toggle ", increment: "Increment " };
-      return (OPS3[node.op] || "Set ") + ref + (node.valueSource === "static" && node.op !== "toggle" ? " = " + JSON.stringify(node.value) : node.valueSource === "msg" ? " \u2190 msg." + node.msgPath : "");
-    }
-    if (node.type === "template-output") return "Send to Host" + (node.output && node.output !== "out" ? " (" + node.output + ")" : "");
-    if (node.type === "template-event") {
-      var evComp = findComponent(node.instanceId);
-      var evTemplate = evComp && findTemplate(evComp.templateId);
-      var evName = evComp && evComp.name ? evComp.name : (evTemplate ? evTemplate.name : "Instance") + " #" + (evComp ? evComp.id.slice(-4) : "?");
-      return evName + " on " + (node.output || "any output");
-    }
-    if (node.type === "set-template-param") {
-      var instComp = findComponent(node.instanceId);
-      var instTemplate = instComp && findTemplate(instComp.templateId);
-      var param = instTemplate && (instTemplate.params || []).find(function(p2) {
-        return p2.name === node.paramName;
-      });
-      var instName = instComp && instComp.name ? instComp.name : "Instance #" + (instComp ? instComp.id.slice(-4) : "?");
-      return instName + " \u2192 Set " + (param ? param.label : node.paramName);
-    }
-    if (node.type === "switch") {
-      var p = (node.propertyType === "var" ? "$" : node.propertyType === "tag" ? "" : "msg.") + (node.property || "payload");
-      var nRules = (node.rules || []).length;
-      return (node.name || "Switch") + " [" + p + " : " + nRules + "]";
-    }
-    return kind.label || node.type;
+    var ed = logicEditor(node.type);
+    if (ed && typeof ed.label === "function") return ed.label(node);
+    return logicMeta(node.type).label || node.type;
   }
   var _measureCanvasCtx = null;
   function logicNodeWidth(node) {
@@ -33825,9 +34016,8 @@
     if (!textWidth) {
       textWidth = label.length * 7.5;
     }
-    var kind = LOGIC_NODE_KINDS[node.type] || {};
     var padLeft = 16;
-    var padRight = kind.hasOutput ? 14 : 10;
+    var padRight = logicMeta(node.type).outputs > 0 ? 14 : 10;
     var border = 2;
     var extra = 8;
     var needed = Math.ceil(textWidth + padLeft + padRight + border + extra);
@@ -33839,65 +34029,45 @@
     return LOGIC_NODE_H;
   }
   function addLogicNode(nodeData, x, y) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    if (nodeData.type === "route-trigger") {
-      if (state.editingMode !== "flow") {
-        if (window.RED && window.RED.notify) window.RED.notify("Route Trigger can only be used in a Screen Flow.", "warning");
-        return;
-      }
-      var hasTrigger = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
-        return n.type === "route-trigger";
-      });
-      if (hasTrigger) {
-        if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Trigger node is allowed per flow.", "warning");
-        return;
-      }
-      nodeData.path = screen2.endpoint || "/";
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var ed = logicEditor(nodeData.type);
+    var refusal = ed && typeof ed.canAdd === "function" ? ed.canAdd(screen) : null;
+    if (refusal) {
+      if (window.RED && window.RED.notify) window.RED.notify(refusal, "warning");
+      return;
     }
-    if (nodeData.type === "route-not-found") {
-      if (state.editingMode !== "flow") {
-        if (window.RED && window.RED.notify) window.RED.notify("Route Not Found can only be used in a Screen Flow.", "warning");
-        return;
-      }
-      var hasNotFound = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
-        return n.type === "route-not-found";
-      });
-      if (hasNotFound) {
-        if (window.RED && window.RED.notify) window.RED.notify("Only 1 Route Not Found node is allowed per flow.", "warning");
-        return;
-      }
-    }
+    if (ed && typeof ed.onAdd === "function") ed.onAdd(nodeData, screen);
     var node = { id: genId(), x, y };
     for (var k in nodeData) node[k] = nodeData[k];
-    screen2.logic.nodes.push(node);
-    pushHistory({ t: "addLogicNode", screenId: screen2.id, node });
+    screen.logic.nodes.push(node);
+    pushHistory({ t: "addLogicNode", screenId: screen.id, node });
     renderLogicCanvas();
     markDirty();
   }
   function removeLogicNodes(ids) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || !screen2.logic) return;
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic) return;
     var toRemove = ids.map(function(id2) {
-      return findLogicNode(screen2, id2);
+      return findLogicNode(screen, id2);
     }).filter(Boolean);
     if (!toRemove.length) return;
     var removeIds = toRemove.map(function(n) {
       return n.id;
     });
     var events = toRemove.map(function(node) {
-      var touchingWires = screen2.logic.wires.filter(function(w) {
+      var touchingWires = screen.logic.wires.filter(function(w) {
         return w.from === node.id || w.to === node.id;
       });
-      return { t: "deleteLogicNode", screenId: screen2.id, node, wires: touchingWires };
+      return { t: "deleteLogicNode", screenId: screen.id, node, wires: touchingWires };
     });
-    screen2.logic.nodes = screen2.logic.nodes.filter(function(n) {
+    screen.logic.nodes = screen.logic.nodes.filter(function(n) {
       return removeIds.indexOf(n.id) === -1;
     });
-    screen2.logic.wires = screen2.logic.wires.filter(function(w) {
+    screen.logic.wires = screen.logic.wires.filter(function(w) {
       return removeIds.indexOf(w.from) === -1 && removeIds.indexOf(w.to) === -1;
     });
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen2.id, events });
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
     state.logicSelectedIds = state.logicSelectedIds.filter(function(id2) {
       return removeIds.indexOf(id2) === -1;
     });
@@ -33905,7 +34075,9 @@
     markDirty();
   }
   function renderLogicNode(node) {
-    var kind = LOGIC_NODE_KINDS[node.type] || {};
+    var meta2 = logicMeta(node.type);
+    var ed = logicEditor(node.type) || {};
+    var numPorts = logicOutputCount(node);
     var label = logicNodeLabel(node);
     var nodeW = logicNodeWidth(node);
     var nodeH = logicNodeHeight(node);
@@ -33924,7 +34096,7 @@
       display: "flex",
       "align-items": "center",
       "padding-left": "16px",
-      "padding-right": kind.hasOutput ? "14px" : "10px",
+      "padding-right": numPorts > 0 ? "14px" : "10px",
       "box-sizing": "border-box",
       cursor: "move",
       overflow: "hidden",
@@ -33939,7 +34111,7 @@
       top: "0",
       bottom: "0",
       width: "6px",
-      background: kind.color || "#607d8b",
+      background: meta2.color,
       "border-top-left-radius": "4px",
       "border-bottom-left-radius": "4px"
     }).appendTo(box2);
@@ -33961,215 +34133,48 @@
         syncComponentFromLogicSelection();
       }
     });
-    if (node.type === "function") {
-      box2.attr("title", "Double-click to edit code").on("dblclick", function(e) {
+    if (typeof ed.edit === "function") {
+      box2.attr("title", ed.hint || "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
-        openFunctionNodeEditor(node);
+        ed.edit(node);
       });
     }
-    if (node.type === "switch") {
-      box2.attr("title", "Double-click to configure switch rules").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSwitchNodeEditor(node);
-      });
-    }
-    if (node.type === "ui-update") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openUiUpdateNodeEditor(node);
-      });
-    }
-    if (node.type === "inject") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openInjectNodeEditor(node);
-      });
-    }
-    if (node.type === "open-url") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openOpenUrlNodeEditor(node);
-      });
-    }
-    if (node.type === "delay") {
-      box2.attr("title", "Double-click to configure delay").on("dblclick", function(e) {
-        e.stopPropagation();
-        openDelayNodeEditor(node);
-      });
-    }
-    if (node.type === "navigate") {
-      box2.attr("title", "Double-click to configure navigation").on("dblclick", function(e) {
-        e.stopPropagation();
-        openNavigateNodeEditor(node);
-      });
-    }
-    if (node.type === "route-trigger") {
-      box2.attr("title", "Double-click to configure route trigger").on("dblclick", function(e) {
-        e.stopPropagation();
-        openRouteTriggerNodeEditor(node);
-      });
-      if (state.editingMode === "flow" && screen && screen.logic) {
-        if (hasIllegalRouteFanOut(node.id, screen.logic.nodes, screen.logic.wires)) {
-          box2.css("border", "2px solid #ef4444");
-          window.$("<div>").css({
-            position: "absolute",
-            right: "-8px",
-            top: "-8px",
-            background: "#ef4444",
-            color: "#fff",
-            "border-radius": "50%",
-            width: "18px",
-            height: "18px",
-            "font-size": "11px",
-            "font-weight": "bold",
-            display: "flex",
-            "align-items": "center",
-            "justify-content": "center",
-            cursor: "help"
-          }).text("!").attr("title", "Fan-out error: Route Trigger branches to multiple concurrent Render Screen nodes on the same path!").appendTo(box2);
-        }
-      }
-    }
-    if (node.type === "route-not-found") {
-      box2.attr("title", "Double-click to configure route not found").on("dblclick", function(e) {
-        e.stopPropagation();
-        openRouteNotFoundNodeEditor(node);
-      });
-    }
-    if (node.type === "render-screen") {
-      box2.attr("title", "Double-click to choose screen to render").on("dblclick", function(e) {
-        e.stopPropagation();
-        openRenderScreenNodeEditor(node);
-      });
-    }
-    if (node.type === "send-to-flow") {
-      box2.attr("title", "Double-click to configure message to flow").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSendToFlowNodeEditor(node);
-      });
-    }
-    if (node.type === "layer-control") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openLayerControlNodeEditor(node);
-      });
-    }
-    if (node.type === "template-output" || node.type === "template-event") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openTemplateOutputNodeEditor(node);
-      });
-    }
-    if (node.type === "layout") {
-      box2.attr("title", "Double-click to choose the frame. Its output: what its copies send (Send to Host).").on("dblclick", function(e) {
-        e.stopPropagation();
-        openLayoutNodeEditor(node);
-      });
-    }
-    if (node.type === "teleport") {
-      box2.attr("title", "Double-click to choose the node and where it goes").on("dblclick", function(e) {
-        e.stopPropagation();
-        openTeleportNodeEditor(node);
-      });
-    }
-    if (node.type === "overlay-open" || node.type === "overlay-close") {
-      box2.attr("title", node.type === "overlay-open" ? "Double-click to choose the dialog / drawer. Its output fires when it closes (msg.payload = the result)." : "Double-click to choose what it closes and its result").on("dblclick", function(e) {
-        e.stopPropagation();
-        openOverlayNodeEditor(node);
-      });
-    }
-    if (node.type === "populate") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openPopulateNodeEditor(node);
-      });
-    }
-    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
-      box2.attr("title", "Double-click to choose the channel").on("dblclick", function(e) {
-        e.stopPropagation();
-        openLinkNodeEditor(node);
-      });
-    }
-    if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openWebIoNodeEditor(node);
-      });
-    }
-    if (node.type === "set-variable" || node.type === "get-variable" || node.type === "on-variable-change") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSetVariableNodeEditor(node);
-      });
-    }
-    if (node.type === "set-variable-multi") {
-      box2.attr("title", "Double-click to configure variable assignments").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSetVariableMultiNodeEditor(node);
-      });
-    }
-    if (node.type === "get-variable-multi") {
-      box2.attr("title", "Double-click to configure variable reads").on("dblclick", function(e) {
-        e.stopPropagation();
-        openGetVariableMultiNodeEditor(node);
-      });
-    }
-    if (node.type === "join") {
-      box2.attr("title", "Double-click to configure join mode and slots").on("dblclick", function(e) {
-        e.stopPropagation();
-        openJoinNodeEditor(node);
-      });
-    }
-    if (node.type === "sparkplug-write") {
-      box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSparkplugWriteNodeEditor(node);
-      });
-    }
-    if (node.type === "sparkplug-write-multi") {
-      box2.attr("title", "Double-click for usage").on("dblclick", function(e) {
-        e.stopPropagation();
-        openSparkplugWriteMultiNodeEditor(node);
-      });
-    }
-    if (kind.hasOutput) {
-      var numPorts = logicOutputCount(node);
-      if (numPorts > 1) {
-        var rules = node.type === "switch" ? node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }] : null;
-        for (var pIdx = 0; pIdx < numPorts; pIdx++) {
-          var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
-          var outDot = window.$("<div>", {
-            "class": "nexa-logic-port-out",
-            "data-port-index": pIdx
-          }).css({
-            position: "absolute",
-            right: "-4px",
-            top: yOffset + "px",
-            "margin-top": "-4px",
-            width: "8px",
-            height: "8px",
-            background: "var(--red-ui-node-border, #999)",
-            cursor: "crosshair",
-            transform: "scale(" + 1 / state.logicZoomLevel + ")"
-          }).attr("title", "Port " + (pIdx + 1) + ": " + (rules ? rules[pIdx] ? rules[pIdx].t || "rule" : "" : (kind.outputLabels || [])[pIdx] || "")).appendTo(box2);
-          wireLogicOutputPort(outDot, node, pIdx);
-        }
-      } else {
-        var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
+    if (typeof ed.decorate === "function") ed.decorate(box2, node, getActiveScreen());
+    if (numPorts > 1) {
+      for (var pIdx = 0; pIdx < numPorts; pIdx++) {
+        var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
+        var portTitle = typeof ed.portTitle === "function" ? ed.portTitle(node, pIdx) : (meta2.outputLabels || [])[pIdx] || "";
+        var outDot = window.$("<div>", {
+          "class": "nexa-logic-port-out",
+          "data-port-index": pIdx
+        }).css({
           position: "absolute",
           right: "-4px",
-          top: nodeH / 2 + "px",
+          top: yOffset + "px",
           "margin-top": "-4px",
           width: "8px",
           height: "8px",
           background: "var(--red-ui-node-border, #999)",
           cursor: "crosshair",
           transform: "scale(" + 1 / state.logicZoomLevel + ")"
-        }).appendTo(box2);
-        wireLogicOutputPort(outDot, node, 0);
+        }).attr("title", "Port " + (pIdx + 1) + ": " + portTitle).appendTo(box2);
+        wireLogicOutputPort(outDot, node, pIdx);
       }
+    } else if (numPorts === 1) {
+      var outDot = window.$("<div>", { "class": "nexa-logic-port-out" }).css({
+        position: "absolute",
+        right: "-4px",
+        top: nodeH / 2 + "px",
+        "margin-top": "-4px",
+        width: "8px",
+        height: "8px",
+        background: "var(--red-ui-node-border, #999)",
+        cursor: "crosshair",
+        transform: "scale(" + 1 / state.logicZoomLevel + ")"
+      }).appendTo(box2);
+      wireLogicOutputPort(outDot, node, 0);
     }
-    if (kind.hasInput) {
+    if (meta2.inputs > 0) {
       window.$("<div>", { "class": "nexa-logic-port-in", "data-node-id": node.id }).css({
         position: "absolute",
         left: "-4px",
@@ -34265,9 +34270,9 @@
       width: LOGIC_CANVAS_W,
       height: LOGIC_CANVAS_H
     }).css({ position: "absolute", left: "0", top: "0", "pointer-events": "none" }).appendTo(state.logicArtboardEl);
-    var screen2 = getActiveScreen();
-    if (!screen2 || !screen2.logic) return;
-    (screen2.logic.nodes || []).forEach(renderLogicNode);
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic) return;
+    (screen.logic.nodes || []).forEach(renderLogicNode);
     renderLogicWires();
     refreshLogicSelectionVisuals();
   }
@@ -34275,12 +34280,12 @@
   // src/logic/logic-selection.js
   var logicClipboard = null;
   function selectLogicForComponents(ids) {
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     var set = {};
     (ids || []).forEach(function(id2) {
       set[id2] = true;
     });
-    state.logicSelectedIds = (screen2 && screen2.logic && screen2.logic.nodes || []).filter(function(n) {
+    state.logicSelectedIds = (screen && screen.logic && screen.logic.nodes || []).filter(function(n) {
       return n.compId && set[n.compId] || n.instanceId && set[n.instanceId] || n.type === "layout" && n.container && set[n.container] || n.overlay && set[n.overlay] || n.type === "teleport" && n.node && set[n.node];
     }).map(function(n) {
       return n.id;
@@ -34302,10 +34307,10 @@
     return state.logicSelectedIds.indexOf(id2) !== -1;
   }
   function syncComponentFromLogicSelection() {
-    var screen2 = getActiveScreen();
-    if (!screen2 || !screen2.logic || !screen2.logic.nodes) return;
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic || !screen.logic.nodes) return;
     var nodeMap = {};
-    (screen2.logic.nodes || []).forEach(function(n) {
+    (screen.logic.nodes || []).forEach(function(n) {
       nodeMap[n.id] = n;
     });
     var compIds = [];
@@ -34337,13 +34342,13 @@
   }
   function copyLogicSelection(isCut) {
     if (!state.logicSelectedIds.length) return;
-    var screen2 = getActiveScreen();
-    if (!screen2 || !screen2.logic) return;
-    var selectedNodes = (screen2.logic.nodes || []).filter(function(n) {
+    var screen = getActiveScreen();
+    if (!screen || !screen.logic) return;
+    var selectedNodes = (screen.logic.nodes || []).filter(function(n) {
       return state.logicSelectedIds.indexOf(n.id) !== -1;
     });
     if (!selectedNodes.length) return;
-    var selectedWires = (screen2.logic.wires || []).filter(function(w) {
+    var selectedWires = (screen.logic.wires || []).filter(function(w) {
       return state.logicSelectedIds.indexOf(w.from) !== -1 && state.logicSelectedIds.indexOf(w.to) !== -1;
     });
     logicClipboard = {
@@ -34356,9 +34361,9 @@
   }
   function pasteLogicClipboard() {
     if (!logicClipboard || !logicClipboard.nodes.length) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    if (!screen2.logic) screen2.logic = { nodes: [], wires: [] };
+    var screen = getActiveScreen();
+    if (!screen) return;
+    if (!screen.logic) screen.logic = { nodes: [], wires: [] };
     var idMap = {};
     var newNodes = logicClipboard.nodes.map(function(n) {
       var copy = JSON.parse(JSON.stringify(n));
@@ -34381,7 +34386,7 @@
       };
     });
     if (state.editingMode === "flow") {
-      var hasTrigger = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
+      var hasTrigger = (screen.logic && screen.logic.nodes || []).some(function(n) {
         return n.type === "route-trigger";
       });
       if (hasTrigger) {
@@ -34389,7 +34394,7 @@
           return n.type !== "route-trigger";
         });
       }
-      var hasNotFound = (screen2.logic && screen2.logic.nodes || []).some(function(n) {
+      var hasNotFound = (screen.logic && screen.logic.nodes || []).some(function(n) {
         return n.type === "route-not-found";
       });
       if (hasNotFound) {
@@ -34403,17 +34408,17 @@
       });
     }
     newNodes.forEach(function(n) {
-      screen2.logic.nodes.push(n);
+      screen.logic.nodes.push(n);
     });
     newWires.forEach(function(w) {
-      screen2.logic.wires.push(w);
+      screen.logic.wires.push(w);
     });
     var historyEvents = newNodes.map(function(n) {
-      return { t: "addLogicNode", screenId: screen2.id, node: n };
+      return { t: "addLogicNode", screenId: screen.id, node: n };
     }).concat(newWires.map(function(w) {
-      return { t: "addLogicWire", screenId: screen2.id, wire: w };
+      return { t: "addLogicWire", screenId: screen.id, wire: w };
     }));
-    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen2.id, events: historyEvents });
+    pushHistory(historyEvents.length === 1 ? historyEvents[0] : { t: "multi", screenId: screen.id, events: historyEvents });
     selectLogicMultiple(newNodes.map(function(n) {
       return n.id;
     }));
@@ -34465,9 +34470,9 @@
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
       if (box2.width < 3 && box2.height < 3) return;
-      var screen2 = getActiveScreen();
-      if (!screen2 || !screen2.logic) return;
-      var hits = (screen2.logic.nodes || []).filter(function(n) {
+      var screen = getActiveScreen();
+      if (!screen || !screen.logic) return;
+      var hits = (screen.logic.nodes || []).filter(function(n) {
         return !(n.x > box2.left + box2.width || n.x + logicNodeWidth(n) < box2.left || n.y > box2.top + box2.height || n.y + (typeof logicNodeHeight === "function" ? logicNodeHeight(n) : LOGIC_NODE_H) < box2.top);
       }).map(function(n) {
         return n.id;
@@ -34546,19 +34551,19 @@
     refreshSelectionVisuals();
   }
   function pickSelectionTarget(nodeId, e) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return nodeId;
+    var screen = getActiveScreen();
+    if (!screen) return nodeId;
     if (e && (e.ctrlKey || e.metaKey)) return nodeId;
-    var chain = tree_exports.ancestors(screen2, nodeId).map(function(a) {
+    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
       return a.id;
     }).concat([nodeId]);
     for (var i2 = 0; i2 < chain.length; i2++) if (isSelected(chain[i2])) return chain[i2];
     var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
     if (sel) {
-      var context = tree_exports.parentOf(screen2, sel.id);
+      var context = tree_exports.parentOf(screen, sel.id);
       var contextId = context ? context.id : null;
       for (var j = 0; j < chain.length; j++) {
-        var parent = tree_exports.parentOf(screen2, chain[j]);
+        var parent = tree_exports.parentOf(screen, chain[j]);
         if ((parent ? parent.id : null) === contextId) return chain[j];
       }
     }
@@ -34573,25 +34578,25 @@
     return chain[k];
   }
   function selectParentOrChild(up) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || state.selectedIds.length !== 1) return false;
+    var screen = getActiveScreen();
+    if (!screen || state.selectedIds.length !== 1) return false;
     var id2 = state.selectedIds[0];
     if (up) {
-      var parent = tree_exports.parentOf(screen2, id2);
+      var parent = tree_exports.parentOf(screen, id2);
       if (!parent || !parent.type) return false;
       selectOnly(parent.id);
       return true;
     }
-    var node = tree_exports.find(screen2, id2);
+    var node = tree_exports.find(screen, id2);
     var kids2 = node ? tree_exports.kids(node) : [];
     if (!kids2.length) return false;
     selectOnly(kids2[0].id);
     return true;
   }
   function pickDeeperTarget(nodeId) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return null;
-    var chain = tree_exports.ancestors(screen2, nodeId).map(function(a) {
+    var screen = getActiveScreen();
+    if (!screen) return null;
+    var chain = tree_exports.ancestors(screen, nodeId).map(function(a) {
       return a.id;
     }).concat([nodeId]);
     var at = -1;
@@ -34615,8 +34620,8 @@
     selectMultiple(ids);
   }
   function toggleFlipForSelection(axis) {
-    var screen2 = getActiveScreen();
-    if (!screen2 || !state.selectedIds.length) return;
+    var screen = getActiveScreen();
+    if (!screen || !state.selectedIds.length) return;
     var events = [];
     state.selectedIds.forEach(function(id2) {
       var c = findComponent(id2);
@@ -34630,19 +34635,19 @@
         c.flipV = !c.flipV;
       }
       var to = { flipH: !!c.flipH, flipV: !!c.flipV };
-      events.push({ t: "flip", screenId: screen2.id, id: c.id, from, to });
+      events.push({ t: "flip", screenId: screen.id, id: c.id, from, to });
       updateComponentBox(c);
     });
     if (!events.length) return;
-    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen2.id, events });
+    pushHistory(events.length === 1 ? events[0] : { t: "multi", screenId: screen.id, events });
     markDirty();
     renderPropertiesPanel();
   }
-  function nextGroupName(screen2, type) {
+  function nextGroupName(screen, type) {
     var word = type === "@frame" ? "Frame" : "Group";
     var re = new RegExp("^" + word + " (\\d+)$");
     var n = 0;
-    tree_exports.allNodes(screen2, { orphans: true }).forEach(function(node) {
+    tree_exports.allNodes(screen, { orphans: true }).forEach(function(node) {
       var m = node.type === (type || "@group") && re.exec(node.name || "");
       if (m) n = Math.max(n, Number(m[1]));
     });
@@ -34653,8 +34658,8 @@
   }
   function groupSelection(type) {
     var asFrame = type === "@frame";
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var ids = state.selectedIds.filter(function(id2) {
       return findComponent(id2) && isNodeInteractable(id2);
     });
@@ -34663,7 +34668,7 @@
       return;
     }
     var parents = ids.map(function(id2) {
-      var p = tree_exports.parentOf(screen2, id2);
+      var p = tree_exports.parentOf(screen, id2);
       return p ? p.id : null;
     });
     if (parents.some(function(p) {
@@ -34672,29 +34677,29 @@
       RED.notify("Select nodes that share one parent to group them", { type: "warning", timeout: 2500 });
       return;
     }
-    var before = treeSnapshot(screen2);
-    var group = tree_exports.wrapIn(screen2, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen2, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen2) });
-    if (parents[0]) tree_exports.refitGroupsUp(screen2, group.id);
-    pushTreeChange(screen2, before);
+    var before = treeSnapshot(screen);
+    var group = tree_exports.wrapIn(screen, ids, asFrame ? { id: genId(), type: "@frame", name: nextGroupName(screen, "@frame"), style: {} } : { id: genId(), name: nextGroupName(screen) });
+    if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
+    pushTreeChange(screen, before);
     markDirty();
     renderActiveScreen();
     selectOnly(group.id);
   }
   function ungroupSelection() {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var containers = state.selectedIds.map(findComponent).filter(function(c) {
       return c && tree_exports.isContainer(c) && !isNodeLocked(c.id);
     });
     if (!containers.length) return;
-    var before = treeSnapshot(screen2);
+    var before = treeSnapshot(screen);
     var released = [];
     containers.forEach(function(g) {
-      released = released.concat(tree_exports.unwrap(screen2, g.id).map(function(c) {
+      released = released.concat(tree_exports.unwrap(screen, g.id).map(function(c) {
         return c.id;
       }));
     });
-    pushTreeChange(screen2, before);
+    pushTreeChange(screen, before);
     markDirty();
     renderActiveScreen();
     selectMultiple(released);
@@ -34731,14 +34736,14 @@
       document.removeEventListener("mouseup", onUp);
       marqueeEl.remove();
       if (box2.width < 3 && box2.height < 3) return;
-      var screen2 = getActiveScreen();
-      if (!screen2) return;
+      var screen = getActiveScreen();
+      if (!screen) return;
       var sel = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-      var context = sel ? tree_exports.parentOf(screen2, sel.id) : null;
-      var candidates = context ? tree_exports.kids(context) : screen2.components;
+      var context = sel ? tree_exports.parentOf(screen, sel.id) : null;
+      var candidates = context ? tree_exports.kids(context) : screen.components;
       var hits = candidates.filter(function(c) {
         if (!isNodeInteractable(c.id)) return false;
-        var b = tree_exports.absBox(screen2, c.id);
+        var b = tree_exports.absBox(screen, c.id);
         return !(b.x > box2.left + box2.width || b.x + b.w < box2.left || b.y > box2.top + box2.height || b.y + b.h < box2.top);
       }).map(function(c) {
         return c.id;
@@ -34760,12 +34765,12 @@
   function renderActiveScreen(opts) {
     var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    checkSession(screen2);
-    refreshBreakpointBar(screen2);
+    var screen = getActiveScreen();
+    if (!screen) return;
+    checkSession(screen);
+    refreshBreakpointBar(screen);
     applyEditorTheme();
-    var canvasW = previewWidth(screen2);
+    var canvasW = previewWidth(screen);
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
     state.selectionHandlesEl = null;
@@ -34776,20 +34781,20 @@
     state.artboardEl.empty();
     state.artboardEl.css({
       width: canvasW + "px",
-      height: screen2.height + "px",
+      height: screen.height + "px",
       "background-image": "linear-gradient(to right, #e3e3e3 1px, transparent 1px),linear-gradient(to bottom, #e3e3e3 1px, transparent 1px)",
-      "background-size": screen2.gridSize + "px " + screen2.gridSize + "px"
+      "background-size": screen.gridSize + "px " + screen.gridSize + "px"
     });
     if (state.artboardEl[0] && state.artboardEl[0].style) state.artboardEl[0].style.backgroundColor = "var(--nexa-colors-bg, #fff)";
     if (state.stageEl) {
-      state.stageEl.css({ width: canvasW + "px", height: screen2.height + "px" });
+      state.stageEl.css({ width: canvasW + "px", height: screen.height + "px" });
     }
     applyZoomTransform();
-    var rootScope = scope_exports.surfaceScope(screen2, state.editingMode === "template", appScope());
-    screen2.components.forEach(function(node) {
+    var rootScope = scope_exports.surfaceScope(screen, state.editingMode === "template", appScope());
+    screen.components.forEach(function(node) {
       renderComponent(node, null, null, rootScope);
     });
-    var changed3 = readbackLayout(screen2);
+    var changed3 = readbackLayout(screen);
     if (changed3.redraw && !renderActiveScreen._again) {
       renderActiveScreen._again = true;
       try {
@@ -34803,7 +34808,7 @@
       art.__nexaSlotWatch = true;
       art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
     }
-    if (tree_exports.allNodes(screen2).some(tree_exports.isSlotHost)) scheduleSlotReadback();
+    if (tree_exports.allNodes(screen).some(tree_exports.isSlotHost)) scheduleSlotReadback();
   }
   var slotReadbackQueued = false;
   function scheduleSlotReadback() {
@@ -34814,19 +34819,19 @@
     };
     later(function() {
       slotReadbackQueued = false;
-      var screen2 = getActiveScreen();
-      if (!screen2 || !state.artboardEl) return;
-      var changed3 = readbackLayout(screen2);
+      var screen = getActiveScreen();
+      if (!screen || !state.artboardEl) return;
+      var changed3 = readbackLayout(screen);
       if (changed3.redraw) redrawCanvas();
       else if (changed3.length) refreshSelectionVisuals({ keepPanel: true });
     });
   }
   function redrawCanvas() {
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     renderActiveScreen({ keepPanel: true });
-    if (!screen2) return;
+    if (!screen) return;
     state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen2, id2);
+      return !!tree_exports.find(screen, id2);
     });
     refreshSelectionVisuals({ keepPanel: true });
   }
@@ -34834,12 +34839,12 @@
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
   function applyZoomTransform() {
     if (!state.stageEl || !state.sizerEl) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     state.stageEl.css("transform", "scale(" + state.zoomLevel + ")");
     state.sizerEl.css({
-      width: screen2.width * state.zoomLevel + "px",
-      height: screen2.height * state.zoomLevel + "px"
+      width: screen.width * state.zoomLevel + "px",
+      height: screen.height * state.zoomLevel + "px"
     });
     updateZoomLabel();
     refreshSelectionVisuals({ keepPanel: true });
@@ -34875,17 +34880,17 @@
   }
   function zoomToFit() {
     if (!state.viewportEl) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var vp = state.viewportEl.get(0);
     var pad = 40;
     var availW = Math.max(vp.clientWidth - pad * 2, 10);
     var availH = Math.max(vp.clientHeight - pad * 2, 10);
-    var fitZoom = Math.min(availW / previewWidth(screen2), availH / screen2.height);
+    var fitZoom = Math.min(availW / previewWidth(screen), availH / screen.height);
     fitZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom));
     state.zoomLevel = fitZoom;
     applyZoomTransform();
-    var sizerW = screen2.width * state.zoomLevel, sizerH = screen2.height * state.zoomLevel;
+    var sizerW = screen.width * state.zoomLevel, sizerH = screen.height * state.zoomLevel;
     vp.scrollLeft = Math.max(0, (sizerW - vp.clientWidth) / 2);
     vp.scrollTop = Math.max(0, (sizerH - vp.clientHeight) / 2);
   }
@@ -34931,17 +34936,17 @@
     refreshBreakpointBar(getActiveScreen());
     return bpBar;
   }
-  function refreshBreakpointBar(screen2) {
+  function refreshBreakpointBar(screen) {
     if (!bpBar) return;
     bpBar.empty();
     var template = state.editingMode === "template";
-    bpBar.toggle(!!screen2 && !template);
-    if (!screen2 || template) return;
-    var active = activeBreakpointId(), design = designId(screen2);
+    bpBar.toggle(!!screen && !template);
+    if (!screen || template) return;
+    var active = activeBreakpointId(), design = designId(screen);
     var list = breakpointList();
     list.forEach(function(b, i2) {
       var on = b.id === active, isDesign2 = b.id === design;
-      var width = bandPreviewWidth(screen2, b.id);
+      var width = bandPreviewWidth(screen, b.id);
       var icon = width < 640 ? "fa-mobile" : width < 1200 ? "fa-tablet" : "fa-desktop";
       var tip = b.name + " (" + rangeOf2(b.id) + ")" + (b.device ? " \xB7 " + b.device : "") + " \u2014 " + (isDesign2 ? "the design (the screen's width, " + width + " px)" : "shown at " + width + " px; edits here are kept for " + b.name + (i2 > list.map(function(x) {
         return x.id;
@@ -34999,11 +35004,11 @@
   var clipboardSource = null;
   function copySelection(isCut) {
     if (!state.selectedIds.length) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var roots = state.selectedIds.filter(function(id2) {
       return findComponent(id2) && !state.selectedIds.some(function(o) {
-        return o !== id2 && tree_exports.isAncestor(screen2, o, id2);
+        return o !== id2 && tree_exports.isAncestor(screen, o, id2);
       });
     });
     if (!roots.length) return;
@@ -35013,27 +35018,27 @@
   }
   function pasteClipboard() {
     if (!clipboard || !clipboard.length) return;
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var anchor = state.selectedIds[0] && findComponent(state.selectedIds[0]);
-    var anchorLoc = anchor ? tree_exports.locate(screen2, anchor.id) : null;
+    var anchorLoc = anchor ? tree_exports.locate(screen, anchor.id) : null;
     var parent = anchorLoc && !anchorLoc.orphan ? anchorLoc.parent : null;
     var regenerateIds = clipboardSource === "copy";
-    var before = treeSnapshot(screen2);
+    var before = treeSnapshot(screen);
     var newNodes = clipboard.map(function(c) {
       var copy = regenerateIds ? tree_exports.cloneWithNewIds(c, genId) : JSON.parse(JSON.stringify(c));
       if (regenerateIds) {
         copy.x = (copy.x || 0) + 20;
         copy.y = (copy.y || 0) + 20;
       }
-      tree_exports.insert(screen2, parent ? parent.id : null, null, copy);
+      tree_exports.insert(screen, parent ? parent.id : null, null, copy);
       return copy;
     });
     if (parent && parent.type === "@group") {
       tree_exports.fitGroup(parent);
-      tree_exports.refitGroupsUp(screen2, parent.id);
+      tree_exports.refitGroupsUp(screen, parent.id);
     }
-    pushTreeChange(screen2, before);
+    pushTreeChange(screen, before);
     markDirty();
     if (parent) renderActiveScreen();
     else newNodes.forEach(function(n) {
@@ -35084,8 +35089,8 @@
   }
   function zoomLogicToFit() {
     if (!state.logicViewportEl) return;
-    var screen2 = getActiveScreen();
-    var nodes = screen2 && screen2.logic && screen2.logic.nodes || [];
+    var screen = getActiveScreen();
+    var nodes = screen && screen.logic && screen.logic.nodes || [];
     var vp = state.logicViewportEl.get(0);
     var pad = 60;
     if (!nodes.length) {
@@ -35277,7 +35282,7 @@
         if (x < 0 || y < 0 || x > state.artboardEl.width() || y > state.artboardEl.height()) return;
         var metricRef = SPARKPLUG_DROP_ON_CANVAS && ui.draggable.data("nexaSparkplugMetric");
         if (metricRef) {
-          var screen2 = getActiveScreen();
+          var screen = getActiveScreen();
           var targetComp = null;
           var hitEl = document.elementFromPoint && event.clientX !== void 0 ? document.elementFromPoint(event.clientX, event.clientY) : null;
           if (hitEl) {
@@ -35287,12 +35292,12 @@
               targetComp = findComponent(compId);
             }
           }
-          if (!targetComp && screen2) {
-            var nodes = tree_exports.allNodes(screen2).filter(function(n) {
+          if (!targetComp && screen) {
+            var nodes = tree_exports.allNodes(screen).filter(function(n) {
               return !tree_exports.isContainer(n) || tree_exports.isSlotHost(n);
             });
             for (var i2 = nodes.length - 1; i2 >= 0; i2--) {
-              var b = tree_exports.absBox(screen2, nodes[i2].id);
+              var b = tree_exports.absBox(screen, nodes[i2].id);
               if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
                 targetComp = nodes[i2];
                 break;
@@ -35311,7 +35316,7 @@
             refreshComponentRender(targetComp);
             renderPropertiesPanel();
             renderEventsPanel();
-            pushHistory({ t: "edit", screenId: screen2.id, compId: targetComp.id, sparkplugBinding: bindingPath });
+            pushHistory({ t: "edit", screenId: screen.id, compId: targetComp.id, sparkplugBinding: bindingPath });
             markDirty();
             if (window.RED && window.RED.notify) {
               var typeDef = window.NEXA ? window.NEXA.getComponent(targetComp.type) : null;
@@ -35581,10 +35586,10 @@
     var def = window.NEXA && window.NEXA.getComponent(node.type);
     return def && def.icon || "fa fa-cube";
   }
-  function rows(screen2, list, orphan) {
+  function rows(screen, list, orphan) {
     return list.slice().reverse().map(function(node) {
       var vis = node.visibility || "show";
-      var eff = orphan ? vis : tree_exports.effectiveVisibility(screen2, node.id);
+      var eff = orphan ? vis : tree_exports.effectiveVisibility(screen, node.id);
       return {
         id: node.id,
         label: labelOf(node),
@@ -35593,7 +35598,7 @@
         container: tree_exports.isContainer(node),
         badge: tree_exports.isContainer(node) ? String(tree_exports.kids(node).length) : "",
         muted: eff !== "show" || !!node.slotUnused,
-        children: tree_exports.isContainer(node) ? rows(screen2, tree_exports.kids(node), orphan) : [],
+        children: tree_exports.isContainer(node) ? rows(screen, tree_exports.kids(node), orphan) : [],
         actions: orphan ? [{ id: "delete", icon: "fa fa-trash-o", title: "Delete for good" }] : [
           { id: "visibility", icon: VIS_ICON[vis], title: VIS_TITLE[vis], on: vis !== "show" },
           { id: "lock", icon: node.locked ? "fa fa-lock" : "fa fa-unlock-alt", title: node.locked ? "Locked \u2014 click to unlock" : "Click to lock", on: !!node.locked }
@@ -35602,68 +35607,68 @@
     });
   }
   function onMove(e) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
+    var screen = getActiveScreen();
+    if (!screen) return;
     var d = e.detail;
-    var before = treeSnapshot(screen2);
+    var before = treeSnapshot(screen);
     try {
       if (d.targetId === UNPLACED_ID) {
-        var abs = tree_exports.locate(screen2, d.id) && !tree_exports.locate(screen2, d.id).orphan ? tree_exports.absBox(screen2, d.id) : null;
-        var node = tree_exports.detach(screen2, d.id);
+        var abs = tree_exports.locate(screen, d.id) && !tree_exports.locate(screen, d.id).orphan ? tree_exports.absBox(screen, d.id) : null;
+        var node = tree_exports.detach(screen, d.id);
         if (node) {
           if (abs) {
             node.node.x = abs.x;
             node.node.y = abs.y;
           }
-          (screen2.orphans = screen2.orphans || []).push(node.node);
-          if (!node.orphan) tree_exports.tidyContainer(screen2, node.parentId);
+          (screen.orphans = screen.orphans || []).push(node.node);
+          if (!node.orphan) tree_exports.tidyContainer(screen, node.parentId);
         }
       } else {
-        var target = tree_exports.locate(screen2, d.targetId);
+        var target = tree_exports.locate(screen, d.targetId);
         if (!target) return;
         if (target.orphan) return;
         if (d.position === "inside") {
-          reparentKeepingPlace(screen2, d.id, d.targetId, null);
+          reparentKeepingPlace(screen, d.id, d.targetId, null);
         } else {
           var parentId = target.parent ? target.parent.id : null;
           var index = target.index + (d.position === "before" ? 1 : 0);
-          reparentKeepingPlace(screen2, d.id, parentId, index);
+          reparentKeepingPlace(screen, d.id, parentId, index);
         }
       }
     } catch (err) {
       if (window.RED && window.RED.notify) window.RED.notify(err.message, { type: "warning", timeout: 2500 });
       return;
     }
-    pushTreeChange(screen2, before);
+    pushTreeChange(screen, before);
     markDirty();
     renderActiveScreen();
-    if (tree_exports.find(screen2, d.id) && !tree_exports.locate(screen2, d.id).orphan) selectOnly(d.id);
+    if (tree_exports.find(screen, d.id) && !tree_exports.locate(screen, d.id).orphan) selectOnly(d.id);
     renderHierarchyPanel();
   }
   function onAction(e) {
-    var screen2 = getActiveScreen();
-    if (!screen2) return;
-    var node = tree_exports.find(screen2, e.detail.id);
+    var screen = getActiveScreen();
+    if (!screen) return;
+    var node = tree_exports.find(screen, e.detail.id);
     if (!node) return;
     if (e.detail.action === "visibility") {
       var cur2 = node.visibility || "show";
       var next = cur2 === "show" ? "hide" : "show";
-      pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? void 0 : next });
+      pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "visibility", from: node.visibility, to: next === "show" ? void 0 : next });
       if (next === "show") delete node.visibility;
       else node.visibility = next;
       state.selectedIds = state.selectedIds.filter(function(id2) {
-        return tree_exports.effectiveVisibility(screen2, id2) === "show";
+        return tree_exports.effectiveVisibility(screen, id2) === "show";
       });
     } else if (e.detail.action === "lock") {
-      pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "locked", from: node.locked, to: !node.locked || void 0 });
+      pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "locked", from: node.locked, to: !node.locked || void 0 });
       if (node.locked) delete node.locked;
       else node.locked = true;
     } else if (e.detail.action === "delete") {
-      var before = treeSnapshot(screen2);
-      screen2.orphans = (screen2.orphans || []).filter(function(o) {
+      var before = treeSnapshot(screen);
+      screen.orphans = (screen.orphans || []).filter(function(o) {
         return o.id !== node.id;
       });
-      pushTreeChange(screen2, before);
+      pushTreeChange(screen, before);
     }
     markDirty();
     var keep = state.selectedIds.slice();
@@ -35672,22 +35677,22 @@
     renderHierarchyPanel();
   }
   function onRename(e) {
-    var screen2 = getActiveScreen();
-    var node = screen2 && tree_exports.find(screen2, e.detail.id);
+    var screen = getActiveScreen();
+    var node = screen && tree_exports.find(screen, e.detail.id);
     if (!node) return;
     var name2 = e.detail.name;
     if ((node.name || "") === name2) return;
-    pushHistory({ t: "node", screenId: screen2.id, id: node.id, key: "name", from: node.name, to: name2 || void 0 });
+    pushHistory({ t: "node", screenId: screen.id, id: node.id, key: "name", from: node.name, to: name2 || void 0 });
     if (name2) node.name = name2;
     else delete node.name;
     markDirty();
     renderHierarchyPanel();
   }
   function onSelect(e) {
-    var screen2 = getActiveScreen();
-    var loc = screen2 && tree_exports.locate(screen2, e.detail.id);
+    var screen = getActiveScreen();
+    var loc = screen && tree_exports.locate(screen, e.detail.id);
     if (!loc || loc.orphan) return;
-    var hidden = tree_exports.ancestors(screen2, e.detail.id).concat([loc.node]).filter(function(n) {
+    var hidden = tree_exports.ancestors(screen, e.detail.id).concat([loc.node]).filter(function(n) {
       return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
     });
     if (hidden.length) {
@@ -35724,8 +35729,8 @@
     if (!state.hierarchyPane) return;
     wireOnce();
     var pane = state.hierarchyPane;
-    var screen2 = getActiveScreen();
-    if (!screen2) {
+    var screen = getActiveScreen();
+    if (!screen) {
       pane.empty();
       return;
     }
@@ -35734,8 +35739,8 @@
       window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The hierarchy needs the Nexa property kit.").appendTo(pane);
       return;
     }
-    var nodes = rows(screen2, screen2.components || [], false);
-    var orphans = rows(screen2, screen2.orphans || [], true);
+    var nodes = rows(screen, screen.components || [], false);
+    var orphans = rows(screen, screen.orphans || [], true);
     if (!treeEl || !pane.get(0).contains(treeEl)) {
       pane.empty();
       var host = pane.get(0);
@@ -35787,7 +35792,7 @@
       });
       host.appendChild(orphanEl);
     }
-    treeEl.setAttribute("persist-key", "hierarchy:" + screen2.id);
+    treeEl.setAttribute("persist-key", "hierarchy:" + screen.id);
     treeEl.nodes = nodes;
     treeEl.selected = state.selectedIds.slice();
     orphanEl.nodes = [{
@@ -36248,24 +36253,24 @@
     fitWidth: "Scales to the window's width; taller content scrolls \u2014 good for web pages.",
     fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout. Customize scale per breakpoint below."
   };
-  function openScreenPropertiesDialog(screen2) {
-    if (!screen2) return;
+  function openScreenPropertiesDialog(screen) {
+    if (!screen) return;
     var initial = {
-      name: screen2.name || "",
-      path: screen2.path || "",
-      width: screen2.width || 1280,
-      height: screen2.height || 800,
-      displayMode: screen2.displayMode || "fixed",
-      scaleFactor: screen2.scaleFactor != null ? screen2.scaleFactor : 1,
-      breakpointScales: screen2.breakpointScales ? JSON.parse(JSON.stringify(screen2.breakpointScales)) : {},
-      gridSize: screen2.gridSize != null ? screen2.gridSize : 8,
-      snap: screen2.snap !== false,
-      disabled: !!screen2.disabled
+      name: screen.name || "",
+      path: screen.path || "",
+      width: screen.width || 1280,
+      height: screen.height || 800,
+      displayMode: screen.displayMode || "fixed",
+      scaleFactor: screen.scaleFactor != null ? screen.scaleFactor : 1,
+      breakpointScales: screen.breakpointScales ? JSON.parse(JSON.stringify(screen.breakpointScales)) : {},
+      gridSize: screen.gridSize != null ? screen.gridSize : 8,
+      snap: screen.snap !== false,
+      disabled: !!screen.disabled
     };
     var current2 = Object.assign({}, initial);
     window.RED.tray.show({
       id: "nexa-screen-properties-dialog",
-      title: "Screen Properties: " + (screen2.name || "Screen"),
+      title: "Screen Properties: " + (screen.name || "Screen"),
       width: 500,
       buttons: [
         {
@@ -36278,29 +36283,29 @@
           text: "Save",
           "class": "primary",
           click: function() {
-            var oldSize = { w: screen2.width, h: screen2.height };
-            screen2.name = current2.name.trim() || screen2.name;
-            screen2.path = current2.path.trim();
-            screen2.width = Math.max(10, parseInt(current2.width, 10) || 1280);
-            screen2.height = Math.max(10, parseInt(current2.height, 10) || 800);
-            if (current2.displayMode === "fixed") delete screen2.displayMode;
-            else screen2.displayMode = current2.displayMode;
+            var oldSize = { w: screen.width, h: screen.height };
+            screen.name = current2.name.trim() || screen.name;
+            screen.path = current2.path.trim();
+            screen.width = Math.max(10, parseInt(current2.width, 10) || 1280);
+            screen.height = Math.max(10, parseInt(current2.height, 10) || 800);
+            if (current2.displayMode === "fixed") delete screen.displayMode;
+            else screen.displayMode = current2.displayMode;
             if (current2.displayMode === "fill") {
-              screen2.scaleFactor = current2.scaleFactor;
+              screen.scaleFactor = current2.scaleFactor;
               if (current2.breakpointScales && Object.keys(current2.breakpointScales).length > 0) {
-                screen2.breakpointScales = current2.breakpointScales;
+                screen.breakpointScales = current2.breakpointScales;
               } else {
-                delete screen2.breakpointScales;
+                delete screen.breakpointScales;
               }
             } else {
-              delete screen2.scaleFactor;
-              delete screen2.breakpointScales;
+              delete screen.scaleFactor;
+              delete screen.breakpointScales;
             }
-            screen2.gridSize = Math.max(1, parseInt(current2.gridSize, 10) || 8);
-            screen2.snap = !!current2.snap;
-            screen2.disabled = !!current2.disabled;
-            if (screen2.width !== oldSize.w || screen2.height !== oldSize.h) {
-              applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
+            screen.gridSize = Math.max(1, parseInt(current2.gridSize, 10) || 8);
+            screen.snap = !!current2.snap;
+            screen.disabled = !!current2.disabled;
+            if (screen.width !== oldSize.w || screen.height !== oldSize.h) {
+              applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
             }
             markDirty();
             renderScreenList();
@@ -36502,7 +36507,7 @@
   }
 
   // src/dialogs/screen-variable-dialog.js
-  function openScreenVariablePropertiesDialog(variable2, screen2) {
+  function openScreenVariablePropertiesDialog(variable2, screen) {
     if (!variable2) return;
     var curName = variable2.name || "";
     var curType = variable2.type || "string";
@@ -36547,7 +36552,7 @@
           "font-size": "11px",
           color: "#0369a1",
           "line-height": "1.45"
-        }).html("<strong>Screen-Scoped Variable (" + (screen2 ? screen2.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".').appendTo(body);
+        }).html("<strong>Screen-Scoped Variable (" + (screen ? screen.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".').appendTo(body);
         var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
         window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
         var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
@@ -36606,8 +36611,8 @@
         });
         var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
         window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
-          if (screen2 && screen2.variables) {
-            screen2.variables = screen2.variables.filter(function(v) {
+          if (screen && screen.variables) {
+            screen.variables = screen.variables.filter(function(v) {
               return v.id !== variable2.id;
             });
             markDirty();
@@ -37657,10 +37662,10 @@
       cb(null);
     });
   }
-  function openScreenInBrowser(screen2) {
+  function openScreenInBrowser(screen) {
     var tab = window.open("", "_blank");
     fetchScreenWorkerPort(function(port) {
-      var cleanPath = (screen2.path || "").replace(/^\/+/, "");
+      var cleanPath = (screen.path || "").replace(/^\/+/, "");
       var hostname = window.location.hostname || "localhost";
       var fullUrl = "http://" + hostname + ":" + (port || 1881) + "/nexa/" + cleanPath;
       if (tab) tab.location.href = fullUrl;
@@ -37706,10 +37711,10 @@
     if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
       state.canvasTabs.activateTab("ui");
     }
-    var screen2 = getActiveScreen();
-    var loc = screen2 && tree_exports.locate(screen2, compId);
+    var screen = getActiveScreen();
+    var loc = screen && tree_exports.locate(screen, compId);
     if (loc && !loc.orphan) {
-      var hidden = tree_exports.ancestors(screen2, compId).concat([loc.node]).filter(function(n) {
+      var hidden = tree_exports.ancestors(screen, compId).concat([loc.node]).filter(function(n) {
         return n && n.overlay && n.overlay.kind && !state.overlayPreview[n.id];
       });
       if (hidden.length) {
@@ -37796,11 +37801,11 @@
       if (v) openSharedVariablePropertiesDialog(v);
       return;
     }
-    var screen2 = state.screens.find(function(sc) {
+    var screen = state.screens.find(function(sc) {
       return sc.id === id2;
     });
-    if (screen2) {
-      openScreenPropertiesDialog(screen2);
+    if (screen) {
+      openScreenPropertiesDialog(screen);
       return;
     }
     var template = findTemplate(id2);
@@ -38426,10 +38431,10 @@
       openPropertiesDialogForId(id2);
       return;
     }
-    var screen2 = state.screens.find(function(s) {
+    var screen = state.screens.find(function(s) {
       return s.id === id2;
     });
-    if (screen2) {
+    if (screen) {
       selectScreenFromSidebar(id2);
       return;
     }
@@ -39019,8 +39024,8 @@
       treeEl2.selected = activeId ? [activeId] : [];
       state.screensFlowsTreeEl = treeEl2;
     }
-    state.screens.forEach(function(screen2) {
-      var isActive = screen2.id === state.activeScreenId && state.editingMode === "screen";
+    state.screens.forEach(function(screen) {
+      var isActive = screen.id === state.activeScreenId && state.editingMode === "screen";
       var row = window.$("<div>", { "class": "nexa-screen-row" }).css({
         padding: "8px 10px",
         "border-radius": "5px",
@@ -39038,34 +39043,34 @@
       }).appendTo(state.screenListEl);
       window.$("<span>", {
         style: "cursor: pointer; width: 14px; text-align: center; margin-right: 4px; flex: 0 0 14px;",
-        title: screen2.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
-      }).html(screen2.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
+        title: screen.disabled ? "Screen is disabled (returns 404) \u2014 click to enable" : "Screen is enabled \u2014 click to disable"
+      }).html(screen.disabled ? '<i class="fa fa-ban" style="color: #ef4444;"></i>' : '<i class="fa fa-circle" style="color: #10b981; font-size: 9px;"></i>').on("click", function(e) {
         if (e && e.stopPropagation) e.stopPropagation();
-        screen2.disabled = !screen2.disabled;
+        screen.disabled = !screen.disabled;
         markDirty();
         renderScreenList();
         renderScreenForm();
       }).appendTo(row);
       window.$("<span>", {
-        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen2.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
-      }).text(screen2.name).appendTo(row);
-      if (screen2.disabled) {
+        style: "flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-ui-primary-text-color, #222);" + (screen.disabled ? " text-decoration: line-through; opacity: 0.6;" : " font-weight: 600;")
+      }).text(screen.name).appendTo(row);
+      if (screen.disabled) {
         window.$("<span>", {
           style: "font-size: 9px; color: #ef4444; background: #fee2e2; padding: 1px 4px; border-radius: 3px; font-weight: 600; flex: 0 0 auto;"
         }).text("DISABLED").appendTo(row);
       }
       window.$("<div>", {
         style: "width: 100%; flex: 0 0 100%; font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px; padding: 2px 0; overflow: hidden;"
-      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen2.path ? screen2.path.startsWith("/") ? screen2.path : "/" + screen2.path : "/screen") + "</span>").appendTo(row);
+      }).html('<i class="fa fa-globe" style="font-size: 10px; color: #94a3b8;"></i> <span style="background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + (screen.path ? screen.path.startsWith("/") ? screen.path : "/" + screen.path : "/screen") + "</span>").appendTo(row);
       window.$("<button>", {
         type: "button",
         class: "red-ui-button red-ui-button-small",
-        title: "Open deployed screen in new tab (" + (screen2.path || "/screen") + ")",
+        title: "Open deployed screen in new tab (" + (screen.path || "/screen") + ")",
         style: "flex: 1 1 auto; height: 22px; line-height: 20px; font-size: 11px; color: #0284c7; display: inline-flex; align-items: center; justify-content: center; gap: 4px;"
       }).html('<i class="fa fa-external-link"></i> Open').on("click", function(e) {
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
-        openScreenInBrowser(screen2);
+        openScreenInBrowser(screen);
       }).appendTo(row);
       if (state.screens.length > 1) {
         window.$("<a>", {
@@ -39076,11 +39081,11 @@
         }).html('<i class="fa fa-trash"></i>').on("click", function(e) {
           if (e && e.preventDefault) e.preventDefault();
           if (e && e.stopPropagation) e.stopPropagation();
-          removeScreen(screen2.id);
+          removeScreen(screen.id);
         }).appendTo(row);
       }
       row.on("click", function() {
-        selectScreenFromSidebar(screen2.id);
+        selectScreenFromSidebar(screen.id);
       });
     });
   }
@@ -39664,8 +39669,8 @@
       renderTemplateForm(state.screenFormEl);
       return;
     }
-    var screen2 = getActiveScreen();
-    if (!screen2 || state.editingMode !== "screen") {
+    var screen = getActiveScreen();
+    if (!screen || state.editingMode !== "screen") {
       window.$("<div>", { style: "text-align: center; color: var(--red-ui-secondary-text-color, #94a3b8); padding: 32px 16px; font-size: 12px;" }).html('<i class="fa fa-desktop" style="font-size: 24px; color: #cbd5e1; display: block; margin-bottom: 8px;"></i>Select a screen, template, or flow from the tree on the left.').appendTo(state.screenFormEl);
       return;
     }
@@ -39686,17 +39691,17 @@
       var input = window.$("<input>", { type: type || "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(value).appendTo(r);
       input.on("change", function() {
         var v = type === "number" ? parseInt(input.val(), 10) || 0 : input.val();
-        var oldSize = { w: screen2.width, h: screen2.height };
-        screen2[field] = v;
-        if (field === "width" || field === "height") applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
+        var oldSize = { w: screen.width, h: screen.height };
+        screen[field] = v;
+        if (field === "width" || field === "height") applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
         if (field === "name" || field === "path") renderScreenList();
         markDirty();
         renderActiveScreen();
       });
       return input;
     }
-    row("Name", "name", screen2.name);
-    row("URL path", "path", screen2.path);
+    row("Name", "name", screen.name);
+    row("URL path", "path", screen.path);
     var DEVICES2 = [
       ["", "Custom size"],
       ["1920x1080", "Full HD 1920 \xD7 1080"],
@@ -39714,26 +39719,26 @@
     DEVICES2.forEach(function(d) {
       window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel);
     });
-    presetSel.val(screen2.width + "x" + screen2.height);
+    presetSel.val(screen.width + "x" + screen.height);
     if (!presetSel.val()) presetSel.val("");
-    var widthInput = row("Width (px)", "width", screen2.width, "number");
-    var heightInput = row("Height (px)", "height", screen2.height, "number");
+    var widthInput = row("Width (px)", "width", screen.width, "number");
+    var heightInput = row("Height (px)", "height", screen.height, "number");
     presetSel.on("change", function() {
       var m = /^(\d+)x(\d+)$/.exec(presetSel.val());
       if (!m) return;
-      var oldSize = { w: screen2.width, h: screen2.height };
-      screen2.width = Number(m[1]);
-      screen2.height = Number(m[2]);
-      widthInput.val(screen2.width);
-      heightInput.val(screen2.height);
-      applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
+      var oldSize = { w: screen.width, h: screen.height };
+      screen.width = Number(m[1]);
+      screen.height = Number(m[2]);
+      widthInput.val(screen.width);
+      heightInput.val(screen.height);
+      applyConstraints(null, screen.components || [], oldSize, { w: screen.width, h: screen.height });
       markDirty();
       renderActiveScreen();
       syncHelp();
     });
     [widthInput, heightInput].forEach(function(inp) {
       inp.on("change", function() {
-        presetSel.val(screen2.width + "x" + screen2.height);
+        presetSel.val(screen.width + "x" + screen.height);
         if (!presetSel.val()) presetSel.val("");
         syncHelp();
       });
@@ -39749,11 +39754,11 @@
     ].forEach(function(o) {
       window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel);
     });
-    modeSel.val(screen2.displayMode || "fixed");
+    modeSel.val(screen.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
     var HELP5 = {
       fixed: function() {
-        return "Shown at exactly " + screen2.width + " \xD7 " + screen2.height + " px \u2014 for a known panel / device.";
+        return "Shown at exactly " + screen.width + " \xD7 " + screen.height + " px \u2014 for a known panel / device.";
       },
       fit: "Everything scales together so the whole screen fits any window.",
       fitWidth: "Scales to the window's width; taller content scrolls \u2014 good for web pages.",
@@ -39765,11 +39770,11 @@
     };
     syncHelp();
     modeSel.on("change", function() {
-      if (modeSel.val() === "fixed") delete screen2.displayMode;
-      else screen2.displayMode = modeSel.val();
+      if (modeSel.val() === "fixed") delete screen.displayMode;
+      else screen.displayMode = modeSel.val();
       if (modeSel.val() !== "fill") {
-        delete screen2.scaleFactor;
-        delete screen2.breakpointScales;
+        delete screen.scaleFactor;
+        delete screen.breakpointScales;
       }
       syncHelp();
       syncScaleVis();
@@ -39778,21 +39783,21 @@
     var scaleRow = window.$("<div>").css({ "margin-bottom": "12px", display: "none" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Base scale factor").appendTo(scaleRow);
     var scaleWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "8px" }).appendTo(scaleRow);
-    var scaleRange = window.$("<input>", { type: "range", min: "0.25", max: "3", step: "0.05" }).css({ flex: "1" }).val(screen2.scaleFactor || 1).appendTo(scaleWrap);
-    var scaleNum = window.$("<input>", { type: "number", min: "0.1", max: "5", step: "0.05" }).css({ width: "55px", "text-align": "center" }).val(screen2.scaleFactor || 1).appendTo(scaleWrap);
+    var scaleRange = window.$("<input>", { type: "range", min: "0.25", max: "3", step: "0.05" }).css({ flex: "1" }).val(screen.scaleFactor || 1).appendTo(scaleWrap);
+    var scaleNum = window.$("<input>", { type: "number", min: "0.1", max: "5", step: "0.05" }).css({ width: "55px", "text-align": "center" }).val(screen.scaleFactor || 1).appendTo(scaleWrap);
     window.$("<div>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #94a3b8)", "margin-top": "2px", "margin-bottom": "8px" }).text("Default scale across all screens (1.0 = 100%)").appendTo(scaleRow);
     function syncScaleVis() {
       scaleRow.css("display", modeSel.val() === "fill" ? "block" : "none");
     }
     syncScaleVis();
     scaleRange.on("input change", function() {
-      screen2.scaleFactor = parseFloat(scaleRange.val()) || 1;
-      scaleNum.val(screen2.scaleFactor);
+      screen.scaleFactor = parseFloat(scaleRange.val()) || 1;
+      scaleNum.val(screen.scaleFactor);
       markDirty();
     });
     scaleNum.on("input change", function() {
-      screen2.scaleFactor = parseFloat(scaleNum.val()) || 1;
-      scaleRange.val(screen2.scaleFactor);
+      screen.scaleFactor = parseFloat(scaleNum.val()) || 1;
+      scaleRange.val(screen.scaleFactor);
       markDirty();
     });
     window.$("<div>").css({ "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", "margin-bottom": "2px" }).text("Scale per breakpoint").appendTo(scaleRow);
@@ -39800,7 +39805,7 @@
     var bpListEl = window.$("<div>").css({ display: "flex", "flex-direction": "column", gap: "4px" }).appendTo(scaleRow);
     function renderBpScales() {
       bpListEl.empty();
-      if (!screen2.breakpointScales) screen2.breakpointScales = {};
+      if (!screen.breakpointScales) screen.breakpointScales = {};
       var app3 = getApp();
       var bps = breakpointsOf(app3);
       bps.forEach(function(bp) {
@@ -39819,25 +39824,25 @@
         var info = (bp.device ? bp.device + " \xB7 " : "") + range;
         window.$("<span>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-left": "6px" }).text(info).appendTo(labelWrap);
         var inputWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "4px" }).appendTo(row2);
-        var curVal = screen2.breakpointScales[bp.id];
+        var curVal = screen.breakpointScales[bp.id];
         var inp = window.$("<input>", { type: "number", step: "0.05", min: "0.1", max: "5", placeholder: "Base" }).css({ width: "55px", "text-align": "center", height: "22px", "font-size": "11px" }).val(curVal !== void 0 && curVal !== null ? curVal : "").appendTo(inputWrap);
         window.$("<span>").css({ "font-size": "10px", color: "var(--red-ui-secondary-text-color, #94a3b8)" }).text("x").appendTo(inputWrap);
         inp.on("change input", function() {
           var v = inp.val().trim();
           if (v === "") {
-            delete screen2.breakpointScales[bp.id];
+            delete screen.breakpointScales[bp.id];
           } else {
             var n = parseFloat(v);
-            if (isFinite(n) && n > 0) screen2.breakpointScales[bp.id] = n;
-            else delete screen2.breakpointScales[bp.id];
+            if (isFinite(n) && n > 0) screen.breakpointScales[bp.id] = n;
+            else delete screen.breakpointScales[bp.id];
           }
-          if (Object.keys(screen2.breakpointScales).length === 0) delete screen2.breakpointScales;
+          if (Object.keys(screen.breakpointScales).length === 0) delete screen.breakpointScales;
           markDirty();
         });
       });
     }
     renderBpScales();
-    row("Grid size (px)", "gridSize", screen2.gridSize, "number");
+    row("Grid size (px)", "gridSize", screen.gridSize, "number");
     var checksWrap = window.$("<div>").css({
       "margin-top": "12px",
       "padding-top": "10px",
@@ -39847,17 +39852,17 @@
       gap: "8px"
     }).appendTo(state.screenFormEl);
     var snapRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
-    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", screen2.snap !== false).appendTo(snapRow);
+    var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", screen.snap !== false).appendTo(snapRow);
     window.$("<span>").text("Snap to grid").appendTo(snapRow);
     snapInput.on("change", function() {
-      screen2.snap = snapInput.is(":checked");
+      screen.snap = snapInput.is(":checked");
       markDirty();
     });
     var enableRow = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", color: "var(--red-ui-primary-text-color, #333)", cursor: "pointer" }).appendTo(checksWrap);
-    var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !screen2.disabled).appendTo(enableRow);
+    var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !screen.disabled).appendTo(enableRow);
     window.$("<span>").text("Enable screen (live page at URL path)").appendTo(enableRow);
     enableInput.on("change", function() {
-      screen2.disabled = !enableInput.is(":checked");
+      screen.disabled = !enableInput.is(":checked");
       markDirty();
       renderScreenList();
     });
@@ -39904,9 +39909,9 @@
     state.editingMode = "screen";
     state.activeTemplateId = null;
     state.selectedFolderId = null;
-    var screen2 = makeScreen(opts || {});
-    state.screens.push(screen2);
-    state.activeScreenId = screen2.id;
+    var screen = makeScreen(opts || {});
+    state.screens.push(screen);
+    state.activeScreenId = screen.id;
     updateCanvasTabsVisibility();
     renderScreenList();
     renderScreenForm();
@@ -41132,7 +41137,7 @@
       }) };
     };
     var current2 = view();
-    var screen2 = getActiveScreen();
+    var screen = getActiveScreen();
     var meta2 = {
       id: "@breakpoints",
       stateList: [],
@@ -41155,7 +41160,7 @@
         });
         return html`
                 <div class="nx-help" style="margin-bottom:8px">Bands of window widths, like Tailwind's sm md lg xl: each one starts at its "From" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.</div>
-                ${screen2 ? html`<nx-alert tone="info" text="${(screen2.name || "This screen") + " (" + screen2.width + " px) is designed in " + designBreakpoint(app2, screen2) + "."}"></nx-alert>` : nothing}
+                ${screen ? html`<nx-alert tone="info" text="${(screen.name || "This screen") + " (" + screen.width + " px) is designed in " + designBreakpoint(app2, screen) + "."}"></nx-alert>` : nothing}
                 ${problems.map(function(p) {
           return html`<nx-alert tone="warning" text="${p}"></nx-alert>`;
         })}
@@ -41557,8 +41562,8 @@
         if (state.componentsPane) {
           buildPalette(state.componentsPane);
         }
-        var screen2 = getActiveScreen();
-        if (screen2 && tree_exports.allNodes(screen2).some(function(c) {
+        var screen = getActiveScreen();
+        if (screen && tree_exports.allNodes(screen).some(function(c) {
           return c.type === id2;
         })) renderActiveScreen();
         if (state.eventsPane && state.eventsPane.is(":visible")) {

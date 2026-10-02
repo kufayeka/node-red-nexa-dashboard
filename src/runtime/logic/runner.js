@@ -1,25 +1,35 @@
-/**
- * @file src/runtime/logic/runner.js
- * @description Event-driven visual Logic execution engine for Nexa runtime.
- * Evaluates function nodes, switches, state transitions, HTTP requests, and tag writes.
- */
+// The page's Logic engine: runs a node, then passes its message on along the wires.
+// What each node type does lives in src/features/logic/<family>/runtime.js (the registry);
+// this file only walks the graph, guards against loops, and fires the sources.
 
-import { LOGIC_MAX_STEPS, activeScreenTimers } from "../state.js";
-import { cloneMsg, logicTrace, varsFor, BROWSER_API } from "./context.js";
-import { cloneValue, setMsgPath, valueFromMsg, resolveBindableValue, writeVariable } from "../state/variable.js";
-import { makeRoute, resolveScope, ownerOf } from "../state/scope.js";
+import { LOGIC_MAX_STEPS } from "../state.js";
+import { cloneMsg, logicTrace } from "./context.js";
+import { cloneValue, resolveBindableValue, writeVariable } from "../state/variable.js";
+import { makeRoute, ownerOf } from "../state/scope.js";
 import { findLogicNode, isStructural } from "../mounting/slots.js";
-import { updateInstanceParam, applyLayerControlUpdates, refreshComponentRender, propsMention, runUiUpdateNode } from "../mounting/render.js";
-import { setVariable, setVariablesMulti, getVariablesMulti } from "./nodes/variable-nodes.js";
-import { runSwitchNode, runDelayNode } from "./nodes/control-nodes.js";
-import { runHttpNode, runStorageNode, runCookieNode } from "./nodes/data-nodes.js";
-import { runLinkRequestNode, runLinkSendNode } from "./nodes/link-nodes.js";
+import { refreshComponentRender, propsMention } from "../mounting/render.js";
 import { sendSparkplugWrite } from "../io/client.js";
 import { parseSparkplugBindingPath } from "../io/sparkplug.js";
-import { runPopulate, sendToHost, elById } from "./widgets/populate.js";
-import { teleportHome, teleportEl, teleportTarget } from "../features/teleport.js";
-import { openOverlay, closeOverlay, overlayForNode } from "../features/overlays.js";
-import { navigateToScreen, findScreenInProject, getActiveRenderScreen, getActiveFlowScreen, setActiveRenderScreen } from "../features/navigation.js";
+import { logicRuntime } from "../../features/logic/registry.js";
+import "../../features/logic/runtime.js";
+
+/**
+ * What a node's run(node, msg, ctx) gets:
+ *   screen, budget       the screen it runs on, the step budget of this chain
+ *   next(msg)            pass msg on through output 1 (later, for an async node)
+ *   nextPort(port, msg)  pass msg on through output `port` (0-based)
+ *   continuePropagation / runLogicGraph   the engine itself, for nodes that route by hand (Switch, Send to Flow)
+ */
+function runCtx(screen, node, budget) {
+    return {
+        screen: screen,
+        budget: budget,
+        next: function (m) { continuePropagation(screen, node, m, budget); },
+        nextPort: function (port, m) { continueFromPort(screen, node, m, port, budget); },
+        continuePropagation: continuePropagation,
+        runLogicGraph: runLogicGraph
+    };
+}
 
 export function runLogicGraph(screen, node, msg, budget) {
     budget = budget || { steps: 0 };
@@ -32,244 +42,17 @@ export function runLogicGraph(screen, node, msg, budget) {
         return;
     }
     logicTrace("running", node.type, node.id, "with msg =", msg);
-    var outMsg = msg;
-
-    if (node.type === "function") {
-        try {
-            var fnInput = cloneMsg(msg);
-            var fnVars = varsFor(screen, node);
-            var result = new Function("msg", "vars", "route", "storage", "cookies", "http", "getVariable", "setVariable",
-                "return (async function(){ " + (node.code || "return msg;") + " })();")(
-                fnInput, fnVars, cloneValue(((screen.__scopes || {})["@app"] || {}).$route || makeRoute()),
-                BROWSER_API.storage, BROWSER_API.cookies, BROWSER_API.http,
-                function (name, scopeId) { return fnVars.get(name, scopeId); },
-                function (name, value, scopeId, op) { return fnVars.set(name, value, scopeId, op); });
-            result.then(function (resolved) {
-                continuePropagation(screen, node, resolved, budget);
-            }).catch(function (e) {
-                console.error("[nexa-logic] function node " + node.id + " rejected:", e);
-            });
-            return;
-        } catch (e) {
-            console.error("[nexa-logic] function node " + node.id + " threw:", e);
-            return;
-        }
-    } else if (node.type === "ui-update") {
-        runUiUpdateNode(screen, node, msg);
-    } else if (node.type === "set-template-param") {
-        updateInstanceParam(screen, node.instanceId, node.paramName, msg && msg.payload);
-    } else if (node.type === "set-variable") {
-        setVariable(screen, node, msg);
-    } else if (node.type === "set-variable-multi") {
-        setVariablesMulti(screen, node, msg);
-    } else if (node.type === "teleport") {
-        var cutT = node.id.lastIndexOf("::");
-        var tEl = elById((cutT === -1 ? "" : node.id.slice(0, cutT + 2)) + node.node);
-        var to = node.toSource === "payload" ? (msg && msg.payload) : node.to;
-        to = to === undefined || to === null ? "" : String(to).trim();
-        if (!tEl) logicTrace("teleport: no such node", node.node);
-        else if (!to || to === "home") teleportHome(tEl);
-        else if (!teleportEl(tEl, teleportTarget(to), to)) logicTrace("teleport: no target", to);
-    } else if (node.type === "overlay-open") {
-        var cutO = node.id.lastIndexOf("::");
-        var oNs = (cutO === -1 ? "" : node.id.slice(0, cutO + 2)) + node.overlay;
-        if (!openOverlay(screen, oNs, msg, function (res) { continuePropagation(screen, node, res, budget); })) {
-            logicTrace("overlay-open: no overlay", oNs);
-        }
-    } else if (node.type === "overlay-close") {
-        closeOverlay(overlayForNode(node), node.valueSource === "none" ? undefined : msg && msg.payload, "node");
-        outMsg = null;
-    } else if (node.type === "switch") {
-        runSwitchNode(screen, node, msg, budget, continuePropagation, runLogicGraph);
-        return;
-    } else if (node.type === "delay") {
-        runDelayNode(screen, node, msg, budget, continuePropagation);
-        return;
-    } else if (node.type === "route-trigger" || node.type === "route-not-found") {
-        continuePropagation(screen, node, outMsg, budget);
-        return;
-    } else if (node.type === "http-request") {
-        runHttpNode(screen, node, msg, function (res) { continuePropagation(screen, node, res, budget); });
-        return;
-    } else if (node.type === "link-request") {
-        runLinkRequestNode(screen, node, msg, budget, continueFromPort);
-        return;
-    } else if (node.type === "link-send") {
-        runLinkSendNode(screen, node, msg, budget, continuePropagation);
-        return;
-    } else if (node.type === "link-receive") {
-        continuePropagation(screen, node, outMsg, budget);
-        return;
-    } else if (node.type === "populate") {
-        if (node.container) runPopulate(screen, node, msg);
-        else {
-            outMsg = Object.assign({}, msg || {});
-            var job = { template: node.template, itemParam: node.itemParam, mode: node.mode, key: node.key, fill: node.fill, virtualize: node.virtualize, items: valueFromMsg(node, msg) };
-            var before = msg && msg.populate ? [].concat(msg.populate).filter(function (j) { return j && typeof j === "object"; }) : [];
-            outMsg.populate = before.length ? before.concat([job]) : job;
-        }
-    } else if (node.type === "layout") {
-        if (msg && msg.populate && typeof msg.populate === "object") {
-            [].concat(msg.populate).forEach(function (job) {
-                if (!job || typeof job !== "object") return;
-                runPopulate(screen, {
-                    id: node.id, container: node.container, template: job.template, itemParam: job.itemParam, mode: job.mode,
-                    key: job.key, fill: job.fill, virtualize: job.virtualize, valueSource: "static", value: job.items
-                }, msg);
-            });
-        }
-        outMsg = null;
-    } else if (node.type === "template-output") {
-        sendToHost(screen, node, msg, budget);
-        outMsg = null;
-    } else if (node.type === "storage") {
-        outMsg = runStorageNode(screen, node, msg);
-    } else if (node.type === "cookie") {
-        outMsg = runCookieNode(screen, node, msg);
-    } else if (node.type === "get-variable") {
-        var gScope = resolveScope(screen, node.scope, node.id);
-        outMsg = cloneMsg(msg || {});
-        setMsgPath(outMsg, node.target || "payload", gScope ? cloneValue(gScope[node.name]) : undefined);
-    } else if (node.type === "get-variable-multi") {
-        outMsg = getVariablesMulti(screen, node, msg);
-    } else if (node.type === "debug") {
-        console.log("[nexa-logic debug]", msg);
-    } else if (node.type === "reload") {
-        window.location.reload();
-    } else if (node.type === "open-url") {
-        var rawTarget = (msg && typeof msg.payload === "string" && msg.payload) || (msg && (msg.url || msg.endpoint)) || node.url;
-        var navMode = (msg && msg.mode) || node.mode || "replace";
-        var newTab = (msg && typeof msg.newTab === "boolean") ? msg.newTab : node.newTab;
-        if (rawTarget) {
-            var target = String(rawTarget).trim();
-            var finalUrl = target;
-            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//i.test(target) || /^\/\//.test(target)) {
-                finalUrl = target;
-            } else if (/^(localhost|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?(\/.*)?$/i.test(target)) {
-                finalUrl = "http://" + target;
-            } else if (/^www\./i.test(target) || /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i.test(target)) {
-                finalUrl = "https://" + target;
-            } else if (navMode === "endpoint") {
-                if (target.charAt(0) === "/") {
-                    var base = window.location.pathname.startsWith("/nexa") ? "/nexa" : "";
-                    var sub = target.startsWith("/nexa") ? target.slice(5) : target;
-                    finalUrl = base + sub;
-                } else {
-                    var pathParts = window.location.pathname.split("/").filter(Boolean);
-                    if (pathParts.length > 0) pathParts.pop();
-                    pathParts.push(target);
-                    finalUrl = "/" + pathParts.join("/");
-                }
-            }
-            if (newTab) window.open(finalUrl, "_blank");
-            else window.location.href = finalUrl;
-        }
-    } else if (node.type === "delay") {
-        var delayMs = (node.unit === "s" ? Number(node.delay) * 1000 : Number(node.delay));
-        if (isNaN(delayMs) || delayMs < 0) delayMs = 500;
-        if (msg && typeof msg.delay === "number" && msg.delay >= 0) {
-            delayMs = msg.delay;
-        }
-        var dTimer = setTimeout(function () {
-            var idx = activeScreenTimers.indexOf(dTimer);
-            if (idx !== -1) activeScreenTimers.splice(idx, 1);
-            continuePropagation(screen, node, cloneMsg(msg), budget);
-        }, delayMs);
-        activeScreenTimers.push(dTimer);
-        return;
-    } else if (node.type === "render-screen") {
-        var targetScreenId = (msg && (msg.screenId || msg.screen)) || node.screenId;
-        var fwd = node.forwardPayload !== false;
-        var pld = fwd ? (msg && msg.payload) : undefined;
-        var match = findScreenInProject(targetScreenId);
-        if (!match || !match.screen) {
-            console.warn("[nexa-runtime] render-screen: target screen not found:", targetScreenId);
-            return;
-        }
-        setActiveRenderScreen({
-            flowScreen: screen,
-            flowNode: node,
-            screenId: match.screen.id
-        });
-        navigateToScreen(match.screen.id, pld, false, true, node.id);
-        return;
-    } else if (node.type === "send-to-flow") {
-        var sendMsg = cloneMsg(msg);
-        if (node.action) sendMsg.action = node.action;
-        var activeRender = getActiveRenderScreen();
-        var activeFlow = getActiveFlowScreen();
-        if (activeFlow && activeRender && activeRender.flowNode) {
-            logicTrace("send-to-flow dispatching to Flow node:", activeRender.flowNode.id);
-            continuePropagation(activeFlow, activeRender.flowNode, sendMsg, budget);
-        } else {
-            console.warn("[nexa-runtime] send-to-flow: no active Render Screen node to receive message in current flow");
-        }
-        continuePropagation(screen, node, outMsg, budget);
-        return;
-    } else if (node.type === "navigate") {
-        var nMode = (msg && msg.mode) || node.mode || "screen";
-        if (nMode === "history") {
-            var action = (msg && msg.action) || node.historyAction || "back";
-            if (action === "forward") {
-                if (typeof window.history !== "undefined" && typeof window.history.forward === "function") window.history.forward();
-            } else {
-                if (typeof window.history !== "undefined" && typeof window.history.back === "function") window.history.back();
-            }
-            continuePropagation(screen, node, outMsg, budget);
-        } else {
-            var targetId = nMode === "url"
-                ? ((msg && (msg.url || msg.path || msg.endpoint)) || node.url)
-                : ((msg && (msg.screenId || msg.screen)) || node.screenId);
-            var fwdNav = node.forwardPayload !== false;
-            var pldNav = fwdNav ? (msg && msg.payload) : undefined;
-            navigateToScreen(targetId, pldNav, node.replace === true, true);
-            continuePropagation(screen, node, outMsg, budget);
-        }
-        return;
-    } else if (node.type === "layer-control") {
-        var layerUpdates = (msg && Array.isArray(msg.payload)) ? msg.payload : (node.states || []);
-        applyLayerControlUpdates(screen, layerUpdates);
-    } else if (node.type === "sparkplug-write") {
-        var writeRef = parseSparkplugBindingPath(node.tag);
-        if (!writeRef) {
-            console.error("[nexa-logic] sparkplug-write node " + node.id + ": \"" + node.tag + "\" is not a valid {sparkplug:...} binding");
-            return;
-        }
-        sendSparkplugWrite(writeRef.groupId, writeRef.edgeNodeId, writeRef.deviceId, [{ name: writeRef.metricName, value: msg && msg.payload }])
-            .then(function () { continuePropagation(screen, node, outMsg, budget); })
-            .catch(function (e) { console.error("[nexa-logic] sparkplug-write node " + node.id + " failed:", e); });
-        return;
-    } else if (node.type === "sparkplug-write-multi") {
-        var writes = (msg && Array.isArray(msg.writes)) ? msg.writes : [];
-        if (!writes.length) {
-            console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": msg.writes must be a non-empty array of {tag, value}");
-            return;
-        }
-        var writeGroups = {};
-        var invalidTags = [];
-        writes.forEach(function (w) {
-            var ref = w && parseSparkplugBindingPath(w.tag);
-            if (!ref) { invalidTags.push(w && w.tag); return; }
-            var key = ref.groupId + "::" + ref.edgeNodeId + "::" + (ref.deviceId || "");
-            if (!writeGroups[key]) writeGroups[key] = { groupId: ref.groupId, edgeNodeId: ref.edgeNodeId, deviceId: ref.deviceId, metrics: [] };
-            writeGroups[key].metrics.push({ name: ref.metricName, value: w.value });
-        });
-        if (invalidTags.length) {
-            console.error("[nexa-logic] sparkplug-write-multi node " + node.id + ": ignoring invalid tag(s):", invalidTags);
-        }
-        var groupKeys = Object.keys(writeGroups);
-        if (!groupKeys.length) return;
-        Promise.all(groupKeys.map(function (key) {
-            var g = writeGroups[key];
-            return sendSparkplugWrite(g.groupId, g.edgeNodeId, g.deviceId, g.metrics);
-        })).then(function () {
-            continuePropagation(screen, node, outMsg, budget);
-        }).catch(function (e) {
-            console.error("[nexa-logic] sparkplug-write-multi node " + node.id + " failed:", e);
-        });
+    var rt = logicRuntime(node.type);
+    // an unknown type (a newer project, a removed node type): pass the message on, as before
+    if (!rt) { continuePropagation(screen, node, msg, budget); return; }
+    var out;
+    try {
+        out = rt.run(node, msg, runCtx(screen, node, budget));
+    } catch (e) {
+        console.error("[nexa-logic] " + node.type + " node " + node.id + " threw:", e);
         return;
     }
-    continuePropagation(screen, node, outMsg, budget);
+    if (out !== undefined && out !== null) continuePropagation(screen, node, out, budget);
 }
 
 export function continuePropagation(screen, sourceNode, msg, budget) {
