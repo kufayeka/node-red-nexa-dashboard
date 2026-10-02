@@ -6,6 +6,7 @@ import { state } from "../state.js";
 import { makeSharedScope, refreshScope } from "../state/scope.js";
 import { notifyWatchers, sameValue } from "../state/variable.js";
 import { markSparkplugKeysDirty, refreshAllSparkplugBoundComponents } from "./sparkplug.js";
+import { getEffectiveScreen, getActiveFlowScreen } from "../features/navigation.js";
 
 export function ioApplyFrame(buffer) {
     let decoded;
@@ -30,12 +31,15 @@ export function ioApplyFrame(buffer) {
             const oldVal = state.currentSharedScope[sVarName];
             state.currentSharedScope[sVarName] = rec.value;
             if (!sameValue(oldVal, rec.value)) {
-                if (state.currentEffectiveScreen) {
-                    refreshScope(state.currentEffectiveScreen, state.currentSharedScope);
-                    notifyWatchers(state.currentEffectiveScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
+                // the screen on show (and the flow around it) — navigation.js holds them
+                const screen = getEffectiveScreen();
+                const flowScreen = getActiveFlowScreen();
+                if (screen) {
+                    refreshScope(screen, state.currentSharedScope);
+                    notifyWatchers(screen, state.currentSharedScope, sVarName, rec.value, oldVal);
                 }
-                if (state.currentActiveFlowScreen && state.currentActiveFlowScreen !== state.currentEffectiveScreen) {
-                    notifyWatchers(state.currentActiveFlowScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
+                if (flowScreen && flowScreen !== screen) {
+                    notifyWatchers(flowScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
                 }
             }
             continue;

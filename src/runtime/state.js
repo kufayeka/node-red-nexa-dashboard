@@ -49,11 +49,7 @@ export const state = {
     currentSharedScope: null,
     currentAppScope: null,
 
-    // Active Screen & Flow Navigation
-    currentEffectiveScreen: null,
-    currentActiveFlow: null,
-    currentActiveFlowScreen: null,
-    currentActiveRenderScreen: null,
+    // (the screen on show, the active flow: src/runtime/features/navigation.js getEffectiveScreen() / getActiveFlowScreen())
 
     // Active timers and listeners
     activeScreenTimers: [],

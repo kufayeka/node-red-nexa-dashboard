@@ -407,11 +407,7 @@
     // Variable Scopes
     currentSharedScope: null,
     currentAppScope: null,
-    // Active Screen & Flow Navigation
-    currentEffectiveScreen: null,
-    currentActiveFlow: null,
-    currentActiveFlowScreen: null,
-    currentActiveRenderScreen: null,
+    // (the screen on show, the active flow: src/runtime/features/navigation.js getEffectiveScreen() / getActiveFlowScreen())
     // Active timers and listeners
     activeScreenTimers: [],
     activeDisplayModeResize: null,
@@ -5993,12 +5989,14 @@
         const oldVal = state.currentSharedScope[sVarName];
         state.currentSharedScope[sVarName] = rec.value;
         if (!sameValue(oldVal, rec.value)) {
-          if (state.currentEffectiveScreen) {
-            refreshScope(state.currentEffectiveScreen, state.currentSharedScope);
-            notifyWatchers(state.currentEffectiveScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
+          const screen2 = getEffectiveScreen();
+          const flowScreen = getActiveFlowScreen();
+          if (screen2) {
+            refreshScope(screen2, state.currentSharedScope);
+            notifyWatchers(screen2, state.currentSharedScope, sVarName, rec.value, oldVal);
           }
-          if (state.currentActiveFlowScreen && state.currentActiveFlowScreen !== state.currentEffectiveScreen) {
-            notifyWatchers(state.currentActiveFlowScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
+          if (flowScreen && flowScreen !== screen2) {
+            notifyWatchers(flowScreen, state.currentSharedScope, sVarName, rec.value, oldVal);
           }
         }
         continue;
