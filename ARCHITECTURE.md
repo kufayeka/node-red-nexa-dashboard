@@ -25,7 +25,7 @@ dist/nexa-plugin.html                dist/nexa-runtime.bundle.js            dist
 | --- | --- | --- |
 | `src/model/` | everywhere | The node tree, layout, scopes, types, breakpoints, theme, migration. Pure. |
 | `src/features/logic/` | editor + page | Every Logic node type: `<family>/meta.js`, `editor.js`, `runtime.js`, and its dialogs. See §4. |
-| `src/shared/` | page + server | Wire formats, one file per protocol: `io/` (tags), `link/frame.js` (Nexa Link). |
+| `src/shared/` | page + server | Wire formats, one CommonJS file per protocol, used by both sides: `io/frame.js` (tags), `link/frame.js` (Nexa Link). |
 | `src/index.js`, `editor-tray.js`, `canvas/`, `sidebar/`, `logic/`, `dialogs/`, `editor/` | editor | Shell: the Pages tray, the UI canvas, the Logic canvas, the sidebar tabs, and the non-Logic dialogs (screen, flow, template, variables). |
 | `src/state.js` | editor | The editor's state (open screen, selection, zoom…) and project helpers. |
 | `src/runtime/` | page | Shell: mount a screen (`mounting/`), navigation, overlays, teleport, theme, breakpoints (`features/`), the Logic engine (`logic/runner.js`), and the tag client and link client (`io/`). |
@@ -43,7 +43,7 @@ dist/nexa-plugin.html                dist/nexa-runtime.bundle.js            dist
 1. MQTT goes into `sparkplug-worker`, which decodes it and updates **its own** tree (`server/sparkplug/sparkplugTree.js`).
 2. The worker sends the delta over a `MessageChannel` straight to the screen worker. `plugin.js` sets the channel up in `wireSparkplugSubscription`; the worker sends its snapshot first, then every delta, in order.
 3. `IoHub` (`server/io/`) sends binary frames every RPI over `/_io`.
-4. The page receives them in `runtime/io/client.js` and `frame.js`, which update the bound components.
+4. The page receives them in `runtime/io/client.js` and `frame.js`, which update the bound components. Both ends use the one wire format `src/shared/io/frame.js`.
 
 Separately, the worker also posts each decoded message to the **main thread**. There `nodes/nexa-sparkplug.js` builds its own tree, for the editor's Sparkplug sidebar, rebirth decisions and `getSnapshot`. A busy flow delays only that part.
 
@@ -121,8 +121,6 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 
 These are known and listed in the order they pay off:
 - Split `server/workers/screen-worker.js` (routing, HTML, SSE, IO) and `sidebar/screens-panel.js` (2484 lines).
-- `hierarchy-panel.js` and `screens-panel.js` carry the same tree label / icon functions: move them to one module.
-- One IO wire format: encoder `server/io/ioProtocol.js` (CJS) and decoder `shared/io/protocol.js` (ESM) duplicate the constants. Do it like `shared/link/frame.js`.
 - Runtime state: `runtime/state.js` and module variables in `features/navigation.js` both hold the current screen.
 - Join has no page implementation (it passes each message on).
 - The Overlay Open node passes msg on right away **and** again when the overlay closes. This was kept as is in the registry move; decide whether the first one is wanted.

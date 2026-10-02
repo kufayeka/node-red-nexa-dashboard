@@ -114,7 +114,7 @@ function setSparkplugPort(port) {
     });
 }
 
-// Nexa IO (lib/io/ioProtocol.js): one WebSocket per deployed page at
+// Nexa IO (src/shared/io/frame.js): one WebSocket per deployed page at
 // RUNTIME_PREFIX + "/_io" — cyclic "implicit" binary frames out, "explicit"
 // writes in. The SSE stream + POST write routes below stay as the fallback.
 var ioHub = new IoHub({

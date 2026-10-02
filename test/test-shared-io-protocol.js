@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { encodeDataFrame, V as NodeV } from "../src/server/io/ioProtocol.js";
-import { decodeDataFrame, V as SharedV } from "../src/shared/io/protocol.js";
+import { encodeDataFrame, V as NodeV } from "../src/shared/io/frame.js";
+import { decodeDataFrame, V as SharedV } from "../src/shared/io/frame.js";
 
 console.log("=== Testing Shared IO Protocol Universal Decoder ===");
 

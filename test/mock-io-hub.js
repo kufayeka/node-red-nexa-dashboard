@@ -1,5 +1,5 @@
-// lib/io/ioProtocol.js + lib/io/ioHub.js — Nexa IO implicit/explicit, no sockets.
-const { encodeDataFrame, decodeDataFrame, HEADER_BYTES } = require('../src/server/io/ioProtocol.js');
+// src/shared/io/frame.js + src/server/io/ioHub.js — Nexa IO implicit/explicit, no sockets.
+const { encodeDataFrame, decodeDataFrame, HEADER_BYTES } = require('../src/shared/io/frame.js');
 const { IoHub } = require('../src/server/io/ioHub.js');
 
 let failures = 0;

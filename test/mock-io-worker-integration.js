@@ -8,7 +8,7 @@
 const path = require("path");
 const { Worker } = require("worker_threads");
 const WebSocket = require("ws");
-const { decodeDataFrame } = require("../src/server/io/ioProtocol.js");
+const { decodeDataFrame } = require("../src/shared/io/frame.js");
 
 let failures = 0;
 function check(label, ok, actual) {

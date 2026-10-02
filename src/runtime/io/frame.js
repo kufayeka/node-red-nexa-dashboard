@@ -1,7 +1,7 @@
 // Nexa IO Binary Frame Decoder & Applicator
-// Uses universal decoder from shared/io/protocol.js to unpack cyclic binary frames.
+// Decodes with src/shared/io/frame.js (the same file the server encodes with).
 
-import { decodeDataFrame, V } from "../../shared/io/protocol.js";
+import { decodeDataFrame, V } from "../../shared/io/frame.js";
 import { state } from "../state.js";
 import { makeSharedScope, refreshScope } from "../state/scope.js";
 import { notifyWatchers, sameValue } from "../state/variable.js";

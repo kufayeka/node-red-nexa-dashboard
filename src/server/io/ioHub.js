@@ -1,4 +1,4 @@
-// Nexa IO hub — the server side of lib/io/ioProtocol.js, independent of the
+// Nexa IO hub — the server side of src/shared/io/frame.js, independent of the
 // actual socket (lib/screen-worker.js plugs WebSocket connections in; tests
 // plug in fakes). Holds the latest value of every Sparkplug metric the Nexa
 // connection knows, and runs one cyclic "implicit" producer per connected
@@ -12,7 +12,7 @@
 //   - an empty frame every `hbMs` keeps the client's watchdog fed
 "use strict";
 
-const { encodeDataFrame } = require("./ioProtocol");
+const { encodeDataFrame } = require("../../shared/io/frame.js");
 
 const MAX_INDEX = 0xFFFF;
 

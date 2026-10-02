@@ -32,8 +32,165 @@
     mod
   ));
 
-  // src/shared/link/frame.js
+  // src/shared/io/frame.js
   var require_frame = __commonJS({
+    "src/shared/io/frame.js"(exports, module) {
+      "use strict";
+      var KIND_DATA = 1;
+      var FLAG_FULL = 1;
+      var HEADER_BYTES = 12;
+      var V3 = { OFFLINE: 0, NULL: 1, FALSE: 2, TRUE: 3, INT32: 4, FLOAT64: 5, STRING: 6, JSON: 7 };
+      var HAS_TS = 128;
+      var MAX_STRING = 65535;
+      var enc = new TextEncoder();
+      var dec = new TextDecoder("utf-8");
+      function classify(entry) {
+        if (!entry || !entry.online) return { t: V3.OFFLINE };
+        if (entry.isNull || entry.value === null || entry.value === void 0) return { t: V3.NULL };
+        const v = entry.value;
+        if (v === true) return { t: V3.TRUE };
+        if (v === false) return { t: V3.FALSE };
+        if (typeof v === "number") {
+          if (Number.isInteger(v) && v >= -2147483648 && v <= 2147483647) return { t: V3.INT32, v };
+          return { t: V3.FLOAT64, v };
+        }
+        if (typeof v === "string") {
+          const bytes = enc.encode(v);
+          if (bytes.length <= MAX_STRING) return { t: V3.STRING, bytes };
+        }
+        return { t: V3.JSON, bytes: enc.encode(JSON.stringify(v)) };
+      }
+      function encodeDataFrame(items, opts) {
+        opts = opts || {};
+        const baseTs = opts.now || Date.now();
+        const parts = [];
+        let size = HEADER_BYTES;
+        for (const it of items) {
+          const c = classify(it.entry);
+          const ts = it.entry && typeof it.entry.timestamp === "number" ? it.entry.timestamp : null;
+          let tsOff = null;
+          if (ts !== null) {
+            const d = Math.round(ts - baseTs);
+            if (d >= -2147483648 && d <= 2147483647) tsOff = d;
+          }
+          let bytes = 3 + (tsOff !== null ? 4 : 0);
+          if (c.t === V3.INT32) bytes += 4;
+          else if (c.t === V3.FLOAT64) bytes += 8;
+          else if (c.t === V3.STRING) bytes += 2 + c.bytes.length;
+          else if (c.t === V3.JSON) bytes += 4 + c.bytes.length;
+          parts.push({ idx: it.idx, c, tsOff });
+          size += bytes;
+        }
+        const out = new Uint8Array(size);
+        const dv = new DataView(out.buffer);
+        dv.setUint8(0, KIND_DATA);
+        dv.setUint8(1, opts.full ? FLAG_FULL : 0);
+        dv.setUint16(2, parts.length, true);
+        dv.setFloat64(4, baseTs, true);
+        let o = HEADER_BYTES;
+        for (const p of parts) {
+          dv.setUint16(o, p.idx, true);
+          o += 2;
+          dv.setUint8(o, p.c.t | (p.tsOff !== null ? HAS_TS : 0));
+          o += 1;
+          if (p.tsOff !== null) {
+            dv.setInt32(o, p.tsOff, true);
+            o += 4;
+          }
+          switch (p.c.t) {
+            case V3.INT32:
+              dv.setInt32(o, p.c.v, true);
+              o += 4;
+              break;
+            case V3.FLOAT64:
+              dv.setFloat64(o, p.c.v, true);
+              o += 8;
+              break;
+            case V3.STRING:
+              dv.setUint16(o, p.c.bytes.length, true);
+              o += 2;
+              out.set(p.c.bytes, o);
+              o += p.c.bytes.length;
+              break;
+            case V3.JSON:
+              dv.setUint32(o, p.c.bytes.length, true);
+              o += 4;
+              out.set(p.c.bytes, o);
+              o += p.c.bytes.length;
+              break;
+            default:
+              break;
+          }
+        }
+        return out;
+      }
+      function decodeDataFrame2(frame) {
+        const u8 = frame instanceof Uint8Array ? frame : new Uint8Array(frame);
+        const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+        if (dv.getUint8(0) !== KIND_DATA) throw new Error("not a data frame");
+        const flags = dv.getUint8(1);
+        const count = dv.getUint16(2, true);
+        const baseTs = dv.getFloat64(4, true);
+        let o = HEADER_BYTES;
+        const entries = [];
+        for (let i = 0; i < count; i++) {
+          const idx = dv.getUint16(o, true);
+          o += 2;
+          const tb = dv.getUint8(o);
+          o += 1;
+          const t = tb & 127;
+          let timestamp = null;
+          if (tb & HAS_TS) {
+            timestamp = baseTs + dv.getInt32(o, true);
+            o += 4;
+          }
+          let value = null;
+          switch (t) {
+            case V3.FALSE:
+              value = false;
+              break;
+            case V3.TRUE:
+              value = true;
+              break;
+            case V3.INT32:
+              value = dv.getInt32(o, true);
+              o += 4;
+              break;
+            case V3.FLOAT64:
+              value = dv.getFloat64(o, true);
+              o += 8;
+              break;
+            case V3.STRING: {
+              const n = dv.getUint16(o, true);
+              o += 2;
+              value = dec.decode(u8.subarray(o, o + n));
+              o += n;
+              break;
+            }
+            case V3.JSON: {
+              const n = dv.getUint32(o, true);
+              o += 4;
+              try {
+                value = JSON.parse(dec.decode(u8.subarray(o, o + n)));
+              } catch (e) {
+                value = null;
+              }
+              o += n;
+              break;
+            }
+            default:
+              break;
+          }
+          entries.push({ idx, online: t !== V3.OFFLINE, isNull: t === V3.NULL, value, timestamp });
+        }
+        return { full: Boolean(flags & FLAG_FULL), baseTs, entries };
+      }
+      module.exports = { encodeDataFrame, decodeDataFrame: decodeDataFrame2, V: V3, KIND_DATA, FLAG_FULL, HEADER_BYTES, HAS_TS, MAX_STRING };
+    }
+  });
+
+  // src/shared/link/frame.js
+  var require_frame2 = __commonJS({
     "src/shared/link/frame.js"(exports, module) {
       "use strict";
       var VERSION = 1;
@@ -41,7 +198,7 @@
       var F_LAST = 2;
       var F_BINARY2 = 4;
       var F_DEFLATE2 = 8;
-      var HEADER_BYTES2 = 16;
+      var HEADER_BYTES = 16;
       var CHUNK_BYTES = 64 * 1024;
       var MAX_META_BYTES = 4096;
       var enc = new TextEncoder();
@@ -55,7 +212,7 @@
       function encodeFrame(msgId, flags, offset, totalLen, metaBytes, chunk) {
         const metaLen = metaBytes ? metaBytes.length : 0;
         const chunkLen = chunk ? chunk.length : 0;
-        const out = new Uint8Array(HEADER_BYTES2 + metaLen + chunkLen);
+        const out = new Uint8Array(HEADER_BYTES + metaLen + chunkLen);
         const dv = new DataView(out.buffer);
         dv.setUint8(0, VERSION);
         dv.setUint8(1, flags);
@@ -63,28 +220,28 @@
         dv.setUint32(4, msgId >>> 0, true);
         dv.setUint32(8, offset >>> 0, true);
         dv.setUint32(12, totalLen >>> 0, true);
-        if (metaLen) out.set(metaBytes, HEADER_BYTES2);
-        if (chunkLen) out.set(chunk, HEADER_BYTES2 + metaLen);
+        if (metaLen) out.set(metaBytes, HEADER_BYTES);
+        if (chunkLen) out.set(chunk, HEADER_BYTES + metaLen);
         return out;
       }
       function decodeFrame(u8) {
         if (!(u8 instanceof Uint8Array)) u8 = new Uint8Array(u8);
-        if (u8.length < HEADER_BYTES2) throw new Error("link frame too short");
+        if (u8.length < HEADER_BYTES) throw new Error("link frame too short");
         const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
         if (dv.getUint8(0) !== VERSION) throw new Error("unknown link frame version " + dv.getUint8(0));
         const flags = dv.getUint8(1);
         const metaLen = dv.getUint16(2, true);
-        if (metaLen > MAX_META_BYTES || HEADER_BYTES2 + metaLen > u8.length) throw new Error("bad link frame meta length");
+        if (metaLen > MAX_META_BYTES || HEADER_BYTES + metaLen > u8.length) throw new Error("bad link frame meta length");
         if (metaLen && !(flags & F_FIRST)) throw new Error("meta on a non-first link frame");
         let meta = null;
-        if (metaLen) meta = JSON.parse(fromUtf82(u8.subarray(HEADER_BYTES2, HEADER_BYTES2 + metaLen)));
+        if (metaLen) meta = JSON.parse(fromUtf82(u8.subarray(HEADER_BYTES, HEADER_BYTES + metaLen)));
         return {
           flags,
           msgId: dv.getUint32(4, true),
           offset: dv.getUint32(8, true),
           totalLen: dv.getUint32(12, true),
           meta,
-          chunk: u8.subarray(HEADER_BYTES2 + metaLen)
+          chunk: u8.subarray(HEADER_BYTES + metaLen)
         };
       }
       var OutMessage = class {
@@ -194,7 +351,7 @@
         F_LAST,
         F_BINARY: F_BINARY2,
         F_DEFLATE: F_DEFLATE2,
-        HEADER_BYTES: HEADER_BYTES2,
+        HEADER_BYTES,
         CHUNK_BYTES,
         MAX_META_BYTES,
         utf8: utf82,
@@ -209,9 +366,9 @@
   });
 
   // src/runtime/state.js
+  var import_frame = __toESM(require_frame());
   var VIS_RANK = { show: 0, hide: 1, remove: 2 };
   var IO_WRITE_TIMEOUT_MS = 5e3;
-  var IO_V = { OFFLINE: 0, NULL: 1, FALSE: 2, TRUE: 3, INT32: 4, FLOAT64: 5, STRING: 6, JSON: 7 };
   var PERSIST_PREFIX = "nexa:app:";
   var LOGIC_MAX_STEPS = 2e3;
   var state = {
@@ -271,106 +428,8 @@
   };
   var activeScreenTimers = state.activeScreenTimers;
 
-  // src/shared/io/protocol.js
-  var KIND_DATA = 1;
-  var FLAG_FULL = 1;
-  var HEADER_BYTES = 12;
-  var V = {
-    OFFLINE: 0,
-    NULL: 1,
-    FALSE: 2,
-    TRUE: 3,
-    INT32: 4,
-    FLOAT64: 5,
-    STRING: 6,
-    JSON: 7
-  };
-  var HAS_TS = 128;
-  var utf8Decoder = typeof TextDecoder !== "undefined" ? new TextDecoder("utf-8") : null;
-  var utf8Encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
-  function decodeUtf8(bytes) {
-    if (utf8Decoder) return utf8Decoder.decode(bytes);
-    if (typeof Buffer !== "undefined") return Buffer.from(bytes).toString("utf8");
-    let s = "";
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    try {
-      return decodeURIComponent(escape(s));
-    } catch (_) {
-      return s;
-    }
-  }
-  function decodeDataFrame(buffer) {
-    const arrayBuffer = buffer.buffer ? buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) : buffer;
-    const dv = new DataView(arrayBuffer);
-    if (dv.getUint8(0) !== KIND_DATA) throw new Error("not a data frame");
-    const flags = dv.getUint8(1);
-    const count = dv.getUint16(2, true);
-    const baseTs = dv.getFloat64(4, true);
-    let o = HEADER_BYTES;
-    const entries = [];
-    const u8 = new Uint8Array(arrayBuffer);
-    for (let i = 0; i < count; i++) {
-      const idx = dv.getUint16(o, true);
-      o += 2;
-      const tb = dv.getUint8(o);
-      o += 1;
-      const t = tb & 127;
-      let timestamp = null;
-      if (tb & HAS_TS) {
-        timestamp = baseTs + dv.getInt32(o, true);
-        o += 4;
-      }
-      let value = null;
-      switch (t) {
-        case V.FALSE:
-          value = false;
-          break;
-        case V.TRUE:
-          value = true;
-          break;
-        case V.INT32:
-          value = dv.getInt32(o, true);
-          o += 4;
-          break;
-        case V.FLOAT64:
-          value = dv.getFloat64(o, true);
-          o += 8;
-          break;
-        case V.STRING: {
-          const n = dv.getUint16(o, true);
-          o += 2;
-          value = decodeUtf8(u8.subarray(o, o + n));
-          o += n;
-          break;
-        }
-        case V.JSON: {
-          const n = dv.getUint32(o, true);
-          o += 4;
-          try {
-            value = JSON.parse(decodeUtf8(u8.subarray(o, o + n)));
-          } catch (_) {
-            value = null;
-          }
-          o += n;
-          break;
-        }
-        default:
-          break;
-      }
-      entries.push({
-        idx,
-        online: t !== V.OFFLINE,
-        isNull: t === V.NULL,
-        value,
-        timestamp
-      });
-    }
-    return {
-      full: Boolean(flags & FLAG_FULL),
-      baseTs,
-      entries
-    };
-  }
+  // src/runtime/io/frame.js
+  var import_frame2 = __toESM(require_frame());
 
   // src/runtime/logic/context.js
   function logicTrace() {
@@ -2350,7 +2409,7 @@
   }
 
   // src/runtime/io/link.js
-  var F = __toESM(require_frame());
+  var F = __toESM(require_frame2());
   var SAFETY_MS = 2e3;
   var DEFAULT_TIMEOUT_MS = 1e4;
   var link = {
@@ -5925,7 +5984,7 @@
   function ioApplyFrame(buffer) {
     let decoded;
     try {
-      decoded = decodeDataFrame(buffer);
+      decoded = (0, import_frame2.decodeDataFrame)(buffer);
     } catch (e) {
       return;
     }
@@ -5955,8 +6014,8 @@
       state.sparkplugCache[L.key] = {
         value: rec.value,
         type: L.type,
-        isNull: typeof rec.isNull === "boolean" ? rec.isNull : rec.vtype === V.NULL,
-        online: typeof rec.online === "boolean" ? rec.online : rec.vtype !== V.OFFLINE,
+        isNull: typeof rec.isNull === "boolean" ? rec.isNull : rec.vtype === import_frame2.V.NULL,
+        online: typeof rec.online === "boolean" ? rec.online : rec.vtype !== import_frame2.V.OFFLINE,
         timestamp: rec.timestamp,
         properties: L.properties,
         metadata: L.metadata,

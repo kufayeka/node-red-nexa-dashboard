@@ -4,7 +4,8 @@
 export const VIS_RANK = { show: 0, hide: 1, remove: 2 };
 
 export const IO_WRITE_TIMEOUT_MS = 5000;
-export const IO_V = { OFFLINE: 0, NULL: 1, FALSE: 2, TRUE: 3, INT32: 4, FLOAT64: 5, STRING: 6, JSON: 7 };
+// the IO value types, from the one wire format
+export { V as IO_V } from "../shared/io/frame.js";
 
 export const PERSIST_PREFIX = "nexa:app:";
 export const LOGIC_MAX_STEPS = 2000;
