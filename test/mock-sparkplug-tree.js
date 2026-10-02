@@ -2,7 +2,7 @@
 // standalone: `node test/mock-sparkplug-tree.js`. See test/run-all.js for
 // the pass/fail convention ("? false" anywhere = a failed assertion,
 // "ALL OK" at the end = every assertion in this file printed "? true").
-const tree = require("../lib/sparkplug/sparkplugTree.js");
+const tree = require("../src/server/sparkplug/sparkplugTree.js");
 
 console.log("--- NBIRTH creates the edge node and its node-scoped metrics ---");
 var t1 = {};

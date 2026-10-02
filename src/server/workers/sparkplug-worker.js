@@ -23,7 +23,7 @@
 // logic into.
 const { parentPort, workerData } = require("worker_threads");
 const mqtt = require("mqtt");
-const sparkplug = require("./sparkplug/sparkplugCodec");
+const sparkplug = require("../sparkplug/sparkplugCodec");
 
 const NAMESPACE = "spBv1.0";
 

@@ -6,7 +6,7 @@
      app variables (persisted), operations, On Variable Change, Get Variable and
      the Function node API (vars, storage, cookies, http). -->
 <div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 // a component that writes (an SDK field / button does the same through ctx.writeTag)
 window.__writers = {};
@@ -58,6 +58,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orp
     { id: "keepCk", type: "set-variable", scope: "", name: "cookie", op: "set", valueSource: "payload" }
   ], wires: [W("go", "api"), W("api", "keep"), W("go", "bad"), W("bad", "keepErr"), W("go", "st1"), W("st1", "st2"), W("st2", "keepSt"), W("go", "ck1"), W("ck1", "ck2"), W("ck2", "keepCk"),W("go", "inc"), W("watch", "fn"), W("go", "app1"), W("app1", "app2"), W("go", "mrg"), W("go", "tgl"), W("inc", "get"), W("get", "cp"), W("go", "who")] } };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

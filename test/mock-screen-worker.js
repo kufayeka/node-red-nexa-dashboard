@@ -22,7 +22,7 @@ class FakeParentPort extends EventEmitter {
 }
 
 function loadWorker(workerData) {
-  delete require.cache[require.resolve("../lib/screen-worker.js")];
+  delete require.cache[require.resolve("../src/server/workers/screen-worker.js")];
   var parentPort = new FakeParentPort();
   var workerThreadsPath = require.resolve("worker_threads");
   var real = require.cache[workerThreadsPath];
@@ -30,7 +30,7 @@ function loadWorker(workerData) {
     id: workerThreadsPath, filename: workerThreadsPath, loaded: true,
     exports: Object.assign({}, real ? real.exports : {}, { parentPort: parentPort, workerData: workerData })
   };
-  require("../lib/screen-worker.js");
+  require("../src/server/workers/screen-worker.js");
   if (real) require.cache[workerThreadsPath] = real;
   else delete require.cache[workerThreadsPath];
   return parentPort;

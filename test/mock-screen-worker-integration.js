@@ -41,7 +41,7 @@ function request(port, method, urlPath, body) {
 }
 
 async function main() {
-  const worker = new Worker(path.join(__dirname, "..", "lib", "screen-worker.js"), {
+  const worker = new Worker(path.join(__dirname, "..", "src", "server", "workers", "screen-worker.js"), {
     workerData: {
       port: 0,
       project: { screens: [{ path: "/screen1", name: "Real Screen", width: 800, height: 600 }], templates: [] },

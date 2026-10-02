@@ -53,7 +53,7 @@ eval(fs.readFileSync(process.argv[2], 'utf8')); // nexa-registry-client.js
 // The screen worker migrates pre-tree screens (flat components + layers) to
 // the node tree before a page gets them; the screens below are written in
 // the old shape, so they go through the same migration.
-const { migrateSurface } = require('../lib/nexa-model.js');
+const { migrateSurface } = require('../dist/nexa-model.js');
 // an element anywhere under `root` (containers nest their children)
 function deepFind(root, id) {
   for (const c of root.children) {

@@ -401,7 +401,7 @@ if (treeHost) {
 }
 
 console.log('--- [P1] 12. Free Position Clamping (Container vs Canvas) ---');
-const LayoutModel = require(path.join(__dirname, '..', 'lib', 'nexa-model.js'));
+const LayoutModel = require(path.join(__dirname, '..', 'dist', 'nexa-model.js'));
 const testContainer = { id: 'frame_cont', type: '@frame', x: 100, y: 100, w: 400, h: 300, children: [] };
 const childInCont = { id: 'child_free', type: 'mock-box', x: 50, y: 50, w: 100, h: 60 };
 testContainer.children.push(childInCont);

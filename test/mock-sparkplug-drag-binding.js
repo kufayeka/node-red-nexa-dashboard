@@ -171,7 +171,7 @@ function flushRAF() {
     queued.forEach(function (fn) { fn(); });
 }
 
-eval(fs.readFileSync(path.join(__dirname, "../lib/nexa-registry-client.js"), "utf8"));
+eval(fs.readFileSync(path.join(__dirname, "../dist/nexa-registry-client.js"), "utf8"));
 NEXA.registerComponent('kufayeka-rect', {
     render: function (el, props) { el.style.background = props.fill; }
 });
@@ -223,7 +223,7 @@ window.__NEXA_SCREEN__ = {
     }
 };
 
-eval(fs.readFileSync(path.join(__dirname, "../lib/nexa-runtime-client.js"), "utf8"));
+eval(fs.readFileSync(path.join(__dirname, "../dist/nexa-runtime.bundle.js"), "utf8"));
 
 var sinkComp = window.__NEXA_SCREEN__.components.find(c => c.id === "sink");
 console.log("Initial sink text is 'Waiting...'?", sinkComp.props.text === "Waiting...");

@@ -2,7 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createAssetStore, assetHeaders, cleanSvg, sniff, dimensions, MAX_BYTES } = require('../lib/assets.js');
+const { createAssetStore, assetHeaders, cleanSvg, sniff, dimensions, MAX_BYTES } = require('../src/server/assets.js');
 
 let failures = 0;
 function check(label, ok, actual) {

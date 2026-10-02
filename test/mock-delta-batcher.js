@@ -1,7 +1,7 @@
 // lib/sparkplug/deltaBatcher.js — the editor-bound Sparkplug tree delta
 // batcher: merges "data" metrics per device (last value wins), keeps
 // birth/death as ordered barriers, one flush per window.
-const { createDeltaBatcher } = require('../lib/sparkplug/deltaBatcher.js');
+const { createDeltaBatcher } = require('../src/server/sparkplug/deltaBatcher.js');
 
 let failures = 0;
 function check(label, ok, actual) {

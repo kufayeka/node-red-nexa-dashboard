@@ -16,7 +16,7 @@ async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label)
 const IDS = ['route', 'user', 'counter', 'log', 'items', 'cfg', 'flag', 'copy', 'fetched', 'badge::inT', 'apiItems', 'err', 'stored', 'cookie', 'flag2', 'cfg2', 'status', 'viaFn', 'badge::inT2'];
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-state.html', async ({ js, logs }) => {
             const texts = () => js(`(function () { var o = {}; ${JSON.stringify(IDS)}.forEach(function (id) { var e = document.querySelector('[data-id="' + id + '"]'); o[id] = e ? e.textContent : null; }); return o; })()`);

@@ -119,7 +119,7 @@ global.history = {
 };
 
 // 2. Load registry client
-eval(fs.readFileSync(path.join(__dirname, '../lib/nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../dist/nexa-registry-client.js'), 'utf8'));
 
 // Register mock test components
 NEXA.registerComponent('nexa-box', {
@@ -135,7 +135,7 @@ NEXA.registerComponent('nexa-label', {
 });
 
 // 3. Define screens in the project (migrated surface / treeVersion: 1)
-const { migrateSurface } = require('../lib/nexa-model.js');
+const { migrateSurface } = require('../dist/nexa-model.js');
 
 const screen1 = {
   id: 'screen1',
@@ -234,7 +234,7 @@ class MockWebSocket {
 global.WebSocket = MockWebSocket;
 
 // Load runtime client
-eval(fs.readFileSync(path.join(__dirname, '../lib/nexa-runtime-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../dist/nexa-runtime.bundle.js'), 'utf8'));
 
 async function runTests() {
   console.log('--- [P2 Phase 1] 1. Initial Screen Mount ---');

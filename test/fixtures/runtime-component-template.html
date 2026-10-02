@@ -8,7 +8,7 @@
        2. A Populate node (mountRepeated) to prove items populate correctly.
      test/runtime-component-template-browser.test.js -->
 <div id="nexa-runtime-artboard" style="width:800px;height:600px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 // Context map — btn component writes here so the test can call ctx.emit
 window.__ctx = {};
@@ -79,6 +79,6 @@ window.__NEXA_SCREEN__ = {
     }
 };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

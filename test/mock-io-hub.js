@@ -1,6 +1,6 @@
 // lib/io/ioProtocol.js + lib/io/ioHub.js — Nexa IO implicit/explicit, no sockets.
-const { encodeDataFrame, decodeDataFrame, HEADER_BYTES } = require('../lib/io/ioProtocol.js');
-const { IoHub } = require('../lib/io/ioHub.js');
+const { encodeDataFrame, decodeDataFrame, HEADER_BYTES } = require('../src/server/io/ioProtocol.js');
+const { IoHub } = require('../src/server/io/ioHub.js');
 
 let failures = 0;
 function check(label, ok, actual) {

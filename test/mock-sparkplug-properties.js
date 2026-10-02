@@ -1,6 +1,6 @@
 // Test for Sparkplug B PropertySet, MetaData decoding & tree property retention across NDATA/DDATA.
-const sparkplug = require("../lib/sparkplug/sparkplugCodec.js");
-const tree = require("../lib/sparkplug/sparkplugTree.js");
+const sparkplug = require("../src/server/sparkplug/sparkplugCodec.js");
+const tree = require("../src/server/sparkplug/sparkplugTree.js");
 
 console.log("--- 1. Sparkplug Tree retains properties, engUnit & metadata across NDATA/DDATA ---");
 var t1 = {};

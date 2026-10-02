@@ -184,8 +184,8 @@ global.__NEXA_RUNTIME_PREFIX__ = '/nexa';
 global.__NEXA_CLIENT_IP__ = '192.168.1.100';
 
 // Load registry and model clients
-eval(fs.readFileSync(path.join(__dirname, '../lib/nexa-registry-client.js'), 'utf8'));
-eval(fs.readFileSync(path.join(__dirname, '../lib/nexa-model-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../dist/nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../dist/nexa-model-client.js'), 'utf8'));
 
 // Register mock component
 NEXA.registerComponent('text', {
@@ -195,7 +195,7 @@ NEXA.registerComponent('text', {
 });
 
 // Load the runtime client script
-const runtimeClientCode = fs.readFileSync(path.join(__dirname, '../lib/nexa-runtime-client.js'), 'utf8');
+const runtimeClientCode = fs.readFileSync(path.join(__dirname, '../dist/nexa-runtime.bundle.js'), 'utf8');
 eval(runtimeClientCode);
 
 async function runTests() {
@@ -528,7 +528,7 @@ async function runTests() {
   global.__NEXA_FLOWS__.push(flow1);
 
   // Re-read and eval runtime code
-  const freshRuntimeCode = fs.readFileSync(path.join(__dirname, '../lib/nexa-runtime-client.js'), 'utf8');
+  const freshRuntimeCode = fs.readFileSync(path.join(__dirname, '../dist/nexa-runtime.bundle.js'), 'utf8');
   eval(freshRuntimeCode);
 
   // 1. Initial entry to /flow1

@@ -18,8 +18,8 @@ const { spawnSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const EXTRACTED_EDITOR = path.join(__dirname, ".extracted-editor.js");
-const REGISTRY_CLIENT = path.join(ROOT, "lib", "nexa-registry-client.js");
-const RUNTIME_CLIENT = path.join(ROOT, "lib", "nexa-runtime-client.js");
+const REGISTRY_CLIENT = path.join(ROOT, "dist", "nexa-registry-client.js");
+const RUNTIME_CLIENT = path.join(ROOT, "dist", "nexa-runtime.bundle.js");
 
 // Editor-side tests: take one arg (the extracted editor script).
 const EDITOR_TESTS = [
@@ -62,10 +62,10 @@ function runBuild() {
 }
 
 function extractEditorScript() {
-    const html = fs.readFileSync(path.join(ROOT, "lib", "nexa-plugin.html"), "utf8");
+    const html = fs.readFileSync(path.join(ROOT, "dist", "nexa-plugin.html"), "utf8");
     const m = /<script type="text\/javascript">([\s\S]*)<\/script>/.exec(html);
     if (!m) {
-        console.error("[test] Could not find the built <script> block in lib/nexa-plugin.html.");
+        console.error("[test] Could not find the built <script> block in dist/nexa-plugin.html.");
         process.exit(1);
     }
     fs.writeFileSync(EXTRACTED_EDITOR, m[1], "utf8");

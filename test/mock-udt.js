@@ -52,7 +52,7 @@ const fs = require('fs');
 const path = require('path');
 eval(fs.readFileSync(process.argv[2], 'utf8')); // nexa-registry-client.js
 // the model (window.NexaModel), as the page loads it from /nexa/_model.js
-(0, eval)(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-model-client.js'), 'utf8'));
+(0, eval)(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-model-client.js"), 'utf8'));
 
 var shown = {}, writer = null;
 NEXA.registerComponent('label', { render: function (el, props) { shown[el.attrs['data-id']] = props.text; } });

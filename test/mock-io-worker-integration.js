@@ -8,7 +8,7 @@
 const path = require("path");
 const { Worker } = require("worker_threads");
 const WebSocket = require("ws");
-const { decodeDataFrame } = require("../lib/io/ioProtocol.js");
+const { decodeDataFrame } = require("../src/server/io/ioProtocol.js");
 
 let failures = 0;
 function check(label, ok, actual) {
@@ -49,7 +49,7 @@ function openClient(port, rpi, keys) {
 }
 
 async function main() {
-  const worker = new Worker(path.join(__dirname, "..", "lib", "screen-worker.js"), {
+  const worker = new Worker(path.join(__dirname, "..", "src", "server", "workers", "screen-worker.js"), {
     workerData: {
       port: 0,
       project: { screens: [], templates: [] },

@@ -11,7 +11,7 @@ import { makeRoute, resolveScope, ownerOf } from "../state/scope.js";
 import { findLogicNode, isStructural } from "../mounting/slots.js";
 import { updateInstanceParam, applyLayerControlUpdates, refreshComponentRender, propsMention, runUiUpdateNode } from "../mounting/render.js";
 import { setVariable, setVariablesMulti, getVariablesMulti } from "./nodes/variable-nodes.js";
-import { runSwitchNode } from "./nodes/control-nodes.js";
+import { runSwitchNode, runDelayNode } from "./nodes/control-nodes.js";
 import { runHttpNode, runStorageNode, runCookieNode } from "./nodes/data-nodes.js";
 import { sendSparkplugWrite } from "../io/client.js";
 import { parseSparkplugBindingPath } from "../io/sparkplug.js";
@@ -79,7 +79,10 @@ export function runLogicGraph(screen, node, msg, budget) {
         closeOverlay(overlayForNode(node), node.valueSource === "none" ? undefined : msg && msg.payload, "node");
         outMsg = null;
     } else if (node.type === "switch") {
-        runSwitchNode(screen, node, msg, budget, continuePropagation);
+        runSwitchNode(screen, node, msg, budget, continuePropagation, runLogicGraph);
+        return;
+    } else if (node.type === "delay") {
+        runDelayNode(screen, node, msg, budget, continuePropagation);
         return;
     } else if (node.type === "route-trigger" || node.type === "route-not-found") {
         continuePropagation(screen, node, outMsg, budget);

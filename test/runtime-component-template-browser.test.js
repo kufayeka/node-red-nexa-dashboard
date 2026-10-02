@@ -19,7 +19,6 @@ async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label)
 async function main() {
     const server = await startServer({
         mounts: {
-            '/lib': path.join(__dirname, '..', 'lib'),
             '/fx' : path.join(__dirname, 'fixtures')
         }
     });

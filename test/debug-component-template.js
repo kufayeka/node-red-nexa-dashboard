@@ -5,7 +5,7 @@ const fs   = require('fs');
 const { withPage, startServer } = require('../sdk/testkit');
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/lib': path.join(__dirname, "..", "dist"), '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-component-template.html', async ({ js, send, logs }) => {
             const wait = (ms) => js(`new Promise(function(r){ setTimeout(r,${ms}); })`);

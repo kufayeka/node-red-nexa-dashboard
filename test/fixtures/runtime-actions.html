@@ -4,7 +4,7 @@
 <body>
 <!-- Update Component -> Run: <action> (test/runtime-actions-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:400px;height:300px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {}; window.__calls = [];
 NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = "btn"; } });
@@ -20,6 +20,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 300, treeVersion: 1, orp
     { id: "e3", type: "ui-event", compId: "ctl", event: "byMsg" }, { id: "f3", type: "function", code: "msg.action = 'postMessage'; return msg;" }, { id: "u3", type: "ui-update", compId: "P" }
   ], wires: [W("e1", "u1"), W("e2", "u2"), W("e3", "f3"), W("f3", "u3")] } };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

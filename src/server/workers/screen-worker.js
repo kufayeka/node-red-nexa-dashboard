@@ -31,10 +31,10 @@ const http = require("http");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
-const { IoHub } = require("./io/ioHub");
+const { IoHub } = require("../io/ioHub");
 // Generated from src/model/ by build.js: a project saved before the node tree
 // (flat components + layers) is migrated here, so the page only knows the tree.
-const { migrateProject } = require("./nexa-model.js");
+const { migrateProject } = require("../../../dist/nexa-model.js");
 
 const RUNTIME_PREFIX = "/nexa";
 
@@ -54,8 +54,8 @@ var componentScriptSrcs = workerData.componentScriptSrcs || [];
 // handleScreenRequest.
 var nodeRedPort = workerData.nodeRedPort || 1880;
 var sparkplugSnapshot = workerData.sparkplugSnapshot || {};
-// image assets (lib/assets.js): the page gets their names -> files, the files come from here
-var assets = require("./assets.js");
+// image assets (src/server/assets.js): the page gets their names -> files, the files come from here
+var assets = require("../assets.js");
 var assetStore = workerData.assetsDir ? assets.createAssetStore(workerData.assetsDir) : null;
 var templatesJsonCache = { forProject: null, json: null };
 var sseClients = []; // [{res, keepAlive}]
@@ -502,7 +502,7 @@ var server = http.createServer(function (req, res) {
     var pathname = url.pathname;
 
     if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_registry.js") {
-        sendFile(res, path.join(__dirname, "nexa-registry-client.js"), "application/javascript"); return;
+        sendFile(res, path.join(__dirname, "..", "..", "..", "dist", "nexa-registry-client.js"), "application/javascript"); return;
     }
     // the node tree model (frames / auto layout CSS), window.NexaModel — see build.js
     if (req.method === "GET" && pathname.indexOf(RUNTIME_PREFIX + "/_assets/") === 0) {
@@ -514,14 +514,14 @@ var server = http.createServer(function (req, res) {
         return;
     }
     if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_model.js") {
-        sendFile(res, path.join(__dirname, "nexa-model-client.js"), "application/javascript"); return;
+        sendFile(res, path.join(__dirname, "..", "..", "..", "dist", "nexa-model-client.js"), "application/javascript"); return;
     }
     if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_runtime.js") {
-        sendFile(res, path.join(__dirname, "nexa-runtime-client.js"), "application/javascript"); return;
+        sendFile(res, path.join(__dirname, "..", "..", "..", "dist", "nexa-runtime.bundle.js"), "application/javascript"); return;
     }
     // Lit + the component SDK (see build.js); "_lit-vendor.js" = its pre-SDK name.
     if (req.method === "GET" && (pathname === RUNTIME_PREFIX + "/_sdk.js" || pathname === RUNTIME_PREFIX + "/_lit-vendor.js")) {
-        sendFile(res, path.join(__dirname, "..", "dist", "nexa-sdk.bundle.js"), "application/javascript"); return;
+        sendFile(res, path.join(__dirname, "..", "..", "..", "dist", "nexa-sdk.bundle.js"), "application/javascript"); return;
     }
     if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_sparkplug-snapshot") {
         sendJson(res, 200, sparkplugSnapshot); return;

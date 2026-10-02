@@ -5,7 +5,7 @@
 // overrides, fallbacks of bound props.   node test/model-breakpoints.test.js
 
 const assert = require('assert');
-const M = require('../lib/nexa-model.js');
+const M = require('../dist/nexa-model.js');
 
 let passed = 0;
 function ok(label, fn) { fn(); passed++; console.log('✔ ' + label); }

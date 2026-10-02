@@ -65,8 +65,8 @@ function makeFakeRED(opts) {
 }
 
 function loadFreshPlugin() {
-  delete require.cache[require.resolve("../lib/nexa-plugin.js")];
-  var mod = require("../lib/nexa-plugin.js");
+  delete require.cache[require.resolve("../src/server/plugin.js")];
+  var mod = require("../src/server/plugin.js");
   mod._setScreenWorkerFactoryForTests(function (workerData) {
     lastFakeScreenWorker = new FakeScreenWorker(workerData);
     return lastFakeScreenWorker;

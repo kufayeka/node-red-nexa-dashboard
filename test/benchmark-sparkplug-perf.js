@@ -81,7 +81,7 @@ function simulatedDomWork(text) {
 
 const fs = require('fs');
 const path = require('path');
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-registry-client.js"), 'utf8'));
 
 NEXA.registerComponent('kufayeka-text-label', {
   render: function (el, props) { renderCallCount++; simulatedDomWork(String(props.text)); }
@@ -96,7 +96,7 @@ for (var i = 0; i < N; i++) {
 }
 window.__NEXA_SCREEN__ = { id: 's1', width: 800, height: N * 20, layers: [{ id: 'default', name: 'Default', parentId: null, visible: true }], components: components };
 
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-runtime-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-runtime.bundle.js"), 'utf8'));
 var source = FakeEventSource.instances[0];
 renderCallCount = 0; // ignore whatever the initial mount rendered
 

@@ -20,7 +20,7 @@ const BLUE = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http:/
 const BROKEN = 'data:image/png;base64,AAAA';
 
 const r = withHarness({
-    mounts: { '/nexa-dashboard-media/vendor': path.join(__dirname, '..', 'lib', 'components') },
+    mounts: { '/nexa-dashboard-media/vendor': path.join(__dirname, '..', 'src', 'server', 'components') },
     modules: ['/nexa-dashboard-media/vendor/media.js']
 }, async ({ js }) => {
     const settle = () => js('NexaTest.settle()');

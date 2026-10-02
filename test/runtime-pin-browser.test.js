@@ -14,7 +14,7 @@ let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-pin.html', async ({ js, logs }) => {
             const frames = () => js('new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(function () { setTimeout(r, 30); }); }); })');

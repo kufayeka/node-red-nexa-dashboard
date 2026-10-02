@@ -17,7 +17,7 @@ async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label)
 const N = 100000;
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-virtual.html', async ({ js, logs }) => {
             const wait = (ms) => new Promise((res) => setTimeout(res, ms));

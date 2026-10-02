@@ -14,7 +14,7 @@ async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label)
 const RECT = (id) => `(function () { var e = document.querySelector('[data-id="${id}"]') || document.getElementById("${id}"); var b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; })()`;
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     const page = (mode, fn) => withPage(server.url + '/fx/runtime-display.html?mode=' + mode, fn, { width: 800, height: 450, ready: "!!document.querySelector('[data-id=\"i3\"]')", readyTries: 60 });
     try {
         const r = await page('fixed', async ({ js }) => {

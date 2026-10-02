@@ -1,18 +1,18 @@
 const { createDeltaBatcher } = require("./sparkplug/deltaBatcher.js");
-const { getCurrentProject } = require("../nodes/nexa-project.js");
+const { getCurrentProject } = require("../../nodes/nexa-project.js");
 const { Worker } = require("worker_threads");
 const path = require("path");
 const { createAssetStore, assetHeaders, MAX_BYTES: ASSET_MAX_BYTES, WARN_BYTES: ASSET_WARN_BYTES, WARN_PX: ASSET_WARN_PX } = require("./assets.js");
 
 // Deployed-screen HTTP server (rendering, static assets, SSE, write-back)
 // runs in its OWN worker thread on its OWN dedicated port — see
-// lib/screen-worker.js's header for why (CPU-contention isolation between
+// src/server/workers/screen-worker.js's header for why (CPU-contention isolation between
 // Node-RED flow execution and dashboard-serving, not a "something was slow"
 // fix). Overridable via RED.settings.nexaDashboard.screenWorkerPort.
 const DEFAULT_SCREEN_WORKER_PORT = 1881;
 
 // How often the editor's Sparkplug tree gets a (merged) delta batch over
-// RED.comms — see lib/sparkplug/deltaBatcher.js.
+// RED.comms — see src/server/sparkplug/deltaBatcher.js.
 const EDITOR_DELTA_BATCH_MS = 75;
 
 // Test-only seam: a real worker_threads.Worker can't be driven by faking
@@ -21,7 +21,7 @@ const EDITOR_DELTA_BATCH_MS = 75;
 // as nodes/nexa-sparkplug.js's own _setWorkerFactoryForTests. Never
 // overridden outside tests.
 var screenWorkerFactory = function (workerData) {
-    return new Worker(path.join(__dirname, "screen-worker.js"), { workerData: workerData });
+    return new Worker(path.join(__dirname, "workers", "screen-worker.js"), { workerData: workerData });
 };
 function _setScreenWorkerFactoryForTests(fn) { screenWorkerFactory = fn; }
 
@@ -64,7 +64,7 @@ module.exports = function(RED) {
   let activeScreenWorkerPort = null;
 
   // the dashboard's own components (Image…): a component package like any plugin's
-  require("../sdk/package")(RED, {
+  require("../../sdk/package")(RED, {
     id: "kufayeka-nexa-dashboard-media",
     name: "nexa-dashboard-media",
     dir: path.join(__dirname, "components"),
@@ -72,7 +72,7 @@ module.exports = function(RED) {
   });
 
   // the dashboard's built-in Layout components (Row, Column, Grid, Card) via SDK
-  require("../sdk/package")(RED, {
+  require("../../sdk/package")(RED, {
     id: "kufayeka-nexa-dashboard-layout",
     name: "nexa-dashboard-layout",
     dir: path.join(__dirname, "components"),
@@ -265,7 +265,7 @@ module.exports = function(RED) {
       const sendFacade = function (req, res) {
         res.set("Access-Control-Allow-Origin", "*");
         res.type("application/javascript");
-        res.sendFile(path.join(__dirname, "..", "sdk", "nexa-component-sdk.js"));
+        res.sendFile(path.join(__dirname, "..", "..", "sdk", "nexa-component-sdk.js"));
       };
       if (RED.httpAdmin) RED.httpAdmin.get("/nexa-sdk/nexa-component-sdk.js", sendFacade);
       if (RED.httpNode) RED.httpNode.get("/nexa-sdk/nexa-component-sdk.js", sendFacade);
@@ -275,13 +275,13 @@ module.exports = function(RED) {
         // "_lit-vendor.js" is the pre-SDK name of the first one, kept as an alias.
         const sendSdk = function (req, res) {
           res.type("application/javascript");
-          res.sendFile(path.join(__dirname, "..", "dist", "nexa-sdk.bundle.js"));
+          res.sendFile(path.join(__dirname, "..", "..", "dist", "nexa-sdk.bundle.js"));
         };
         RED.httpAdmin.get("/nexa-dashboard/_sdk.js", sendSdk);
         RED.httpAdmin.get("/nexa-dashboard/_lit-vendor.js", sendSdk);
         RED.httpAdmin.get("/nexa-dashboard/_sdk-kit.js", function (req, res) {
           res.type("application/javascript");
-          res.sendFile(path.join(__dirname, "..", "dist", "nexa-sdk-kit.bundle.js"));
+          res.sendFile(path.join(__dirname, "..", "..", "dist", "nexa-sdk-kit.bundle.js"));
         });
 
         // Deployed screens now live on lib/screen-worker.js's own dedicated

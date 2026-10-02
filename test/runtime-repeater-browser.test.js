@@ -15,7 +15,7 @@ let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-repeater.html', async ({ js, logs }) => {
             const send = (event, payload) => js(`(function () { window.__ctx.ctl.emit(${JSON.stringify(event)}, ${JSON.stringify(payload)}); return new Promise(function (r) { setTimeout(r, 60); }); })()`);

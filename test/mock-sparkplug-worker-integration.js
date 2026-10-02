@@ -39,7 +39,7 @@ async function main() {
   const port = server.address().port;
   const brokerUrl = "mqtt://127.0.0.1:" + port;
 
-  const worker = new Worker(path.join(__dirname, "..", "lib", "sparkplug-worker.js"), {
+  const worker = new Worker(path.join(__dirname, "..", "src", "server", "workers", "sparkplug-worker.js"), {
     workerData: {
       brokerUrl: brokerUrl,
       clientId: "test-worker",
@@ -68,7 +68,7 @@ async function main() {
   console.log("a second real MQTT client actually received the worker's publish on the wire?", observed.topic === "spBv1.0/G1/NCMD/E1");
 
   console.log("--- an incoming message published by ANOTHER client is relayed back to the main thread, already decoded ---");
-  const sparkplug = require("../lib/sparkplug/sparkplugCodec.js");
+  const sparkplug = require("../src/server/sparkplug/sparkplugCodec.js");
   const relayedMessage = waitForMessage(worker, function (m) { return m.type === "message" && m.topic === "spBv1.0/G1/DDATA/E1/Motor1"; }, OVERALL_TIMEOUT_MS);
   const buf = sparkplug.encodePayload({ timestamp: Date.now(), metrics: [{ name: "Speed", type: "Double", value: 77 }] });
   observer.publish("spBv1.0/G1/DDATA/E1/Motor1", buf, { qos: 0 });

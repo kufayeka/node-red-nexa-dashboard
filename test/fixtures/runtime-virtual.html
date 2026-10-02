@@ -4,7 +4,7 @@
 <body>
 <!-- A virtual list (Populate "Virtualize") on a deployed page (test/runtime-virtual-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:1200px;height:800px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {};
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
@@ -47,6 +47,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1200, height: 800, treeVersion: 1, or
     { id: "e7", type: "ui-event", compId: "ctl", event: "row" }, node("p7", "", "replace"), { id: "lR", type: "layout", container: "row" }
   ], wires: [W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p7", "lR"), W("e8", "p8"), W("e9", "p9")] } };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

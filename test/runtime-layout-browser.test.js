@@ -1,8 +1,8 @@
 'use strict';
 
 // Frames + auto layout on a deployed page, in headless Chrome: the runtime
-// client (lib/nexa-runtime-client.js) mounts a screen of frames with the
-// layout CSS of lib/nexa-model-client.js, and the browser places the children.
+// client (dist/nexa-runtime.bundle.js) mounts a screen of frames with the
+// layout CSS of dist/nexa-model-client.js, and the browser places the children.
 // Also: a hidden frame shown by the Layer Control node gets its flex back.
 // Needs `npm run build`.   node test/runtime-layout-browser.test.js   (skipped without Chrome)
 
@@ -14,7 +14,7 @@ let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-frames.html', async ({ js, logs }) => {
             const box = (id) => js(`(function () { var ab = document.getElementById("nexa-runtime-artboard").getBoundingClientRect(), e = document.querySelector('[data-id="${id}"]');

@@ -48,4 +48,34 @@ const p3 = logicNodePortPoint(multiRuleNode, "output", 3);
 assert.ok(p0.y < p1.y && p1.y < p2.y && p2.y < p3.y, "Ports should be spaced vertically in ascending order");
 console.log("Output port offsets calculated correctly? true");
 
+console.log("--- 5. Runtime Execution of Switch Node ---");
+const { runLogicGraph } = await import("../src/runtime/logic/runner.js");
+const executedTargets = [];
+const testScreen = {
+    id: "screen1",
+    logic: {
+        nodes: [
+            {
+                id: "sw1",
+                type: "switch",
+                property: "status",
+                propertyType: "msg",
+                rules: [{ t: "eq", v: "active", vt: "str" }, { t: "else" }]
+            },
+            { id: "target1", type: "custom-test-1" },
+            { id: "target2", type: "custom-test-2" }
+        ],
+        wires: [
+            { from: "sw1", fromPort: 0, to: "target1" },
+            { from: "sw1", fromPort: 1, to: "target2" }
+        ]
+    }
+};
+// Test matching branch 0
+runLogicGraph(testScreen, testScreen.logic.nodes[0], { status: "active", payload: 123 });
+// Test matching else branch 1
+runLogicGraph(testScreen, testScreen.logic.nodes[0], { status: "unknown", payload: 456 });
+console.log("Runtime execution of switch node without throw? true");
+
 console.log("ALL OK - SWITCH NODE VERIFIED!");
+

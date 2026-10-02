@@ -5,7 +5,7 @@
 <!-- Variables and their lexical scope chain on a deployed page (see
      test/runtime-variables-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = p.text; } });
 function label(id, text) { return { id: id, type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: text } }; }
@@ -30,6 +30,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orp
   ], wires: [{ id: "w1", from: "t1", to: "set1" }, { id: "w2", from: "t2", to: "set2" }] } };
 window.__NEXA_PARAMS__ = {}; window.__NEXA_QUERY__ = {};
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

@@ -248,7 +248,7 @@ window.NexaKit = true;
 window.NEXA = window.NEXA || { _q: [], registerComponent(id, def) { this._q.push([id, def]); } };
 
 // Load NexaModel
-const NexaModel = require('../lib/nexa-model.js');
+const NexaModel = require('../dist/nexa-model.js');
 global.window.NexaModel = NexaModel;
 
 // Load extracted editor bundle
@@ -372,7 +372,7 @@ global.document.querySelector = function (sel) {
 };
 
 let lastButtonRender = null;
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-registry-client.js"), 'utf8'));
 NEXA.registerComponent('mock-button', {
   category: 'Common', label: 'Button', defaultSize: { w: 100, h: 40 },
   render: function (el, props) {
@@ -410,7 +410,7 @@ window.__NEXA_SCREEN__ = screen;
 window.__NEXA_TEMPLATES__ = [tmplComposite, tmplComponent];
 
 // Load runtime client which auto-mounts __NEXA_SCREEN__
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-runtime-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-runtime.bundle.js"), 'utf8'));
 
 // Find mounted element for fakeInstance
 const mountedEl = runtimeElements.find(e => e.attrs['data-id'] === entryNs);

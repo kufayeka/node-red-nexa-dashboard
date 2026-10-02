@@ -1,6 +1,6 @@
 const assert = require("assert");
-const { IoHub } = require("../lib/io/ioHub");
-const { makeScope, visibleVariables, allDeclarations } = require("../lib/nexa-model");
+const { IoHub } = require("../src/server/io/ioHub");
+const { makeScope, visibleVariables, allDeclarations } = require("../dist/nexa-model");
 
 console.log("=== Testing Shared Variables (Realtime Server Sync) ===");
 

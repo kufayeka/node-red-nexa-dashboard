@@ -5,7 +5,7 @@
 <!-- A deployed page the way lib/screen-worker.js writes it, with a screen of
      frames (see test/runtime-layout-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:800px;height:500px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 NEXA.registerComponent("box", { render: function (el, p) { el.style.background = p.fill || "#ccc"; } });
 function box(id, w, h, extra) { return Object.assign({ id: id, type: "box", x: 0, y: 0, w: w, h: h, props: {} }, extra || {}); }
@@ -34,6 +34,6 @@ window.__NEXA_SCREEN__.logic.nodes.push({ id: "tick", type: "inject", once: true
 window.__NEXA_SCREEN__.logic.wires.push({ id: "w", from: "tick", to: "show" });
 window.__NEXA_TEMPLATES__ = [];
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

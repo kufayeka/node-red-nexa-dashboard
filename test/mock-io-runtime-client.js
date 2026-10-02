@@ -32,7 +32,7 @@ if (typeof WebSocket !== "function") { console.log("SKIP: this Node has no globa
 const NodeWebSocket = WebSocket;
 
 async function main() {
-  const worker = new Worker(path.join(__dirname, "..", "lib", "screen-worker.js"), {
+  const worker = new Worker(path.join(__dirname, "..", "src", "server", "workers", "screen-worker.js"), {
     workerData: {
       port: 0, project: { screens: [], templates: [] }, componentScriptSrcs: [],
       sparkplugSnapshot: { Kufayeka: { NexaNodered: { online: true, nodeMetrics: {}, devices: { GP: { online: true, metrics: {

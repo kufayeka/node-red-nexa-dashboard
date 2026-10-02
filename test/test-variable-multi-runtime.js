@@ -37,7 +37,7 @@ global.window.addEventListener = function () {};
 global.console = console;
 
 // Load registry
-const registrySrc = fs.readFileSync(path.join(__dirname, "../lib/nexa-registry-client.js"), "utf8");
+const registrySrc = fs.readFileSync(path.join(__dirname, "../dist/nexa-registry-client.js"), "utf8");
 eval(registrySrc);
 
 let lastCtx = null;
@@ -99,7 +99,7 @@ window.__NEXA_SCREEN__ = {
   }
 };
 
-const runtimeSrc = fs.readFileSync(path.join(__dirname, "../lib/nexa-runtime-client.js"), "utf8");
+const runtimeSrc = fs.readFileSync(path.join(__dirname, "../dist/nexa-runtime.bundle.js"), "utf8");
 eval(runtimeSrc);
 
 console.log("=== Testing set-variable-multi ===");

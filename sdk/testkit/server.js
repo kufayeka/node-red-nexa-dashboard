@@ -12,13 +12,16 @@ function startServer(opts) {
     opts = opts || {};
     const files = {
         "/nexa-sdk/nexa-component-sdk.js": path.join(DASH, "sdk", "nexa-component-sdk.js"),
-        "/__nexa_test__/registry.js": path.join(DASH, "lib", "nexa-registry-client.js"),
+        "/__nexa_test__/registry.js": path.join(DASH, "dist", "nexa-registry-client.js"),
         "/__nexa_test__/sdk.js": path.join(DASH, "dist", "nexa-sdk.bundle.js"),
         "/__nexa_test__/kit.js": path.join(DASH, "dist", "nexa-sdk-kit.bundle.js"),
         "/__nexa_test__/harness.html": path.join(__dirname, "harness.html"),
         "/__nexa_test__/testkit.js": path.join(__dirname, "testkit-browser.js")
     };
-    const mounts = Object.assign({}, opts.mounts || {}); // "/url/prefix" -> directory
+    const mounts = Object.assign({
+        "/dist": path.join(DASH, "dist"),
+        "/lib": path.join(DASH, "dist")
+    }, opts.mounts || {}); // "/url/prefix" -> directory
     const server = http.createServer(function (req, res) {
         const url = decodeURIComponent(req.url.split("?")[0]);
         let file = files[url];

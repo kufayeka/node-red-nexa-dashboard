@@ -12,7 +12,7 @@
 // world exclusively through those, not through any exported function.
 const { EventEmitter } = require("events");
 const assert = require("assert");
-const sparkplug = require("../lib/sparkplug/sparkplugCodec.js");
+const sparkplug = require("../src/server/sparkplug/sparkplugCodec.js");
 
 class FakeMqttClient extends EventEmitter {
   constructor(url, opts) {
@@ -44,7 +44,7 @@ class FakeParentPort extends EventEmitter {
 }
 
 function loadWorker(workerData) {
-  delete require.cache[require.resolve("../lib/sparkplug-worker.js")];
+  delete require.cache[require.resolve("../src/server/workers/sparkplug-worker.js")];
   var parentPort = new FakeParentPort();
   var workerThreadsPath = require.resolve("worker_threads");
   var real = require.cache[workerThreadsPath];
@@ -52,7 +52,7 @@ function loadWorker(workerData) {
     id: workerThreadsPath, filename: workerThreadsPath, loaded: true,
     exports: Object.assign({}, real ? real.exports : {}, { parentPort: parentPort, workerData: workerData })
   };
-  require("../lib/sparkplug-worker.js");
+  require("../src/server/workers/sparkplug-worker.js");
   // Restore the ORIGINAL cache entry (not just delete it) — worker_threads is
   // a built-in module, and other code in this same process may hold
   // references that assume the module identity stays stable.

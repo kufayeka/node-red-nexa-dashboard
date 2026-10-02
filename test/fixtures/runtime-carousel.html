@@ -4,7 +4,7 @@
 <body>
 <!-- A carousel (a frame with layout mode "carousel") on a deployed page (test/runtime-carousel-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:1000px;height:700px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {};
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
@@ -54,6 +54,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 1000, height: 700, treeVersion: 1, or
     { id: "fChg", type: "function", code: "setVariable('lastSlide', msg.index + ':' + (msg.item ? msg.item.name : '-'), '@app'); return msg;" }
   ], wires: [W("eGo", "setS"), W("eFill", "pop"), W("pop", "lay"), W("eFill", "popC"), W("popC", "layC"), W("eChg", "fChg")] } };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

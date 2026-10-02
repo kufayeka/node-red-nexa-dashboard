@@ -72,7 +72,7 @@ var renderCallCount = 0;
 var renderLog = [];
 const fs = require('fs');
 const path = require('path');
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-registry-client.js"), 'utf8'));
 NEXA.registerComponent('kufayeka-text-label', {
   render: function (el, props) { renderCallCount++; renderLog.push(el.attrs['data-id']); }
 });
@@ -109,7 +109,7 @@ NEXA.registerComponent('kufayeka-rect', { render: function () { renderCallCount+
 console.log(components.length + " total components on screen (" + 5 + " bound to the 4 tags actually changing, " + (components.length - 5 - 30) + " bound to OTHER tags that never change, 30 purely decorative/unbound)\n");
 
 window.__NEXA_SCREEN__ = { id: 's1', width: 1600, height: 900, layers: [{ id: 'default', name: 'Default', parentId: null, visible: true }], components: components };
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-runtime-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-runtime.bundle.js"), 'utf8'));
 var source = FakeEventSource.instances[0];
 renderCallCount = 0; // ignore the initial mount's own render pass
 renderLog = [];

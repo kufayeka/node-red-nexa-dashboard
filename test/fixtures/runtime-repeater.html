@@ -4,7 +4,7 @@
 <body>
 <!-- The repeater (Populate node) on a deployed page (test/runtime-repeater-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:800px;height:1300px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 window.__ctx = {};
 NEXA.registerComponent("label", { render: function (el, p) { el.textContent = typeof p.text === "object" ? JSON.stringify(p.text) : String(p.text); } });
@@ -88,6 +88,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 1300, treeVersion: 1, or
   ], wires: [W("lA", "fOut"), W("tI", "fI"), W("tX", "fX"), W("e1", "p1"), W("e2", "p2"), W("e3", "p3"), W("e4", "p4"), W("e5", "p5"), W("e6", "p6"), W("e7", "p7"), W("p6", "lA"), W("p6", "lB"),
     W("g1", "gp1"), W("gp1", "lG"), W("g2", "gp2"), W("gp2", "lG"), W("g3", "gp3"), W("gp3", "gp4"), W("gp4", "lG")] } };
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

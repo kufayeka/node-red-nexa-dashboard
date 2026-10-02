@@ -49,7 +49,7 @@ global.window.EventSource = FakeEventSource;
 
 const fs = require('fs');
 const path = require('path');
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-registry-client.js"), 'utf8'));
 NEXA.registerComponent('kufayeka-rect', { render: function () {} });
 
 function freshMount(screen) {
@@ -57,7 +57,7 @@ function freshMount(screen) {
   delete require.cache; // no-op, kept for readability -- eval below always re-defines the whole module scope fresh
   global.window.__NEXA_SCREEN__ = screen;
   global.window.__NEXA_TEMPLATES__ = [];
-  eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-runtime-client.js'), 'utf8'));
+  eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-runtime.bundle.js"), 'utf8'));
 }
 
 console.log("--- \"Sparkplug Write\": onload -> sparkplug-write fires a DCMD-shaped POST, with msg.payload as the value ---");

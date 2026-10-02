@@ -31,8 +31,8 @@
 // Sparkplug payloads / outgoing publish requests with the worker.
 const path = require("path");
 const { Worker } = require("worker_threads");
-const tree = require("../lib/sparkplug/sparkplugTree");
-const { RebirthTracker } = require("../lib/sparkplug/sparkplugRebirth");
+const tree = require("../src/server/sparkplug/sparkplugTree");
+const { RebirthTracker } = require("../src/server/sparkplug/sparkplugRebirth");
 
 const REBIRTH_COOLDOWN_MS = 10000;
 
@@ -56,7 +56,7 @@ function describeError(err) {
 // spirit as cm6-code-editor.js's window.__kufayekaCreateCM6EditorOverride.
 // Never overridden outside tests.
 var workerFactory = function (workerData) {
-    return new Worker(path.join(__dirname, "..", "lib", "sparkplug-worker.js"), { workerData: workerData });
+    return new Worker(path.join(__dirname, "..", "src", "server", "workers", "sparkplug-worker.js"), { workerData: workerData });
 };
 function _setWorkerFactoryForTests(fn) { workerFactory = fn; }
 

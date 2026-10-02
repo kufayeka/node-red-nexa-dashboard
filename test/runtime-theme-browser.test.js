@@ -15,7 +15,7 @@ let passed = 0;
 async function ok(label, fn) { await fn(); passed++; console.log('✔ ' + label); }
 
 async function main() {
-    const server = await startServer({ mounts: { '/lib': path.join(__dirname, '..', 'lib'), '/dist': path.join(__dirname, '..', 'dist'), '/fx': path.join(__dirname, 'fixtures') } });
+    const server = await startServer({ mounts: { '/dist': path.join(__dirname, '..', 'dist'), '/fx': path.join(__dirname, 'fixtures') } });
     const opts = { width: 800, height: 400, ready: "!!(window.__ctx && window.__ctx.ctl)", readyTries: 60 };
     try {
         const r = await withPage(server.url + '/fx/runtime-theme.html', async ({ js, logs }) => {

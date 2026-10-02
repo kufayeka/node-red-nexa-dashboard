@@ -1,7 +1,7 @@
 // Pure logic test for lib/sparkplug/sparkplugRebirth.js — no DOM, no MQTT
 // needed. Run standalone: `node test/mock-sparkplug-rebirth.js`. See
 // test/run-all.js for the pass/fail convention.
-const { RebirthTracker } = require("../lib/sparkplug/sparkplugRebirth.js");
+const { RebirthTracker } = require("../src/server/sparkplug/sparkplugRebirth.js");
 
 console.log("--- an Edge Node never seen before is due for a rebirth request ---");
 var t1 = new RebirthTracker(10000);

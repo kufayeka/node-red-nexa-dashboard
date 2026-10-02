@@ -5,7 +5,7 @@
 <!-- The screen's display mode (?mode=fixed|fit|fitWidth|fill) and a scrolling
      frame, the way lib/screen-worker.js writes a page (test/runtime-display-browser.test.js). -->
 <div id="nexa-runtime-artboard" style="width:400px;height:300px;"></div>
-<script src="/lib/nexa-registry-client.js"></script>
+<script src="/dist/nexa-registry-client.js"></script>
 <script>
 NEXA.registerComponent("box", { render: function (el) { el.style.background = "#0af"; } });
 function box(id, w, h, extra) { return Object.assign({ id: id, type: "box", x: 0, y: 0, w: w, h: h, props: {} }, extra || {}); }
@@ -19,6 +19,6 @@ window.__NEXA_SCREEN__ = { id: "s", width: 400, height: 300, treeVersion: 1, orp
   ] };
 window.__NEXA_TEMPLATES__ = [];
 </script>
-<script src="/lib/nexa-model-client.js"></script>
-<script src="/lib/nexa-runtime-client.js"></script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
 </body></html>

@@ -76,7 +76,7 @@ global.setTimeout = function (fn) { /* swallow the "once" scheduling + rAF shim 
 
 const fs = require('fs');
 const path = require('path');
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-registry-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-registry-client.js"), 'utf8'));
 
 var renderCallCount = 0;
 NEXA.registerComponent('kufayeka-text-label', { render: function () { renderCallCount++; } });
@@ -120,7 +120,7 @@ window.__NEXA_SCREEN__ = {
   logic: { nodes: logicNodes, wires: wires }
 };
 
-eval(fs.readFileSync(path.join(__dirname, '..', 'lib', 'nexa-runtime-client.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, "..", "dist", "nexa-runtime.bundle.js"), 'utf8'));
 
 console.log("Requested inject interval: " + injectNode.intervalMs + "ms  ->  actual clamped interval: " + (capturedIntervals[0] ? capturedIntervals[0].ms : "(none captured)") + "ms");
 console.log("(nexa-runtime-client.js's own setUpInjectNodes floors every repeating inject to Math.max(100, intervalMs) -- a configured 50ms literally cannot run faster than 100ms in the deployed page)\n");
