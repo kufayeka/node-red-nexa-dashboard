@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>join</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- The Join node on a deployed page (test/runtime-join-browser.test.js): two buttons send
+     "price" and "stock" into a Wait All join; a third one starts a round that times out. -->
+<div id="nexa-runtime-artboard" style="width:600px;height:200px;"></div>
+<script src="/dist/nexa-registry-client.js"></script>
+<script>
+window.__ctx = {};
+window.__out = [];
+NEXA.registerComponent("btn", { render: function (el, p, ctx) { window.__ctx[el.getAttribute("data-id")] = ctx; el.textContent = p.text || "btn"; } });
+function btn(id, x, y) { return { id: id, type: "btn", x: x, y: y, w: 60, h: 24, props: { text: id } }; }
+var W = function (a, b) { return { id: "w-" + a + "-" + b, from: a, to: b }; };
+window.__NEXA_APP__ = { variables: [] };
+window.__NEXA_TEMPLATES__ = [];
+window.__NEXA_SCREEN__ = { id: "s", width: 600, height: 200, treeVersion: 1, orphans: [],
+  components: [btn("bp", 0, 0), btn("bs", 80, 0), btn("bt", 160, 0)],
+  logic: { nodes: [
+    { id: "ep", type: "ui-event", compId: "bp", event: "click" }, { id: "fp", type: "function", code: "msg.topic = 'price'; msg.payload = 9.5; return msg;" },
+    { id: "es", type: "ui-event", compId: "bs", event: "click" }, { id: "fs", type: "function", code: "msg.topic = 'stock'; msg.payload = 3; return msg;" },
+    { id: "j", type: "join", mode: "wait-all", slots: [{ topic: "price" }, { topic: "stock" }], outputFormat: "object", timeout: 0 },
+    { id: "out", type: "function", code: "window.__out.push(msg.payload); return null;" },
+    // a second join with a 200 ms timeout: only "price" arrives
+    { id: "et", type: "ui-event", compId: "bt", event: "click" }, { id: "ft", type: "function", code: "msg.topic = 'price'; msg.payload = 1; return msg;" },
+    { id: "jt", type: "join", mode: "wait-all", slots: [{ topic: "price" }, { topic: "stock" }], outputFormat: "object", timeout: 200 },
+    { id: "outt", type: "function", code: "window.__timedOut = { payload: msg.payload, complete: msg.complete }; return null;" }
+  ], wires: [W("ep", "fp"), W("fp", "j"), W("es", "fs"), W("fs", "j"), W("j", "out"), W("et", "ft"), W("ft", "jt"), W("jt", "outt")] } };
+</script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
+</body></html>

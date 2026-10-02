@@ -2083,7 +2083,7 @@
       }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
-    // collects messages from several wires before it sends one. Editor only so far: the page passes each message on.
+    // collects messages from several wires (by msg.topic) before it sends one: ./join-core.js
     { type: "join", label: "Join", color: "#c8a03a", icon: "fa-compress", chipColor: "#fce8b2", inputs: 1, outputs: 1 },
     { type: "debug", label: "Debug", color: "#777", icon: "fa-bug", chipColor: "#87a980", inputs: 1, outputs: 0 }
   ];
@@ -31829,9 +31829,9 @@
       "sequence-n": "Collects N consecutive messages (from any source) and emits them as an array every N messages. Great for batching events."
     };
     var OUTPUT_OPTIONS = [
-      { value: "object", label: "Object \u2013 { [topic]: msg }" },
-      { value: "array", label: "Array  \u2013 [ msg0, msg1, \u2026 ] (slot order)" },
-      { value: "forward", label: "Forward first msg + .join \u2013 pass triggering msg, attach .join with all values" }
+      { value: "object", label: "Object \u2013 msg.payload = { [topic]: payload }" },
+      { value: "array", label: "Array  \u2013 msg.payload = [ payload0, payload1, \u2026 ] (slot order)" },
+      { value: "forward", label: "Forward \u2013 the msg that completed it, with msg.join = { [topic]: payload }" }
     ];
     function buildBody(tray) {
       trayEl = tray;
@@ -31887,7 +31887,7 @@
             setItem(Object.assign({}, item, { topic: e.detail.value }));
           }}">
                         </nx-input>
-                        <nx-input label="Label (for output key in object mode)" .value="${curLabel}"
+                        <nx-input label="Label (shown here only)" .value="${curLabel}"
                             @nx-change="${function(e) {
             e.stopPropagation();
             setItem(Object.assign({}, item, { label: e.detail.value }));

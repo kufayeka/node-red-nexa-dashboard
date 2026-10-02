@@ -706,7 +706,7 @@
       }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
-    // collects messages from several wires before it sends one. Editor only so far: the page passes each message on.
+    // collects messages from several wires (by msg.topic) before it sends one: ./join-core.js
     { type: "join", label: "Join", color: "#c8a03a", icon: "fa-compress", chipColor: "#fce8b2", inputs: 1, outputs: 1 },
     { type: "debug", label: "Debug", color: "#777", icon: "fa-bug", chipColor: "#87a980", inputs: 1, outputs: 0 }
   ];
@@ -3183,12 +3183,12 @@
     return true;
   }
   function buildComponentClone(comp, namespacedId) {
-    var clone = {};
+    var clone2 = {};
     for (var k in comp) {
-      if (Object.prototype.hasOwnProperty.call(comp, k)) clone[k] = comp[k];
+      if (Object.prototype.hasOwnProperty.call(comp, k)) clone2[k] = comp[k];
     }
-    clone.id = namespacedId;
-    return clone;
+    clone2.id = namespacedId;
+    return clone2;
   }
   function mountAndFlatten(parentEl, comp, inheritedVis, templates, namespace, visitedTemplateIds, effectiveScreen, paramState, beforeEl) {
     var namespacedComp = compIndex(effectiveScreen)[namespace];
@@ -3209,9 +3209,9 @@
         walkNodes(comp.children, function(n) {
           var ns = childNamespace(namespace, n);
           if (compIndex(effectiveScreen)[ns]) return;
-          var clone = buildComponentClone(n, ns);
-          clone.__paramState = innerScope;
-          addComponent(effectiveScreen, clone);
+          var clone2 = buildComponentClone(n, ns);
+          clone2.__paramState = innerScope;
+          addComponent(effectiveScreen, clone2);
         });
       }
       return;
@@ -3262,12 +3262,12 @@
       effectiveScreen.__paramStates[namespace] = instanceParamState;
       if (firstMount) {
         (template.logic.nodes || []).forEach(function(n) {
-          var clone = {};
-          for (var k in n) clone[k] = n[k];
-          clone.id = namespace + "::" + n.id;
-          if (clone.compId !== void 0) clone.compId = namespace + "::" + clone.compId;
-          if (clone.instanceId !== void 0) clone.instanceId = namespace + "::" + clone.instanceId;
-          effectiveScreen.logic.nodes.push(clone);
+          var clone2 = {};
+          for (var k in n) clone2[k] = n[k];
+          clone2.id = namespace + "::" + n.id;
+          if (clone2.compId !== void 0) clone2.compId = namespace + "::" + clone2.compId;
+          if (clone2.instanceId !== void 0) clone2.instanceId = namespace + "::" + clone2.instanceId;
+          effectiveScreen.logic.nodes.push(clone2);
         });
         (template.logic.wires || []).forEach(function(w) {
           effectiveScreen.logic.wires.push({ id: namespace + "::" + w.id, from: namespace + "::" + w.from, to: namespace + "::" + w.to });
@@ -4122,6 +4122,96 @@
     }
   });
 
+  // src/features/logic/control/join-core.js
+  function clone(v) {
+    if (v === null || typeof v !== "object") return v;
+    try {
+      return typeof structuredClone === "function" ? structuredClone(v) : JSON.parse(JSON.stringify(v));
+    } catch (e) {
+      return v;
+    }
+  }
+  function createJoin(node) {
+    const mode = node.mode === "combine-latest" || node.mode === "sequence-n" ? node.mode : "wait-all";
+    const format = node.outputFormat === "array" || node.outputFormat === "forward" ? node.outputFormat : "object";
+    const topics = (Array.isArray(node.slots) ? node.slots : []).map(function(s) {
+      return s && s.topic;
+    }).filter(Boolean);
+    const count = Math.max(2, Number(node.count) || 2);
+    let latest = {};
+    let seq = [];
+    function build(trigger, complete) {
+      let full, values;
+      if (mode === "sequence-n") {
+        full = seq.slice();
+        values = full.map(function(m) {
+          return m ? m.payload : null;
+        });
+      } else {
+        full = {};
+        values = format === "array" ? [] : {};
+        topics.forEach(function(t) {
+          const m = Object.prototype.hasOwnProperty.call(latest, t) ? latest[t] : null;
+          full[t] = m;
+          if (format === "array") values.push(m ? m.payload : null);
+          else values[t] = m ? m.payload : null;
+        });
+      }
+      let out;
+      if (format === "forward" && trigger) {
+        out = clone(trigger);
+        out.join = values;
+      } else {
+        out = { payload: values };
+      }
+      out.joinMessages = full;
+      out.joinMode = mode;
+      out.complete = complete;
+      return out;
+    }
+    return {
+      mode,
+      /** A message arrives -> {send: msg|null, startTimer: bool, stopTimer: bool, ignored?: string} */
+      push: function(msg) {
+        if (mode === "sequence-n") {
+          seq.push(msg);
+          if (seq.length < count) return { send: null, startTimer: false, stopTimer: false };
+          const out = build(msg, true);
+          seq = [];
+          return { send: out, startTimer: false, stopTimer: false };
+        }
+        const topic = msg && msg.topic;
+        if (topics.indexOf(topic) === -1) {
+          return { send: null, startTimer: false, stopTimer: false, ignored: "msg.topic " + JSON.stringify(topic) + " is not one of the slots " + JSON.stringify(topics) };
+        }
+        const first = Object.keys(latest).length === 0;
+        latest[topic] = msg;
+        if (mode === "combine-latest") return { send: build(msg, topics.every(function(t) {
+          return t in latest;
+        })), startTimer: false, stopTimer: false };
+        if (topics.every(function(t) {
+          return t in latest;
+        })) {
+          const out = build(msg, true);
+          latest = {};
+          return { send: out, startTimer: false, stopTimer: true };
+        }
+        return { send: null, startTimer: first && Number(node.timeout) > 0, stopTimer: false };
+      },
+      /** wait-all's timeout passed: send what is there (null when nothing arrived) and start over */
+      timeout: function() {
+        if (mode !== "wait-all" || !Object.keys(latest).length) return null;
+        const out = build(null, false);
+        latest = {};
+        return out;
+      },
+      reset: function() {
+        latest = {};
+        seq = [];
+      }
+    };
+  }
+
   // src/features/logic/control/control-runtime-helpers.js
   function resolveSwitchBindingValue(screen2, node, type, val, msg) {
     if (type === "msg") {
@@ -4319,10 +4409,29 @@
         runDelayNode(ctx.screen, node, msg, ctx.budget, ctx.continuePropagation);
       }
     },
-    // not built on the page yet: each message passes on as it comes
-    "join": { run: function(node, msg) {
-      return msg;
-    } },
+    // the rules: ./join-core.js. One per node per mounted screen (a new screen starts empty).
+    "join": {
+      run: function(node, msg, ctx) {
+        const screen2 = ctx.screen;
+        const joins = screen2.__joins || (screen2.__joins = {});
+        const join = joins[node.id] || (joins[node.id] = { core: createJoin(node), timer: null });
+        const r = join.core.push(msg);
+        if (r.ignored) logicTrace("join " + node.id + ": " + r.ignored);
+        if (r.stopTimer && join.timer) {
+          clearTimeout(join.timer);
+          join.timer = null;
+        }
+        if (r.startTimer) {
+          join.timer = setTimeout(function() {
+            join.timer = null;
+            const partial = join.core.timeout();
+            if (partial) ctx.next(partial);
+          }, Number(node.timeout));
+          state.activeScreenTimers.push(join.timer);
+        }
+        return r.send;
+      }
+    },
     "debug": {
       run: function(node, msg) {
         console.log("[nexa-logic debug]", msg);

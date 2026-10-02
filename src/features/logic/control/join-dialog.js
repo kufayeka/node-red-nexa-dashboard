@@ -13,11 +13,11 @@ import { renderLogicCanvas } from "../../../logic/logic-nodes.js";
  *   sequence-n     – collect N consecutive messages (any topic) into an array,
  *                    emit every N.
  *
- * Output format:
- *   object  – { [slot.topic]: msg } keyed by topic  (default)
- *   array   – [ msg0, msg1, … ] in slot-declaration order
- *   forward – pass the triggering msg through unchanged; attach `.join` object
- *             with all latest values
+ * Output format (the page side: ./join-core.js):
+ *   object  – msg.payload = { [slot.topic]: payload }  (default)
+ *   array   – msg.payload = [ payload0, payload1, … ] in slot order
+ *   forward – the msg that completed it, with msg.join = { [slot.topic]: payload }
+ *   always  – msg.joinMessages = the full messages
  *
  * Upstream nodes should set msg.topic = "<slot-topic>" to route their message
  * to the correct slot.  (A Function node or a Switch node branch works well.)
@@ -40,9 +40,9 @@ export function openJoinNodeEditor(node) {
     };
 
     var OUTPUT_OPTIONS = [
-        { value: "object", label: "Object \u2013 { [topic]: msg }" },
-        { value: "array",  label: "Array  \u2013 [ msg0, msg1, \u2026 ] (slot order)" },
-        { value: "forward", label: "Forward first msg + .join \u2013 pass triggering msg, attach .join with all values" }
+        { value: "object", label: "Object \u2013 msg.payload = { [topic]: payload }" },
+        { value: "array",  label: "Array  \u2013 msg.payload = [ payload0, payload1, \u2026 ] (slot order)" },
+        { value: "forward", label: "Forward \u2013 the msg that completed it, with msg.join = { [topic]: payload }" }
     ];
 
     function buildBody(tray) {
@@ -114,7 +114,7 @@ export function openJoinNodeEditor(node) {
                                 setItem(Object.assign({}, item, { topic: e.detail.value }));
                             }}">
                         </nx-input>
-                        <nx-input label="Label (for output key in object mode)" .value="${curLabel}"
+                        <nx-input label="Label (shown here only)" .value="${curLabel}"
                             @nx-change="${function (e) {
                                 e.stopPropagation();
                                 setItem(Object.assign({}, item, { label: e.detail.value }));

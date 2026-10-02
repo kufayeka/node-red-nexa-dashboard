@@ -7,7 +7,7 @@ export default [
         ports: function (node) { return node.rules && node.rules.length ? node.rules.length : 1; }
     },
     { type: "delay", label: "Delay", color: "#c8b261", icon: "fa-hourglass-half", chipColor: "#fdf0c2", inputs: 1, outputs: 1 },
-    // collects messages from several wires before it sends one. Editor only so far: the page passes each message on.
+    // collects messages from several wires (by msg.topic) before it sends one: ./join-core.js
     { type: "join", label: "Join", color: "#c8a03a", icon: "fa-compress", chipColor: "#fce8b2", inputs: 1, outputs: 1 },
     { type: "debug", label: "Debug", color: "#777", icon: "fa-bug", chipColor: "#87a980", inputs: 1, outputs: 0 }
 ];

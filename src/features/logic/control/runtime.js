@@ -1,6 +1,8 @@
 // Flow control on the page: Function, Switch, Delay, Join, Debug.
 import { defineLogicRuntimes } from "../registry.js";
-import { cloneMsg, varsFor, BROWSER_API } from "../../../runtime/logic/context.js";
+import { cloneMsg, varsFor, BROWSER_API, logicTrace } from "../../../runtime/logic/context.js";
+import { state } from "../../../runtime/state.js";
+import { createJoin } from "./join-core.js";
 import { cloneValue } from "../../../runtime/state/variable.js";
 import { makeRoute } from "../../../runtime/state/scope.js";
 import { runSwitchNode, runDelayNode } from "./control-runtime-helpers.js";
@@ -32,8 +34,26 @@ defineLogicRuntimes({
             runDelayNode(ctx.screen, node, msg, ctx.budget, ctx.continuePropagation);
         }
     },
-    // not built on the page yet: each message passes on as it comes
-    "join": { run: function (node, msg) { return msg; } },
+    // the rules: ./join-core.js. One per node per mounted screen (a new screen starts empty).
+    "join": {
+        run: function (node, msg, ctx) {
+            const screen = ctx.screen;
+            const joins = screen.__joins || (screen.__joins = {});
+            const join = joins[node.id] || (joins[node.id] = { core: createJoin(node), timer: null });
+            const r = join.core.push(msg);
+            if (r.ignored) logicTrace("join " + node.id + ": " + r.ignored);
+            if (r.stopTimer && join.timer) { clearTimeout(join.timer); join.timer = null; }
+            if (r.startTimer) {
+                join.timer = setTimeout(function () {
+                    join.timer = null;
+                    const partial = join.core.timeout();
+                    if (partial) ctx.next(partial);
+                }, Number(node.timeout));
+                state.activeScreenTimers.push(join.timer);
+            }
+            return r.send;
+        }
+    },
     "debug": {
         run: function (node, msg) {
             console.log("[nexa-logic debug]", msg);
