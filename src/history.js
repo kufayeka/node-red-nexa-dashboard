@@ -7,7 +7,7 @@ let _renderLogicCanvasFn = null;
 // Custom stack (not RED.history) -- previously unbounded, so a long editing
 // session grows both arrays forever. Capped to the most recent 20 changes,
 // same as most editors' default undo depth.
-export const MAX_HISTORY = 20;
+export const MAX_HISTORY = 50;
 
 export function registerHistoryRenderers(renderActiveScreen, renderLogicCanvas) {
     _renderActiveScreenFn = renderActiveScreen;
