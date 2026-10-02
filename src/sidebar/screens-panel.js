@@ -1,5 +1,5 @@
 import {
-    state, getActiveScreen, makeScreen, markDirty, getApp, genId, Scope, Types,
+    state, getActiveScreen, makeScreen, markDirty, getApp, genId, Scope, Types, Tree,
     findTemplate, makeTemplate,
     makeFolder, findFolder, deleteFolder,
     makeFlow, findFlow, deleteFlow,
@@ -12,6 +12,67 @@ import { renderLogicCanvas } from "../logic/logic-nodes.js";
 import { renderTemplateForm, showEditBar, hideEditBar } from "./templates-panel.js";
 import { updateCanvasTabsVisibility } from "../editor-tray.js";
 import { buildTypedInputWidget, mapParamTypeToTypedInputType } from "../param-types.js";
+import { selectOnly } from "../canvas/selection.js";
+import { openScreenPropertiesDialog } from "../dialogs/screen-dialog.js";
+import { openScreenVariablePropertiesDialog } from "../dialogs/screen-variable-dialog.js";
+import { openTemplatePropertiesDialog } from "../dialogs/template-dialog.js";
+import { openTemplateVariablePropertiesDialog } from "../dialogs/template-variable-dialog.js";
+import { openTemplateParamPropertiesDialog } from "../dialogs/template-param-dialog.js";
+import { openComponentTemplatePropertiesDialog } from "../dialogs/component-template-dialog.js";
+import { openFlowPropertiesDialog } from "../dialogs/flow-dialog.js";
+import { openAppVariablePropertiesDialog } from "../dialogs/app-variable-dialog.js";
+import { openSharedVariablePropertiesDialog } from "../dialogs/shared-variable-dialog.js";
+import { openFolderPropertiesDialog } from "../dialogs/folder-dialog.js";
+
+function labelOfComp(node) {
+    if (Tree && Tree.isSlotFrame && Tree.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
+    if (node.name) return node.name;
+    if (node.type === "@group") return "Group";
+    if (node.type === "@frame") return "Frame";
+    if (node.type === "@template") {
+        var t = findTemplate(node.templateId);
+        return (t ? t.name : "Template") + " (instance)";
+    }
+    if (node.type === "@lit-component") return "Lit Component";
+    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    return (def && def.label) || node.type;
+}
+
+function iconOfComp(node) {
+    if (node.type === "@group") return "fa fa-object-group";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
+    if (Tree && Tree.isSlotFrame && Tree.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
+    if (node.type === "@frame") return "fa fa-square-o";
+    if (node.type === "@template") {
+        var t = findTemplate(node.templateId);
+        return (t && t.kind === "component") ? "fa fa-puzzle-piece" : "fa fa-clone";
+    }
+    if (node.type === "@lit-component") return "fa fa-code";
+    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    return (def && def.icon) || "fa fa-cube";
+}
+
+function buildComponentTreeRows(surface, list, orphan) {
+    return (list || []).slice().reverse().map(function (node) {
+        var vis = node.visibility || "show";
+        var eff = orphan ? vis : (Tree && Tree.effectiveVisibility ? Tree.effectiveVisibility(surface, node.id) : vis);
+        var isCont = Tree && Tree.isContainer ? Tree.isContainer(node) : false;
+        var kids = isCont ? Tree.kids(node) : [];
+        return {
+            id: "screen-comp:" + surface.id + ":" + node.id,
+            compId: node.id,
+            surfaceId: surface.id,
+            label: labelOfComp(node),
+            title: labelOfComp(node) + " — " + node.type,
+            icon: iconOfComp(node),
+            container: isCont,
+            badge: isCont ? String(kids.length) : "",
+            muted: eff !== "show" || !!node.slotUnused,
+            children: isCont ? buildComponentTreeRows(surface, kids, orphan) : []
+        };
+    });
+}
 
 export function refreshLogicCanvasIfActive() {
     if (state.activeCanvasTab === "logic") renderLogicCanvas();
@@ -60,6 +121,75 @@ export function collapseAllScreensTree() {
     }
 }
 
+export function openPropertiesDialogForId(id) {
+    if (!id) return;
+    if (id.startsWith("screen-var:")) {
+        var parts = id.split(":");
+        var sId = parts[1];
+        var varId = parts[2];
+        var s = state.screens.find(function (sc) { return sc.id === sId; });
+        var v = s && (s.variables || []).find(function (x) { return x.id === varId; });
+        if (v && s) openScreenVariablePropertiesDialog(v, s);
+        return;
+    }
+    if (id.startsWith("template-var:")) {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var varId = parts[2];
+        var t = findTemplate(tId);
+        var v = t && (t.variables || []).find(function (x) { return x.id === varId; });
+        if (v && t) openTemplateVariablePropertiesDialog(v, t);
+        return;
+    }
+    if (id.startsWith("template-param:")) {
+        var parts = id.split(":");
+        var tId = parts[1];
+        var paramId = parts[2];
+        var t = findTemplate(tId);
+        var p = t && (t.params || []).find(function (x) { return x.id === paramId; });
+        if (p && t) openTemplateParamPropertiesDialog(p, t);
+        return;
+    }
+    if (id.startsWith("app-var:")) {
+        var varId = id.substring("app-var:".length);
+        var app = getApp();
+        var v = (app.variables || []).find(function (x) { return x.id === varId; });
+        if (v) openAppVariablePropertiesDialog(v);
+        return;
+    }
+    if (id.startsWith("shared-var:")) {
+        var varId = id.substring("shared-var:".length);
+        var app = getApp();
+        var v = (app.sharedVariables || []).find(function (x) { return x.id === varId; });
+        if (v) openSharedVariablePropertiesDialog(v);
+        return;
+    }
+    var screen = state.screens.find(function (sc) { return sc.id === id; });
+    if (screen) {
+        openScreenPropertiesDialog(screen);
+        return;
+    }
+    var template = findTemplate(id);
+    if (template) {
+        if (template.kind === "component") {
+            openComponentTemplatePropertiesDialog(template);
+        } else {
+            openTemplatePropertiesDialog(template);
+        }
+        return;
+    }
+    var flow = findFlow(id);
+    if (flow) {
+        openFlowPropertiesDialog(flow);
+        return;
+    }
+    var folder = findFolder(id);
+    if (folder) {
+        openFolderPropertiesDialog(folder);
+        return;
+    }
+}
+
 export function addAppVariableFromSidebar() {
     var app = getApp();
     app.variables = app.variables || [];
@@ -73,6 +203,7 @@ export function addAppVariableFromSidebar() {
     if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
         state.screensFlowsTreeEl.reveal("app-var:" + newVar.id);
     }
+    openAppVariablePropertiesDialog(newVar);
 }
 
 export function addSharedVariableFromSidebar() {
@@ -88,6 +219,7 @@ export function addSharedVariableFromSidebar() {
     if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
         state.screensFlowsTreeEl.reveal("shared-var:" + newVar.id);
     }
+    openSharedVariablePropertiesDialog(newVar);
 }
 
 function reorderInArray(arr, itemId, targetId, position) {
@@ -128,6 +260,7 @@ export function buildScreensFlowsTreeNodes() {
             type: "folder",
             children: [],
             actions: [
+                { id: "edit-props", icon: "fa fa-sliders", title: "Group Properties" },
                 { id: "add-screen-in", icon: "fa fa-plus", title: "Add item in group" },
                 { id: "delete", icon: "fa fa-trash-o", title: "Delete group" }
             ]
@@ -234,6 +367,29 @@ export function buildScreensFlowsTreeNodes() {
 
     // Screens
     state.screens.forEach(function (s) {
+        var compRows = buildComponentTreeRows(s, s.components || [], false);
+        if (s.orphans && s.orphans.length) {
+            compRows.push({
+                id: "screen-unplaced-group:" + s.id,
+                surfaceId: s.id,
+                label: "Unplaced",
+                icon: "fa fa-inbox",
+                container: true,
+                badge: String(s.orphans.length),
+                children: buildComponentTreeRows(s, s.orphans, true)
+            });
+        }
+        var compsGroup = {
+            id: "screen-comps-group:" + s.id,
+            surfaceId: s.id,
+            label: "Components",
+            icon: "fa fa-cubes",
+            type: "screen-comps-group",
+            container: true,
+            badge: String((s.components || []).length + (s.orphans ? s.orphans.length : 0)),
+            children: compRows
+        };
+
         var screenVars = (s.variables || []).map(function (v) {
             return {
                 id: "screen-var:" + s.id + ":" + v.id,
@@ -242,6 +398,7 @@ export function buildScreensFlowsTreeNodes() {
                 icon: "fa fa-tag",
                 type: "screen-variable",
                 actions: [
+                    { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
                     { id: "delete-screen-var", icon: "fa fa-trash-o", title: "Delete variable" }
                 ]
             };
@@ -267,9 +424,10 @@ export function buildScreensFlowsTreeNodes() {
             icon: "fa fa-desktop",
             type: "screen",
             container: true,
-            children: [varsGroup],
+            children: [compsGroup, varsGroup],
             muted: !!s.disabled,
             actions: [
+                { id: "edit-props", icon: "fa fa-sliders", title: "Screen Properties" },
                 { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
                 { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
                 { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
@@ -286,6 +444,29 @@ export function buildScreensFlowsTreeNodes() {
         t.variables = t.variables || [];
         t.params = t.params || [];
 
+        var tmplCompRows = buildComponentTreeRows(t, t.components || [], false);
+        if (t.orphans && t.orphans.length) {
+            tmplCompRows.push({
+                id: "template-unplaced-group:" + t.id,
+                surfaceId: t.id,
+                label: "Unplaced",
+                icon: "fa fa-inbox",
+                container: true,
+                badge: String(t.orphans.length),
+                children: buildComponentTreeRows(t, t.orphans, true)
+            });
+        }
+        var tmplCompsGroup = {
+            id: "template-comps-group:" + t.id,
+            surfaceId: t.id,
+            label: "Components",
+            icon: "fa fa-cubes",
+            type: "template-comps-group",
+            container: true,
+            badge: String((t.components || []).length + (t.orphans ? t.orphans.length : 0)),
+            children: tmplCompRows
+        };
+
         var tmplVars = (t.variables || []).map(function (v) {
             return {
                 id: "template-var:" + t.id + ":" + v.id,
@@ -294,6 +475,7 @@ export function buildScreensFlowsTreeNodes() {
                 icon: "fa fa-tag",
                 type: "template-variable",
                 actions: [
+                    { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
                     { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
                 ]
             };
@@ -320,6 +502,7 @@ export function buildScreensFlowsTreeNodes() {
                 icon: "fa fa-sliders",
                 type: "template-param",
                 actions: [
+                    { id: "edit-props", icon: "fa fa-pencil", title: "Edit Parameter" },
                     { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
                 ]
             };
@@ -345,8 +528,9 @@ export function buildScreensFlowsTreeNodes() {
             icon: t.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
             type: "template",
             container: true,
-            children: [varsGroup, paramsGroup],
+            children: t.kind === "component" ? [] : [tmplCompsGroup, varsGroup, paramsGroup],
             actions: [
+                { id: "edit-props", icon: "fa fa-sliders", title: t.kind === "component" ? "Component Template Properties" : "Template Properties" },
                 { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
                 { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
                 { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
@@ -365,6 +549,7 @@ export function buildScreensFlowsTreeNodes() {
             icon: "fa fa-code-fork",
             type: "flow",
             actions: [
+                { id: "edit-props", icon: "fa fa-sliders", title: "Flow Properties" },
                 { id: "open", icon: "fa fa-external-link", title: "Open flow in new tab" },
                 { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
                 { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
@@ -394,6 +579,7 @@ export function buildScreensFlowsTreeNodes() {
                 icon: "fa fa-cube",
                 type: "app-variable",
                 actions: [
+                    { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
                     { id: "delete-app-var", icon: "fa fa-trash-o", title: "Delete variable" }
                 ]
             };
@@ -416,10 +602,11 @@ export function buildScreensFlowsTreeNodes() {
             return {
                 id: "shared-var:" + v.id,
                 label: v.name,
-                title: v.name + " (" + (v.type || "string") + " [realtime server sync])",
+                title: v.name + " (" + (v.type || "string") + " [realtime nexa io protocol])",
                 icon: "fa fa-database",
                 type: "shared-variable",
                 actions: [
+                    { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
                     { id: "delete-shared-var", icon: "fa fa-trash-o", title: "Delete variable" }
                 ]
             };
@@ -504,11 +691,46 @@ function onScreensFlowsSelect(e) {
         }
         return;
     }
+    if (id.startsWith("screen-comp:")) {
+        var parts = id.split(":");
+        var surfId = parts[1];
+        var compId = parts[2];
+        var scr = state.screens.find(function (s) { return s.id === surfId; });
+        if (scr) {
+            if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
+                selectScreenFromSidebar(surfId);
+            }
+            selectOnly(compId);
+            renderActiveScreen();
+            return;
+        }
+        var tmpl = findTemplate(surfId);
+        if (tmpl) {
+            if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
+                selectTemplateFromScreensPanel(surfId);
+            }
+            selectOnly(compId);
+            renderActiveScreen();
+            return;
+        }
+        return;
+    }
+    if (id.startsWith("screen-comps-group:") || id.startsWith("screen-unplaced-group:")) {
+        var sId = id.split(":")[1];
+        if (state.activeScreenId !== sId) selectScreenFromSidebar(sId);
+        return;
+    }
+    if (id.startsWith("template-comps-group:") || id.startsWith("template-unplaced-group:")) {
+        var tId = id.split(":")[1];
+        if (state.activeTemplateId !== tId) selectTemplateFromScreensPanel(tId);
+        return;
+    }
     if (id.startsWith("app-var:")) {
         state.editingMode = "app-variable";
         state.activeAppVariableId = id.substring("app-var:".length);
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
+        openPropertiesDialogForId(id);
         return;
     }
     if (id.startsWith("shared-var:")) {
@@ -516,6 +738,7 @@ function onScreensFlowsSelect(e) {
         state.activeSharedVariableId = id.substring("shared-var:".length);
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
+        openPropertiesDialogForId(id);
         return;
     }
     if (id.startsWith("screen-var:")) {
@@ -525,6 +748,7 @@ function onScreensFlowsSelect(e) {
         state.activeScreenVariableId = parts[2];
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
+        openPropertiesDialogForId(id);
         return;
     }
     if (id.startsWith("screen-vars-group:")) {
@@ -548,9 +772,7 @@ function onScreensFlowsSelect(e) {
         var tId = id.substring("template-vars-group:".length);
         var tmpl = findTemplate(tId);
         if (state.activeTemplateId !== tId) {
-            state.activeTemplateId = tId;
-            renderActiveScreen();
-            updateCanvasTabsVisibility();
+            selectTemplateFromScreensPanel(tId);
         }
         if (tmpl && tmpl.variables && tmpl.variables.length) {
             state.editingMode = "template-variable";
@@ -567,9 +789,7 @@ function onScreensFlowsSelect(e) {
         var tId = id.substring("template-params-group:".length);
         var tmpl = findTemplate(tId);
         if (state.activeTemplateId !== tId) {
-            state.activeTemplateId = tId;
-            renderActiveScreen();
-            updateCanvasTabsVisibility();
+            selectTemplateFromScreensPanel(tId);
         }
         if (tmpl && tmpl.params && tmpl.params.length) {
             state.editingMode = "template-param";
@@ -587,14 +807,13 @@ function onScreensFlowsSelect(e) {
         var tId = parts[1];
         var varId = parts[2];
         if (state.activeTemplateId !== tId) {
-            state.activeTemplateId = tId;
-            renderActiveScreen();
-            updateCanvasTabsVisibility();
+            selectTemplateFromScreensPanel(tId);
         }
         state.editingMode = "template-variable";
         state.activeTemplateVariableId = varId;
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
+        openPropertiesDialogForId(id);
         return;
     }
     if (id.startsWith("template-param:")) {
@@ -602,14 +821,13 @@ function onScreensFlowsSelect(e) {
         var tId = parts[1];
         var paramId = parts[2];
         if (state.activeTemplateId !== tId) {
-            state.activeTemplateId = tId;
-            renderActiveScreen();
-            updateCanvasTabsVisibility();
+            selectTemplateFromScreensPanel(tId);
         }
         state.editingMode = "template-param";
         state.activeTemplateParamId = paramId;
         if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id];
         renderScreenForm();
+        openPropertiesDialogForId(id);
         return;
     }
     var screen = state.screens.find(function (s) { return s.id === id; });
@@ -622,9 +840,20 @@ function onScreensFlowsSelect(e) {
     if (folder) { selectFolderFromScreensPanel(id); return; }
 }
 
+function onScreensFlowsOpen(e) {
+    var id = e.detail && e.detail.id;
+    if (id) {
+        openPropertiesDialogForId(id);
+    }
+}
+
 function onScreensFlowsAction(e) {
     var id = e.detail.id;
     var action = e.detail.action;
+    if (action === "edit-props") {
+        openPropertiesDialogForId(id);
+        return;
+    }
     if (action === "add-screen") {
         addScreenFromSidebar({ parentId: null });
         return;
@@ -677,6 +906,7 @@ function onScreensFlowsAction(e) {
             if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
                 state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
             }
+            openScreenVariablePropertiesDialog(newVar, s);
             return;
         }
     }
@@ -696,6 +926,7 @@ function onScreensFlowsAction(e) {
             if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
                 state.screensFlowsTreeEl.reveal("template-var:" + t.id + ":" + newVar.id);
             }
+            openTemplateVariablePropertiesDialog(newVar, t);
             return;
         }
     }
@@ -733,6 +964,7 @@ function onScreensFlowsAction(e) {
             if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
                 state.screensFlowsTreeEl.reveal("template-param:" + t.id + ":" + newParam.id);
             }
+            openTemplateParamPropertiesDialog(newParam, t);
             return;
         }
     }
@@ -1124,13 +1356,14 @@ export function renderScreenList() {
 
     if (hasNexaKit) {
         var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
-            width: "100%", "box-sizing": "border-box"
+            width: "max-content", "min-width": "100%", "box-sizing": "border-box", display: "inline-block"
         }).appendTo(state.screenListEl);
 
         var treeEl = document.createElement("nx-tree");
         treeEl.setAttribute("empty-text", "No items yet — click + Add Screen, Template or Flow");
         treeEl.setAttribute("persist-key", "screens-flows:tree");
         treeEl.addEventListener("nx-tree-select", onScreensFlowsSelect);
+        treeEl.addEventListener("nx-tree-open", onScreensFlowsOpen);
         treeEl.addEventListener("nx-tree-move", onScreensFlowsMove);
         treeEl.addEventListener("nx-tree-action", onScreensFlowsAction);
         treeEl.addEventListener("nx-tree-rename", onScreensFlowsRename);
@@ -1456,7 +1689,7 @@ function renderVariablePropertiesForm(variable, isApp, surface) {
         color: isSharedVar ? "#065f46" : isAppVar ? "#5b21b6" : "#0369a1",
         "line-height": "1.4"
     }).html(isSharedVar
-        ? '<strong>Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the Nexa EtherNet/IP WebSocket IO system. Bind using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".'
+        ? '<strong>Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the realtime nexa io protocol. Bind using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".'
         : isAppVar
             ? '<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{' + (variable.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.'
             : isTmpl

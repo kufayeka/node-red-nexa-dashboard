@@ -331,13 +331,15 @@ if (!tmplNode) {
     }
   }
 }
-console.log('Template node is container with 2 children (Variables & Parameters)?', tmplNode && tmplNode.container && tmplNode.children.length === 2);
-const tmplVarsGroup = tmplNode.children[0];
-const tmplParamsGroup = tmplNode.children[1];
-console.log('Template child 1 is Variables group with add-template-var?', tmplVarsGroup.label === 'Variables' && tmplVarsGroup.actions.some(a => a.id === 'add-template-var'));
-console.log('Template child 1 contains template variable?', tmplVarsGroup.children.some(c => c.id === 'template-var:' + tmpl1.id + ':tv1'));
-console.log('Template child 2 is Parameters group with add-template-param?', tmplParamsGroup.label === 'Parameters' && tmplParamsGroup.actions.some(a => a.id === 'add-template-param'));
-console.log('Template child 2 contains template param?', tmplParamsGroup.children.some(c => c.id === 'template-param:' + tmpl1.id + ':tp1'));
+console.log('Template node is container with Components, Variables & Parameters?', tmplNode && tmplNode.container && tmplNode.children.length === 3);
+const tmplCompsGroup = tmplNode.children.find(c => c.label === 'Components');
+const tmplVarsGroup = tmplNode.children.find(c => c.label === 'Variables');
+const tmplParamsGroup = tmplNode.children.find(c => c.label === 'Parameters');
+console.log('Template has Components group?', !!tmplCompsGroup);
+console.log('Template child is Variables group with add-template-var?', tmplVarsGroup && tmplVarsGroup.label === 'Variables' && tmplVarsGroup.actions.some(a => a.id === 'add-template-var'));
+console.log('Template child contains template variable?', tmplVarsGroup && tmplVarsGroup.children.some(c => c.id === 'template-var:' + tmpl1.id + ':tv1'));
+console.log('Template child is Parameters group with add-template-param?', tmplParamsGroup && tmplParamsGroup.label === 'Parameters' && tmplParamsGroup.actions.some(a => a.id === 'add-template-param'));
+console.log('Template child contains template param?', tmplParamsGroup && tmplParamsGroup.children.some(c => c.id === 'template-param:' + tmpl1.id + ':tp1'));
 
 // Select template variable
 state.screensFlowsTreeEl.dispatchEvent({

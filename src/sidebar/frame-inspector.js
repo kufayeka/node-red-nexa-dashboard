@@ -95,7 +95,7 @@ var FRAME_META = {
         oAutoClose: prop("oAutoClose", "number", "Close by itself after", { min: 0, step: 500, unit: "ms", help: "0 = stays open" }),
         oDraggable: prop("oDraggable", "boolean", "Draggable"),
         oDragWithin: prop("oDragWithin", "enum", "Drag", { options: [{ value: "scope", label: "Inside its scope" }, { value: "page", label: "Anywhere" }] }),
-        oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide" }, { value: "none", label: "None" }] }),
+        oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide (Auto)" }, { value: "slide-left", label: "Slide Left" }, { value: "slide-right", label: "Slide Right" }, { value: "slide-top", label: "Slide Top" }, { value: "slide-bottom", label: "Slide Bottom" }, { value: "none", label: "None" }] }),
         oDuration: prop("oDuration", "number", "Duration", { min: 0, step: 50, unit: "ms" }),
         oStartOpen: prop("oStartOpen", "boolean", "Open when the page opens"),
         scroll: prop("scroll", "enum", "Scroll (live page)", { options: [

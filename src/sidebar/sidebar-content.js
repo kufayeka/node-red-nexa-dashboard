@@ -41,7 +41,7 @@ export function buildSidebarContent() {
     // Centering each item via its own align-self (see palette-events-
     // panel.js) instead keeps their margin at a plain, non-auto value.
     state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
-    var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
@@ -55,19 +55,12 @@ export function buildSidebarContent() {
     // pitfall applies here too.
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
 
-    // --- Screens, Templates & Flows Tab: 2-Column Layout (List/Tree on Left, Properties/Form on Right) ---
-    var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
-    var screenLeftCol = window.$("<div>").css({
-        flex: "0 0 280px", width: "280px", "min-width": "220px", "max-width": "360px",
-        display: "flex", "flex-direction": "column", height: "100%",
-        "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
-        background: "var(--red-ui-secondary-background, #fafafa)", "box-sizing": "border-box"
-    }).appendTo(screensSplit);
+    // --- Screens & Flows Tab: Full Width Tree (properties opened via Node-RED tray dialogs) ---
     var screenToolbar = window.$("<div>").css({
         display: "flex", "flex-direction": "column", gap: "6px",
         padding: "8px 10px", "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
-        background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0"
-    }).appendTo(screenLeftCol);
+        background: "var(--red-ui-tertiary-background, #f8fafc)", "flex-shrink": "0", width: "100%", "box-sizing": "border-box"
+    }).appendTo(screensPane);
 
     var screenTitleRow = window.$("<div>").css({
         display: "flex", "align-items": "center", "justify-content": "space-between", width: "100%"
@@ -86,42 +79,18 @@ export function buildSidebarContent() {
         .on("click", collapseAllScreensTree)
         .appendTo(expandCollapseGroup);
 
-    // SKIP!!!
-    // var screenBtnGroup = window.$("<div>").css({
-    //     display: "flex", "align-items": "center", "flex-wrap": "wrap", gap: "4px", width: "100%"
-    // }).appendTo(screenToolbar);
+    var screenListWrap = window.$("<div>").css({
+        flex: "1 1 auto", "min-height": "0", width: "100%", overflow: "auto",
+        padding: "6px", "box-sizing": "border-box"
+    }).appendTo(screensPane);
+    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({
+        width: "100%", "min-width": "100%", "box-sizing": "border-box"
+    }).appendTo(screenListWrap);
 
-    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-primary red-ui-button-small", title: "Add Screen" })
-    //     .text("+ Add Screen").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-    //     .on("click", addScreenFromSidebar).appendTo(screenBtnGroup);
-
-    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Template" })
-    //     .text("+ Add Template").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-    //     .on("click", addTemplateFromScreensPanel).appendTo(screenBtnGroup);
-
-    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Flow" })
-    //     .text("+ Add Flow").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-    //     .on("click", addFlowFromSidebar).appendTo(screenBtnGroup);
-
-    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add Group" })
-    //     .text("+ Add Group").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-    //     .on("click", addGroupFromSidebar).appendTo(screenBtnGroup);
-
-    // window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Add App Variable" })
-    //     .text("+ Add Variable").css({ "font-size": "10px", padding: "1px 6px", height: "22px", "line-height": "18px" })
-    //     .on("click", addAppVariableFromSidebar).appendTo(screenBtnGroup);
-
-    var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
-    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
-
-    var screenRightCol = window.$("<div>").css({
-        flex: "1 1 auto", display: "flex", "flex-direction": "column", height: "100%",
-        "overflow-y": "auto", padding: "12px 16px", "box-sizing": "border-box",
-        background: "var(--red-ui-primary-background, #fff)"
-    }).appendTo(screensSplit);
-    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
+    // Keep hidden element for state.screenFormEl so any legacy references or test harnesses are safe
+    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form", style: "display:none;" }).appendTo(screensPane);
     state.templateFormEl = state.screenFormEl;
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" });
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).appendTo(screensPane);
 
     state.sidebarTabs = window.RED.tabs.create({
         element: ul,
@@ -129,14 +98,7 @@ export function buildSidebarContent() {
         scrollable: true,
         onchange: function (tab) {
             if (!tab) return;
-            // componentsPane/eventsPane are display:flex (see their creation
-            // above) so jQuery's plain .toggle() must not be trusted to pick
-            // that back up on its own — the very first .show() after
-            // starting as display:none has no "previous visible display" of
-            // its own to restore and would fall back to the tag's default
-            // ("block"), silently discarding the flex layout those two panes
-            // depend on.
-            screensPane.toggle(tab.id === "screens");
+            screensPane.css("display", tab.id === "screens" ? "flex" : "none");
             state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
             state.hierarchyPane.toggle(tab.id === "hierarchy");
             state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
@@ -149,7 +111,7 @@ export function buildSidebarContent() {
             if (tab.id === "screens") {
                 ensureScreensLoaded(function () {
                     renderScreenList();
-                    renderScreenForm();
+                    if (typeof renderScreenForm === "function") renderScreenForm();
                 });
             }
             if (tab.id === "components") buildPalette(state.componentsPane);

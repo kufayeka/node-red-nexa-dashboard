@@ -1766,11 +1766,25 @@
     ls.height = h + "px";
   }
   function overlayHiddenTransform(o) {
-    if (o.animation === "slide") {
-      if (o.kind === "drawer") return { left: "translateX(-100%)", right: "translateX(100%)", top: "translateY(-100%)", bottom: "translateY(100%)" }[o.side];
-      return "translateY(24px)";
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    if (anim === "slide-left") {
+      return o.kind === "drawer" && o.side === "left" ? "translateX(-100%)" : "translateX(-100vw)";
     }
-    if (o.animation === "scale") return "scale(0.94)";
+    if (anim === "slide-right") {
+      return o.kind === "drawer" && o.side === "right" ? "translateX(100%)" : "translateX(100vw)";
+    }
+    if (anim === "slide-top" || anim === "slide-up") {
+      return o.kind === "drawer" && o.side === "top" ? "translateY(-100%)" : "translateY(-100vh)";
+    }
+    if (anim === "slide-bottom" || anim === "slide-down") {
+      return o.kind === "drawer" && o.side === "bottom" ? "translateY(100%)" : "translateY(100vh)";
+    }
+    if (anim === "slide") {
+      if (o.kind === "drawer") return { left: "translateX(-100%)", right: "translateX(100%)", top: "translateY(-100%)", bottom: "translateY(100%)" }[o.side] || "translateY(100%)";
+      return "translateY(100vh)";
+    }
+    if (anim === "scale") return "scale(0.94)";
     return "";
   }
   function placeOverlay(st) {
@@ -1811,20 +1825,26 @@
       es.maxHeight = "100%";
       es.flex = "0 0 auto";
     }
-    var dur = o.animation === "none" ? 0 : o.duration;
-    es.transition = dur ? "transform " + dur + "ms ease, opacity " + dur + "ms ease" : "";
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
+    es.transition = dur ? "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease" : "";
     bd.transition = dur ? "opacity " + dur + "ms ease" : "";
     applyOverlayState(st, o);
   }
   function applyOverlayState(st, o) {
     var es = st.el.style, move = st.dx || st.dy ? "translate(" + st.dx + "px," + st.dy + "px) " : "";
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var isNone = anim === "none";
     if (st.open) {
       es.opacity = "1";
       es.transform = move || "none";
       st.backdrop.style.opacity = "1";
     } else {
-      es.opacity = o.animation === "none" ? "1" : "0";
-      es.transform = move + overlayHiddenTransform(o) || "none";
+      es.opacity = isNone ? "1" : "0";
+      var hidden = overlayHiddenTransform(o);
+      es.transform = move ? hidden ? move + " " + hidden : move : hidden || "none";
       st.backdrop.style.opacity = "0";
     }
   }
@@ -1850,10 +1870,21 @@
       }, o.autoClose);
     }
     if (st.open) return true;
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
     st.layer.style.display = o.kind === "drawer" ? "block" : "flex";
     st.pin();
+    st.el.style.transition = "none";
+    st.backdrop.style.transition = "none";
+    st.open = false;
     applyOverlayState(st, o);
-    void st.layer.offsetWidth;
+    void st.el.offsetWidth;
+    void st.backdrop.offsetWidth;
+    if (dur > 0) {
+      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.16, 1, 0.3, 1), opacity " + dur + "ms ease";
+      st.backdrop.style.transition = "opacity " + dur + "ms ease";
+    }
     st.open = true;
     applyOverlayState(st, o);
     if (st.el.__carousel) st.el.__carousel.refresh();
@@ -1865,16 +1896,27 @@
   function closeOverlay(st, result, by) {
     if (!st || !st.open) return false;
     var o = overlayModel(st.node) || { duration: 0, animation: "none" };
+    var anim = o.animation || "auto";
+    if (anim === "auto") anim = o.kind === "drawer" ? "slide" : "scale";
+    var dur = anim === "none" ? 0 : o.duration != null ? o.duration : 250;
     st.open = false;
     clearTimeout(st.timer);
     var i = overlayStack.indexOf(st);
     if (i !== -1) overlayStack.splice(i, 1);
+    if (dur > 0) {
+      st.el.style.transition = "transform " + dur + "ms cubic-bezier(0.4, 0, 0.2, 1), opacity " + dur + "ms ease";
+      st.backdrop.style.transition = "opacity " + dur + "ms ease";
+    } else {
+      st.el.style.transition = "none";
+      st.backdrop.style.transition = "none";
+    }
     applyOverlayState(st, o);
-    var dur = o.animation === "none" ? 0 : o.duration;
     st.hideTimer = setTimeout(function() {
       if (st.open) return;
       st.layer.style.display = "none";
       st.dx = st.dy = 0;
+      st.el.style.transition = "";
+      st.backdrop.style.transition = "";
     }, dur);
     var p = st.pending;
     st.pending = null;

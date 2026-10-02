@@ -201,8 +201,8 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--nx-text-faint); }
 
 /* ---- tree (the MQTT Sparkplug explorer's look) ---- */
-.nx-kit .nx-tree { font-size: 12px; user-select: none; }
-.nx-kit .nx-tree-row { position: relative; display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 6px 2px 4px; border-radius: 3px; cursor: default; color: var(--nx-text-strong); }
+.nx-kit .nx-tree { font-size: 12px; user-select: none; width: max-content; min-width: 100%; }
+.nx-kit .nx-tree-row { position: relative; display: flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 6px 2px 4px; border-radius: 3px; cursor: default; color: var(--nx-text-strong); white-space: nowrap; }
 .nx-kit .nx-tree-row:hover { background: var(--nx-bg-hover); }
 .nx-kit .nx-tree-row.nx-on { background: var(--nx-bg-selected); box-shadow: inset 2px 0 0 var(--nx-accent); }
 .nx-kit .nx-tree-row.nx-muted { color: var(--nx-text-faint); }

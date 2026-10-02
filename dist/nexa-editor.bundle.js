@@ -29508,7 +29508,7 @@
       oAutoClose: prop("oAutoClose", "number", "Close by itself after", { min: 0, step: 500, unit: "ms", help: "0 = stays open" }),
       oDraggable: prop("oDraggable", "boolean", "Draggable"),
       oDragWithin: prop("oDragWithin", "enum", "Drag", { options: [{ value: "scope", label: "Inside its scope" }, { value: "page", label: "Anywhere" }] }),
-      oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide" }, { value: "none", label: "None" }] }),
+      oAnimation: prop("oAnimation", "enum", "Animation", { options: [{ value: "auto", label: "Auto" }, { value: "scale", label: "Scale" }, { value: "fade", label: "Fade" }, { value: "slide", label: "Slide (Auto)" }, { value: "slide-left", label: "Slide Left" }, { value: "slide-right", label: "Slide Right" }, { value: "slide-top", label: "Slide Top" }, { value: "slide-bottom", label: "Slide Bottom" }, { value: "none", label: "None" }] }),
       oDuration: prop("oDuration", "number", "Duration", { min: 0, step: 50, unit: "ms" }),
       oStartOpen: prop("oStartOpen", "boolean", "Open when the page opens"),
       scroll: prop("scroll", "enum", "Scroll (live page)", { options: [
@@ -35697,6 +35697,7 @@
     collapseAllScreensTree: () => collapseAllScreensTree,
     expandAllScreensTree: () => expandAllScreensTree,
     openFlowInBrowser: () => openFlowInBrowser,
+    openPropertiesDialogForId: () => openPropertiesDialogForId,
     openScreenInBrowser: () => openScreenInBrowser,
     refreshLogicCanvasIfActive: () => refreshLogicCanvasIfActive,
     removeScreen: () => removeScreen,
@@ -36108,7 +36109,1345 @@
     });
   }
 
+  // src/dialogs/screen-dialog.js
+  var DEVICES = [
+    ["", "Custom size"],
+    ["1920x1080", "Full HD 1920 \xD7 1080"],
+    ["1366x768", "Laptop 1366 \xD7 768"],
+    ["1280x800", 'HMI panel 10" 1280 \xD7 800'],
+    ["1024x768", "HMI panel 1024 \xD7 768"],
+    ["800x480", 'HMI panel 7" 800 \xD7 480'],
+    ["1180x820", "Tablet landscape 1180 \xD7 820"],
+    ["820x1180", "Tablet portrait 820 \xD7 1180"],
+    ["390x844", "Phone 390 \xD7 844"]
+  ];
+  var HELP3 = {
+    fixed: function(w, h) {
+      return "Shown at exactly " + w + " \xD7 " + h + " px \u2014 for a known panel / device.";
+    },
+    fit: "Everything scales together so the whole screen fits any window.",
+    fitWidth: "Scales to the window's width; taller content scrolls \u2014 good for web pages.",
+    fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout."
+  };
+  function openScreenPropertiesDialog(screen2) {
+    if (!screen2) return;
+    var initial = {
+      name: screen2.name || "",
+      path: screen2.path || "",
+      width: screen2.width || 1280,
+      height: screen2.height || 800,
+      displayMode: screen2.displayMode || "fixed",
+      gridSize: screen2.gridSize != null ? screen2.gridSize : 8,
+      snap: screen2.snap !== false,
+      disabled: !!screen2.disabled
+    };
+    var current2 = Object.assign({}, initial);
+    window.RED.tray.show({
+      id: "nexa-screen-properties-dialog",
+      title: "Screen Properties: " + (screen2.name || "Screen"),
+      width: 500,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var oldSize = { w: screen2.width, h: screen2.height };
+            screen2.name = current2.name.trim() || screen2.name;
+            screen2.path = current2.path.trim();
+            screen2.width = Math.max(10, parseInt(current2.width, 10) || 1280);
+            screen2.height = Math.max(10, parseInt(current2.height, 10) || 800);
+            if (current2.displayMode === "fixed") delete screen2.displayMode;
+            else screen2.displayMode = current2.displayMode;
+            screen2.gridSize = Math.max(1, parseInt(current2.gridSize, 10) || 8);
+            screen2.snap = !!current2.snap;
+            screen2.disabled = !!current2.disabled;
+            if (screen2.width !== oldSize.w || screen2.height !== oldSize.h) {
+              applyConstraints(null, screen2.components || [], oldSize, { w: screen2.width, h: screen2.height });
+            }
+            markDirty();
+            renderScreenList();
+            renderActiveScreen();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "16px",
+          padding: "10px 14px",
+          background: "#f0f9ff",
+          border: "1px solid #bae6fd",
+          "border-radius": "6px",
+          "font-size": "12px",
+          color: "#0369a1",
+          "line-height": "1.45"
+        }).html('<strong><i class="fa fa-desktop"></i> Screen Configuration</strong><br>Configure screen dimensions, public URL path, responsive scaling mode, and canvas grid options.').appendTo(body);
+        function createRow(label, inputEl) {
+          var r = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+          window.$("<label>").css({
+            display: "block",
+            "font-size": "11px",
+            "font-weight": "600",
+            "margin-bottom": "4px",
+            color: "var(--red-ui-secondary-text-color, #475569)"
+          }).text(label).appendTo(r);
+          inputEl.appendTo(r);
+          return r;
+        }
+        var nameInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.name);
+        nameInp.on("input change", function() {
+          current2.name = nameInp.val();
+        });
+        createRow("Name", nameInp);
+        var pathInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.path);
+        pathInp.on("input change", function() {
+          current2.path = pathInp.val();
+        });
+        createRow("URL path", pathInp);
+        var presetSel = window.$("<select>").css({ width: "100%", "box-sizing": "border-box" });
+        DEVICES.forEach(function(d) {
+          window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel);
+        });
+        presetSel.val(current2.width + "x" + current2.height);
+        if (!presetSel.val()) presetSel.val("");
+        createRow("Device Preset", presetSel);
+        var dimRow = window.$("<div>").css({ display: "flex", gap: "12px", "margin-bottom": "12px" }).appendTo(body);
+        var wCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Width (px)").appendTo(wCol);
+        var widthInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.width).appendTo(wCol);
+        var hCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Height (px)").appendTo(hCol);
+        var heightInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.height).appendTo(hCol);
+        presetSel.on("change", function() {
+          var m = /^(\d+)x(\d+)$/.exec(presetSel.val());
+          if (!m) return;
+          current2.width = Number(m[1]);
+          current2.height = Number(m[2]);
+          widthInp.val(current2.width);
+          heightInp.val(current2.height);
+          syncModeHelp();
+        });
+        widthInp.on("input change", function() {
+          current2.width = Number(widthInp.val()) || 1280;
+          presetSel.val(current2.width + "x" + current2.height);
+          if (!presetSel.val()) presetSel.val("");
+          syncModeHelp();
+        });
+        heightInp.on("input change", function() {
+          current2.height = Number(heightInp.val()) || 800;
+          presetSel.val(current2.width + "x" + current2.height);
+          if (!presetSel.val()) presetSel.val("");
+          syncModeHelp();
+        });
+        var modeSel = window.$("<select>").css({ width: "100%", "box-sizing": "border-box" });
+        [
+          ["fixed", "Exact size (this device), centred"],
+          ["fit", "Scale to fit the window (keep proportions)"],
+          ["fitWidth", "Scale to the window width (scroll down)"],
+          ["fill", "Fill the window (responsive, by constraints)"]
+        ].forEach(function(o) {
+          window.$("<option>", { value: o[0] }).text(o[1]).appendTo(modeSel);
+        });
+        modeSel.val(current2.displayMode || "fixed");
+        var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "#64748b", "margin-top": "4px", "line-height": "1.4" });
+        function syncModeHelp() {
+          var h = HELP3[modeSel.val()];
+          modeHelp.text(typeof h === "function" ? h(current2.width, current2.height) : h || "");
+        }
+        syncModeHelp();
+        modeSel.on("change", function() {
+          current2.displayMode = modeSel.val();
+          syncModeHelp();
+        });
+        var modeContainer = window.$("<div>");
+        modeSel.appendTo(modeContainer);
+        modeHelp.appendTo(modeContainer);
+        createRow("On the live page", modeContainer);
+        var gridInp = window.$("<input>", { type: "number", min: 1, max: 64 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.gridSize);
+        gridInp.on("input change", function() {
+          current2.gridSize = Number(gridInp.val()) || 8;
+        });
+        createRow("Grid size (px)", gridInp);
+        var checksWrap = window.$("<div>").css({
+          "margin-top": "14px",
+          "padding-top": "12px",
+          "border-top": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+          display: "flex",
+          "flex-direction": "column",
+          gap: "10px"
+        }).appendTo(body);
+        var snapRow = window.$("<label>").css({
+          display: "flex",
+          "align-items": "center",
+          gap: "8px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          cursor: "pointer"
+        }).appendTo(checksWrap);
+        var snapInput = window.$("<input>", { type: "checkbox" }).prop("checked", current2.snap).appendTo(snapRow);
+        window.$("<span>").text("Snap to grid").appendTo(snapRow);
+        snapInput.on("change", function() {
+          current2.snap = snapInput.is(":checked");
+        });
+        var enableRow = window.$("<label>").css({
+          display: "flex",
+          "align-items": "center",
+          gap: "8px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          cursor: "pointer"
+        }).appendTo(checksWrap);
+        var enableInput = window.$("<input>", { type: "checkbox" }).prop("checked", !current2.disabled).appendTo(enableRow);
+        window.$("<span>").text("Enable screen (live page at URL path)").appendTo(enableRow);
+        enableInput.on("change", function() {
+          current2.disabled = !enableInput.is(":checked");
+        });
+      }
+    });
+  }
+
+  // src/dialogs/screen-variable-dialog.js
+  function openScreenVariablePropertiesDialog(variable2, screen2) {
+    if (!variable2) return;
+    var curName = variable2.name || "";
+    var curType = variable2.type || "string";
+    var curVal = variable2.defaultValue;
+    window.RED.tray.show({
+      id: "nexa-screen-variable-dialog",
+      title: "Screen Variable Properties: " + (variable2.name || "Variable"),
+      width: 460,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = curName.trim();
+            if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+              if (window.RED && window.RED.notify) window.RED.notify("Invalid variable name. Must start with a letter/$/_ and contain only alphanumeric characters.", "error");
+              return;
+            }
+            variable2.name = val;
+            variable2.type = curType;
+            variable2.defaultValue = curVal;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f0f9ff",
+          border: "1px solid #bae6fd",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#0369a1",
+          "line-height": "1.45"
+        }).html("<strong>Screen-Scoped Variable (" + (screen2 ? screen2.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".').appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
+        var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+        nameInput.on("input change", function() {
+          var val = nameInput.val().trim();
+          curName = val;
+          if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+            nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+          } else {
+            nameError.hide();
+          }
+        });
+        var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+        var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+        ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+          window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+        });
+        (getApp().types || []).forEach(function(t2) {
+          window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+        });
+        typeSelect.val(curType);
+        var valRow = window.$("<div>").css({ "margin-bottom": "16px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+        var valContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+        var typedInputEl = buildTypedInputWidget(valContainer, curType, curVal, function(parsedVal, detType) {
+          curVal = parsedVal;
+          if (detType && detType !== curType) {
+            curType = detType;
+            typeSelect.val(detType);
+          }
+        });
+        typeSelect.on("change", function() {
+          curType = typeSelect.val();
+          var tiType = mapParamTypeToTypedInputType(curType);
+          if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (curType === "boolean") {
+              typedInputEl.typedInput("value", "false");
+              curVal = false;
+            } else if (curType === "number") {
+              typedInputEl.typedInput("value", "0");
+              curVal = 0;
+            } else if (curType === "object") {
+              typedInputEl.typedInput("value", "{}");
+              curVal = {};
+            } else if (curType === "array") {
+              typedInputEl.typedInput("value", "[]");
+              curVal = [];
+            } else if (curType === "string") {
+              typedInputEl.typedInput("value", "");
+              curVal = "";
+            }
+          }
+        });
+        var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
+          if (screen2 && screen2.variables) {
+            screen2.variables = screen2.variables.filter(function(v) {
+              return v.id !== variable2.id;
+            });
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }).appendTo(delRow);
+      }
+    });
+  }
+
+  // src/dialogs/template-dialog.js
+  function openTemplatePropertiesDialog(template) {
+    if (!template) return;
+    var current2 = {
+      name: template.name || "",
+      identifier: template.identifier || "",
+      width: template.width || 800,
+      height: template.height || 600,
+      gridSize: template.gridSize != null ? template.gridSize : 8,
+      snap: template.snap !== false,
+      sizing: template.sizing ? Object.assign({}, template.sizing) : { w: "fixed", h: "fixed" }
+    };
+    window.RED.tray.show({
+      id: "nexa-template-properties-dialog",
+      title: "Template Properties: " + (template.name || "Template"),
+      width: 480,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            template.name = current2.name.trim() || template.name;
+            template.identifier = current2.identifier.trim();
+            template.width = Math.max(10, parseInt(current2.width, 10) || 800);
+            template.height = Math.max(10, parseInt(current2.height, 10) || 600);
+            template.gridSize = Math.max(1, parseInt(current2.gridSize, 10) || 8);
+            template.snap = !!current2.snap;
+            template.sizing = current2.sizing;
+            markDirty();
+            renderScreenList();
+            renderActiveScreen();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#fffbeb",
+          border: "1px solid #fde68a",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#92400e",
+          "line-height": "1.45"
+        }).html('<strong><i class="fa fa-cubes"></i> Composite Template</strong><br>A reusable composite layout template. Can contain internal variables, parameters for instances, and component hierarchies.').appendTo(body);
+        function createRow(label, inputEl) {
+          var r = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+          window.$("<label>").css({
+            display: "block",
+            "font-size": "11px",
+            "font-weight": "600",
+            "margin-bottom": "4px",
+            color: "var(--red-ui-secondary-text-color, #475569)"
+          }).text(label).appendTo(r);
+          inputEl.appendTo(r);
+          return r;
+        }
+        var nameInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.name);
+        nameInp.on("input change", function() {
+          current2.name = nameInp.val();
+        });
+        createRow("Name", nameInp);
+        var idInp = window.$("<input>", { type: "text", placeholder: "e.g. cardHeader" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.identifier);
+        idInp.on("input change", function() {
+          current2.identifier = idInp.val();
+        });
+        createRow("Identifier", idInp);
+        var dimRow = window.$("<div>").css({ display: "flex", gap: "12px", "margin-bottom": "12px" }).appendTo(body);
+        var wCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Width (px)").appendTo(wCol);
+        var widthInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.width).appendTo(wCol);
+        var hCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Height (px)").appendTo(hCol);
+        var heightInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.height).appendTo(hCol);
+        widthInp.on("input change", function() {
+          current2.width = Number(widthInp.val()) || 800;
+        });
+        heightInp.on("input change", function() {
+          current2.height = Number(heightInp.val()) || 600;
+        });
+        var gridInp = window.$("<input>", { type: "number", min: 1, max: 64 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.gridSize);
+        gridInp.on("input change", function() {
+          current2.gridSize = Number(gridInp.val()) || 8;
+        });
+        createRow("Grid size (px)", gridInp);
+        var snapRow = window.$("<label>").css({
+          display: "flex",
+          "align-items": "center",
+          gap: "8px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          cursor: "pointer",
+          "margin-top": "10px"
+        }).appendTo(body);
+        var snapInp = window.$("<input>", { type: "checkbox" }).prop("checked", current2.snap).appendTo(snapRow);
+        window.$("<span>").text("Snap to grid").appendTo(snapRow);
+        snapInp.on("change", function() {
+          current2.snap = snapInp.is(":checked");
+        });
+      }
+    });
+  }
+
+  // src/dialogs/template-variable-dialog.js
+  function openTemplateVariablePropertiesDialog(variable2, template) {
+    if (!variable2) return;
+    var curName = variable2.name || "";
+    var curType = variable2.type || "string";
+    var curVal = variable2.defaultValue;
+    window.RED.tray.show({
+      id: "nexa-template-variable-dialog",
+      title: "Template Variable Properties: " + (variable2.name || "Variable"),
+      width: 460,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = curName.trim();
+            if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+              if (window.RED && window.RED.notify) window.RED.notify("Invalid variable name. Must start with a letter/$/_ and contain only alphanumeric characters.", "error");
+              return;
+            }
+            variable2.name = val;
+            variable2.type = curType;
+            variable2.defaultValue = curVal;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f0f9ff",
+          border: "1px solid #bae6fd",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#0369a1",
+          "line-height": "1.45"
+        }).html("<strong>Template-Scoped Variable (" + (template ? template.name : "Template") + ")</strong><br>Internal variable scoped to this template. Available to all components inside this template. Bind in components using <code>{" + (variable2.name || "var") + "}</code>.").appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
+        var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+        nameInput.on("input change", function() {
+          var val = nameInput.val().trim();
+          curName = val;
+          if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+            nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+          } else {
+            nameError.hide();
+          }
+        });
+        var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+        var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+        ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+          window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+        });
+        (getApp().types || []).forEach(function(t2) {
+          window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+        });
+        typeSelect.val(curType);
+        var valRow = window.$("<div>").css({ "margin-bottom": "16px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+        var valContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+        var typedInputEl = buildTypedInputWidget(valContainer, curType, curVal, function(parsedVal, detType) {
+          curVal = parsedVal;
+          if (detType && detType !== curType) {
+            curType = detType;
+            typeSelect.val(detType);
+          }
+        });
+        typeSelect.on("change", function() {
+          curType = typeSelect.val();
+          var tiType = mapParamTypeToTypedInputType(curType);
+          if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (curType === "boolean") {
+              typedInputEl.typedInput("value", "false");
+              curVal = false;
+            } else if (curType === "number") {
+              typedInputEl.typedInput("value", "0");
+              curVal = 0;
+            } else if (curType === "object") {
+              typedInputEl.typedInput("value", "{}");
+              curVal = {};
+            } else if (curType === "array") {
+              typedInputEl.typedInput("value", "[]");
+              curVal = [];
+            } else if (curType === "string") {
+              typedInputEl.typedInput("value", "");
+              curVal = "";
+            }
+          }
+        });
+        var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
+          if (template && template.variables) {
+            template.variables = template.variables.filter(function(v) {
+              return v.id !== variable2.id;
+            });
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }).appendTo(delRow);
+      }
+    });
+  }
+
+  // src/dialogs/template-param-dialog.js
+  function openTemplateParamPropertiesDialog(param, template) {
+    if (!param) return;
+    var curName = param.name || "";
+    var curLabel = param.label || param.name || "";
+    var curType = param.type || "string";
+    var curVal = param.defaultValue;
+    window.RED.tray.show({
+      id: "nexa-template-param-dialog",
+      title: "Template Parameter Properties: " + (param.name || "Parameter"),
+      width: 460,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = curName.trim();
+            if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+              if (window.RED && window.RED.notify) window.RED.notify("Invalid parameter name. Must start with a letter/$/_ and contain only alphanumeric characters.", "error");
+              return;
+            }
+            param.name = val;
+            param.label = curLabel.trim() || val;
+            param.type = curType;
+            param.defaultValue = curVal;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f5f3ff",
+          border: "1px solid #ddd6fe",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#5b21b6",
+          "line-height": "1.45"
+        }).html("<strong>Template Parameter (" + (template ? template.name : "Template") + ")</strong><br>Exposed outward when this template is used as an instance. Reference inside this template using <code>{" + (param.name || "param") + "}</code> or bind outward.").appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Parameter Name").appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
+        var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+        nameInput.on("input change", function() {
+          var val = nameInput.val().trim();
+          curName = val;
+          if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+            nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+          } else {
+            nameError.hide();
+            if (!curLabel || curLabel === param.name) {
+              curLabel = val;
+              labelInput.val(val);
+            }
+          }
+        });
+        var labelRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Display Label").appendTo(labelRow);
+        var labelInput = window.$("<input>", { type: "text", placeholder: "e.g. Motor Speed" }).css({ width: "100%", "box-sizing": "border-box" }).val(curLabel).appendTo(labelRow);
+        labelInput.on("input change", function() {
+          curLabel = labelInput.val().trim() || curName;
+        });
+        var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+        var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+        ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+          window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+        });
+        (getApp().types || []).forEach(function(t2) {
+          window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+        });
+        typeSelect.val(curType);
+        var valRow = window.$("<div>").css({ "margin-bottom": "16px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+        var valContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+        var typedInputEl = buildTypedInputWidget(valContainer, curType, curVal, function(parsedVal, detType) {
+          curVal = parsedVal;
+          if (detType && detType !== curType) {
+            curType = detType;
+            typeSelect.val(detType);
+          }
+        });
+        typeSelect.on("change", function() {
+          curType = typeSelect.val();
+          var tiType = mapParamTypeToTypedInputType(curType);
+          if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (curType === "boolean") {
+              typedInputEl.typedInput("value", "false");
+              curVal = false;
+            } else if (curType === "number") {
+              typedInputEl.typedInput("value", "0");
+              curVal = 0;
+            } else if (curType === "object") {
+              typedInputEl.typedInput("value", "{}");
+              curVal = {};
+            } else if (curType === "array") {
+              typedInputEl.typedInput("value", "[]");
+              curVal = [];
+            } else if (curType === "string") {
+              typedInputEl.typedInput("value", "");
+              curVal = "";
+            }
+          }
+        });
+        var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Parameter').on("click", function() {
+          if (template && template.params) {
+            template.params = template.params.filter(function(p) {
+              return p.id !== param.id;
+            });
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }).appendTo(delRow);
+      }
+    });
+  }
+
+  // src/dialogs/component-template-dialog.js
+  function openComponentTemplatePropertiesDialog(template) {
+    if (!template) return;
+    var current2 = {
+      name: template.name || "",
+      identifier: template.identifier || "",
+      width: template.width || 320,
+      height: template.height || 240,
+      gridSize: template.gridSize != null ? template.gridSize : 8,
+      snap: template.snap !== false
+    };
+    window.RED.tray.show({
+      id: "nexa-component-template-properties-dialog",
+      title: "Component Template Properties: " + (template.name || "Component Template"),
+      width: 480,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            template.name = current2.name.trim() || template.name;
+            template.identifier = current2.identifier.trim();
+            template.width = Math.max(10, parseInt(current2.width, 10) || 320);
+            template.height = Math.max(10, parseInt(current2.height, 10) || 240);
+            template.gridSize = Math.max(1, parseInt(current2.gridSize, 10) || 8);
+            template.snap = !!current2.snap;
+            markDirty();
+            renderScreenList();
+            renderActiveScreen();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#166534",
+          "line-height": "1.45"
+        }).html('<strong><i class="fa fa-puzzle-piece"></i> Component Template</strong><br>This canvas is an isolated preview stage for a single component. When populated or rendered into a container, only the single component inside is rendered directly without extra canvas wrapper frames.').appendTo(body);
+        function createRow(label, inputEl) {
+          var r = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+          window.$("<label>").css({
+            display: "block",
+            "font-size": "11px",
+            "font-weight": "600",
+            "margin-bottom": "4px",
+            color: "var(--red-ui-secondary-text-color, #475569)"
+          }).text(label).appendTo(r);
+          inputEl.appendTo(r);
+          return r;
+        }
+        var nameInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.name);
+        nameInp.on("input change", function() {
+          current2.name = nameInp.val();
+        });
+        createRow("Name", nameInp);
+        var idInp = window.$("<input>", { type: "text", placeholder: "e.g. gaugeWidget" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.identifier);
+        idInp.on("input change", function() {
+          current2.identifier = idInp.val();
+        });
+        createRow("Identifier", idInp);
+        var dimRow = window.$("<div>").css({ display: "flex", gap: "12px", "margin-bottom": "12px" }).appendTo(body);
+        var wCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Preview Width (px)").appendTo(wCol);
+        var widthInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.width).appendTo(wCol);
+        var hCol = window.$("<div>").css({ flex: "1 1 50%" }).appendTo(dimRow);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "#475569" }).text("Preview Height (px)").appendTo(hCol);
+        var heightInp = window.$("<input>", { type: "number", min: 10 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.height).appendTo(hCol);
+        widthInp.on("input change", function() {
+          current2.width = Number(widthInp.val()) || 320;
+        });
+        heightInp.on("input change", function() {
+          current2.height = Number(heightInp.val()) || 240;
+        });
+        var gridInp = window.$("<input>", { type: "number", min: 1, max: 64 }).css({ width: "100%", "box-sizing": "border-box" }).val(current2.gridSize);
+        gridInp.on("input change", function() {
+          current2.gridSize = Number(gridInp.val()) || 8;
+        });
+        createRow("Grid size (px)", gridInp);
+        var snapRow = window.$("<label>").css({
+          display: "flex",
+          "align-items": "center",
+          gap: "8px",
+          "font-size": "12px",
+          color: "var(--red-ui-primary-text-color, #333)",
+          cursor: "pointer",
+          "margin-top": "10px"
+        }).appendTo(body);
+        var snapInp = window.$("<input>", { type: "checkbox" }).prop("checked", current2.snap).appendTo(snapRow);
+        window.$("<span>").text("Snap to grid").appendTo(snapRow);
+        snapInp.on("change", function() {
+          current2.snap = snapInp.is(":checked");
+        });
+      }
+    });
+  }
+
+  // src/dialogs/flow-dialog.js
+  function openFlowPropertiesDialog(flow) {
+    if (!flow) return;
+    var curName = flow.name || "";
+    var curEndpoint = flow.endpoint || "/flow";
+    var curIsDefault = !!flow.isDefault;
+    var curPolicy = flow.routingPolicy || "strict";
+    window.RED.tray.show({
+      id: "nexa-flow-properties-dialog",
+      title: "Flow Properties: " + (flow.name || "Flow"),
+      width: 500,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var valName = curName.trim();
+            if (!valName) {
+              if (window.RED && window.RED.notify) window.RED.notify("Flow name cannot be empty.", "error");
+              return;
+            }
+            var cleanEp = (curEndpoint || "").trim();
+            if (!cleanEp) cleanEp = "/flow";
+            if (cleanEp.charAt(0) !== "/") cleanEp = "/" + cleanEp;
+            cleanEp = cleanEp.replace(/\/+$/, "") || "/";
+            var dup = (state.flows || []).find(function(f) {
+              if (f.id === flow.id) return false;
+              var other = (f.endpoint || "").trim();
+              if (other.charAt(0) !== "/") other = "/" + other;
+              other = other.replace(/\/+$/, "") || "/";
+              return other.toLowerCase() === cleanEp.toLowerCase();
+            });
+            if (dup) {
+              if (window.RED && window.RED.notify) window.RED.notify("Flow endpoint '" + cleanEp + "' is already in use by Flow '" + (dup.name || dup.id) + "'.", "error");
+              return;
+            }
+            flow.name = valName;
+            flow.endpoint = cleanEp;
+            flow.routingPolicy = curPolicy;
+            if (curIsDefault) {
+              (state.flows || []).forEach(function(f) {
+                f.isDefault = false;
+              });
+              flow.isDefault = true;
+            } else {
+              flow.isDefault = false;
+            }
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#166534",
+          "line-height": "1.5"
+        }).html('<strong><i class="fa fa-info-circle"></i> Screen Flow Gateway</strong><br>Flow is the exclusive public entrypoint. Screens are rendered as internal views.<br>Public URL format: <code>/nexa' + (flow.endpoint || "/flow") + "/&lt;screen-path&gt;</code>.<br>Configure logic & routing in the <strong>Logic</strong> tab.").appendTo(body);
+        function createRow(label, inputEl) {
+          var r = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+          window.$("<label>").css({
+            display: "block",
+            "font-size": "11px",
+            "font-weight": "600",
+            "margin-bottom": "4px",
+            color: "var(--red-ui-secondary-text-color, #475569)"
+          }).text(label).appendTo(r);
+          inputEl.appendTo(r);
+          return r;
+        }
+        var nameInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName);
+        nameInp.on("input change", function() {
+          curName = nameInp.val();
+        });
+        createRow("Flow Name", nameInp);
+        var epInp = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curEndpoint);
+        var epError = window.$("<div>").css({ color: "#ef4444", "font-size": "11px", "margin-top": "4px", display: "none" });
+        function validateEndpoint(val) {
+          var raw = (val || "").trim();
+          if (!raw) raw = "/flow";
+          if (raw.charAt(0) !== "/") raw = "/" + raw;
+          raw = raw.replace(/\/+$/, "") || "/";
+          var duplicate = (state.flows || []).find(function(f) {
+            if (f.id === flow.id) return false;
+            var other = (f.endpoint || "").trim();
+            if (other.charAt(0) !== "/") other = "/" + other;
+            other = other.replace(/\/+$/, "") || "/";
+            return other.toLowerCase() === raw.toLowerCase();
+          });
+          if (duplicate) {
+            epInp.css({ border: "1px solid #ef4444", background: "#fff5f5" });
+            epError.html('<i class="fa fa-exclamation-circle"></i> Endpoint <code>' + raw + '</code> is already in use by Flow "<b>' + (duplicate.name || duplicate.id) + '</b>".').show();
+            return false;
+          } else {
+            epInp.css({ border: "", background: "" });
+            epError.hide();
+            return raw;
+          }
+        }
+        epInp.on("input change", function() {
+          curEndpoint = epInp.val();
+          validateEndpoint(curEndpoint);
+        });
+        var epWrap = window.$("<div>");
+        epInp.appendTo(epWrap);
+        epError.appendTo(epWrap);
+        createRow("Starting Endpoint", epWrap);
+        var defRow = window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "var(--red-ui-secondary-background, #f8fafc)",
+          border: "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+          "border-radius": "6px"
+        }).appendTo(body);
+        var defLabel = window.$("<label>").css({ display: "flex", "align-items": "center", gap: "8px", "font-size": "12px", cursor: "pointer", margin: 0 }).appendTo(defRow);
+        var defCheck = window.$("<input>", { type: "checkbox" }).prop("checked", curIsDefault).appendTo(defLabel);
+        window.$("<span>").html("<strong>Default Flow</strong> (Redirect root <code>/</code> and <code>/nexa</code> to this flow)").appendTo(defLabel);
+        defCheck.on("change", function() {
+          curIsDefault = defCheck.is(":checked");
+        });
+        var policySel = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" });
+        window.$("<option>", { value: "strict" }).text("Strict Sequential (Must enter via Route Trigger)").appendTo(policySel);
+        window.$("<option>", { value: "free" }).text("Free Jump (Allow direct jump to any flow screen)").appendTo(policySel);
+        policySel.val(curPolicy);
+        policySel.on("change", function() {
+          curPolicy = policySel.val();
+        });
+        createRow("Flow Routing Rules", policySel);
+        var btnRow = window.$("<div>").css({ "margin-top": "16px", "padding-top": "12px", "border-top": "1px solid #e2e8f0" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-primary" }).html('<i class="fa fa-code-fork"></i> Open Flow Logic Canvas').css({ width: "100%", height: "32px", "font-size": "12px", display: "inline-flex", "align-items": "center", "justify-content": "center", gap: "6px" }).on("click", function() {
+          window.RED.tray.close();
+          if (state.canvasTabs && typeof state.canvasTabs.activateTab === "function") {
+            state.canvasTabs.activateTab("logic");
+          }
+        }).appendTo(btnRow);
+      }
+    });
+  }
+
+  // src/dialogs/app-variable-dialog.js
+  function openAppVariablePropertiesDialog(variable2) {
+    if (!variable2) return;
+    var curName = variable2.name || "";
+    var curType = variable2.type || "string";
+    var curVal = variable2.defaultValue;
+    var curPersist = variable2.persist || "none";
+    window.RED.tray.show({
+      id: "nexa-app-variable-dialog",
+      title: "App Variable Properties: " + (variable2.name || "App Variable"),
+      width: 460,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = curName.trim();
+            if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+              if (window.RED && window.RED.notify) window.RED.notify("Invalid variable name. Must start with a letter/$/_ and contain only alphanumeric characters.", "error");
+              return;
+            }
+            variable2.name = val;
+            variable2.type = curType;
+            variable2.defaultValue = curVal;
+            variable2.persist = curPersist;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#f5f3ff",
+          border: "1px solid #ddd6fe",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#5b21b6",
+          "line-height": "1.45"
+        }).html('<strong><i class="fa fa-globe"></i> Global App Variable</strong><br>Shared across every screen in this application. Bind in components using <code>{' + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.').appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
+        var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+        nameInput.on("input change", function() {
+          var val = nameInput.val().trim();
+          curName = val;
+          if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+            nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+          } else {
+            nameError.hide();
+          }
+        });
+        var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+        var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+        ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+          window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+        });
+        (getApp().types || []).forEach(function(t2) {
+          window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+        });
+        typeSelect.val(curType);
+        var valRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+        var valContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+        var typedInputEl = buildTypedInputWidget(valContainer, curType, curVal, function(parsedVal, detType) {
+          curVal = parsedVal;
+          if (detType && detType !== curType) {
+            curType = detType;
+            typeSelect.val(detType);
+          }
+        });
+        typeSelect.on("change", function() {
+          curType = typeSelect.val();
+          var tiType = mapParamTypeToTypedInputType(curType);
+          if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (curType === "boolean") {
+              typedInputEl.typedInput("value", "false");
+              curVal = false;
+            } else if (curType === "number") {
+              typedInputEl.typedInput("value", "0");
+              curVal = 0;
+            } else if (curType === "object") {
+              typedInputEl.typedInput("value", "{}");
+              curVal = {};
+            } else if (curType === "array") {
+              typedInputEl.typedInput("value", "[]");
+              curVal = [];
+            } else if (curType === "string") {
+              typedInputEl.typedInput("value", "");
+              curVal = "";
+            }
+          }
+        });
+        var persistRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Kept for (Persistence)").appendTo(persistRow);
+        var persistSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(persistRow);
+        window.$("<option>", { value: "none" }).text("this page (resets on reload)").appendTo(persistSelect);
+        window.$("<option>", { value: "session" }).text("tab session (sessionStorage)").appendTo(persistSelect);
+        window.$("<option>", { value: "local" }).text("browser (localStorage \u2014 kept across reloads)").appendTo(persistSelect);
+        persistSelect.val(curPersist);
+        persistSelect.on("change", function() {
+          curPersist = persistSelect.val();
+        });
+        var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
+          var app2 = getApp();
+          if (app2 && app2.variables) {
+            app2.variables = app2.variables.filter(function(v) {
+              return v.id !== variable2.id;
+            });
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }).appendTo(delRow);
+      }
+    });
+  }
+
+  // src/dialogs/shared-variable-dialog.js
+  function openSharedVariablePropertiesDialog(variable2) {
+    if (!variable2) return;
+    var curName = variable2.name || "";
+    var curType = variable2.type || "string";
+    var curVal = variable2.defaultValue;
+    window.RED.tray.show({
+      id: "nexa-shared-variable-dialog",
+      title: "Shared Variable Properties (Server Realtime): " + (variable2.name || "Shared Variable"),
+      width: 480,
+      buttons: [
+        {
+          text: "Cancel",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            var val = curName.trim();
+            if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+              if (window.RED && window.RED.notify) window.RED.notify("Invalid variable name. Must start with a letter/$/_ and contain only alphanumeric characters.", "error");
+              return;
+            }
+            variable2.name = val;
+            variable2.type = curType;
+            variable2.defaultValue = curVal;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "16px 20px" });
+        window.$("<div>").css({
+          "margin-bottom": "14px",
+          padding: "10px 12px",
+          background: "#ecfdf5",
+          border: "1px solid #a7f3d0",
+          "border-radius": "6px",
+          "font-size": "11px",
+          color: "#065f46",
+          "line-height": "1.45"
+        }).html('<strong><i class="fa fa-refresh"></i> Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the realtime nexa io protocol. Bind using <code>{' + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".').appendTo(body);
+        var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
+        var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(curName).appendTo(nameRow);
+        var nameError = window.$("<div>").css({ "font-size": "10.5px", color: "#ef4444", "margin-top": "3px", display: "none" }).appendTo(nameRow);
+        nameInput.on("input change", function() {
+          var val = nameInput.val().trim();
+          curName = val;
+          if (!val || scope_exports && scope_exports.NAME_RE && !scope_exports.NAME_RE.test(val)) {
+            nameError.text("Invalid name. Must start with a letter/$/_ and contain only alphanumeric characters.").show();
+          } else {
+            nameError.hide();
+          }
+        });
+        var typeRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Type").appendTo(typeRow);
+        var typeSelect = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(typeRow);
+        ["string", "number", "boolean", "object", "array", "color"].forEach(function(t2) {
+          window.$("<option>", { value: t2 }).text(t2).appendTo(typeSelect);
+        });
+        (getApp().types || []).forEach(function(t2) {
+          window.$("<option>", { value: "type:" + t2.id }).text(t2.name + " (custom type)").appendTo(typeSelect);
+        });
+        typeSelect.val(curType);
+        var valRow = window.$("<div>").css({ "margin-bottom": "16px" }).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Default Value").appendTo(valRow);
+        var valContainer = window.$("<div>").css({ width: "100%" }).appendTo(valRow);
+        var typedInputEl = buildTypedInputWidget(valContainer, curType, curVal, function(parsedVal, detType) {
+          curVal = parsedVal;
+          if (detType && detType !== curType) {
+            curType = detType;
+            typeSelect.val(detType);
+          }
+        });
+        typeSelect.on("change", function() {
+          curType = typeSelect.val();
+          var tiType = mapParamTypeToTypedInputType(curType);
+          if (typedInputEl && typeof typedInputEl.typedInput === "function") {
+            typedInputEl.typedInput("type", tiType);
+            if (curType === "boolean") {
+              typedInputEl.typedInput("value", "false");
+              curVal = false;
+            } else if (curType === "number") {
+              typedInputEl.typedInput("value", "0");
+              curVal = 0;
+            } else if (curType === "object") {
+              typedInputEl.typedInput("value", "{}");
+              curVal = {};
+            } else if (curType === "array") {
+              typedInputEl.typedInput("value", "[]");
+              curVal = [];
+            } else if (curType === "string") {
+              typedInputEl.typedInput("value", "");
+              curVal = "";
+            }
+          }
+        });
+        var delRow = window.$("<div>").css({ "margin-top": "20px", "padding-top": "12px", "border-top": "1px solid #f1f5f9" }).appendTo(body);
+        window.$("<button>", { type: "button", class: "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Variable').on("click", function() {
+          var app2 = getApp();
+          if (app2 && app2.sharedVariables) {
+            app2.sharedVariables = app2.sharedVariables.filter(function(v) {
+              return v.id !== variable2.id;
+            });
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }).appendTo(delRow);
+      }
+    });
+  }
+
+  // src/dialogs/folder-dialog.js
+  function isFolderDescendant(ancestorId, testId) {
+    var cur2 = (state.folders || []).find(function(f) {
+      return f.id === testId;
+    });
+    var seen = {};
+    while (cur2 && cur2.parentId) {
+      if (cur2.parentId === ancestorId) return true;
+      if (seen[cur2.parentId]) break;
+      seen[cur2.parentId] = true;
+      cur2 = (state.folders || []).find(function(f) {
+        return f.id === cur2.parentId;
+      });
+    }
+    return false;
+  }
+  function openFolderPropertiesDialog(folder) {
+    if (!folder) return;
+    var container = window.$("<div>", { "class": "red-ui-editor" }).css({
+      padding: "16px 20px",
+      height: "100%",
+      "box-sizing": "border-box",
+      overflow: "auto"
+    });
+    var header = window.$("<div>").css({
+      "font-weight": "bold",
+      "font-size": "14px",
+      "margin-bottom": "16px",
+      "padding-bottom": "8px",
+      "border-bottom": "1px solid var(--red-ui-secondary-border-color, #e2e8f0)",
+      color: "var(--red-ui-primary-text-color, #1e293b)",
+      display: "flex",
+      "align-items": "center",
+      gap: "8px"
+    }).html('<i class="fa fa-folder-open-o" style="color: #f59e0b; font-size: 16px;"></i> Group Properties').appendTo(container);
+    var nameRow = window.$("<div>").css({ "margin-bottom": "14px" }).appendTo(container);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "5px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Group Name").appendTo(nameRow);
+    var nameInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box" }).val(folder.name || "").appendTo(nameRow);
+    var pRow = window.$("<div>").css({ "margin-bottom": "16px" }).appendTo(container);
+    window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "5px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Parent Group").appendTo(pRow);
+    var pSel = window.$("<select>").css({ width: "100%", "box-sizing": "border-box", padding: "4px" }).appendTo(pRow);
+    window.$("<option>", { value: "" }).text("(Root level)").appendTo(pSel);
+    (state.folders || []).forEach(function(f) {
+      if (f.id !== folder.id && !isFolderDescendant(folder.id, f.id)) {
+        window.$("<option>", { value: f.id }).text(f.name).appendTo(pSel);
+      }
+    });
+    pSel.val(folder.parentId || "");
+    var btnRow = window.$("<div>").css({ "margin-top": "24px", "padding-top": "12px", "border-top": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)" }).appendTo(container);
+    window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small" }).css({ color: "#ef4444", display: "inline-flex", "align-items": "center", gap: "5px" }).html('<i class="fa fa-trash"></i> Delete Group').on("click", function() {
+      if (window.confirm && !window.confirm("Are you sure you want to delete group '" + (folder.name || folder.id) + "'?")) return;
+      deleteFolder(folder.id);
+      state.selectedFolderId = null;
+      markDirty();
+      renderScreenList();
+      if (window.RED && window.RED.tray) window.RED.tray.close();
+    }).appendTo(btnRow);
+    var trayOptions = {
+      title: "Group Properties: " + (folder.name || folder.id),
+      buttons: [
+        {
+          id: "node-dialog-cancel",
+          text: "Cancel",
+          class: "left",
+          click: function() {
+            window.RED.tray.close();
+          }
+        },
+        {
+          id: "node-dialog-ok",
+          text: "Done",
+          class: "primary",
+          click: function() {
+            folder.name = nameInput.val().trim() || folder.name;
+            folder.parentId = pSel.val() || null;
+            markDirty();
+            renderScreenList();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      resize: function() {
+      },
+      open: function(trayEl) {
+        trayEl.append(container);
+        setTimeout(function() {
+          nameInput.focus();
+        }, 100);
+      },
+      close: function() {
+      },
+      show: function() {
+      }
+    };
+    if (window.RED && window.RED.tray) {
+      window.RED.tray.show(trayOptions);
+    }
+  }
+
   // src/sidebar/screens-panel.js
+  function labelOfComp(node) {
+    if (tree_exports && tree_exports.isSlotFrame && tree_exports.isSlotFrame(node)) return (node.name || node.slotLabel || node.inSlot) + (node.slotUnused ? " (not used)" : "");
+    if (node.name) return node.name;
+    if (node.type === "@group") return "Group";
+    if (node.type === "@frame") return "Frame";
+    if (node.type === "@template") {
+      var t2 = findTemplate(node.templateId);
+      return (t2 ? t2.name : "Template") + " (instance)";
+    }
+    if (node.type === "@lit-component") return "Lit Component";
+    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    return def && def.label || node.type;
+  }
+  function iconOfComp(node) {
+    if (node.type === "@group") return "fa fa-object-group";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "dialog") return "fa fa-window-maximize";
+    if (node.type === "@frame" && node.overlay && node.overlay.kind === "drawer") return "fa fa-columns";
+    if (tree_exports && tree_exports.isSlotFrame && tree_exports.isSlotFrame(node)) return "fa fa-window-maximize fa-rotate-180";
+    if (node.type === "@frame") return "fa fa-square-o";
+    if (node.type === "@template") {
+      var t2 = findTemplate(node.templateId);
+      return t2 && t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone";
+    }
+    if (node.type === "@lit-component") return "fa fa-code";
+    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    return def && def.icon || "fa fa-cube";
+  }
+  function buildComponentTreeRows(surface, list, orphan) {
+    return (list || []).slice().reverse().map(function(node) {
+      var vis = node.visibility || "show";
+      var eff = orphan ? vis : tree_exports && tree_exports.effectiveVisibility ? tree_exports.effectiveVisibility(surface, node.id) : vis;
+      var isCont = tree_exports && tree_exports.isContainer ? tree_exports.isContainer(node) : false;
+      var kids2 = isCont ? tree_exports.kids(node) : [];
+      return {
+        id: "screen-comp:" + surface.id + ":" + node.id,
+        compId: node.id,
+        surfaceId: surface.id,
+        label: labelOfComp(node),
+        title: labelOfComp(node) + " \u2014 " + node.type,
+        icon: iconOfComp(node),
+        container: isCont,
+        badge: isCont ? String(kids2.length) : "",
+        muted: eff !== "show" || !!node.slotUnused,
+        children: isCont ? buildComponentTreeRows(surface, kids2, orphan) : []
+      };
+    });
+  }
   function refreshLogicCanvasIfActive() {
     if (state.activeCanvasTab === "logic") renderLogicCanvas();
   }
@@ -36157,6 +37496,88 @@
       state.screensFlowsTreeEl.setAllCollapsed(true);
     }
   }
+  function openPropertiesDialogForId(id2) {
+    if (!id2) return;
+    if (id2.startsWith("screen-var:")) {
+      var parts = id2.split(":");
+      var sId = parts[1];
+      var varId = parts[2];
+      var s = state.screens.find(function(sc) {
+        return sc.id === sId;
+      });
+      var v = s && (s.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && s) openScreenVariablePropertiesDialog(v, s);
+      return;
+    }
+    if (id2.startsWith("template-var:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var varId = parts[2];
+      var t2 = findTemplate(tId);
+      var v = t2 && (t2.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v && t2) openTemplateVariablePropertiesDialog(v, t2);
+      return;
+    }
+    if (id2.startsWith("template-param:")) {
+      var parts = id2.split(":");
+      var tId = parts[1];
+      var paramId = parts[2];
+      var t2 = findTemplate(tId);
+      var p = t2 && (t2.params || []).find(function(x) {
+        return x.id === paramId;
+      });
+      if (p && t2) openTemplateParamPropertiesDialog(p, t2);
+      return;
+    }
+    if (id2.startsWith("app-var:")) {
+      var varId = id2.substring("app-var:".length);
+      var app2 = getApp();
+      var v = (app2.variables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v) openAppVariablePropertiesDialog(v);
+      return;
+    }
+    if (id2.startsWith("shared-var:")) {
+      var varId = id2.substring("shared-var:".length);
+      var app2 = getApp();
+      var v = (app2.sharedVariables || []).find(function(x) {
+        return x.id === varId;
+      });
+      if (v) openSharedVariablePropertiesDialog(v);
+      return;
+    }
+    var screen2 = state.screens.find(function(sc) {
+      return sc.id === id2;
+    });
+    if (screen2) {
+      openScreenPropertiesDialog(screen2);
+      return;
+    }
+    var template = findTemplate(id2);
+    if (template) {
+      if (template.kind === "component") {
+        openComponentTemplatePropertiesDialog(template);
+      } else {
+        openTemplatePropertiesDialog(template);
+      }
+      return;
+    }
+    var flow = findFlow(id2);
+    if (flow) {
+      openFlowPropertiesDialog(flow);
+      return;
+    }
+    var folder = findFolder(id2);
+    if (folder) {
+      openFolderPropertiesDialog(folder);
+      return;
+    }
+  }
   function addAppVariableFromSidebar() {
     var app2 = getApp();
     app2.variables = app2.variables || [];
@@ -36170,6 +37591,7 @@
     if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
       state.screensFlowsTreeEl.reveal("app-var:" + newVar.id);
     }
+    openAppVariablePropertiesDialog(newVar);
   }
   function addSharedVariableFromSidebar() {
     var app2 = getApp();
@@ -36184,6 +37606,7 @@
     if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
       state.screensFlowsTreeEl.reveal("shared-var:" + newVar.id);
     }
+    openSharedVariablePropertiesDialog(newVar);
   }
   function reorderInArray(arr, itemId, targetId, position) {
     var fromIdx = arr.findIndex(function(x) {
@@ -36205,7 +37628,7 @@
     }
     return true;
   }
-  function isFolderDescendant(ancestorId, testId) {
+  function isFolderDescendant2(ancestorId, testId) {
     var cur2 = findFolder(testId);
     var seen = {};
     while (cur2 && cur2.parentId) {
@@ -36227,6 +37650,7 @@
         type: "folder",
         children: [],
         actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Group Properties" },
           { id: "add-screen-in", icon: "fa fa-plus", title: "Add item in group" },
           { id: "delete", icon: "fa fa-trash-o", title: "Delete group" }
         ]
@@ -36326,6 +37750,28 @@
       }
     }
     state.screens.forEach(function(s) {
+      var compRows = buildComponentTreeRows(s, s.components || [], false);
+      if (s.orphans && s.orphans.length) {
+        compRows.push({
+          id: "screen-unplaced-group:" + s.id,
+          surfaceId: s.id,
+          label: "Unplaced",
+          icon: "fa fa-inbox",
+          container: true,
+          badge: String(s.orphans.length),
+          children: buildComponentTreeRows(s, s.orphans, true)
+        });
+      }
+      var compsGroup = {
+        id: "screen-comps-group:" + s.id,
+        surfaceId: s.id,
+        label: "Components",
+        icon: "fa fa-cubes",
+        type: "screen-comps-group",
+        container: true,
+        badge: String((s.components || []).length + (s.orphans ? s.orphans.length : 0)),
+        children: compRows
+      };
       var screenVars = (s.variables || []).map(function(v) {
         return {
           id: "screen-var:" + s.id + ":" + v.id,
@@ -36334,6 +37780,7 @@
           icon: "fa fa-tag",
           type: "screen-variable",
           actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
             { id: "delete-screen-var", icon: "fa fa-trash-o", title: "Delete variable" }
           ]
         };
@@ -36357,9 +37804,10 @@
         icon: "fa fa-desktop",
         type: "screen",
         container: true,
-        children: [varsGroup],
+        children: [compsGroup, varsGroup],
         muted: !!s.disabled,
         actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Screen Properties" },
           { id: "add-screen-var", icon: "fa fa-plus", title: "Add Variable" },
           { id: "convert", icon: "fa fa-exchange", title: "Convert to Template" },
           { id: "duplicate", icon: "fa fa-clone", title: "Duplicate screen" }
@@ -36373,6 +37821,28 @@
     state.templates.forEach(function(t2) {
       t2.variables = t2.variables || [];
       t2.params = t2.params || [];
+      var tmplCompRows = buildComponentTreeRows(t2, t2.components || [], false);
+      if (t2.orphans && t2.orphans.length) {
+        tmplCompRows.push({
+          id: "template-unplaced-group:" + t2.id,
+          surfaceId: t2.id,
+          label: "Unplaced",
+          icon: "fa fa-inbox",
+          container: true,
+          badge: String(t2.orphans.length),
+          children: buildComponentTreeRows(t2, t2.orphans, true)
+        });
+      }
+      var tmplCompsGroup = {
+        id: "template-comps-group:" + t2.id,
+        surfaceId: t2.id,
+        label: "Components",
+        icon: "fa fa-cubes",
+        type: "template-comps-group",
+        container: true,
+        badge: String((t2.components || []).length + (t2.orphans ? t2.orphans.length : 0)),
+        children: tmplCompRows
+      };
       var tmplVars = (t2.variables || []).map(function(v) {
         return {
           id: "template-var:" + t2.id + ":" + v.id,
@@ -36381,6 +37851,7 @@
           icon: "fa fa-tag",
           type: "template-variable",
           actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
             { id: "delete-template-var", icon: "fa fa-trash-o", title: "Delete variable" }
           ]
         };
@@ -36405,6 +37876,7 @@
           icon: "fa fa-sliders",
           type: "template-param",
           actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Parameter" },
             { id: "delete-template-param", icon: "fa fa-trash-o", title: "Delete parameter" }
           ]
         };
@@ -36428,8 +37900,9 @@
         icon: t2.kind === "component" ? "fa fa-puzzle-piece" : "fa fa-clone",
         type: "template",
         container: true,
-        children: [varsGroup, paramsGroup],
+        children: t2.kind === "component" ? [] : [tmplCompsGroup, varsGroup, paramsGroup],
         actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: t2.kind === "component" ? "Component Template Properties" : "Template Properties" },
           { id: "convert", icon: "fa fa-exchange", title: "Convert to Screen" },
           { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate template" },
           { id: "delete", icon: "fa fa-trash-o", title: "Delete template" }
@@ -36446,6 +37919,7 @@
         icon: "fa fa-code-fork",
         type: "flow",
         actions: [
+          { id: "edit-props", icon: "fa fa-sliders", title: "Flow Properties" },
           { id: "open", icon: "fa fa-external-link", title: "Open flow in new tab" },
           { id: "duplicate", icon: "fa fa-files-o", title: "Duplicate flow" },
           { id: "delete", icon: "fa fa-trash-o", title: "Delete flow" }
@@ -36473,6 +37947,7 @@
           icon: "fa fa-cube",
           type: "app-variable",
           actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
             { id: "delete-app-var", icon: "fa fa-trash-o", title: "Delete variable" }
           ]
         };
@@ -36493,10 +37968,11 @@
         return {
           id: "shared-var:" + v.id,
           label: v.name,
-          title: v.name + " (" + (v.type || "string") + " [realtime server sync])",
+          title: v.name + " (" + (v.type || "string") + " [realtime nexa io protocol])",
           icon: "fa fa-database",
           type: "shared-variable",
           actions: [
+            { id: "edit-props", icon: "fa fa-pencil", title: "Edit Variable" },
             { id: "delete-shared-var", icon: "fa fa-trash-o", title: "Delete variable" }
           ]
         };
@@ -36505,7 +37981,7 @@
     var screenFolderList = [], templateFolderList = [], flowFolderList = [];
     state.folders.forEach(function(f) {
       var node = folderNodes[f.id];
-      if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant(f.id, f.parentId)) {
+      if (f.parentId && folderNodes[f.parentId] && f.parentId !== f.id && !isFolderDescendant2(f.id, f.parentId)) {
         folderNodes[f.parentId].children.push(node);
       } else if (f.parentId === "section:templates" || f.category === "template") {
         templateFolderList.push(node);
@@ -36581,11 +38057,48 @@
       }
       return;
     }
+    if (id2.startsWith("screen-comp:")) {
+      var parts = id2.split(":");
+      var surfId = parts[1];
+      var compId = parts[2];
+      var scr = state.screens.find(function(s) {
+        return s.id === surfId;
+      });
+      if (scr) {
+        if (state.activeScreenId !== surfId || state.editingMode !== "screen") {
+          selectScreenFromSidebar(surfId);
+        }
+        selectOnly(compId);
+        renderActiveScreen();
+        return;
+      }
+      var tmpl = findTemplate(surfId);
+      if (tmpl) {
+        if (state.activeTemplateId !== surfId || state.editingMode !== "template") {
+          selectTemplateFromScreensPanel(surfId);
+        }
+        selectOnly(compId);
+        renderActiveScreen();
+        return;
+      }
+      return;
+    }
+    if (id2.startsWith("screen-comps-group:") || id2.startsWith("screen-unplaced-group:")) {
+      var sId = id2.split(":")[1];
+      if (state.activeScreenId !== sId) selectScreenFromSidebar(sId);
+      return;
+    }
+    if (id2.startsWith("template-comps-group:") || id2.startsWith("template-unplaced-group:")) {
+      var tId = id2.split(":")[1];
+      if (state.activeTemplateId !== tId) selectTemplateFromScreensPanel(tId);
+      return;
+    }
     if (id2.startsWith("app-var:")) {
       state.editingMode = "app-variable";
       state.activeAppVariableId = id2.substring("app-var:".length);
       if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
+      openPropertiesDialogForId(id2);
       return;
     }
     if (id2.startsWith("shared-var:")) {
@@ -36593,6 +38106,7 @@
       state.activeSharedVariableId = id2.substring("shared-var:".length);
       if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
+      openPropertiesDialogForId(id2);
       return;
     }
     if (id2.startsWith("screen-var:")) {
@@ -36602,6 +38116,7 @@
       state.activeScreenVariableId = parts[2];
       if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
+      openPropertiesDialogForId(id2);
       return;
     }
     if (id2.startsWith("screen-vars-group:")) {
@@ -36627,9 +38142,7 @@
       var tId = id2.substring("template-vars-group:".length);
       var tmpl = findTemplate(tId);
       if (state.activeTemplateId !== tId) {
-        state.activeTemplateId = tId;
-        renderActiveScreen();
-        updateCanvasTabsVisibility();
+        selectTemplateFromScreensPanel(tId);
       }
       if (tmpl && tmpl.variables && tmpl.variables.length) {
         state.editingMode = "template-variable";
@@ -36646,9 +38159,7 @@
       var tId = id2.substring("template-params-group:".length);
       var tmpl = findTemplate(tId);
       if (state.activeTemplateId !== tId) {
-        state.activeTemplateId = tId;
-        renderActiveScreen();
-        updateCanvasTabsVisibility();
+        selectTemplateFromScreensPanel(tId);
       }
       if (tmpl && tmpl.params && tmpl.params.length) {
         state.editingMode = "template-param";
@@ -36666,14 +38177,13 @@
       var tId = parts[1];
       var varId = parts[2];
       if (state.activeTemplateId !== tId) {
-        state.activeTemplateId = tId;
-        renderActiveScreen();
-        updateCanvasTabsVisibility();
+        selectTemplateFromScreensPanel(tId);
       }
       state.editingMode = "template-variable";
       state.activeTemplateVariableId = varId;
       if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
+      openPropertiesDialogForId(id2);
       return;
     }
     if (id2.startsWith("template-param:")) {
@@ -36681,14 +38191,13 @@
       var tId = parts[1];
       var paramId = parts[2];
       if (state.activeTemplateId !== tId) {
-        state.activeTemplateId = tId;
-        renderActiveScreen();
-        updateCanvasTabsVisibility();
+        selectTemplateFromScreensPanel(tId);
       }
       state.editingMode = "template-param";
       state.activeTemplateParamId = paramId;
       if (state.screensFlowsTreeEl) state.screensFlowsTreeEl.selected = [id2];
       renderScreenForm();
+      openPropertiesDialogForId(id2);
       return;
     }
     var screen2 = state.screens.find(function(s) {
@@ -36714,9 +38223,19 @@
       return;
     }
   }
+  function onScreensFlowsOpen(e) {
+    var id2 = e.detail && e.detail.id;
+    if (id2) {
+      openPropertiesDialogForId(id2);
+    }
+  }
   function onScreensFlowsAction(e) {
     var id2 = e.detail.id;
     var action = e.detail.action;
+    if (action === "edit-props") {
+      openPropertiesDialogForId(id2);
+      return;
+    }
     if (action === "add-screen") {
       addScreenFromSidebar({ parentId: null });
       return;
@@ -36771,6 +38290,7 @@
         if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
           state.screensFlowsTreeEl.reveal("screen-var:" + s.id + ":" + newVar.id);
         }
+        openScreenVariablePropertiesDialog(newVar, s);
         return;
       }
     }
@@ -36790,6 +38310,7 @@
         if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
           state.screensFlowsTreeEl.reveal("template-var:" + t2.id + ":" + newVar.id);
         }
+        openTemplateVariablePropertiesDialog(newVar, t2);
         return;
       }
     }
@@ -36829,6 +38350,7 @@
         if (state.screensFlowsTreeEl && typeof state.screensFlowsTreeEl.reveal === "function") {
           state.screensFlowsTreeEl.reveal("template-param:" + t2.id + ":" + newParam.id);
         }
+        openTemplateParamPropertiesDialog(newParam, t2);
         return;
       }
     }
@@ -37138,7 +38660,7 @@
       } else {
         var targetFolder = findFolder(d.targetId);
         if (targetFolder) {
-          if (item.type === "folder" && (item.id === targetFolder.id || isFolderDescendant(item.id, targetFolder.id))) {
+          if (item.type === "folder" && (item.id === targetFolder.id || isFolderDescendant2(item.id, targetFolder.id))) {
             return;
           }
           item.parentId = targetFolder.id;
@@ -37242,13 +38764,16 @@
     var hasNexaKit = typeof window !== "undefined" && (window.NexaKit || window.customElements && window.customElements.get("nx-tree"));
     if (hasNexaKit) {
       var treeHost = window.$("<div>", { "class": "nexa-screens-tree-host" }).css({
-        width: "100%",
-        "box-sizing": "border-box"
+        width: "max-content",
+        "min-width": "100%",
+        "box-sizing": "border-box",
+        display: "inline-block"
       }).appendTo(state.screenListEl);
       var treeEl2 = document.createElement("nx-tree");
       treeEl2.setAttribute("empty-text", "No items yet \u2014 click + Add Screen, Template or Flow");
       treeEl2.setAttribute("persist-key", "screens-flows:tree");
       treeEl2.addEventListener("nx-tree-select", onScreensFlowsSelect);
+      treeEl2.addEventListener("nx-tree-open", onScreensFlowsOpen);
       treeEl2.addEventListener("nx-tree-move", onScreensFlowsMove);
       treeEl2.addEventListener("nx-tree-action", onScreensFlowsAction);
       treeEl2.addEventListener("nx-tree-rename", onScreensFlowsRename);
@@ -37481,7 +39006,7 @@
     var pSel = window.$("<select>").css({ width: "100%" }).appendTo(pRow);
     window.$("<option>", { value: "" }).text("(Root level)").appendTo(pSel);
     state.folders.forEach(function(f) {
-      if (f.id !== folder.id && !isFolderDescendant(folder.id, f.id)) {
+      if (f.id !== folder.id && !isFolderDescendant2(folder.id, f.id)) {
         window.$("<option>", { value: f.id }).text(f.name).appendTo(pSel);
       }
     });
@@ -37526,7 +39051,7 @@
       color: isSharedVar ? "#065f46" : isAppVar ? "#5b21b6" : "#0369a1",
       "line-height": "1.4"
     }).html(
-      isSharedVar ? "<strong>Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the Nexa EtherNet/IP WebSocket IO system. Bind using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".' : isAppVar ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : isTmpl ? "<strong>Template-Scoped Variable (" + (surface ? surface.name : "Template") + ")</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{" + (variable2.name || "var") + "}</code>." : "<strong>Screen-Scoped Variable (" + (surface ? surface.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
+      isSharedVar ? "<strong>Realtime Shared Variable</strong><br>Synchronized across all screens, tabs, and client devices in realtime via the realtime nexa io protocol. Bind using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / "Watch Variable".' : isAppVar ? "<strong>Global App Variable</strong><br>Shared across every screen. Bind in components using <code>{" + (variable2.name || "var") + '}</code> or access in Logic via "Set Variable" / Function.' : isTmpl ? "<strong>Template-Scoped Variable (" + (surface ? surface.name : "Template") + ")</strong><br>Internal variable for this template. Available to all components inside this template. Bind in components using <code>{" + (variable2.name || "var") + "}</code>." : "<strong>Screen-Scoped Variable (" + (surface ? surface.name : "Screen") + ")</strong><br>Available to all components on this screen. Bind in components using <code>{" + (variable2.name || "var") + "}</code>."
     ).appendTo(state.screenFormEl);
     var nameRow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Variable Name").appendTo(nameRow);
@@ -37937,7 +39462,7 @@
     }
     row("Name", "name", screen2.name);
     row("URL path", "path", screen2.path);
-    var DEVICES = [
+    var DEVICES2 = [
       ["", "Custom size"],
       ["1920x1080", "Full HD 1920 \xD7 1080"],
       ["1366x768", "Laptop 1366 \xD7 768"],
@@ -37951,7 +39476,7 @@
     var presetRow = window.$("<div>").css({ "margin-bottom": "10px" }).appendTo(state.screenFormEl);
     window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", "margin-bottom": "4px", color: "var(--red-ui-secondary-text-color, #475569)" }).text("Device").appendTo(presetRow);
     var presetSel = window.$("<select>").css({ width: "100%" }).appendTo(presetRow);
-    DEVICES.forEach(function(d) {
+    DEVICES2.forEach(function(d) {
       window.$("<option>", { value: d[0] }).text(d[1]).appendTo(presetSel);
     });
     presetSel.val(screen2.width + "x" + screen2.height);
@@ -37991,7 +39516,7 @@
     });
     modeSel.val(screen2.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
-    var HELP3 = {
+    var HELP4 = {
       fixed: function() {
         return "Shown at exactly " + screen2.width + " \xD7 " + screen2.height + " px \u2014 for a known panel / device.";
       },
@@ -38000,7 +39525,7 @@
       fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout."
     };
     var syncHelp = function() {
-      var h = HELP3[modeSel.val()];
+      var h = HELP4[modeSel.val()];
       modeHelp.text(typeof h === "function" ? h() : h || "");
     };
     syncHelp();
@@ -39634,7 +41159,7 @@
     var ul = window.$("<ul>").appendTo(tabsWrap);
     var panesWrap = window.$("<div>").css({ flex: "1 1 auto", overflow: "auto", position: "relative" }).appendTo(container);
     state.componentsPane = window.$("<div>").css({ padding: "8px", display: "flex", "flex-direction": "column" }).appendTo(panesWrap);
-    var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
+    var screensPane = window.$("<div>", { "class": "nexa-screens-pane" }).css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
     state.propertiesPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.hierarchyPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.eventsPane = window.$("<div>").css({ padding: "8px", display: "none", "flex-direction": "column" }).appendTo(panesWrap);
@@ -39643,19 +41168,6 @@
     state.breakpointsPane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.themePane = window.$("<div>").css({ padding: "8px", display: "none" }).appendTo(panesWrap);
     state.sparkplugPane = window.$("<div>").css({ padding: "0", display: "none", "flex-direction": "column", height: "100%", width: "100%", "box-sizing": "border-box" }).appendTo(panesWrap);
-    var screensSplit = window.$("<div>").css({ display: "flex", "flex-direction": "row", height: "100%", width: "100%", "min-height": "400px", "box-sizing": "border-box" }).appendTo(screensPane);
-    var screenLeftCol = window.$("<div>").css({
-      flex: "0 0 280px",
-      width: "280px",
-      "min-width": "220px",
-      "max-width": "360px",
-      display: "flex",
-      "flex-direction": "column",
-      height: "100%",
-      "border-right": "1px solid var(--red-ui-secondary-border-color, #e0e0e0)",
-      background: "var(--red-ui-secondary-background, #fafafa)",
-      "box-sizing": "border-box"
-    }).appendTo(screensSplit);
     var screenToolbar = window.$("<div>").css({
       display: "flex",
       "flex-direction": "column",
@@ -39663,8 +41175,10 @@
       padding: "8px 10px",
       "border-bottom": "1px solid var(--red-ui-secondary-border-color, #f0f0f0)",
       background: "var(--red-ui-tertiary-background, #f8fafc)",
-      "flex-shrink": "0"
-    }).appendTo(screenLeftCol);
+      "flex-shrink": "0",
+      width: "100%",
+      "box-sizing": "border-box"
+    }).appendTo(screensPane);
     var screenTitleRow = window.$("<div>").css({
       display: "flex",
       "align-items": "center",
@@ -39675,28 +41189,29 @@
     var expandCollapseGroup = window.$("<div>").css({ display: "flex", gap: "3px", "align-items": "center" }).appendTo(screenTitleRow);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Expand all" }).html("<i class='fa fa-angle-double-down'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", expandAllScreensTree).appendTo(expandCollapseGroup);
     window.$("<button>", { type: "button", "class": "red-ui-button red-ui-button-small", title: "Collapse all" }).html("<i class='fa fa-angle-double-up'></i>").css({ padding: "1px 6px", height: "20px", "line-height": "16px", "font-size": "11px" }).on("click", collapseAllScreensTree).appendTo(expandCollapseGroup);
-    var screenListWrap = window.$("<div>").css({ flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", padding: "6px" }).appendTo(screenLeftCol);
-    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).appendTo(screenListWrap);
-    var screenRightCol = window.$("<div>").css({
+    var screenListWrap = window.$("<div>").css({
       flex: "1 1 auto",
-      display: "flex",
-      "flex-direction": "column",
-      height: "100%",
-      "overflow-y": "auto",
-      padding: "12px 16px",
-      "box-sizing": "border-box",
-      background: "var(--red-ui-primary-background, #fff)"
-    }).appendTo(screensSplit);
-    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form" }).appendTo(screenRightCol);
+      "min-height": "0",
+      width: "100%",
+      overflow: "auto",
+      padding: "6px",
+      "box-sizing": "border-box"
+    }).appendTo(screensPane);
+    state.screenListEl = window.$("<div>", { "class": "nexa-screen-list" }).css({
+      width: "100%",
+      "min-width": "100%",
+      "box-sizing": "border-box"
+    }).appendTo(screenListWrap);
+    state.screenFormEl = window.$("<div>", { "class": "nexa-screen-form nexa-template-form", style: "display:none;" }).appendTo(screensPane);
     state.templateFormEl = state.screenFormEl;
-    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" });
+    state.templateListEl = window.$("<div>", { "class": "nexa-template-list" }).appendTo(screensPane);
     state.sidebarTabs = window.RED.tabs.create({
       element: ul,
       // many tabs: they keep a readable width and scroll sideways (instead of squeezing)
       scrollable: true,
       onchange: function(tab) {
         if (!tab) return;
-        screensPane.toggle(tab.id === "screens");
+        screensPane.css("display", tab.id === "screens" ? "flex" : "none");
         state.componentsPane.css("display", tab.id === "components" ? "flex" : "none");
         state.hierarchyPane.toggle(tab.id === "hierarchy");
         state.eventsPane.css("display", tab.id === "events" ? "flex" : "none");
@@ -39709,7 +41224,7 @@
         if (tab.id === "screens") {
           ensureScreensLoaded(function() {
             renderScreenList();
-            renderScreenForm();
+            if (typeof renderScreenForm === "function") renderScreenForm();
           });
         }
         if (tab.id === "components") buildPalette(state.componentsPane);
