@@ -86,6 +86,9 @@ function getLogicNodeMeta(type) {
         return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "link-request") return { color: "#f0d4d7", icon: "fa-exchange", portOut: true, portIn: true };
+    if (type === "link-send") return { color: "#f0d4d7", icon: "fa-sign-out", portOut: true, portIn: true };
+    if (type === "link-receive") return { color: "#f0d4d7", icon: "fa-sign-in", portOut: true, portIn: false };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
@@ -514,6 +517,12 @@ export function renderEventsPanel() {
     chip(state.eventsPane, "HTTP Request", function () { return { type: "http-request", method: "GET", url: "", body: "payload", timeout: 10000 }; }, "", "http-request");
     chip(state.eventsPane, "Storage", function () { return { type: "storage", action: "get", store: "local", key: "", target: "payload", valueSource: "payload" }; }, "", "storage");
     chip(state.eventsPane, "Cookie", function () { return { type: "cookie", action: "get", name: "", target: "payload", valueSource: "payload", path: "/", sameSite: "Lax" }; }, "", "cookie");
+
+    // Nexa Link: a real Node-RED flow, on the server (DB, API keys) — "from Nexa" / "to Nexa" nodes there
+    sectionHeader(state.eventsPane, "Node-RED flow");
+    chip(state.eventsPane, "Request (wait for the flow's answer)", function () { return { type: "link-request", channel: "" }; }, "", "link-request");
+    chip(state.eventsPane, "To Node-RED", function () { return { type: "link-send", channel: "" }; }, "", "link-send");
+    chip(state.eventsPane, "From Node-RED", function () { return { type: "link-receive", channel: "" }; }, "", "link-receive");
 
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function () { return { type: "sparkplug-write", tag: "" }; }, "", "sparkplug-write");

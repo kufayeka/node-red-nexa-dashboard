@@ -10,7 +10,8 @@
     },
     "nodes": {
       "kufayeka-nexa-project": "nodes/nexa-project.js",
-      "kufayeka-nexa-sparkplug": "nodes/nexa-sparkplug.js"
+      "kufayeka-nexa-sparkplug": "nodes/nexa-sparkplug.js",
+      "kufayeka-nexa-link": "nodes/nexa-link.js"
     }
   },
   "dependencies": {

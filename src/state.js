@@ -56,6 +56,10 @@ export const LOGIC_NODE_KINDS = {
     "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
+    // Nexa Link: a real Node-RED flow ("from Nexa" / "to Nexa" nodes, a channel config node); runs on the server
+    "link-request": { label: "Request", hasInput: true, hasOutput: true, outputs: 2, outputLabels: ["answer", "error"], color: "#8f2f3a" },
+    "link-send": { label: "To Node-RED", hasInput: true, hasOutput: true, color: "#8f2f3a" },
+    "link-receive": { label: "From Node-RED", hasInput: false, hasOutput: true, color: "#8f2f3a" },
     // the repeater: a container filled with a template, one card per item
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
@@ -172,6 +176,14 @@ export const state = {
 
 // The editor's live state, reachable from the browser console and the tests.
 if (typeof window !== "undefined") window.__nexaEditorState = state;
+
+/** How many output ports a Logic node draws: a Switch has one per rule, a kind may declare `outputs`. */
+export function logicOutputCount(node) {
+    if (!node) return 1;
+    if (node.type === "switch") return (node.rules && node.rules.length) ? node.rules.length : 1;
+    var kind = LOGIC_NODE_KINDS[node.type];
+    return kind && kind.outputs > 1 ? kind.outputs : 1;
+}
 
 export function genId() {
     return "n" + Math.random().toString(16).slice(2, 10);

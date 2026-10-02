@@ -21,6 +21,7 @@ import { interpolateProps, refreshComponentRender, fireParamInputForInstance, se
 import { makeCtx, fireLifecycle, runLogicGraph } from "../logic/runner.js";
 import { registerSparkplugBoundComponentsFrom } from "../io/sparkplug.js";
 import { setUpSparkplugLiveBinding } from "../io/client.js";
+import { syncLinkSubscriptions } from "../logic/nodes/link-nodes.js";
 import { cloneMsg } from "../logic/context.js";
 import { startBreakpoints } from "./breakpoints.js";
 import { startTheme } from "./theme.js";
@@ -749,6 +750,8 @@ export function mountScreen(screen, templates, forwardPayload) {
     });
 
     CURRENT_EFFECTIVE_SCREEN = effectiveScreen;
+    // Nexa Link: listen to the channels this screen's (and the active flow's) From Node-RED nodes use
+    syncLinkSubscriptions([effectiveScreen, CURRENT_ACTIVE_FLOW_SCREEN], runLogicGraph);
 
     var initialLoadMsg = forwardPayload !== undefined ? { payload: forwardPayload } : { payload: null };
     fireLifecycle(effectiveScreen, "onload", initialLoadMsg);

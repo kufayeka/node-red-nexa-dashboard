@@ -20,6 +20,7 @@
 //                   {type:"sparkplug-delta", serialized}      -- broadcast to SSE clients
 //                   {type:"sparkplug-snapshot", snapshot, resync}
 //                   {type:"write-result", requestId, ok}
+//                   {type:"link-port", port}                 -- where Nexa Link listens (null: not running)
 //   worker -> main: {type:"listening", port}
 //                   {type:"write-request", requestId, groupId, edgeNodeId, deviceId, metrics}
 //
@@ -58,6 +59,11 @@ var sparkplugSnapshot = workerData.sparkplugSnapshot || {};
 var assets = require("../assets.js");
 var assetStore = workerData.assetsDir ? assets.createAssetStore(workerData.assetsDir) : null;
 var templatesJsonCache = { forProject: null, json: null };
+// Nexa Link (src/server/link/): a page asks /_link-info where the link worker
+// listens and gets a token for it. No CORS header: only a page of this origin can read it.
+var linkToken = require("../link/token.js");
+var linkSecret = workerData.linkSecret || null;
+var linkPort = workerData.linkPort || null;
 var sseClients = []; // [{res, keepAlive}]
 var pendingWrites = new Map(); // requestId -> {res} (HTTP POST) | {io: {client, id}} (Nexa IO explicit write)
 var writeRequestSeq = 0;
@@ -537,6 +543,13 @@ var server = http.createServer(function (req, res) {
     if (req.method === "POST" && pathname === RUNTIME_PREFIX + "/_sparkplug-write") {
         handleSparkplugWrite(req, res); return;
     }
+    if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_link-info") {
+        var info = linkPort && linkSecret ? { port: linkPort, token: linkToken.issueToken(linkSecret) } : { port: null };
+        var infoBody = JSON.stringify(info);
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store", "Content-Length": Buffer.byteLength(infoBody) });
+        res.end(infoBody);
+        return;
+    }
     if (req.method === "GET" && pathname === RUNTIME_PREFIX + "/_screens") {
         sendJson(res, 200, project.screens || []); return;
     }
@@ -585,6 +598,10 @@ parentPort.on("message", function (msg) {
         syncSharedVarsFromProject(project);
         componentScriptSrcs = msg.componentScriptSrcs || [];
         if (msg.nodeRedPort) nodeRedPort = msg.nodeRedPort;
+        return;
+    }
+    if (msg.type === "link-port") {
+        linkPort = msg.port || null;
         return;
     }
     if (msg.type === "sparkplug-delta") {

@@ -3,6 +3,8 @@ const { getCurrentProject } = require("../../nodes/nexa-project.js");
 const { Worker } = require("worker_threads");
 const path = require("path");
 const { createAssetStore, assetHeaders, MAX_BYTES: ASSET_MAX_BYTES, WARN_BYTES: ASSET_WARN_BYTES, WARN_PX: ASSET_WARN_PX } = require("./assets.js");
+// Nexa Link (page <-> flow messages): its own worker + port, see src/server/link/bridge.js
+const linkBridge = require("./link/bridge.js");
 
 // Deployed-screen HTTP server (rendering, static assets, SSE, write-back)
 // runs in its OWN worker thread on its OWN dedicated port — see
@@ -62,6 +64,7 @@ module.exports = function(RED) {
   let screenWorker = null;
   let snapshotRefreshInterval = null;
   let activeScreenWorkerPort = null;
+  let linkBridgeOff = null;
 
   // the dashboard's own components (Image…): a component package like any plugin's
   require("../../sdk/package")(RED, {
@@ -202,7 +205,10 @@ module.exports = function(RED) {
           // to reach it (see lib/screen-worker.js's renderScreenHtml).
           nodeRedPort: (RED.settings && RED.settings.uiPort) || 1880,
           sparkplugSnapshot: initialSparkplugNode ? initialSparkplugNode.getSnapshot() : {},
-          assetsDir: assetStore.dir
+          assetsDir: assetStore.dir,
+          // the page asks the screen worker (/nexa/_link-info) where the link is + a token signed with this
+          linkSecret: linkBridge.getSecret(),
+          linkPort: linkBridge.getPort()
         });
         screenWorker.on("message", function (msg) {
           if (!msg) return;
@@ -227,6 +233,10 @@ module.exports = function(RED) {
         });
       }
       startScreenWorker();
+      // the link worker starts / stops with the deployed channels; tell the screen worker where it is
+      const onLinkPort = function (port) { if (screenWorker) screenWorker.postMessage({ type: "link-port", port: port }); };
+      linkBridge.on("port", onLinkPort);
+      linkBridgeOff = function () { linkBridge.removeListener("port", onLinkPort); };
 
       // A redeploy can change the project's own screens/templates (or which
       // UI component packages are registered) — push the latest to the
@@ -358,6 +368,7 @@ module.exports = function(RED) {
     },
     onremove: function() {
       if (snapshotRefreshInterval) { clearInterval(snapshotRefreshInterval); snapshotRefreshInterval = null; }
+      if (linkBridgeOff) { linkBridgeOff(); linkBridgeOff = null; }
       if (screenWorker) {
         screenWorker.postMessage({ type: "close" });
         screenWorker.terminate().catch(function () {});

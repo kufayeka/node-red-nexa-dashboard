@@ -41,6 +41,8 @@ const STANDALONE_TESTS = [
     "mock-nexa-plugin-screen-worker-relay.js", "mock-sparkplug-worker.js", "mock-sparkplug-worker-integration.js",
     "mock-screen-worker.js", "mock-screen-worker-integration.js", "mock-delta-batcher.js",
     "mock-io-hub.js", "mock-io-worker-integration.js", "mock-assets.js",
+    // Nexa Link (page <-> Node-RED flow): frame + hub without sockets, then the real worker + nodes + a WebSocket
+    "link-hub.test.js", "link-worker-integration.test.js",
     // Nexa SDK: pure modules in Node, then the SDK + property kit in headless Chrome (skipped without Chrome)
     "sdk-format.test.js", "sdk-schema.test.js", "sdk-kit-browser.test.js",
     // the node tree, frames / auto layout (model in Node; deployed page in headless Chrome)

@@ -1,0 +1,181 @@
+<script type="text/javascript">
+(function () {
+    // one-choice typedInput (Node-RED standard for a dropdown field)
+    function choice(id, options) {
+        $(id).typedInput({ types: [{ value: "choice", options: options }] });
+    }
+    function num(id) {
+        $(id).typedInput({ types: ["num"] });
+    }
+
+    RED.nodes.registerType("kufayeka-nexa-channel", {
+        category: "config",
+        defaults: {
+            name: { value: "", required: true },
+            maxMb: { value: 32, validate: RED.validators.number() },
+            timeoutS: { value: 10, validate: RED.validators.number() },
+            delivery: { value: "queue" },
+            retain: { value: false },
+            compress: { value: "off" }
+        },
+        label: function () { return this.name || "Nexa channel"; },
+        oneditprepare: function () {
+            num("#node-config-input-maxMb");
+            num("#node-config-input-timeoutS");
+            choice("#node-config-input-delivery", [
+                { value: "queue", label: "Queue: every message arrives (data, charts)" },
+                { value: "latest", label: "Latest: a slow page gets only the newest (status)" }
+            ]);
+            choice("#node-config-input-compress", [
+                { value: "off", label: "Off (LAN)" },
+                { value: "auto", label: "Auto: compress payloads over 16 KB (WAN, 4G, VPN)" }
+            ]);
+        }
+    });
+
+    RED.nodes.registerType("kufayeka-nexa-from", {
+        category: "Nexa",
+        color: "#9fc6e7",
+        defaults: {
+            name: { value: "" },
+            channel: { value: "", type: "kufayeka-nexa-channel", required: true }
+        },
+        inputs: 0,
+        outputs: 1,
+        icon: "font-awesome/fa-sign-in",
+        paletteLabel: "from Nexa",
+        label: function () {
+            var ch = this.channel && RED.nodes.node(this.channel);
+            return this.name || ("from Nexa: " + (ch ? ch.name : "?"));
+        },
+        labelStyle: function () { return this.name ? "node_label_italic" : ""; }
+    });
+
+    RED.nodes.registerType("kufayeka-nexa-to", {
+        category: "Nexa",
+        color: "#9fc6e7",
+        defaults: {
+            name: { value: "" },
+            channel: { value: "", type: "kufayeka-nexa-channel", required: false },
+            target: { value: "auto" }
+        },
+        inputs: 1,
+        outputs: 0,
+        icon: "font-awesome/fa-sign-out",
+        align: "right",
+        paletteLabel: "to Nexa",
+        label: function () {
+            var ch = this.channel && RED.nodes.node(this.channel);
+            return this.name || ("to Nexa: " + (ch ? ch.name : "reply"));
+        },
+        labelStyle: function () { return this.name ? "node_label_italic" : ""; },
+        oneditprepare: function () {
+            choice("#node-input-target", [
+                { value: "auto", label: "Answer the request, otherwise every page on the channel" },
+                { value: "all", label: "Every page listening on the channel" },
+                { value: "client", label: "Only the page in msg._nexa" }
+            ]);
+        }
+    });
+})();
+</script>
+
+<script type="text/html" data-template-name="kufayeka-nexa-channel">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="products">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-maxMb"><i class="fa fa-arrows-v"></i> Max size (MB)</label>
+        <input type="text" id="node-config-input-maxMb" style="width: calc(100% - 110px);">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-timeoutS"><i class="fa fa-clock-o"></i> Timeout (s)</label>
+        <input type="text" id="node-config-input-timeoutS" style="width: calc(100% - 110px);">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-delivery"><i class="fa fa-truck"></i> Delivery</label>
+        <input type="text" id="node-config-input-delivery" style="width: calc(100% - 110px);">
+    </div>
+    <div class="form-row">
+        <label>&nbsp;</label>
+        <input type="checkbox" id="node-config-input-retain" style="display:inline-block; width:auto; vertical-align:middle;">
+        <label for="node-config-input-retain" style="width:auto;">Retain: a page that opens later gets the last message</label>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-compress"><i class="fa fa-compress"></i> Compression</label>
+        <input type="text" id="node-config-input-compress" style="width: calc(100% - 110px);">
+    </div>
+    <div class="form-tips">Timeout applies to requests (a Request node on the page). Max size applies both ways.</div>
+</script>
+
+<script type="text/html" data-template-name="kufayeka-nexa-from">
+    <div class="form-row">
+        <label for="node-input-channel"><i class="fa fa-exchange"></i> Channel</label>
+        <input type="text" id="node-input-channel">
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+</script>
+
+<script type="text/html" data-template-name="kufayeka-nexa-to">
+    <div class="form-row">
+        <label for="node-input-channel"><i class="fa fa-exchange"></i> Channel</label>
+        <input type="text" id="node-input-channel">
+    </div>
+    <div class="form-row">
+        <label for="node-input-target"><i class="fa fa-bullseye"></i> Send to</label>
+        <input type="text" id="node-input-target" style="width: calc(100% - 110px);">
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="kufayeka-nexa-channel">
+    <p>A channel between Nexa pages and this flow. Pick it on both sides: in a <b>from Nexa</b> / <b>to Nexa</b> node here,
+    and in a Request / To Node-RED / From Node-RED node on a Nexa screen.</p>
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Max size</dt><dd>The largest payload, either way. Default 32 MB.</dd>
+        <dt>Timeout</dt><dd>How long a Request on the page waits for the flow's answer. Default 10 s.</dd>
+        <dt>Delivery</dt><dd><b>Queue</b>: every message reaches every page, in order (data, charts).
+            <b>Latest</b>: a page that can't keep up gets only the newest message (status).</dd>
+        <dt>Retain</dt><dd>Keep the last pushed message; a page that opens later gets it right away.</dd>
+        <dt>Compression</dt><dd><b>Auto</b> compresses payloads over 16 KB (JSON shrinks 5–8×). Worth it on slow links; on a LAN leave it off.</dd>
+    </dl>
+    <p>Links run on their own WebSocket and worker thread (port <code>nexaDashboard.linkWorkerPort</code>, default: the screen port + 1),
+    apart from the tags, so a big payload never slows the live values.</p>
+</script>
+
+<script type="text/html" data-help-name="kufayeka-nexa-from">
+    <p>Messages from Nexa pages: a <b>To Node-RED</b> or a <b>Request</b> node on a screen, on this channel.</p>
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any | buffer</span></dt><dd>What the page sent (JSON, or a Buffer for binary).</dd>
+        <dt>topic <span class="property-type">string</span></dt><dd>The channel's name.</dd>
+        <dt>_nexa <span class="property-type">object</span></dt><dd><code>{channel, client, screen, ip}</code>, plus <code>reqId</code> for a Request.
+            Keep it on the message: a <b>to Nexa</b> node uses it to answer.</dd>
+    </dl>
+    <p>A Request waits for a <b>to Nexa</b> node to answer it (within the channel's timeout).</p>
+</script>
+
+<script type="text/html" data-help-name="kufayeka-nexa-to">
+    <p>Sends <code>msg.payload</code> to Nexa pages.</p>
+    <h3>Send to</h3>
+    <dl class="message-properties">
+        <dt>Auto</dt><dd>If the message came from a Request (<code>msg._nexa.reqId</code>), answer it. Otherwise push to every page listening on the channel (a <b>From Node-RED</b> node).</dd>
+        <dt>Every page</dt><dd>Push to every page listening on the channel.</dd>
+        <dt>Only the page in msg._nexa</dt><dd>Push to the one page the message came from.</dd>
+    </dl>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any | buffer</span></dt><dd>Sent as JSON; a Buffer / typed array is sent as binary (the page gets an ArrayBuffer).</dd>
+        <dt class="optional">error <span class="property-type">string | object</span></dt><dd>When answering a request: the page's Request node takes its error output with this message (works with a Catch node).</dd>
+    </dl>
+    <p>Big payloads are fine: they are serialized once, cut into 64 KB chunks and paced, on a connection of their own.
+    For tens of MB, page the data instead (send <code>page</code> / <code>limit</code> in the request).</p>
+</script>

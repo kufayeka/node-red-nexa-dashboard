@@ -67,6 +67,8 @@ async function withPage(file, fn, opts) {
         await send("Page.enable");
         await send("Emulation.setFocusEmulationEnabled", { enabled: true });
         if (opts.width) await send("Emulation.setDeviceMetricsOverride", { width: opts.width, height: opts.height || 900, deviceScaleFactor: 1, mobile: false });
+        // runs before any script of the page (e.g. to wrap WebSocket and time its frames)
+        if (opts.initScript) await send("Page.addScriptToEvaluateOnNewDocument", { source: opts.initScript });
         await send("Page.navigate", { url: /^https?:/.test(file) ? file : pathToFileURL(file).href });
         const ready = opts.ready || "document.readyState === 'complete' && !!window.T";
         for (let i = 0; i < (opts.readyTries || 40) && !(await js(ready).catch(() => false)); i++) await sleep(100);

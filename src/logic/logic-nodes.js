@@ -1,7 +1,8 @@
 import {
     state, SVG_NS, LOGIC_CANVAS_W, LOGIC_CANVAS_H, LOGIC_NODE_W, LOGIC_NODE_H,
-    LOGIC_NODE_KINDS, snapLogic, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty, Tree
+    LOGIC_NODE_KINDS, snapLogic, getActiveScreen, findComponent, findTemplate, findLogicNode, genId, markDirty, Tree, logicOutputCount
 } from "../state.js";
+import { openLinkNodeEditor, linkNodeLabel } from "../dialogs/link-dialog.js";
 import { pushHistory } from "../history.js";
 import { wireLogicOutputPort, renderLogicWires } from "./logic-wires.js";
 import { isLogicSelected, selectLogicOnly, refreshLogicSelectionVisuals, syncComponentFromLogicSelection } from "./logic-selection.js";
@@ -113,6 +114,9 @@ export function logicNodeLabel(node) {
         var tpl = node.template ? findTemplate(node.template) : null;
         var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
         return modeWord + (target ? (target.name || "Frame") : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " × " + (tpl ? tpl.name : "?") + (node.itemParam ? " → " + node.itemParam : ""));
+    }
+    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
+        return linkNodeLabel(node);
     }
     if (node.type === "http-request") {
         var u = node.url || "";
@@ -227,10 +231,8 @@ export function logicNodeWidth(node) {
 }
 
 export function logicNodeHeight(node) {
-    if (node && node.type === "switch") {
-        var numRules = (node.rules && node.rules.length) ? node.rules.length : 1;
-        return Math.max(LOGIC_NODE_H, numRules * 20 + 10);
-    }
+    var numPorts = logicOutputCount(node);
+    if (numPorts > 1) return Math.max(LOGIC_NODE_H, numPorts * 20 + 10);
     return LOGIC_NODE_H;
 }
 
@@ -444,6 +446,12 @@ export function renderLogicNode(node) {
             openPopulateNodeEditor(node);
         });
     }
+    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
+        box.attr("title", "Double-click to choose the channel").on("dblclick", function (e) {
+            e.stopPropagation();
+            openLinkNodeEditor(node);
+        });
+    }
     if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
         box.attr("title", "Double-click to configure").on("dblclick", function (e) {
             e.stopPropagation();
@@ -488,9 +496,9 @@ export function renderLogicNode(node) {
     }
 
     if (kind.hasOutput) {
-        if (node.type === "switch") {
-            var rules = (node.rules && node.rules.length) ? node.rules : [{ t: "eq", v: "", vt: "str" }];
-            var numPorts = rules.length;
+        var numPorts = logicOutputCount(node);
+        if (numPorts > 1) {
+            var rules = node.type === "switch" ? ((node.rules && node.rules.length) ? node.rules : [{ t: "eq", v: "", vt: "str" }]) : null;
             for (var pIdx = 0; pIdx < numPorts; pIdx++) {
                 var yOffset = ((pIdx + 1) / (numPorts + 1)) * nodeH;
                 var outDot = window.$("<div>", {
@@ -501,7 +509,7 @@ export function renderLogicNode(node) {
                     width: "8px", height: "8px",
                     background: "var(--red-ui-node-border, #999)", cursor: "crosshair",
                     transform: "scale(" + (1 / state.logicZoomLevel) + ")"
-                }).attr("title", "Port " + (pIdx + 1) + ": " + (rules[pIdx] ? (rules[pIdx].t || "rule") : "")).appendTo(box);
+                }).attr("title", "Port " + (pIdx + 1) + ": " + (rules ? (rules[pIdx] ? (rules[pIdx].t || "rule") : "") : ((kind.outputLabels || [])[pIdx] || ""))).appendTo(box);
                 wireLogicOutputPort(outDot, node, pIdx);
             }
         } else {

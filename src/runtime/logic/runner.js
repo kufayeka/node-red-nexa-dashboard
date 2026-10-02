@@ -13,6 +13,7 @@ import { updateInstanceParam, applyLayerControlUpdates, refreshComponentRender, 
 import { setVariable, setVariablesMulti, getVariablesMulti } from "./nodes/variable-nodes.js";
 import { runSwitchNode, runDelayNode } from "./nodes/control-nodes.js";
 import { runHttpNode, runStorageNode, runCookieNode } from "./nodes/data-nodes.js";
+import { runLinkRequestNode, runLinkSendNode } from "./nodes/link-nodes.js";
 import { sendSparkplugWrite } from "../io/client.js";
 import { parseSparkplugBindingPath } from "../io/sparkplug.js";
 import { runPopulate, sendToHost, elById } from "./widgets/populate.js";
@@ -89,6 +90,15 @@ export function runLogicGraph(screen, node, msg, budget) {
         return;
     } else if (node.type === "http-request") {
         runHttpNode(screen, node, msg, function (res) { continuePropagation(screen, node, res, budget); });
+        return;
+    } else if (node.type === "link-request") {
+        runLinkRequestNode(screen, node, msg, budget, continueFromPort);
+        return;
+    } else if (node.type === "link-send") {
+        runLinkSendNode(screen, node, msg, budget, continuePropagation);
+        return;
+    } else if (node.type === "link-receive") {
+        continuePropagation(screen, node, outMsg, budget);
         return;
     } else if (node.type === "populate") {
         if (node.container) runPopulate(screen, node, msg);
@@ -279,6 +289,17 @@ export function continuePropagation(screen, sourceNode, msg, budget) {
     var msgs = targets.map(function (_t, i) { return i === 0 ? msg : cloneMsg(msg); });
     targets.forEach(function (targetNode, i) {
         runLogicGraph(screen, targetNode, msgs[i], budget);
+    });
+}
+
+/** Like continuePropagation, for a node with several outputs: only the wires leaving output `port` (0-based). */
+export function continueFromPort(screen, sourceNode, msg, port, budget) {
+    if (msg === null || msg === undefined) return;
+    var rawWires = (screen.logic && screen.logic.wires) || [];
+    var wires = Array.isArray(rawWires) ? rawWires.filter(function (w) { return w && w.from === sourceNode.id && (w.fromPort || 0) === port; }) : [];
+    var targets = wires.map(function (w) { return findLogicNode(screen, w.to); }).filter(Boolean);
+    targets.forEach(function (targetNode, i) {
+        runLogicGraph(screen, targetNode, i === 0 ? msg : cloneMsg(msg), budget);
     });
 }
 

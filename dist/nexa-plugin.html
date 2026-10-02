@@ -147,6 +147,7 @@
     isNodeInteractable: () => isNodeInteractable,
     isNodeLocked: () => isNodeLocked,
     isNodeVisible: () => isNodeVisible,
+    logicOutputCount: () => logicOutputCount,
     makeFlow: () => makeFlow,
     makeFolder: () => makeFolder,
     makeScreen: () => makeScreen,
@@ -2061,6 +2062,10 @@
     "on-variable-change": { label: "Watch Variable", hasInput: false, hasOutput: true, color: "#4b7d4b" },
     // web / data: an API call (async, continues when the response is in), browser storage, cookies
     "http-request": { label: "HTTP Request", hasInput: true, hasOutput: true, color: "#3a8fb0" },
+    // Nexa Link: a real Node-RED flow ("from Nexa" / "to Nexa" nodes, a channel config node); runs on the server
+    "link-request": { label: "Request", hasInput: true, hasOutput: true, outputs: 2, outputLabels: ["answer", "error"], color: "#8f2f3a" },
+    "link-send": { label: "To Node-RED", hasInput: true, hasOutput: true, color: "#8f2f3a" },
+    "link-receive": { label: "From Node-RED", hasInput: false, hasOutput: true, color: "#8f2f3a" },
     // the repeater: a container filled with a template, one card per item
     "populate": { label: "Populate", hasInput: true, hasOutput: true, color: "#5b8a3a" },
     // a container (frame) as a Logic node: Populate -> [Layout: Column] fills that column
@@ -2166,6 +2171,12 @@
     templateParamsEl: null
   };
   if (typeof window !== "undefined") window.__nexaEditorState = state;
+  function logicOutputCount(node) {
+    if (!node) return 1;
+    if (node.type === "switch") return node.rules && node.rules.length ? node.rules.length : 1;
+    var kind = LOGIC_NODE_KINDS[node.type];
+    return kind && kind.outputs > 1 ? kind.outputs : 1;
+  }
   function genId() {
     return "n" + Math.random().toString(16).slice(2, 10);
   }
@@ -2770,7 +2781,7 @@
   // src/history.js
   var _renderActiveScreenFn = null;
   var _renderLogicCanvasFn = null;
-  var MAX_HISTORY = 20;
+  var MAX_HISTORY = 50;
   function registerHistoryRenderers(renderActiveScreen2, renderLogicCanvas2) {
     _renderActiveScreenFn = renderActiveScreen2;
     _renderLogicCanvasFn = renderLogicCanvas2;
@@ -28342,6 +28353,9 @@
       return { color: "#fce8b2", icon: "fa-compress", portOut: true, portIn: true };
     }
     if (type === "http-request") return { color: "#cde6f2", icon: "fa-globe", portOut: true, portIn: true };
+    if (type === "link-request") return { color: "#f0d4d7", icon: "fa-exchange", portOut: true, portIn: true };
+    if (type === "link-send") return { color: "#f0d4d7", icon: "fa-sign-out", portOut: true, portIn: true };
+    if (type === "link-receive") return { color: "#f0d4d7", icon: "fa-sign-in", portOut: true, portIn: false };
     if (type === "populate") return { color: "#d7ecc6", icon: "fa-th-list", portOut: true, portIn: true };
     if (type === "layout") return { color: "#e8f3de", icon: "fa-columns", portOut: true, portIn: true };
     if (type === "overlay-open") return { color: "#f3dfcc", icon: "fa-window-maximize", portOut: true, portIn: true };
@@ -28807,6 +28821,16 @@
     chip(state.eventsPane, "Cookie", function() {
       return { type: "cookie", action: "get", name: "", target: "payload", valueSource: "payload", path: "/", sameSite: "Lax" };
     }, "", "cookie");
+    sectionHeader(state.eventsPane, "Node-RED flow");
+    chip(state.eventsPane, "Request (wait for the flow's answer)", function() {
+      return { type: "link-request", channel: "" };
+    }, "", "link-request");
+    chip(state.eventsPane, "To Node-RED", function() {
+      return { type: "link-send", channel: "" };
+    }, "", "link-send");
+    chip(state.eventsPane, "From Node-RED", function() {
+      return { type: "link-receive", channel: "" };
+    }, "", "link-receive");
     sectionHeader(state.eventsPane, "Sparkplug");
     chip(state.eventsPane, "Sparkplug Write", function() {
       return { type: "sparkplug-write", tag: "" };
@@ -30947,6 +30971,88 @@
     }
   }
 
+  // src/dialogs/link-dialog.js
+  var TITLES = { "link-request": "Request", "link-send": "To Node-RED", "link-receive": "From Node-RED" };
+  var HELP = {
+    "link-request": 'Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel) and waits for its answer (a "to Nexa" node). The flow runs on the server: database queries and API keys stay there. Output 1: msg.payload = the answer. Output 2: msg.error (the flow answered with an error, the channel timeout passed, or the link is down).',
+    "link-send": `Sends msg.payload to a Node-RED flow (a "from Nexa" node on this channel). It doesn't wait for an answer; msg goes on once it is sent.`,
+    "link-receive": 'Fires for every message a Node-RED flow pushes to this channel (a "to Nexa" node). msg.payload = the message. Only while this screen is open.'
+  };
+  function listLinkChannels() {
+    var out = [];
+    var RED2 = window.RED;
+    if (RED2 && RED2.nodes && typeof RED2.nodes.eachConfig === "function") {
+      RED2.nodes.eachConfig(function(n) {
+        if (n.type === "kufayeka-nexa-channel") out.push({ id: n.id, name: n.name || n.id });
+      });
+    }
+    out.sort(function(a, b) {
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function channelName(node) {
+    var RED2 = window.RED;
+    var cfg = node.channel && RED2 && RED2.nodes && typeof RED2.nodes.node === "function" ? RED2.nodes.node(node.channel) : null;
+    return cfg && cfg.name || node.channelName || (node.channel ? "(missing channel)" : "(no channel)");
+  }
+  function linkNodeLabel(node) {
+    return (TITLES[node.type] || node.type) + ": " + channelName(node);
+  }
+  function openLinkNodeEditor(node) {
+    var d = { channel: node.channel || "" };
+    window.RED.tray.show({
+      id: "nexa-logic-link-editor",
+      title: "Configure " + TITLES[node.type] + " Node",
+      width: 480,
+      buttons: [
+        { text: "Cancel", click: function() {
+          window.RED.tray.close();
+        } },
+        {
+          text: "Save",
+          "class": "primary",
+          click: function() {
+            node.channel = d.channel;
+            var picked = listLinkChannels().filter(function(c) {
+              return c.id === d.channel;
+            })[0];
+            node.channelName = picked ? picked.name : "";
+            markDirty();
+            renderLogicCanvas();
+            window.RED.tray.close();
+          }
+        }
+      ],
+      open: function(tray) {
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP[node.type]).appendTo(body);
+        window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text("Channel").appendTo(body);
+        var channels = listLinkChannels();
+        if (!channels.length) {
+          window.$("<div>").css({ "font-size": "12px", color: "#b45309" }).text(
+            'No channel yet. In a Node-RED flow, add a "from Nexa" or "to Nexa" node and create a channel in it (the pencil next to Channel). It shows up here right away.'
+          ).appendTo(body);
+          return;
+        }
+        if (!d.channel || !channels.some(function(c) {
+          return c.id === d.channel;
+        })) d.channel = channels[0].id;
+        var input = window.$("<input>", { type: "text" }).css({ width: "calc(100% - 4px)" }).appendTo(body);
+        input.typedInput({ types: [{ value: "channel", options: channels.map(function(c) {
+          return { value: c.id, label: c.name };
+        }) }] });
+        input.typedInput("value", d.channel);
+        input.on("change", function() {
+          d.channel = input.typedInput("value");
+        });
+        window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "10px" }).text(
+          "Timeout, size limit, delivery and compression are set on the channel (in Node-RED). Links use their own connection, apart from the tags."
+        ).appendTo(body);
+      }
+    });
+  }
+
   // src/logic/logic-wires.js
   var LOGIC_PORT_HIT_RADIUS = 26;
   function logicNodePortPoint(node, role, portIndex) {
@@ -30954,8 +31060,8 @@
     if (role === "input") {
       return { x: node.x, y: node.y + nodeH / 2 };
     }
-    if (node && node.type === "switch") {
-      var numPorts = node.rules && node.rules.length ? node.rules.length : 1;
+    var numPorts = logicOutputCount(node);
+    if (numPorts > 1) {
       var pIdx = typeof portIndex === "number" && portIndex >= 0 ? portIndex : 0;
       var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
       return { x: node.x + logicNodeWidth(node), y: node.y + yOffset };
@@ -31515,15 +31621,15 @@
   }
 
   // src/dialogs/set-variable-dialog.js
-  var TITLES = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "Watch Variable" };
-  var HELP = {
+  var TITLES2 = { "set-variable": "Set Variable", "get-variable": "Get Variable", "on-variable-change": "Watch Variable" };
+  var HELP2 = {
     "set-variable": 'Changes a variable on the live page. Everything bound to it ({name}) updates, a template instance bound to it gets it passed in, and "Watch Variable" nodes watching it fire. The message goes on unchanged.',
     "get-variable": "Puts the variable's current value into the message and passes it on.",
     "on-variable-change": "Watches one or more variables and starts a flow whenever any of them changes (like a useEffect dependency array). msg.payload = new value, msg.previous = old value, msg.variable = variable name, msg.scope = variable scope."
   };
   var OPS = [["set", "Set to the value"], ["merge", "Merge into (object)"], ["append", "Append to (array)"], ["remove", "Remove from (array item / object key)"], ["toggle", "Toggle (boolean)"], ["increment", "Increment by (number, default 1)"]];
   function openSetVariableNodeEditor(node) {
-    var type = node.type in TITLES ? node.type : "set-variable";
+    var type = node.type in TITLES2 ? node.type : "set-variable";
     var screen2 = getActiveScreen();
     var decls = screen2 ? scope_exports.allDeclarations(screen2, tree_exports.walk, getApp()) : [];
     var surfaceLabel = state.editingMode === "template" ? "This template" : "This screen";
@@ -31573,7 +31679,7 @@
     })) scopes.push({ id: draft.scope, name: "(missing) " + draft.scope });
     window.RED.tray.show({
       id: "nexa-logic-variable-editor",
-      title: "Configure " + TITLES[type] + " Node",
+      title: "Configure " + TITLES2[type] + " Node",
       width: 520,
       buttons: [
         { text: "Cancel", click: function() {
@@ -31621,7 +31727,7 @@
       open: function(tray) {
         trayEl = tray;
         var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
-        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
+        window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP2[type]).appendTo(body);
         var label = function(text, parent) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
         };
@@ -32308,8 +32414,8 @@
   }
 
   // src/dialogs/web-io-dialog.js
-  var TITLES2 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
-  var HELP2 = {
+  var TITLES3 = { "http-request": "HTTP Request", storage: "Storage", cookie: "Cookie" };
+  var HELP3 = {
     "http-request": "Calls a web API. The URL and header values take bindings \u2014 {variable}, {$route.params.id}, {msg.payload.id}. The request body is msg.payload (JSON). Out: msg.payload = the response (parsed JSON or text), msg.statusCode, msg.ok and msg.error (non-2xx, network error or timeout). msg.url / msg.method / msg.headers override the node's.",
     storage: `Reads or writes the browser's storage. "Local" is kept across visits, "session" until the tab closes. Values are stored as JSON.`,
     cookie: "Reads, writes or removes a cookie \u2014 for example a session token after a login. Set / remove run in the page, so they are not HttpOnly (a server-set HttpOnly cookie is sent with HTTP Request calls automatically)."
@@ -32319,7 +32425,7 @@
     var d = JSON.parse(JSON.stringify(node));
     window.RED.tray.show({
       id: "nexa-logic-webio-editor",
-      title: "Configure " + TITLES2[type] + " Node",
+      title: "Configure " + TITLES3[type] + " Node",
       width: 480,
       buttons: [
         { text: "Cancel", click: function() {
@@ -32340,7 +32446,7 @@
       ],
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
+        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP3[type]).appendTo(body);
         var label = function(text2, parent) {
           return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
         };
@@ -33627,6 +33733,9 @@
       var modeWord = { append: "Append to ", prepend: "Prepend to ", upsert: "Update ", remove: "Remove from ", clear: "Clear " }[node.mode] || "Populate ";
       return modeWord + (target ? target.name || "Frame" : "?") + (node.mode === "clear" || node.mode === "remove" ? "" : " \xD7 " + (tpl ? tpl.name : "?") + (node.itemParam ? " \u2192 " + node.itemParam : ""));
     }
+    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
+      return linkNodeLabel(node);
+    }
     if (node.type === "http-request") {
       var u = node.url || "";
       return (node.method || "GET") + " " + (u ? u.length > 50 ? u.slice(0, 49) + "\u2026" : u : "(no URL)");
@@ -33735,10 +33844,8 @@
     return Math.max(LOGIC_NODE_W, needed);
   }
   function logicNodeHeight(node) {
-    if (node && node.type === "switch") {
-      var numRules = node.rules && node.rules.length ? node.rules.length : 1;
-      return Math.max(LOGIC_NODE_H, numRules * 20 + 10);
-    }
+    var numPorts = logicOutputCount(node);
+    if (numPorts > 1) return Math.max(LOGIC_NODE_H, numPorts * 20 + 10);
     return LOGIC_NODE_H;
   }
   function addLogicNode(nodeData, x, y) {
@@ -33987,6 +34094,12 @@
         openPopulateNodeEditor(node);
       });
     }
+    if (node.type === "link-request" || node.type === "link-send" || node.type === "link-receive") {
+      box2.attr("title", "Double-click to choose the channel").on("dblclick", function(e) {
+        e.stopPropagation();
+        openLinkNodeEditor(node);
+      });
+    }
     if (node.type === "http-request" || node.type === "storage" || node.type === "cookie") {
       box2.attr("title", "Double-click to configure").on("dblclick", function(e) {
         e.stopPropagation();
@@ -34030,9 +34143,9 @@
       });
     }
     if (kind.hasOutput) {
-      if (node.type === "switch") {
-        var rules = node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }];
-        var numPorts = rules.length;
+      var numPorts = logicOutputCount(node);
+      if (numPorts > 1) {
+        var rules = node.type === "switch" ? node.rules && node.rules.length ? node.rules : [{ t: "eq", v: "", vt: "str" }] : null;
         for (var pIdx = 0; pIdx < numPorts; pIdx++) {
           var yOffset = (pIdx + 1) / (numPorts + 1) * nodeH;
           var outDot = window.$("<div>", {
@@ -34048,7 +34161,7 @@
             background: "var(--red-ui-node-border, #999)",
             cursor: "crosshair",
             transform: "scale(" + 1 / state.logicZoomLevel + ")"
-          }).attr("title", "Port " + (pIdx + 1) + ": " + (rules[pIdx] ? rules[pIdx].t || "rule" : "")).appendTo(box2);
+          }).attr("title", "Port " + (pIdx + 1) + ": " + (rules ? rules[pIdx] ? rules[pIdx].t || "rule" : "" : (kind.outputLabels || [])[pIdx] || "")).appendTo(box2);
           wireLogicOutputPort(outDot, node, pIdx);
         }
       } else {
@@ -36137,7 +36250,7 @@
     ["820x1180", "Tablet portrait 820 \xD7 1180"],
     ["390x844", "Phone 390 \xD7 844"]
   ];
-  var HELP3 = {
+  var HELP4 = {
     fixed: function(w, h) {
       return "Shown at exactly " + w + " \xD7 " + h + " px \u2014 for a known panel / device.";
     },
@@ -36341,7 +36454,7 @@
           });
         });
         function syncModeHelp() {
-          var h = HELP3[modeSel.val()];
+          var h = HELP4[modeSel.val()];
           modeHelp.text(typeof h === "function" ? h(current2.width, current2.height) : h || "");
         }
         syncModeHelp();
@@ -39648,7 +39761,7 @@
     });
     modeSel.val(screen2.displayMode || "fixed");
     var modeHelp = window.$("<div>").css({ "font-size": "11px", color: "var(--red-ui-secondary-text-color, #888)", "margin-top": "4px" }).appendTo(modeRow);
-    var HELP4 = {
+    var HELP5 = {
       fixed: function() {
         return "Shown at exactly " + screen2.width + " \xD7 " + screen2.height + " px \u2014 for a known panel / device.";
       },
@@ -39657,7 +39770,7 @@
       fill: "The screen takes the window's size. Nothing scales: set constraints (left / right / scale\u2026) on top-level items and use frames with auto layout. Customize scale per breakpoint below."
     };
     var syncHelp = function() {
-      var h = HELP4[modeSel.val()];
+      var h = HELP5[modeSel.val()];
       modeHelp.text(typeof h === "function" ? h() : h || "");
     };
     syncHelp();

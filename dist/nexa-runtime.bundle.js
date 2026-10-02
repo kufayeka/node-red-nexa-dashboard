@@ -2,6 +2,212 @@
 // Edit the source instead, then run `npm run build` (or `npm run watch`).
 // Modular runtime client bundle for Nexa Dashboard (served as /nexa/_runtime.js).
 (() => {
+  var __create = Object.create;
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __commonJS = (cb, mod) => function __require() {
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
+
+  // src/shared/link/frame.js
+  var require_frame = __commonJS({
+    "src/shared/link/frame.js"(exports, module) {
+      "use strict";
+      var VERSION = 1;
+      var F_FIRST = 1;
+      var F_LAST = 2;
+      var F_BINARY2 = 4;
+      var F_DEFLATE2 = 8;
+      var HEADER_BYTES2 = 16;
+      var CHUNK_BYTES = 64 * 1024;
+      var MAX_META_BYTES = 4096;
+      var enc = new TextEncoder();
+      var dec = new TextDecoder("utf-8");
+      function utf82(str) {
+        return enc.encode(str);
+      }
+      function fromUtf82(bytes) {
+        return dec.decode(bytes);
+      }
+      function encodeFrame(msgId, flags, offset, totalLen, metaBytes, chunk) {
+        const metaLen = metaBytes ? metaBytes.length : 0;
+        const chunkLen = chunk ? chunk.length : 0;
+        const out = new Uint8Array(HEADER_BYTES2 + metaLen + chunkLen);
+        const dv = new DataView(out.buffer);
+        dv.setUint8(0, VERSION);
+        dv.setUint8(1, flags);
+        dv.setUint16(2, metaLen, true);
+        dv.setUint32(4, msgId >>> 0, true);
+        dv.setUint32(8, offset >>> 0, true);
+        dv.setUint32(12, totalLen >>> 0, true);
+        if (metaLen) out.set(metaBytes, HEADER_BYTES2);
+        if (chunkLen) out.set(chunk, HEADER_BYTES2 + metaLen);
+        return out;
+      }
+      function decodeFrame(u8) {
+        if (!(u8 instanceof Uint8Array)) u8 = new Uint8Array(u8);
+        if (u8.length < HEADER_BYTES2) throw new Error("link frame too short");
+        const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+        if (dv.getUint8(0) !== VERSION) throw new Error("unknown link frame version " + dv.getUint8(0));
+        const flags = dv.getUint8(1);
+        const metaLen = dv.getUint16(2, true);
+        if (metaLen > MAX_META_BYTES || HEADER_BYTES2 + metaLen > u8.length) throw new Error("bad link frame meta length");
+        if (metaLen && !(flags & F_FIRST)) throw new Error("meta on a non-first link frame");
+        let meta = null;
+        if (metaLen) meta = JSON.parse(fromUtf82(u8.subarray(HEADER_BYTES2, HEADER_BYTES2 + metaLen)));
+        return {
+          flags,
+          msgId: dv.getUint32(4, true),
+          offset: dv.getUint32(8, true),
+          totalLen: dv.getUint32(12, true),
+          meta,
+          chunk: u8.subarray(HEADER_BYTES2 + metaLen)
+        };
+      }
+      var OutMessage = class {
+        constructor(msgId, meta, bytes, flags) {
+          this.msgId = msgId;
+          this.meta = meta;
+          this.metaBytes = utf82(JSON.stringify(meta));
+          if (this.metaBytes.length > MAX_META_BYTES) throw new Error("link message meta larger than " + MAX_META_BYTES + " bytes");
+          this.bytes = bytes || new Uint8Array(0);
+          this.flags = flags & (F_BINARY2 | F_DEFLATE2);
+          this.offset = 0;
+          this.started = false;
+          this.done = false;
+        }
+        get remaining() {
+          return this.bytes.length - this.offset;
+        }
+        next(chunkBytes) {
+          const size = Math.min(chunkBytes || CHUNK_BYTES, this.remaining);
+          const first = !this.started;
+          const last = this.offset + size >= this.bytes.length;
+          const flags = this.flags | (first ? F_FIRST : 0) | (last ? F_LAST : 0);
+          const frame = encodeFrame(
+            this.msgId,
+            flags,
+            this.offset,
+            this.bytes.length,
+            first ? this.metaBytes : null,
+            this.bytes.subarray(this.offset, this.offset + size)
+          );
+          this.started = true;
+          this.offset += size;
+          if (last) this.done = true;
+          return frame;
+        }
+      };
+      function encodeMessage2(msgId, meta, bytes, flags, chunkBytes) {
+        const m = new OutMessage(msgId, meta, bytes, flags);
+        const frames = [];
+        while (!m.done) frames.push(m.next(chunkBytes));
+        return frames;
+      }
+      var Reassembler2 = class {
+        constructor(limitFor, opts) {
+          this.limitFor = limitFor || function() {
+            return 32 * 1024 * 1024;
+          };
+          this.maxPendingBytes = opts && opts.maxPendingBytes || 64 * 1024 * 1024;
+          this.pending = /* @__PURE__ */ new Map();
+          this.refused = /* @__PURE__ */ new Set();
+          this.pendingBytes = 0;
+        }
+        push(u8) {
+          const f = decodeFrame(u8);
+          if (f.flags & F_FIRST) {
+            this.refused.delete(f.msgId);
+            if (this.pending.has(f.msgId)) this._drop(f.msgId);
+            const limit = this.limitFor(f.meta || {});
+            let error = null;
+            if (!limit) error = "unknown channel";
+            else if (f.totalLen > limit) error = "message is " + f.totalLen + " bytes, the channel allows " + limit;
+            else if (this.pendingBytes + f.totalLen > this.maxPendingBytes) error = "too much data in flight";
+            if (error) {
+              if (!(f.flags & F_LAST)) this.refused.add(f.msgId);
+              return { msgId: f.msgId, meta: f.meta, error };
+            }
+            if (f.flags & F_LAST && f.offset === 0 && f.chunk.length === f.totalLen) {
+              return { msgId: f.msgId, meta: f.meta, flags: f.flags, bytes: f.chunk.slice() };
+            }
+            this.pending.set(f.msgId, { meta: f.meta, flags: f.flags, buf: new Uint8Array(f.totalLen), received: 0 });
+            this.pendingBytes += f.totalLen;
+          }
+          if (this.refused.has(f.msgId)) {
+            if (f.flags & F_LAST) this.refused.delete(f.msgId);
+            return null;
+          }
+          const p = this.pending.get(f.msgId);
+          if (!p) return null;
+          if (f.offset !== p.received || p.received + f.chunk.length > p.buf.length) {
+            this._drop(f.msgId);
+            return { msgId: f.msgId, meta: p.meta, error: "link frames out of order" };
+          }
+          p.buf.set(f.chunk, p.received);
+          p.received += f.chunk.length;
+          if (f.flags & F_LAST) {
+            this._drop(f.msgId);
+            if (p.received !== p.buf.length) return { msgId: f.msgId, meta: p.meta, error: "link message truncated" };
+            return { msgId: f.msgId, meta: p.meta, flags: p.flags, bytes: p.buf };
+          }
+          return null;
+        }
+        _drop(msgId) {
+          const p = this.pending.get(msgId);
+          if (!p) return;
+          this.pending.delete(msgId);
+          this.pendingBytes -= p.buf.length;
+        }
+        clear() {
+          this.pending.clear();
+          this.refused.clear();
+          this.pendingBytes = 0;
+        }
+      };
+      module.exports = {
+        VERSION,
+        F_FIRST,
+        F_LAST,
+        F_BINARY: F_BINARY2,
+        F_DEFLATE: F_DEFLATE2,
+        HEADER_BYTES: HEADER_BYTES2,
+        CHUNK_BYTES,
+        MAX_META_BYTES,
+        utf8: utf82,
+        fromUtf8: fromUtf82,
+        encodeFrame,
+        decodeFrame,
+        encodeMessage: encodeMessage2,
+        OutMessage,
+        Reassembler: Reassembler2
+      };
+    }
+  });
+
   // src/runtime/state.js
   var VIS_RANK = { show: 0, hide: 1, remove: 2 };
   var IO_WRITE_TIMEOUT_MS = 5e3;
@@ -646,6 +852,262 @@
     else if (node.action === "remove") BROWSER_API.cookies.remove(name, opts);
     else setMsgPath(out, node.target || "payload", BROWSER_API.cookies.get(name));
     return out;
+  }
+
+  // src/runtime/io/link.js
+  var F = __toESM(require_frame());
+  var SAFETY_MS = 2e3;
+  var DEFAULT_TIMEOUT_MS = 1e4;
+  var link = {
+    ws: null,
+    ready: null,
+    // Promise, resolved on "welcome"
+    channels: {},
+    // id -> {name, timeout, maxBytes}
+    pending: /* @__PURE__ */ new Map(),
+    // request msgId -> {resolve, reject, timer}
+    subs: [],
+    // channel ids this page listens to
+    nextId: 0,
+    reassembler: null,
+    rxChain: Promise.resolve(),
+    onPush: null,
+    // fn(channelId, payload, meta)
+    backoff: 1e3,
+    reconnectTimer: null
+  };
+  function canInflate() {
+    try {
+      return typeof DecompressionStream === "function" && !!new DecompressionStream("deflate-raw");
+    } catch (e) {
+      return false;
+    }
+  }
+  function prefix() {
+    return window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+  }
+  function getInfo() {
+    return fetch(prefix() + "/_link-info", { cache: "no-store" }).then(function(r) {
+      if (!r.ok) throw new Error("Nexa Link info: HTTP " + r.status);
+      return r.json();
+    });
+  }
+  function rejectAll(reason) {
+    link.pending.forEach(function(p) {
+      clearTimeout(p.timer);
+      p.reject(new Error(reason));
+    });
+    link.pending.clear();
+  }
+  function scheduleReconnect() {
+    if (link.reconnectTimer || !link.subs.length) return;
+    link.reconnectTimer = setTimeout(function() {
+      link.reconnectTimer = null;
+      linkConnect().catch(function() {
+        scheduleReconnect();
+      });
+    }, link.backoff);
+    link.backoff = Math.min(link.backoff * 2, 15e3);
+  }
+  function linkConnect() {
+    if (link.ready) return link.ready;
+    link.ready = getInfo().then(function(info) {
+      if (!info || !info.port) throw new Error("Nexa Link is not running: deploy a flow with a Nexa channel (from Nexa / to Nexa node)");
+      return new Promise(function(resolve, reject) {
+        const loc = window.location || {};
+        const url = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + (loc.hostname || "localhost") + ":" + info.port + "/nexa/_link?t=" + encodeURIComponent(info.token) + (canInflate() ? "&z=1" : "");
+        const ws = new window.WebSocket(url);
+        ws.binaryType = "arraybuffer";
+        link.ws = ws;
+        link.reassembler = new F.Reassembler(function() {
+          return 1 << 30;
+        }, { maxPendingBytes: 1 << 30 });
+        let welcomed = false;
+        ws.onmessage = function(evt) {
+          if (typeof evt.data === "string") {
+            let msg;
+            try {
+              msg = JSON.parse(evt.data);
+            } catch (e) {
+              return;
+            }
+            if (msg.t === "welcome" || msg.t === "channels") link.channels = msg.channels || {};
+            if (msg.t === "welcome" && !welcomed) {
+              welcomed = true;
+              link.backoff = 1e3;
+              if (link.subs.length) ws.send(JSON.stringify({ t: "sub", ch: link.subs }));
+              resolve(ws);
+            } else if (msg.t === "error") {
+              console.warn("[nexa-link] the server refused message " + msg.re + ": " + msg.err);
+            } else if (msg.t === "gap") {
+              console.warn("[nexa-link] channel " + msg.ch + ": messages dropped (this page could not keep up)");
+            }
+            return;
+          }
+          let got;
+          try {
+            got = link.reassembler.push(new Uint8Array(evt.data));
+          } catch (e) {
+            return;
+          }
+          if (got && !got.error) receive(got);
+        };
+        ws.onclose = function() {
+          if (link.ws !== ws) return;
+          link.ws = null;
+          link.ready = null;
+          rejectAll("Nexa Link connection lost");
+          if (!welcomed) reject(new Error("Nexa Link: could not connect to port " + info.port));
+          scheduleReconnect();
+        };
+        ws.onerror = function() {
+        };
+      });
+    });
+    link.ready.catch(function() {
+      link.ready = null;
+    });
+    return link.ready;
+  }
+  function inflate(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).arrayBuffer().then(function(ab) {
+      return new Uint8Array(ab);
+    });
+  }
+  function payloadOf(flags, bytes) {
+    if (flags & F.F_BINARY) return bytes.buffer.byteLength === bytes.length && bytes.byteOffset === 0 ? bytes.buffer : bytes.slice().buffer;
+    if (!bytes.length) return null;
+    return JSON.parse(F.fromUtf8(bytes));
+  }
+  function receive(got) {
+    link.rxChain = link.rxChain.then(function() {
+      return got.flags & F.F_DEFLATE ? inflate(got.bytes) : got.bytes;
+    }).then(function(bytes) {
+      const meta = got.meta || {};
+      if (meta.t === "res") {
+        const p = link.pending.get(meta.re);
+        if (!p) return;
+        link.pending.delete(meta.re);
+        clearTimeout(p.timer);
+        if (meta.err) p.reject(new Error(meta.err));
+        else {
+          let value;
+          try {
+            value = payloadOf(got.flags, bytes);
+          } catch (e) {
+            p.reject(new Error("invalid JSON in the answer"));
+            return;
+          }
+          p.resolve(value);
+        }
+      } else if (meta.t === "push" && typeof link.onPush === "function") {
+        let value;
+        try {
+          value = payloadOf(got.flags, bytes);
+        } catch (e) {
+          console.warn("[nexa-link] invalid JSON pushed on " + meta.ch);
+          return;
+        }
+        link.onPush(meta.ch, value, meta);
+      }
+    }).catch(function(e) {
+      console.error("[nexa-link] could not read a message:", e);
+    });
+  }
+  function encode(payload) {
+    if (payload instanceof ArrayBuffer) return { bytes: new Uint8Array(payload), flags: F.F_BINARY };
+    if (ArrayBuffer.isView(payload)) return { bytes: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength), flags: F.F_BINARY };
+    return { bytes: F.utf8(JSON.stringify(payload === void 0 ? null : payload)), flags: 0 };
+  }
+  function sendMessage(ws, meta, payload) {
+    const id = ++link.nextId;
+    const enc = encode(payload);
+    const ch = link.channels[meta.ch];
+    if (ch && enc.bytes.length > ch.maxBytes) throw new Error("payload is " + enc.bytes.length + ' bytes, channel "' + ch.name + '" allows ' + ch.maxBytes);
+    F.encodeMessage(id, meta, enc.bytes, enc.flags).forEach(function(fr) {
+      ws.send(fr);
+    });
+    return id;
+  }
+  function linkRequest(channelId, payload, screenId) {
+    return linkConnect().then(function(ws) {
+      return new Promise(function(resolve, reject) {
+        if (!link.channels[channelId]) {
+          reject(new Error("channel " + channelId + " is not deployed"));
+          return;
+        }
+        const id = sendMessage(ws, { t: "req", ch: channelId, screen: screenId || "" }, payload);
+        const timeout = (link.channels[channelId].timeout || DEFAULT_TIMEOUT_MS) + SAFETY_MS;
+        const timer = setTimeout(function() {
+          if (link.pending.delete(id)) reject(new Error("timeout: no answer within " + timeout + " ms"));
+        }, timeout);
+        link.pending.set(id, { resolve, reject, timer });
+      });
+    });
+  }
+  function linkSend(channelId, payload, screenId) {
+    return linkConnect().then(function(ws) {
+      if (!link.channels[channelId]) throw new Error("channel " + channelId + " is not deployed");
+      sendMessage(ws, { t: "send", ch: channelId, screen: screenId || "" }, payload);
+    });
+  }
+  function linkSetSubscriptions(channelIds, onPush2) {
+    const list = Array.from(new Set((channelIds || []).filter(Boolean))).sort();
+    if (onPush2) link.onPush = onPush2;
+    const same = list.join("\n") === link.subs.join("\n");
+    link.subs = list;
+    if (same) return;
+    if (link.ws && link.ws.readyState === 1) link.ws.send(JSON.stringify({ t: "sub", ch: list }));
+    else if (list.length) linkConnect().catch(function(e) {
+      console.warn("[nexa-link] " + e.message);
+      scheduleReconnect();
+    });
+  }
+
+  // src/runtime/logic/nodes/link-nodes.js
+  function runLinkRequestNode(screen2, node, msg, budget, continueFromPort2) {
+    linkRequest(node.channel, msg ? msg.payload : null, screen2 && screen2.id).then(function(value) {
+      const out = cloneMsg(msg || {});
+      out.payload = value;
+      delete out.error;
+      continueFromPort2(screen2, node, out, 0, budget);
+    }, function(e) {
+      const out = cloneMsg(msg || {});
+      out.error = e && e.message ? e.message : String(e);
+      continueFromPort2(screen2, node, out, 1, budget);
+    });
+  }
+  function runLinkSendNode(screen2, node, msg, budget, continuePropagation2) {
+    linkSend(node.channel, msg ? msg.payload : null, screen2 && screen2.id).then(function() {
+      continuePropagation2(screen2, node, msg, budget);
+    }, function(e) {
+      console.error("[nexa-logic] To Node-RED node " + node.id + " failed: " + (e && e.message));
+    });
+  }
+  var listening = [];
+  var run = null;
+  function onPush(channelId, payload, meta) {
+    let first = true;
+    listening.forEach(function(screen2) {
+      (screen2 && screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
+        if (n.type !== "link-receive" || n.channel !== channelId) return;
+        const p = first || payload === null || typeof payload !== "object" ? payload : cloneMsg(payload);
+        first = false;
+        run(screen2, n, { payload: p, topic: n.channelName || "", retained: !!meta.retained });
+      });
+    });
+  }
+  function syncLinkSubscriptions(screens, runLogicGraph2) {
+    run = runLogicGraph2;
+    listening = (screens || []).filter(Boolean);
+    const ids = [];
+    listening.forEach(function(screen2) {
+      (screen2.logic && screen2.logic.nodes || []).forEach(function(n) {
+        if (n.type === "link-receive" && n.channel) ids.push(n.channel);
+      });
+    });
+    linkSetSubscriptions(ids, onPush);
   }
 
   // src/runtime/mounting/pins.js
@@ -1415,12 +1877,12 @@
         st.index = i;
         drawControls();
         if (fade) applyFade(i);
-        const run = function() {
+        const run2 = function() {
           show(st.index, false);
           st.ready = true;
         };
-        if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
-        else run();
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(run2);
+        else run2();
       },
       goTo: function(i) {
         goTo(i, true);
@@ -2421,8 +2883,8 @@
     var flows = window.__NEXA_FLOWS__ || [];
     if (!flows.length) return null;
     var clean = String(targetPath).trim();
-    var prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
-    if (clean.indexOf(prefix2) === 0) clean = clean.slice(prefix2.length);
+    var prefix3 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+    if (clean.indexOf(prefix3) === 0) clean = clean.slice(prefix3.length);
     if (clean.charAt(0) !== "/") clean = "/" + clean;
     var qIdx = clean.indexOf("?");
     if (qIdx !== -1) clean = clean.slice(0, qIdx);
@@ -2711,9 +3173,9 @@
     if (typeof target === "string" && (target.charAt(0) === "/" || target.indexOf("/") !== -1)) {
       var flowMatch = findFlowForRoute(target);
       if (flowMatch) {
-        var prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+        var prefix3 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
         var clean = flowMatch.fullPath;
-        var newUrl = prefix2 + (clean === "/" ? "" : clean);
+        var newUrl = prefix3 + (clean === "/" ? "" : clean);
         var fState = {
           flowId: flowMatch.flow.id,
           screenId: flowMatch.targetScreen ? flowMatch.targetScreen.id : null,
@@ -3089,6 +3551,7 @@
       fireParamInputForInstance(effectiveScreen, namespacedInstanceId, effectiveScreen.__paramStates[namespacedInstanceId]);
     });
     CURRENT_EFFECTIVE_SCREEN = effectiveScreen;
+    syncLinkSubscriptions([effectiveScreen, CURRENT_ACTIVE_FLOW_SCREEN], runLogicGraph);
     var initialLoadMsg = forwardPayload !== void 0 ? { payload: forwardPayload } : { payload: null };
     fireLifecycle(effectiveScreen, "onload", initialLoadMsg);
     fireLifecycle(effectiveScreen, "onrender", cloneMsg(initialLoadMsg));
@@ -3101,9 +3564,9 @@
     if (!POPSTATE_WIRED && typeof window !== "undefined" && typeof window.addEventListener === "function") {
       POPSTATE_WIRED = true;
       window.addEventListener("popstate", function(e) {
-        var prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+        var prefix3 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
         var currentPath2 = window.location && window.location.pathname || "";
-        var subPath2 = currentPath2.indexOf(prefix2) === 0 ? currentPath2.slice(prefix2.length) : currentPath2;
+        var subPath2 = currentPath2.indexOf(prefix3) === 0 ? currentPath2.slice(prefix3.length) : currentPath2;
         if (!subPath2 || subPath2 === "") subPath2 = "/";
         var stateScreenId = e && e.state && e.state.screenId;
         var stateFlowId = e && e.state && e.state.flowId;
@@ -3803,6 +4266,15 @@
         continuePropagation(screen2, node, res, budget);
       });
       return;
+    } else if (node.type === "link-request") {
+      runLinkRequestNode(screen2, node, msg, budget, continueFromPort);
+      return;
+    } else if (node.type === "link-send") {
+      runLinkSendNode(screen2, node, msg, budget, continuePropagation);
+      return;
+    } else if (node.type === "link-receive") {
+      continuePropagation(screen2, node, outMsg, budget);
+      return;
     } else if (node.type === "populate") {
       if (node.container) runPopulate(screen2, node, msg);
       else {
@@ -4012,6 +4484,19 @@
     });
     targets.forEach(function(targetNode, i) {
       runLogicGraph(screen2, targetNode, msgs[i], budget);
+    });
+  }
+  function continueFromPort(screen2, sourceNode, msg, port, budget) {
+    if (msg === null || msg === void 0) return;
+    var rawWires = screen2.logic && screen2.logic.wires || [];
+    var wires = Array.isArray(rawWires) ? rawWires.filter(function(w) {
+      return w && w.from === sourceNode.id && (w.fromPort || 0) === port;
+    }) : [];
+    var targets = wires.map(function(w) {
+      return findLogicNode(screen2, w.to);
+    }).filter(Boolean);
+    targets.forEach(function(targetNode, i) {
+      runLogicGraph(screen2, targetNode, i === 0 ? msg : cloneMsg(msg), budget);
     });
   }
   function fireLifecycle(screen2, type, msg) {
@@ -4701,9 +5186,9 @@
   }
   function belongsDirectlyToInstance(id, namespacedInstanceId) {
     if (id === namespacedInstanceId) return true;
-    const prefix2 = namespacedInstanceId + "::";
-    if (id.indexOf(prefix2) !== 0) return false;
-    return id.slice(prefix2.length).indexOf("::") === -1;
+    const prefix3 = namespacedInstanceId + "::";
+    if (id.indexOf(prefix3) !== 0) return false;
+    return id.slice(prefix3.length).indexOf("::") === -1;
   }
   function reapplyInterpolationForInstance(screen2, namespacedInstanceId, paramState) {
     screen2.components.forEach(function(comp) {
@@ -5297,9 +5782,9 @@
         reject(new Error("XMLHttpRequest not available in this environment"));
         return;
       }
-      const prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+      const prefix3 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", prefix2 + "/_sparkplug-write", true);
+      xhr.open("POST", prefix3 + "/_sparkplug-write", true);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.onload = function() {
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -5351,7 +5836,7 @@
       else p.reject(new Error("Sparkplug write was not published: " + (msg.err || "unknown error")));
     }
   }
-  function ioTeardown(reason, onGiveUp, prefix2) {
+  function ioTeardown(reason, onGiveUp, prefix3) {
     const ws = state.io.ws;
     if (!ws) return;
     ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
@@ -5372,17 +5857,17 @@
       return;
     }
     state.io.reconnectTimer = setTimeout(function() {
-      ioConnect(prefix2, onGiveUp);
+      ioConnect(prefix3, onGiveUp);
     }, state.io.backoff);
     state.io.backoff = Math.min(state.io.backoff * 2, 1e4);
   }
-  function ioConnect(prefix2, onGiveUp) {
+  function ioConnect(prefix3, onGiveUp) {
     if (state.io.ws && (state.io.ws.readyState === 0 || state.io.ws.readyState === 1)) {
       ioSyncSubscription();
       return;
     }
     const loc = window.location || {};
-    const url = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + (loc.host || "localhost") + prefix2 + "/_io";
+    const url = (loc.protocol === "https:" ? "wss:" : "ws:") + "//" + (loc.host || "localhost") + prefix3 + "/_io";
     let ws;
     try {
       ws = new window.WebSocket(url);
@@ -5407,7 +5892,7 @@
         const now = Date.now();
         if (now - state.io.lastCheck > 1500) state.io.lastRx = now;
         state.io.lastCheck = now;
-        if (now - state.io.lastRx > Math.max(3 * state.io.hb, 3e3)) ioTeardown("watchdog timeout", onGiveUp, prefix2);
+        if (now - state.io.lastRx > Math.max(3 * state.io.hb, 3e3)) ioTeardown("watchdog timeout", onGiveUp, prefix3);
       }, 500);
     };
     ws.onmessage = function(evt) {
@@ -5428,7 +5913,7 @@
       }
     };
     ws.onclose = function() {
-      ioTeardown("closed", onGiveUp, prefix2);
+      ioTeardown("closed", onGiveUp, prefix3);
     };
     ws.onerror = function() {
     };
@@ -5444,10 +5929,10 @@
   }
   function setUpSparkplugSse() {
     if (typeof window.XMLHttpRequest !== "function") return;
-    const prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+    const prefix3 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
     function fetchSnapshotAndRefresh() {
       const xhr = new window.XMLHttpRequest();
-      xhr.open("GET", prefix2 + "/_sparkplug-snapshot", true);
+      xhr.open("GET", prefix3 + "/_sparkplug-snapshot", true);
       xhr.onload = function() {
         if (xhr.status === 200) {
           try {
@@ -5464,7 +5949,7 @@
       fetchSnapshotAndRefresh();
       return;
     }
-    const streamUrl = prefix2 + "/_sparkplug-stream";
+    const streamUrl = prefix3 + "/_sparkplug-stream";
     const source = new window.EventSource(streamUrl);
     source.onopen = fetchSnapshotAndRefresh;
     source.onerror = function() {
@@ -5504,9 +5989,9 @@
       getActiveFlow,
       state
     });
-    prefix = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
+    prefix2 = window.__NEXA_RUNTIME_PREFIX__ || "/nexa";
     currentPath = window.location && window.location.pathname || "";
-    subPath = currentPath.indexOf(prefix) === 0 ? currentPath.slice(prefix.length) : currentPath;
+    subPath = currentPath.indexOf(prefix2) === 0 ? currentPath.slice(prefix2.length) : currentPath;
     if (!subPath || subPath === "") subPath = "/";
     flowMatched = findFlowForRoute(subPath);
     if (flowMatched) {
@@ -5522,7 +6007,7 @@
       }
     }
   }
-  var prefix;
+  var prefix2;
   var currentPath;
   var subPath;
   var flowMatched;

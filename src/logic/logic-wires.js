@@ -1,4 +1,4 @@
-import { state, SVG_NS, LOGIC_NODE_W, LOGIC_NODE_H, LOGIC_NODE_KINDS, getActiveScreen, findLogicNode, genId, markDirty } from "../state.js";
+import { state, SVG_NS, LOGIC_NODE_W, LOGIC_NODE_H, LOGIC_NODE_KINDS, getActiveScreen, findLogicNode, genId, markDirty, logicOutputCount } from "../state.js";
 import { pushHistory } from "../history.js";
 import { logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
 
@@ -9,8 +9,8 @@ export function logicNodePortPoint(node, role, portIndex) {
     if (role === "input") {
         return { x: node.x, y: node.y + nodeH / 2 };
     }
-    if (node && node.type === "switch") {
-        var numPorts = (node.rules && node.rules.length) ? node.rules.length : 1;
+    var numPorts = logicOutputCount(node);
+    if (numPorts > 1) {
         var pIdx = (typeof portIndex === "number" && portIndex >= 0) ? portIndex : 0;
         var yOffset = ((pIdx + 1) / (numPorts + 1)) * nodeH;
         return { x: node.x + logicNodeWidth(node), y: node.y + yOffset };
