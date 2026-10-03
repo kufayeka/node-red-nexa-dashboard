@@ -55,6 +55,7 @@ var NexaModel = (() => {
     applyOverrides: () => applyOverrides,
     bandOf: () => bandOf,
     baseOf: () => baseOf,
+    bindingList: () => bindingList,
     borderOf: () => borderOf,
     boxCss: () => boxCss,
     breakpointsOf: () => breakpointsOf,
@@ -77,6 +78,7 @@ var NexaModel = (() => {
     dockOf: () => dockOf,
     effectiveLocked: () => effectiveLocked,
     effectiveVisibility: () => effectiveVisibility,
+    evaluateExpression: () => evaluateExpression,
     find: () => find,
     findByName: () => findByName,
     findType: () => findType,
@@ -91,6 +93,7 @@ var NexaModel = (() => {
     guessConstraints: () => guessConstraints,
     hasAutoLayout: () => hasAutoLayout,
     hasConstraints: () => hasConstraints,
+    hasNoValue: () => hasNoValue,
     hasOverrides: () => hasOverrides,
     hasVariables: () => hasVariables,
     inSlot: () => inSlot,
@@ -98,9 +101,12 @@ var NexaModel = (() => {
     innerSize: () => innerSize,
     insert: () => insert,
     isAncestor: () => isAncestor,
+    isBindingList: () => isBindingList,
     isBindingRef: () => isBindingRef,
+    isBoundValue: () => isBoundValue,
     isContainer: () => isContainer,
     isInFlow: () => isInFlow,
+    isLegacyBinding: () => isLegacyBinding,
     isNoValue: () => isNoValue,
     isSlotFrame: () => isSlotFrame,
     isSlotHost: () => isSlotHost,
@@ -132,11 +138,15 @@ var NexaModel = (() => {
     paddingOf: () => paddingOf,
     parentOf: () => parentOf,
     parentSize: () => parentSize,
+    parseExpression: () => parseExpression,
     placeOf: () => placeOf,
     placeOrphan: () => placeOrphan,
     previewWidthOf: () => previewWidthOf,
     rangeOf: () => rangeOf,
+    readsMessage: () => readsMessage,
+    referencesOf: () => referencesOf,
     refitGroupsUp: () => refitGroupsUp,
+    registerSourceKind: () => registerSourceKind,
     remove: () => remove,
     resizeWithConstraints: () => resizeWithConstraints,
     resolveNode: () => resolveNode,
@@ -144,19 +154,25 @@ var NexaModel = (() => {
     resolveToken: () => resolveToken,
     resolveTokenProps: () => resolveTokenProps,
     resolveTokenValue: () => resolveTokenValue,
+    resolveValue: () => resolveValue,
     setTheme: () => setTheme,
     setTypes: () => setTypes,
     slotOf: () => slotOf,
+    sourceKind: () => sourceKind,
+    sourceKinds: () => sourceKinds,
     styleOf: () => styleOf,
     surfaceScope: () => surfaceScope,
     syncSlots: () => syncSlots,
+    tagRefsOf: () => tagRefsOf,
     takesPadding: () => takesPadding,
     templateContentFit: () => templateContentFit,
     templateContentOf: () => templateContentOf,
     templateLiveOf: () => templateLiveOf,
+    templateToExpression: () => templateToExpression,
     themeCss: () => themeCss,
     themeOf: () => themeOf,
     tidyContainer: () => tidyContainer,
+    toBindingList: () => toBindingList,
     tokenCss: () => tokenCss,
     tokenPathOf: () => tokenPathOf,
     tokenVar: () => tokenVar,
@@ -1465,8 +1481,8 @@ var NexaModel = (() => {
   function isTypeRef(dataType) {
     return typeof dataType === "string" && dataType.indexOf("type:") === 0;
   }
-  function BindingRef(text, access) {
-    this.__nexaBinding = text;
+  function BindingRef(text2, access) {
+    this.__nexaBinding = text2;
     this.access = access || "read";
   }
   BindingRef.prototype.toString = function() {
@@ -1481,8 +1497,8 @@ var NexaModel = (() => {
   function clone2(v) {
     return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
   }
-  function fillParams(text, params) {
-    return String(text).replace(/\{([A-Za-z_$][\w$]*)\}/g, function(whole, name) {
+  function fillParams(text2, params) {
+    return String(text2).replace(/\{([A-Za-z_$][\w$]*)\}/g, function(whole, name) {
       return Object.prototype.hasOwnProperty.call(params, name) && params[name] !== void 0 && params[name] !== null ? String(params[name]) : whole;
     });
   }
@@ -1874,8 +1890,8 @@ var NexaModel = (() => {
       return !f.disabled;
     }) || null;
   }
-  function notFound(text) {
-    return { kind: "not-found", text };
+  function notFound(text2) {
+    return { kind: "not-found", text: text2 };
   }
   function enabledScreen(project, id) {
     return (project.screens || []).find(function(s) {
@@ -1973,6 +1989,412 @@ var NexaModel = (() => {
       }
     }
     return notFound("No Nexa flow found for path: " + subPath + ". Direct screen access is disabled \u2014 all routes must go through a Flow gateway (e.g. /nexa" + (flows[0] && flows[0].endpoint || "/flow1") + ").");
+  }
+
+  // src/model/binding.js
+  var KINDS = {};
+  function registerSourceKind(name, def) {
+    KINDS[name] = Object.assign({ name, label: name }, def || {});
+    return KINDS[name];
+  }
+  function sourceKind(name) {
+    return KINDS[name] || null;
+  }
+  function sourceKinds() {
+    return Object.keys(KINDS).map(function(k) {
+      return KINDS[k];
+    });
+  }
+  registerSourceKind("screen", { label: "Screen variable", variable: "screen" });
+  registerSourceKind("app", { label: "App variable", variable: "app" });
+  registerSourceKind("shared", { label: "Shared variable", variable: "shared" });
+  registerSourceKind("param", { label: "Template parameter", variable: "param" });
+  registerSourceKind("msg", { label: "Message", message: true });
+  registerSourceKind("sparkplug", { label: "Sparkplug tag", tag: true, provider: "sparkplug" });
+  registerSourceKind("expr", { label: "Expression", expression: true });
+  registerSourceKind("var", { label: "Variable (nearest)", variable: "any", legacy: true });
+  function isBindingList(v) {
+    return !!v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.$bind);
+  }
+  var LEGACY_RE = /\{[^{}]+\}/;
+  function isLegacyBinding(v) {
+    return typeof v === "string" && LEGACY_RE.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
+  }
+  function isBoundValue(v) {
+    return isBindingList(v) || isLegacyBinding(v);
+  }
+  function hasNoValue(v) {
+    return v === void 0 || v === null || v === "???" || typeof v === "number" && !isFinite(v);
+  }
+  function bindingList(sources, staticValue) {
+    return { $bind: (sources || []).map(function(s) {
+      return { src: s.src, ref: String(s.ref) };
+    }), static: staticValue };
+  }
+  var WHOLE_RE = /^\{([^{}]+)\}$/;
+  function legacySource(text2) {
+    var m = WHOLE_RE.exec(String(text2).trim());
+    if (m) {
+      var inner = m[1];
+      var tag = /^([A-Za-z][\w-]*):([\s\S]+)$/.exec(inner);
+      if (tag) return { src: KINDS[tag[1]] && KINDS[tag[1]].tag ? tag[1] : "sparkplug", ref: tag[2], provider: tag[1] };
+      if (/^msg(\.|\[|$)/.test(inner)) return { src: "msg", ref: inner.replace(/^msg\.?/, "") };
+      return { src: "var", ref: inner };
+    }
+    return { src: "expr", ref: templateToExpression(text2) };
+  }
+  function templateToExpression(text2) {
+    var out = [], re = /\{([^{}]+)\}/g, last = 0, m;
+    text2 = String(text2);
+    while (m = re.exec(text2)) {
+      if (m.index > last) out.push(JSON.stringify(text2.slice(last, m.index)));
+      var s = legacySource(m[0]);
+      out.push(s.src === "var" ? "{" + s.ref + "}" : s.src === "msg" ? "[msg]{" + s.ref + "}" : "[" + (s.provider || s.src) + "]{" + s.ref + "}");
+      last = re.lastIndex;
+    }
+    if (last < text2.length) out.push(JSON.stringify(text2.slice(last)));
+    return out.join(" ");
+  }
+  function toBindingList(value, fallback) {
+    if (isBindingList(value)) return { sources: value.$bind.slice(), static: value.static, legacy: false };
+    if (isLegacyBinding(value)) {
+      var s = legacySource(value);
+      return { sources: [{ src: s.src, ref: s.ref }], static: fallback, legacy: true };
+    }
+    return { sources: [], static: value, legacy: false };
+  }
+  function resolveValue(value, read, fallback) {
+    var b = toBindingList(value, fallback);
+    for (var i = 0; i < b.sources.length; i++) {
+      var s = b.sources[i];
+      var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
+      if (!hasNoValue(v)) return { value: v, from: i };
+    }
+    return { value: b.static, from: -1 };
+  }
+  function tagRefsOf(value) {
+    var out = [];
+    toBindingList(value).sources.forEach(function(s) {
+      var k = KINDS[s.src];
+      if (k && k.tag) out.push({ provider: k.provider || s.src, address: s.ref });
+      else if (s.src === "expr") referencesOf(s.ref).forEach(function(r) {
+        var rk = KINDS[r.src];
+        if (rk && rk.tag) out.push({ provider: rk.provider || r.src, address: r.ref });
+      });
+    });
+    return out;
+  }
+  function readsMessage(value) {
+    return toBindingList(value).sources.some(function(s) {
+      return s.src === "msg" || s.src === "expr" && referencesOf(s.ref).some(function(r) {
+        return r.src === "msg";
+      });
+    });
+  }
+  function tokenize(text2) {
+    var t = [], i = 0, s = String(text2);
+    while (i < s.length) {
+      var c = s[i];
+      if (/\s/.test(c)) {
+        i++;
+        continue;
+      }
+      if (c === "[" || c === "{") {
+        var kind = "var";
+        if (c === "[") {
+          var close = s.indexOf("]", i);
+          if (close === -1) throw new Error("a [kind] is not closed");
+          kind = s.slice(i + 1, close).trim();
+          i = close + 1;
+          while (/\s/.test(s[i] || "")) i++;
+          if (s[i] !== "{") throw new Error("[" + kind + "] needs {ref} after it");
+        }
+        var end = s.indexOf("}", i);
+        if (end === -1) throw new Error("a {ref} is not closed");
+        t.push({ t: "ref", src: kind === "var" ? "var" : kind, ref: s.slice(i + 1, end).trim() });
+        i = end + 1;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        var j = i + 1, str = "";
+        while (j < s.length && s[j] !== c) {
+          if (s[j] === "\\" && j + 1 < s.length) {
+            j++;
+          }
+          str += s[j];
+          j++;
+        }
+        if (j >= s.length) throw new Error("a text is not closed");
+        t.push({ t: "str", v: str });
+        i = j + 1;
+        continue;
+      }
+      var num3 = /^(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)/.exec(s.slice(i));
+      if (num3) {
+        t.push({ t: "num", v: Number(num3[1]) });
+        i += num3[1].length;
+        continue;
+      }
+      var op = /^(==|!=|<=|>=|&&|\|\||[-+*/%()<>!?:,])/.exec(s.slice(i));
+      if (op) {
+        t.push({ t: "op", v: op[1] });
+        i += op[1].length;
+        continue;
+      }
+      var id = /^[A-Za-z_][\w]*/.exec(s.slice(i));
+      if (id) {
+        t.push({ t: "id", v: id[0] });
+        i += id[0].length;
+        continue;
+      }
+      throw new Error('unexpected "' + c + '"');
+    }
+    return t;
+  }
+  var FUNCS = {
+    round: function(x, d) {
+      var p = Math.pow(10, d || 0);
+      return Math.round(x * p) / p;
+    },
+    floor: Math.floor,
+    ceil: Math.ceil,
+    abs: Math.abs,
+    min: Math.min,
+    max: Math.max,
+    sqrt: Math.sqrt,
+    fixed: function(x, d) {
+      return Number(x).toFixed(d === void 0 ? 0 : d);
+    },
+    upper: function(s) {
+      return String(s).toUpperCase();
+    },
+    lower: function(s) {
+      return String(s).toLowerCase();
+    }
+  };
+  function parse(tokens) {
+    var i = 0;
+    function peek() {
+      return tokens[i];
+    }
+    function isOp(v) {
+      var x = tokens[i];
+      return x && x.t === "op" && x.v === v;
+    }
+    function next() {
+      return tokens[i++];
+    }
+    function expect(v) {
+      if (!isOp(v)) throw new Error('expected "' + v + '"');
+      i++;
+    }
+    function startsValue() {
+      var x = peek();
+      return !!x && (x.t === "num" || x.t === "str" || x.t === "ref" || x.t === "id" || x.t === "op" && (x.v === "(" || x.v === "!"));
+    }
+    function primary() {
+      var x = next();
+      if (!x) throw new Error("the expression ends too early");
+      if (x.t === "num") return { k: "lit", v: x.v };
+      if (x.t === "str") return { k: "lit", v: x.v };
+      if (x.t === "ref") return { k: "ref", src: x.src, ref: x.ref };
+      if (x.t === "id") {
+        if (x.v === "true" || x.v === "false") return { k: "lit", v: x.v === "true" };
+        if (x.v === "null") return { k: "lit", v: null };
+        if (!FUNCS[x.v]) throw new Error('unknown function "' + x.v + '"');
+        expect("(");
+        var args = [];
+        if (!isOp(")")) {
+          args.push(ternary());
+          while (isOp(",")) {
+            i++;
+            args.push(ternary());
+          }
+        }
+        expect(")");
+        return { k: "call", f: x.v, args };
+      }
+      if (x.t === "op" && x.v === "(") {
+        var e = ternary();
+        expect(")");
+        return e;
+      }
+      throw new Error('unexpected "' + x.v + '"');
+    }
+    function unary() {
+      if (isOp("-")) {
+        i++;
+        return { k: "neg", a: unary() };
+      }
+      if (isOp("!")) {
+        i++;
+        return { k: "not", a: unary() };
+      }
+      return primary();
+    }
+    function mul() {
+      var a = unary();
+      while (isOp("*") || isOp("/") || isOp("%")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: unary() };
+      }
+      return a;
+    }
+    function add() {
+      var a = mul();
+      while (isOp("+") || isOp("-")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: mul() };
+      }
+      return a;
+    }
+    function join() {
+      var a = add();
+      while (startsValue() && !isOp("!")) a = { k: "join", a, b: add() };
+      return a;
+    }
+    function cmp() {
+      var a = join();
+      while (isOp("==") || isOp("!=") || isOp("<") || isOp("<=") || isOp(">") || isOp(">=")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: join() };
+      }
+      return a;
+    }
+    function and() {
+      var a = cmp();
+      while (isOp("&&")) {
+        i++;
+        a = { k: "and", a, b: cmp() };
+      }
+      return a;
+    }
+    function or() {
+      var a = and();
+      while (isOp("||")) {
+        i++;
+        a = { k: "or", a, b: and() };
+      }
+      return a;
+    }
+    function ternary() {
+      var c = or();
+      if (isOp("?")) {
+        i++;
+        var a = ternary();
+        expect(":");
+        return { k: "if", c, a, b: ternary() };
+      }
+      return c;
+    }
+    var ast = ternary();
+    if (i < tokens.length) throw new Error('unexpected "' + (tokens[i].v || tokens[i].ref) + '"');
+    return ast;
+  }
+  var CACHE = {};
+  function parseExpression(text2) {
+    var key = String(text2);
+    if (CACHE[key]) return CACHE[key];
+    var r;
+    try {
+      r = { ast: parse(tokenize(key)) };
+    } catch (e) {
+      r = { error: e.message };
+    }
+    CACHE[key] = r;
+    return r;
+  }
+  function referencesOf(text2) {
+    var p = parseExpression(text2), out = [];
+    (function walk2(n) {
+      if (!n) return;
+      if (n.k === "ref") out.push({ src: n.src, ref: n.ref });
+      ["a", "b", "c"].forEach(function(k) {
+        if (n[k]) walk2(n[k]);
+      });
+      if (n.args) n.args.forEach(walk2);
+    })(p.ast);
+    return out;
+  }
+  var NONE = {};
+  function num2(v) {
+    if (typeof v === "number") return v;
+    if (typeof v === "boolean") return v ? 1 : 0;
+    if (typeof v === "string" && v.trim() !== "" && isFinite(Number(v))) return Number(v);
+    return NaN;
+  }
+  function text(v) {
+    return v === null || v === void 0 ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  function evalNode(n, read) {
+    switch (n.k) {
+      case "lit":
+        return n.v;
+      case "ref": {
+        var v = read(n.src, n.ref);
+        if (hasNoValue(v)) throw NONE;
+        return v;
+      }
+      case "neg":
+        return -num2(evalNode(n.a, read));
+      case "not":
+        return !evalNode(n.a, read);
+      case "join":
+        return text(evalNode(n.a, read)) + text(evalNode(n.b, read));
+      case "and":
+        return evalNode(n.a, read) && evalNode(n.b, read);
+      case "or":
+        return evalNode(n.a, read) || evalNode(n.b, read);
+      case "if":
+        return evalNode(n.c, read) ? evalNode(n.a, read) : evalNode(n.b, read);
+      case "call":
+        return FUNCS[n.f].apply(null, n.args.map(function(x2) {
+          return evalNode(x2, read);
+        }));
+      case "bin": {
+        var a = evalNode(n.a, read), b = evalNode(n.b, read);
+        switch (n.o) {
+          case "+": {
+            var x = num2(a), y = num2(b);
+            return isNaN(x) || isNaN(y) ? text(a) + text(b) : x + y;
+          }
+          case "-":
+            return num2(a) - num2(b);
+          case "*":
+            return num2(a) * num2(b);
+          case "/":
+            return num2(a) / num2(b);
+          case "%":
+            return num2(a) % num2(b);
+          case "==":
+            return a == b;
+          // eslint-disable-line eqeqeq
+          case "!=":
+            return a != b;
+          // eslint-disable-line eqeqeq
+          case "<":
+            return num2(a) < num2(b);
+          case "<=":
+            return num2(a) <= num2(b);
+          case ">":
+            return num2(a) > num2(b);
+          case ">=":
+            return num2(a) >= num2(b);
+        }
+      }
+    }
+    return null;
+  }
+  function evaluateExpression(textOrAst, read) {
+    var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
+    if (!p.ast) return null;
+    try {
+      var v = evalNode(p.ast, read);
+      return typeof v === "number" && !isFinite(v) ? null : v;
+    } catch (e) {
+      if (e === NONE) return null;
+      return null;
+    }
   }
 
   // src/model/migrate-logic.js
