@@ -210,10 +210,11 @@ export class NxCheckbox extends KitElement {
             ${this._tokenButton()}
             ${this.actions || nothing}
         </div>`;
+        // [breakpoint ▾][static | binding ▾][the checkbox], like every field (KitElement.frame)
+        var bar = this.responsive && this.responsive.items && this.responsive.items.length || this.modes;
         return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">
-            ${inline}
+            ${bar ? html`<div class="nx-fs-row">${this._bpSelect()}${this._modeSelect()}<div class="nx-fs-cell nx-fs-value">${inline}</div></div>` : inline}
             ${this._tokenPanel()}
-            ${this._chips()}
             ${this._foot()}
         </div>`;
     }

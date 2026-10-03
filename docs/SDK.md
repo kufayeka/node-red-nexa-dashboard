@@ -235,7 +235,10 @@ outputs: {
   - an output: Variable / Tag.
   - `<nx-tag tags-only>` offers tags only.
 - A **plain property** (a label, a colour, `disabled`…) needs no declaration: it is bindable by default (`bindable: false` turns it off).
-  - Its **Static | Binding** switch turns it into a binding priority list: `{ $bind: [{ src, ref }, …], static }`.
+  - Its row is `[breakpoint ▾][static | binding ▾][value]`. **binding** turns the value into a binding priority list: `{ $bind: [{ src, ref }, …], static }`.
+    - The value cell then reads "follows the binding priority below".
+    - Below the row is the **binding priority** table: one row per source, `[#][kind ▾][reference, with autocomplete]`, and the **static** row last.
+      **Add binding source** is at its top right. The table scrolls, and rows are dragged (≡) to reorder.
     - The sources are screen / app / shared variables, template parameters, the message, a tag, or an expression (`(0.5 * [screen]{speed}) / [app]{ratio} " rpm"`).
     - From the top, the first source that has a value wins. A source with null, undefined or an unknown tag (`???`) falls through to the next. `static` is the last.
     - A legacy binding string (`{speed}`, `{sparkplug:…}`) is still read and is shown as a list. It is saved as a list when edited.
@@ -334,11 +337,14 @@ Every component gets the same inspector, built from its schema. There is nothing
 ```
 
 - **The tree.** `group` makes the top rows (ordered by `groups`), `section` a level inside a group, then one row per prop. A list's items are rows under it, and an item's fields under the item.
-  - A row shows the value in a simple form only: a text's first line, a number with its unit, a check, a colour swatch, `[3 tabs]`, `4 lines · …`, a binding with ⛓. It never shows a control. Markers: a dot (changed from the default), ⓘ (invalid), ⚠ (`warn`), 📱 (set per breakpoint).
+  - A row shows the value in a simple form only: a text's first line, a number with its unit, a check, a colour swatch, `[3 tabs]`, `4 lines · …`, a binding list as its sources in order (`screen: x › app: y › 0`). It never shows a control. Markers: a dot (changed from the default), ⓘ (invalid), ⚠ (`warn`).
   - Search (above the tree) matches labels, keys and values. Arrow keys move the selection, Left / Right collapse / expand, Enter goes to the editor.
   - Which row is picked, what is open and the search are remembered per component type, so editing the same field on ten buttons is ten clicks on the canvas.
 - **The editor pane** (below) edits the ONE picked row:
-  - a prop: its widget. Bound widgets get the value, label, help, limits, options, validation, the reset button, the **⛓ bind button** (a tag / variable / message / expression instead of a value, with its **Fallback**, `props.__fallback[key]`), the **◆ theme token** picker (`color`, or `tokens: "fontSizes"`; docs/THEME.md) and, in the editor, the **📱 responsive button** (a value per breakpoint, chips above the widget; `noResponsive: true` opts out). Code, CSS, JSON and long text can make the pane bigger (⤢).
+  - a prop: its widget. Bound widgets get the value, label, help, limits, options, validation, the reset button and the **◆ theme token** picker (`color`, or `tokens: "fontSizes"`; docs/THEME.md).
+    - The field's row: `[breakpoint ▾][static | binding ▾][value]`.
+      - The breakpoint selector (All / a band) appears only in the editor, and only where the host says the value can vary. `noResponsive: true` opts out.
+      - static | binding appears for a bindable prop. Binding shows the binding priority table below the row (see §4). Code, CSS, JSON and long text can make the pane bigger (⤢).
   - a list: its items with move up / down / remove, and Add. The new item is picked.
   - a list item: its fields, with Up / Down / Duplicate / Remove. An item's field: that field alone.
   - a group or a section: its props with their values; click one to go to it.
@@ -369,7 +375,7 @@ definePropertyEditor("acme-curve-editor", ({ PropertyEditor, html }) => class ex
 // properties: { curve: { type: "json", default: null, editor: "acme-curve-editor" } }
 ```
 
-- It is a `KitElement`, the same contract as the built-in widgets: `this.value` in, **`this.commit(value)`** out (one undo step), **`this.preview(value)`** to show a value on the canvas while picking (no undo step, not saved). `this.frame(control)` adds the label, help, reset / ⛓ / 📱 buttons.
+- It is a `KitElement`, the same contract as the built-in widgets: `this.value` in, **`this.commit(value)`** out (one undo step), **`this.preview(value)`** to show a value on the canvas while picking (no undo step, not saved). `this.frame(control)` adds the label, help and reset, and the field's row `[breakpoint ▾][static | binding ▾][value]` when the inspector sets `.responsive` / `.modes`. With a binding list (`.binding`), it also adds the priority table.
 - `this.prop` is the prop's schema, `this.props` the component's props.
 - `kind: "dialog"`: the pane shows the summary and **Edit…**. The editor opens in a dialog with its own draft, and only **Apply** commits.
 - **`this.api`** calls your plugin's own server routes (below): `get(path, query)`, `post(path, body)`, `put(path, body)`, `del(path, query)`, JSON in and out, with the editor's login. A route that fails rejects with `error.message` and `error.status`. Outside an editor: `NexaSDK.adminApi(name)`.

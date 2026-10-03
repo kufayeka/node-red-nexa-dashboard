@@ -260,7 +260,7 @@ Tests: `test/runtime-pin-browser.test.js`, `test/runtime-zoom-browser.test.js`, 
 - the **animation**: Auto (a dialog scales, a drawer slides), Scale, Fade, Slide or None, and its duration;
 - **open when the page opens**.
 
-Everything except the preview can differ per breakpoint (📱). For example, a dialog 600 wide on the desktop is full width at xs, or a drawer comes from the right on the desktop and from the bottom on a phone.
+Everything except the preview can differ per breakpoint (a field's breakpoint selector). For example, a dialog 600 wide on the desktop is full width at xs, or a drawer comes from the right on the desktop and from the bottom on a phone.
 
 **Logic** (Events tab → Overlays):
 
@@ -340,7 +340,7 @@ Every node (a component, a frame, a group, a template instance) has a **Position
 - Both use the spacing field. The button next to it switches between one value, horizontal / vertical, and each side.
 - **Layer (Z)** (`node.z`): higher is on top of its siblings. With equal Z, the Hierarchy's order decides (top of the list = on top). **Front / Back** set a Z one past every sibling's.
   - Use Z when a node must stay in its place in an auto layout (the order sets its position) but be drawn above the others.
-- Z, margin, padding and the dock may differ per breakpoint 📱. The position itself doesn't.
+- Z, margin, padding and the dock may differ per breakpoint (the breakpoint selector). The position itself doesn't.
 
 **How it works:**
 - It is plain CSS from `Layout.boxCss`, for both the editor and the live page.
@@ -383,7 +383,10 @@ The data: `node.slots = true`, and `children` = `@frame`s with `inSlot: "<name>"
 
 **Two ways to set a value per breakpoint** (both store the same thing):
 
-1. **A field's 📱** (every field of the Properties panel: a frame's layout, a child's sizing, constraints, and every prop of every component, plugins included). It shows the breakpoint chips, like Tailwind classes: `★ md 8 · sm 20 · xs`. Pick a chip and edit the field: the value is kept for that breakpoint, without switching the canvas. A chip with a value set has a border; its × makes it inherit again.
+1. **A field's breakpoint selector**: the first cell of every field's row, `[All ▾][static ▾][value]`. Every field of the Properties panel has it: a frame's layout, a child's sizing, constraints, and every prop of every component, plugins included.
+   - **All** edits the value for every width.
+   - Pick a band (`xl ★` is the design; `md •` has its own value) and edit the field. The value is kept for that breakpoint, without switching the canvas.
+   - × next to the selector makes the band inherit again.
 2. **The canvas bar** (`3xl · 2xl · xl · lg · md★ · sm · xs`). It shows the screen at that band's preview width with its values applied. Anything changed there is kept for that band: a row made a column, a node hidden in the Hierarchy, another width, a text. The Properties panel says which band is being edited, lists what the node sets there (●), and offers **Reset**.
 
 In both, the design stays as it is, and the project always stores the design plus the changes. Nodes placed freely follow their constraints to the band's width (Right, Center, Scale…), like the page does.

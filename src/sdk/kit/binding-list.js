@@ -133,24 +133,28 @@ export class NxBindingList extends KitElement {
         return html`<nx-text class="nx-bl-ref" mono .value="${row.ref || ""}" @nx-change="${ch(function (v) { return v; })}"></nx-text>`;
     }
 
+    // one row of the table: [#][kind ▾][its reference][≡ drag][🗑]
     _row(row, i) {
         var kinds = offeredKinds(this.access);
         if (!kinds.some(function (k) { return k.name === row.src; }) && sourceKind(row.src)) kinds = kinds.concat([sourceKind(row.src)]);
-        var opts = kinds.map(function (k) { return { value: k.name, label: k.label || k.name }; });
-        var cls = "nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
+        var cls = "nx-bt-row nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
         return html`<div class="${cls}" data-i="${i}"
             @dragover="${(e) => { if (this._drag < 0) return; e.preventDefault(); this._over = i; }}"
             @drop="${(e) => { e.preventDefault(); var from = this._drag; this._drag = -1; this._over = -1; this._move(from, i); }}">
-            <span class="nx-bl-n" title="Priority ${i + 1}">${i + 1}</span>
-            <div class="nx-bl-main">
-                <nx-select class="nx-bl-kind" .options="${opts}" .value="${row.src}"
-                    @nx-change="${(e) => { e.stopPropagation(); if (e.detail.value !== row.src) this._setRow(i, { src: e.detail.value, ref: "" }); }}"></nx-select>
-                ${this._ref(row, i)}
+            <span class="nx-bt-n" title="Priority ${i + 1}">${i + 1}</span>
+            <div class="nx-bt-kind">
+                <select class="nx-control nx-bl-kind" aria-label="Source"
+                    @change="${(e) => { e.stopPropagation(); if (e.target.value !== row.src) this._setRow(i, { src: e.target.value, ref: "" }); }}">
+                    ${kinds.map(function (k) { return html`<option value="${k.name}" ?selected="${k.name === row.src}">${k.label || k.name}</option>`; })}
+                </select>
             </div>
-            <span class="nx-bl-grip" draggable="true" title="Drag to change the priority"
-                @dragstart="${(e) => { this._drag = i; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (x) { /* ignore */ } }}"
-                @dragend="${() => { this._drag = -1; this._over = -1; }}"><i class="fa fa-bars"></i></span>
-            <button type="button" class="nx-icon-btn nx-bl-del" title="Remove this source" @click="${() => this._remove(i)}"><i class="fa fa-trash-o"></i></button>
+            <div class="nx-bt-ref">${this._ref(row, i)}</div>
+            <span class="nx-bt-act">
+                <span class="nx-bl-grip" draggable="true" title="Drag to change the priority"
+                    @dragstart="${(e) => { this._drag = i; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", String(i)); } catch (x) { /* ignore */ } }}"
+                    @dragend="${() => { this._drag = -1; this._over = -1; }}"><i class="fa fa-bars"></i></span>
+                <button type="button" class="nx-icon-btn nx-bl-del" title="Remove this source" @click="${() => this._remove(i)}"><i class="fa fa-trash-o"></i></button>
+            </span>
         </div>`;
     }
 
@@ -158,11 +162,15 @@ export class NxBindingList extends KitElement {
         var rows = this.list.$bind;
         var n = rows.length;
         return html`<div class="nx-bl">
-            ${rows.map((r, i) => this._row(r, i))}
-            <div class="${"nx-bl-end" + (this._over === n ? " nx-drop" : "")}"
-                @dragover="${(e) => { if (this._drag < 0) return; e.preventDefault(); this._over = n; }}"
-                @drop="${(e) => { e.preventDefault(); var from = this._drag; this._drag = -1; this._over = -1; this._move(from, n); }}">
-                <button type="button" class="nx-btn nx-btn-ghost nx-bl-add" @click="${() => this._add()}"><i class="fa fa-plus"></i><span>Add source</span></button>
+            <div class="nx-bt-head">
+                <span class="nx-bt-title">Binding priority</span>
+                <button type="button" class="nx-btn nx-bl-add" title="Add a binding source (it goes last, above static)" @click="${() => this._add()}"><i class="fa fa-plus"></i><span>Add binding source</span></button>
+            </div>
+            <div class="nx-bt-body">
+                ${n ? rows.map((r, i) => this._row(r, i)) : html`<div class="nx-bt-empty">No source yet: the static value below is used.</div>`}
+                <div class="${"nx-bl-end" + (this._over === n ? " nx-drop" : "")}"
+                    @dragover="${(e) => { if (this._drag < 0) return; e.preventDefault(); this._over = n; }}"
+                    @drop="${(e) => { e.preventDefault(); var from = this._drag; this._drag = -1; this._over = -1; this._move(from, n); }}"></div>
             </div>
         </div>`;
     }

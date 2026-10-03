@@ -132,8 +132,8 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             // (the item's pane: its fields; Value names the tab's panel, so it is never bindable)
             const fieldRow = listId + '#0.label';
             await pick(listId + '#0');
-            check('... a tab Value (its panel) has no Binding switch, its Label has', await js(`(function(){ var f = Array.from(${pane}.querySelectorAll(".nx-pt-pane nx-text")); return f.length >= 2 && !f[0].querySelector(".nx-bl-mode") && !!f[1].querySelector(".nx-bl-mode"); })()`), null);
-            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn"); if (b) b.click(); return !!b; })()`);
+            check('... a tab Value (its panel) has no Binding switch, its Label has', await js(`(function(){ var f = Array.from(${pane}.querySelectorAll(".nx-pt-pane nx-text")); return f.length >= 2 && !f[0].querySelector(".nx-mode-select") && !!f[1].querySelector(".nx-mode-select"); })()`), null);
+            await js(`(function(){ var m = ${pane}.querySelector(".nx-pt-pane .nx-mode-select"); if (!m) return false; m.value = "binding"; m.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
             await wait(400);
             const fieldKey = fieldRow ? fieldRow.split('.').pop() : '';
             const itemVal = await js(`JSON.stringify(${node('TB')}.props[${JSON.stringify(listId || '')}][0][${JSON.stringify(fieldKey)}])`);
@@ -149,18 +149,18 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('a binding list: the row shows its sources then the static', summary === 'screen: empty › app: title › Static', summary);
             await pick(textRow);
             const blRows = await js(`${pane}.querySelectorAll(".nx-pt-pane nx-binding-list .nx-bl-row").length`);
-            check('... the pane: one row per source, Binding on', blRows === 2 && await js(`!!${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn.nx-on")`), blRows);
+            check('... the pane: one row per source, Binding on', blRows === 2 && (await js(`${pane}.querySelector(".nx-pt-pane .nx-mode-select").value`)) === 'binding' , blRows);
             await shot('binding-list');
             await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-add"); if (b) b.click(); return !!b; })()`);
             await wait(400);
             check('Add source: a third source', (await js(`${node('BL')}.props.text.$bind.length`)) === 3, await js(`JSON.stringify(${node('BL')}.props.text)`));
-            await js(`(function(){ var i = ${pane}.querySelector(".nx-pt-pane .nx-bl-static input, .nx-pt-pane .nx-bl-static textarea"); if (!i) return false; i.value = "New static"; i.dispatchEvent(new Event("input", {bubbles:true})); i.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true})); i.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
+            await js(`(function(){ var i = ${pane}.querySelector(".nx-pt-pane .nx-bt-static input, .nx-pt-pane .nx-bt-static textarea"); if (!i) return false; i.value = "New static"; i.dispatchEvent(new Event("input", {bubbles:true})); i.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true})); i.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
             await wait(400);
             check('the control below the list edits the static value', (await js(`${node('BL')}.props.text.static`)) === 'New static', await js(`JSON.stringify(${node('BL')}.props.text)`));
-            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-static-btn"); if (b) b.click(); return !!b; })()`);
+            await js(`(function(){ var m = ${pane}.querySelector(".nx-pt-pane .nx-mode-select"); if (!m) return false; m.value = "static"; m.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
             await wait(400);
             check('Static: the static value is the value again', (await js(`JSON.stringify(${node('BL')}.props.text)`)) === '"New static"', await js(`JSON.stringify(${node('BL')}.props.text)`));
-            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn"); if (b) b.click(); return !!b; })()`);
+            await js(`(function(){ var m = ${pane}.querySelector(".nx-pt-pane .nx-mode-select"); if (!m) return false; m.value = "binding"; m.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
             await wait(400);
             check('Binding: an empty list, the value kept as its static', (await js(`JSON.stringify(${node('BL')}.props.text)`)) === '{"$bind":[],"static":"New static"}', await js(`JSON.stringify(${node('BL')}.props.text)`));
 

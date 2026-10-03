@@ -8,8 +8,8 @@
 //                        rest are kept (an Update Component node). A row not set shows
 //                        "keep"; a set field gets a Keep button instead of Reset.
 //   responsive           optional, the host's values per breakpoint (the editor's
-//                        canvas/breakpoints-ui.js responsiveHost): every field gets a
-//                        📱 button and, when used, its breakpoint chips
+//                        canvas/breakpoints-ui.js responsiveHost): every field that can vary
+//                        gets the breakpoint selector (All / xs … 3xl) as its row's first cell
 // Returns { update(), destroy(), root, select(id), selected(), search(q) }
 // (ids: a prop's key, "list#2" an item, "list#2.field" an item's field, "@Group" a group).
 //
@@ -71,12 +71,9 @@ export function shownBinding(value, fallback) {
     return { $bind: b.sources, static: b.static };
 }
 
-/** The Static | Binding switch of a field: toStatic() / toBinding() commit the change. */
-export function modeSwitch(isBound, toStatic, toBinding) {
-    return html`<span class="nx-bl-mode" role="group" aria-label="Static or binding">
-        <button type="button" class="nx-bl-static-btn ${isBound ? "" : "nx-on"}" title="A fixed value" @click="${(e) => { e.stopPropagation(); if (isBound) toStatic(); }}">Static</button>
-        <button type="button" class="nx-bl-bind-btn ${isBound ? "nx-on" : ""}" title="The first source with a value, in priority order; the static value last" @click="${(e) => { e.stopPropagation(); if (!isBound) toBinding(); }}">Binding</button>
-    </span>`;
+/** The Static | Binding selector of a field (KitElement .modes): toStatic() / toBinding() commit the change. */
+export function modesOf(isBound, toStatic, toBinding) {
+    return { bound: !!isBound, toStatic: toStatic, toBinding: toBinding };
 }
 
 /** Built-in checks + prop.validate(value, p) -> message | null. */
@@ -116,8 +113,7 @@ export function renderInspector(container, opts) {
     if (container && container.jquery) container = container.get(0);
     var meta = opts.meta;
     var persist = opts.persistKey || meta.id || "component";
-    var respOpen = {};             // keys whose breakpoint chips are shown (📱)
-    var respSel = {};              // key -> the breakpoint its control edits
+    var respSel = {};              // key -> the breakpoint its control edits (none: All)
     var asyncCache = {};           // ui.async results
     var root = document.createElement("div");
     root.className = "nx-kit nx-inspector";
@@ -147,21 +143,12 @@ export function renderInspector(container, opts) {
         return list.some(function (s) { return s.name === v; }) ? v : (list[0] && list[0].name);
     }
 
-    function actionsFor(prop, value, bound, resp) {
+    function actionsFor(prop, value) {
         var btns = [];
-        if (resp) {
-            btns.push(html`<button type="button" class="nx-icon-btn nx-bp-toggle ${resp.shown ? "nx-on" : ""}" title="${resp.anySet ? "Responsive: set per breakpoint (clear them to go back to one value)" : resp.shown ? "Responsive: one value again" : "Responsive: a value per breakpoint (xs … 3xl)"}"
-                @click="${() => { respOpen[prop.key] = !resp.shown; if (!respOpen[prop.key]) delete respSel[prop.key]; update(); }}"><i class="fa fa-mobile"></i></button>`);
-        }
         if (opts.keep) {
             if (opts.keep.isSet(prop.key)) btns.push(html`<button type="button" class="nx-btn nx-btn-ghost nx-keep-btn" title="Keep: this node does not change it" @click="${() => { opts.keep.keep(prop.key); update(); }}"><i class="fa fa-undo"></i><span>Keep</span></button>`);
         } else if (!prop.noReset && !same(value, prop.default)) {
             btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => { clearFallback(prop.key); set(prop.key, clone(prop.default)); }}"><i class="fa fa-undo"></i></button>`);
-        }
-        if (BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound)) {
-            btns.push(modeSwitch(!!bound,
-                function () { clearFallback(prop.key); set(prop.key, bound.static !== undefined ? clone(bound.static) : clone(prop.default)); },
-                function () { set(prop.key, { $bind: [], static: clone(value === undefined ? prop.default : value) }); }));
         }
         return btns.length ? html`${btns}` : nothing;
     }
@@ -191,23 +178,20 @@ export function renderInspector(container, opts) {
         var p = props();
         var value = p[key] === undefined ? prop.default : p[key];
 
-        // a value per breakpoint (📱): the chips; the control edits the one picked
+        // a value per breakpoint: the row's first selector (All, or one band); the control edits that one
         var R = opts.responsive, resp = null;
         if (R && !prop.noResponsive && R.canVary(key)) {
             var bands = R.list(), active = R.active();
-            var anySet = bands.some(function (b) { return R.has(key, b.id); });
-            var shown = !!respOpen[key] || anySet;
-            var sel = respSel[key] && bands.some(function (b) { return b.id === respSel[key]; }) ? respSel[key] : active;
-            resp = { shown: shown, anySet: anySet, sel: sel, active: active };
-            if (shown) {
-                var at = function (id) { var v = R.valueAt(key, id); return v === undefined ? prop.default : v; };
-                value = at(sel);
-                el.responsive = {
-                    items: bands.map(function (b) { return { id: b.id, name: b.name, range: b.range, design: b.design, set: R.has(key, b.id), selected: b.id === sel, value: shortValue(at(b.id)) }; }),
-                    pick: function (id) { respSel[key] = id; update(); },
-                    clear: function (id) { R.clearAt(key, id); update(); }
-                };
-            } else el.responsive = null;
+            var sel = respSel[key] && bands.some(function (b) { return b.id === respSel[key]; }) ? respSel[key] : null;
+            resp = { sel: sel, active: active };
+            var at = function (id) { var v = R.valueAt(key, id); return v === undefined ? prop.default : v; };
+            if (sel) value = at(sel);
+            el.responsive = {
+                items: bands.map(function (b) { return { id: b.id, name: b.name, range: b.range, design: b.design, set: R.has(key, b.id), selected: b.id === sel, value: shortValue(at(b.id)) }; }),
+                selected: sel,
+                pick: function (id) { if (id) respSel[key] = id; else delete respSel[key]; update(); },
+                clear: function (id) { R.clearAt(key, id); update(); }
+            };
         } else el.responsive = null;
 
         // an attribute written in the template wins over the schema
@@ -252,14 +236,18 @@ export function renderInspector(container, opts) {
         el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same(value, prop.default);
         el.invalid = !!message;
         el.message = message || "";
-        el.actions = actionsFor(prop, value, bound, resp);
-        if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
-        if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
         var commit = function (v) {
             // another breakpoint than the one being edited: kept as that breakpoint's value
-            if (resp && resp.shown && resp.sel !== resp.active) { R.setAt(key, resp.sel, v); update(); return; }
+            if (resp && resp.sel && resp.sel !== resp.active) { R.setAt(key, resp.sel, v); update(); return; }
             set(key, v);
         };
+        el.actions = actionsFor(prop, value);
+        // Static | Binding: the row's second selector
+        el.modes = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound) ? modesOf(!!bound,
+            function () { clearFallback(key); commit(bound && bound.static !== undefined ? clone(bound.static) : clone(prop.default)); },
+            function () { commit({ $bind: [], static: clone(value === undefined ? prop.default : value) }); }) : null;
+        if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
+        if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
         wire(el, function (v) {
             if (prop.type === "json" && typeof v === "string") { try { v = v.trim() ? JSON.parse(v) : null; } catch (e) { /* kept as text: shown invalid */ } }
             // the list changed: a legacy string becomes a list now (its fallback is in the static)
@@ -350,21 +338,21 @@ export function renderInspector(container, opts) {
     function plainWidget(f, v, onChange) {
         var b = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? shownBinding(v) : null;
         var acts = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false
-            ? modeSwitch(!!b, function () { onChange(b.static !== undefined ? clone(b.static) : clone(f.default)); },
+            ? modesOf(!!b, function () { onChange(b.static !== undefined ? clone(b.static) : clone(f.default)); },
                 function () { onChange({ $bind: [], static: clone(v === undefined ? f.default : v) }); })
-            : nothing;
+            : null;
         if (b) v = b.static === undefined ? f.default : b.static;
         var ch = function (e) { e.stopPropagation(); onChange(e.detail.value); };
         // bound: the control below the list edits its static value
         var fb = function (e) { e.stopPropagation(); onChange({ $bind: b.$bind.slice(), static: e.detail.value }); };
         switch (f.type) {
-            case "number": return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
-            case "boolean": return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
-            case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
-            case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
+            case "number": return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
+            case "boolean": return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
+            case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
+            case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
             case "tag": return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
-            case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
-            default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
+            case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
+            default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
         }
     }
 

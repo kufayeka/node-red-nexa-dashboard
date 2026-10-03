@@ -51,10 +51,12 @@ resolved stays as written.
 ## 2b. Where a prop's value comes from: Static | Binding
 
 Every prop of a component can be bound, and so can the fields of its list items (a tab's label). A plugin can opt a prop or a field out with `bindable: false`.
-Each field has a **Static | Binding** switch:
+Each field's row is `[breakpoint ▾][static | binding ▾][value]`. Its second selector:
 
 - **Static:** the value you type.
-- **Binding:** a **binding priority** list of sources, then the static value.
+- **Binding:** the value cell reads "follows the binding priority below", and the **binding priority** table appears under the row.
+  - One row per source: `[#][kind ▾][reference]`, with autocomplete for the variables of that layer and for tags.
+  - **Add binding source** is at the top right. The table scrolls, and the **static** row is last.
   - From the top, the **first source that has a value wins**.
   - A source with no value falls through to the next one. "No value" means `null`, `undefined`, or an unknown tag (`???`: offline, not born yet).
   - `0`, `false` and `""` are values.

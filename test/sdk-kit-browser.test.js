@@ -197,7 +197,7 @@ async function main() {
                 out.steps = [ins.props.steps, row("steps").value];
                 // options from a function (a Promise), in a section
                 await ins.field("unitsFrom"); await NexaTest.wait(80);
-                out.units = Array.from(box.querySelectorAll(".nx-pt-pane select option")).map(function (o) { return o.textContent; });
+                out.units = Array.from(box.querySelectorAll(".nx-pt-pane .nx-fs-value select option")).map(function (o) { return o.textContent; });
                 out.crumb = Array.from(box.querySelectorAll(".nx-pt-pane .nx-pt-crumb span")).map(function (s) { return s.textContent; });
                 // warn (does not block) and required (does)
                 var mx = await ins.field("max"), input = mx.querySelector("input");
@@ -270,7 +270,8 @@ async function main() {
                 out.aReset = ins.props.a;
                 var f = await ins.field("fill");
                 var before = ins.props.fill;
-                f.querySelector(".nx-bl-bind-btn").click(); await NexaTest.wait();
+                var mode = function (el, v) { var m = el.querySelector(".nx-mode-select"); m.value = v; m.dispatchEvent(new Event("change", { bubbles: true })); return NexaTest.wait(); };
+                await mode(f, "binding");
                 f = await ins.field("fill");
                 out.bindMode = !!f.binding && f.binding.$bind.length === 0 && f.binding.static === before && !!f.querySelector("nx-binding-list");
                 f.querySelector(".nx-bl-add").click(); await NexaTest.wait();
@@ -387,7 +388,7 @@ async function main() {
                 input.value = "speed"; input.dispatchEvent(new Event("input", { bubbles: true }));
                 input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
                 // straight away, before any re-render: the type of the same item
-                var sel = root.querySelector(".nx-pt-pane nx-select select");
+                var sel = root.querySelector(".nx-pt-pane nx-select .nx-fs-value select");
                 sel.value = "1"; sel.dispatchEvent(new Event("change", { bubbles: true }));
                 await NexaTest.wait();
                 await NexaTest.pick(h, "rows");
@@ -509,7 +510,7 @@ async function main() {
             ]);
         });
 
-        await ok('responsive (📱): every bound field offers breakpoint chips; a chip edits that breakpoint (the host keeps it), × inherits again', async () => {
+        await ok('responsive: a field that can vary has the breakpoint selector (All / a band); a band edits that breakpoint (the host keeps it), × inherits again', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { gap: 8 }, calls = [];
@@ -528,38 +529,37 @@ async function main() {
                     fixed: { key: "fixed", type: "number", label: "Fixed", default: 0 } } };
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, responsive: responsive, set: function (k, v) { calls.push(["set", k, v]); props[k] = v; } });
                 await NexaTest.wait();
-                var fixed = await NexaTest.pick(h, "fixed"), fixedToggle = !!fixed.querySelector(".nx-bp-toggle");
+                var fixed = await NexaTest.pick(h, "fixed"), fixedSel = !!fixed.querySelector(".nx-bp-select");
                 var gap = await NexaTest.pick(h, "gap");
-                var field = function () { return gap; };
-                var chips = function () { return Array.from(field("Gap").querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp") + (c.classList.contains("nx-sel") ? "*" : "") + (c.classList.contains("nx-set") ? "!" : "") + ":" + c.textContent.trim(); }); };
-                var type = async function (label, v) { var i = field(label).querySelector("input"); i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
+                var sel = function () { return gap.querySelector(".nx-bp-select"); };
+                var opts = function () { return Array.from(sel().options).map(function (o) { return o.value + (o.selected ? "*" : "") + ":" + o.textContent.trim(); }); };
+                var pick = async function (id) { sel().value = id; sel().dispatchEvent(new Event("change", { bubbles: true })); await NexaTest.wait(); };
+                var type = async function (v) { var i = gap.querySelector(".nx-fs-value input"); i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
+                var shows = function () { return gap.querySelector(".nx-fs-value input").value; };
                 var out = {};
-                out.toggles = [!!field("Gap").querySelector(".nx-bp-toggle"), fixedToggle];
-                out.closed = chips().length;
-                field("Gap").querySelector(".nx-bp-toggle").click(); await NexaTest.wait();
-                out.open = chips();
-                field("Gap").querySelector('.nx-bp-chip[data-bp="md"]').click(); await NexaTest.wait();
-                out.mdShows = field("Gap").querySelector("input").value;
-                await type("Gap", "4");
-                out.afterMd = chips();
-                field("Gap").querySelector('.nx-bp-chip[data-bp="sm"]').click(); await NexaTest.wait();
-                out.smShows = field("Gap").querySelector("input").value;
-                field("Gap").querySelector('.nx-bp-chip[data-bp="xl"]').click(); await NexaTest.wait();
-                await type("Gap", "12");
-                field("Gap").querySelector('.nx-bp-chip[data-bp="md"]').click(); await NexaTest.wait();
-                field("Gap").querySelector('.nx-bp-chip[data-bp="md"] .nx-bp-x').click(); await NexaTest.wait();
-                out.cleared = chips();
+                out.selects = [!!sel(), fixedSel];
+                out.open = opts();
+                await pick("md");
+                out.mdShows = shows();
+                await type("4");
+                out.afterMd = opts();
+                await pick("sm");
+                out.smShows = shows();
+                await pick("");
+                await type("12");
+                await pick("md");
+                gap.querySelector(".nx-bp-clear").click(); await NexaTest.wait();
+                out.cleared = opts();
                 out.calls = calls;
                 h.destroy(); root.remove();
                 return out;
             })()`);
-            assert.deepStrictEqual(r.toggles, [true, false], 'a field the host says cannot vary has no 📱');
-            assert.strictEqual(r.closed, 0, 'no chips until asked (or set somewhere)');
-            assert.deepStrictEqual(r.open, ['xl*:xl8', 'md:md', 'sm:sm']);
+            assert.deepStrictEqual(r.selects, [true, false], 'a field the host says cannot vary has no selector');
+            assert.deepStrictEqual(r.open, ['*:All', 'xl:xl ★', 'md:md', 'sm:sm']);
             assert.strictEqual(r.mdShows, '8', 'md inherits the design');
-            assert.deepStrictEqual(r.afterMd, ['xl:xl8', 'md*!:md4', 'sm:sm']);
+            assert.deepStrictEqual(r.afterMd, [':All', 'xl:xl ★', 'md*:md •', 'sm:sm']);
             assert.strictEqual(r.smShows, '4', 'sm inherits md');
-            assert.deepStrictEqual(r.cleared, ['xl:xl12', 'md*:md', 'sm:sm'], 'kept open while picked; md inherits again');
+            assert.deepStrictEqual(r.cleared, [':All', 'xl:xl ★', 'md*:md', 'sm:sm'], 'kept picked; md inherits again');
             assert.deepStrictEqual(r.calls, [['setAt', 'gap', 'md', 4], ['set', 'gap', 12], ['clearAt', 'gap', 'md']]);
         });
 
@@ -589,23 +589,21 @@ async function main() {
                 var out = {};
 
                 // 1. Responsive button (📱)
-                var bpBtn = cb.querySelector(".nx-bp-toggle");
-                out.hasBpBtn = !!bpBtn;
-                bpBtn.click(); await NexaTest.wait();
-                out.bpChips = Array.from(cb.querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp"); });
+                var bpSel = cb.querySelector(".nx-bp-select");
+                out.hasBpBtn = !!bpSel;
+                out.bpChips = Array.from(bpSel.options).map(function (o) { return o.value; });
+                var mode = function (el, v) { var m = el.querySelector(".nx-mode-select"); m.value = v; m.dispatchEvent(new Event("change", { bubbles: true })); return NexaTest.wait(); };
 
                 // 2. Static | Binding: Binding
-                var bindBtn = cb.querySelector(".nx-bl-bind-btn");
-                out.hasBindBtn = !!bindBtn;
-                bindBtn.click(); await NexaTest.wait();
+                out.hasBindBtn = !!cb.querySelector(".nx-mode-select");
+                await mode(cb, "binding");
                 out.hasBindingWidget = !!cb.querySelector("nx-binding-list");
 
                 // a Message source: msg.disabled
                 cb.querySelector(".nx-bl-add").click(); await NexaTest.wait();
-                var kind = cb.querySelector(".nx-bl-row nx-select select");
-                var msgAt = Array.from(kind.options).findIndex(function (o) { return /Message/.test(o.textContent); });
-                out.hasMsgSource = msgAt !== -1;
-                kind.value = String(msgAt); kind.dispatchEvent(new Event("change", { bubbles: true })); await NexaTest.wait();
+                var kind = cb.querySelector(".nx-bl-row select.nx-bl-kind");
+                out.hasMsgSource = Array.from(kind.options).some(function (o) { return o.value === "msg"; });
+                kind.value = "msg"; kind.dispatchEvent(new Event("change", { bubbles: true })); await NexaTest.wait();
                 var msgInput = cb.querySelector(".nx-bl-row nx-text input");
                 msgInput.focus();
                 msgInput.value = "disabled";
@@ -615,13 +613,13 @@ async function main() {
                 out.propAfterBind = JSON.stringify(props.disabled.$bind);
 
                 // 3. the static value (last): a checkbox below the list
-                var staticBox = cb.querySelector(".nx-bl-static input[type=checkbox]");
+                var staticBox = cb.querySelector(".nx-bt-static input[type=checkbox]");
                 out.hasFallbackBox = !!staticBox;
                 if (staticBox) { staticBox.click(); await NexaTest.wait(); }
                 out.fallbackValue = props.disabled.static;
 
                 // 4. Static again: the static value is the value
-                cb.querySelector(".nx-bl-static-btn").click(); await NexaTest.wait();
+                await mode(cb, "static");
                 out.propAfterUnbind = props.disabled;
                 out.isInlineAgain = !!cb.querySelector(".nx-inline") && !cb.querySelector("nx-binding-list");
 
@@ -629,7 +627,7 @@ async function main() {
                 return out;
             })()`);
             assert.strictEqual(r.hasBpBtn, true, 'has 📱 responsive button');
-            assert.deepStrictEqual(r.bpChips, ['xl', 'md', 'sm'], 'clicking 📱 reveals breakpoint chips on nx-checkbox');
+            assert.deepStrictEqual(r.bpChips, ['', 'xl', 'md', 'sm'], 'the breakpoint selector on nx-checkbox: All, then the bands');
             assert.strictEqual(r.hasBindBtn, true, 'has the Static | Binding switch');
             assert.strictEqual(r.hasBindingWidget, true, 'Binding shows the priority list');
             assert.strictEqual(r.hasMsgSource, true, 'a Message source is offered');
@@ -652,9 +650,9 @@ async function main() {
                 await NexaTest.wait();
                 var type = async function (input, v) { input.value = v; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
                 var write = await NexaTest.pick(h, "outputValue"), hasWrite = !!write.querySelector(".nx-fallback");
-                var label = await NexaTest.pick(h, "label"), hasLabel = !!label.querySelector(".nx-fallback");
-                await type(label.querySelector(".nx-fallback input"), "n/a");
-                var labelShown = label.querySelector(".nx-fallback input").value;
+                var label = await NexaTest.pick(h, "label"), hasLabel = !!label.querySelector(".nx-bt-static");
+                await type(label.querySelector(".nx-bt-static input"), "n/a");
+                var labelShown = label.querySelector(".nx-bt-static input").value;
                 var read = await NexaTest.pick(h, "inputValue"), hasRead = !!read.querySelector(".nx-fallback");
                 await type(read.querySelector(".nx-fallback input"), "0");
                 var out = { hasFallback: [hasLabel, hasRead, hasWrite] };

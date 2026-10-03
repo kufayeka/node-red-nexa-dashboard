@@ -250,21 +250,46 @@ nx-tab[hidden] { display: none !important; }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
-/* nx-binding-list (binding-list.js): the binding priority */
-.nx-kit .nx-bl { display: flex; flex-direction: column; gap: 4px; }
-.nx-kit .nx-bl-row { display: flex; align-items: flex-start; gap: 4px; padding: 4px; border-radius: 4px; background: var(--nx-bg-subtle); border: 1px solid transparent; }
-.nx-kit .nx-bl-row.nx-dragging { opacity: .45; }
-.nx-kit .nx-bl-row.nx-drop, .nx-kit .nx-bl-end.nx-drop { border-top: 2px solid var(--nx-accent, #0f62fe); }
-.nx-kit .nx-bl-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.nx-kit .nx-bl-n { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 6px 2px 0 0; padding: 0 3px; border-radius: 8px; font-size: 10px; font-weight: 600; color: var(--nx-text-muted); background: var(--nx-bg-hover); }
-.nx-kit .nx-bl-static .nx-bl-n { margin: 0 4px 0 0; }
-.nx-kit .nx-bl-static .nx-fallback-label { display: flex; align-items: center; }
-.nx-kit .nx-bl-grip { flex: 0 0 auto; cursor: grab; padding: 6px 4px; color: var(--nx-text-faint); }
-.nx-kit .nx-bl-del { flex: 0 0 auto; }
-.nx-kit .nx-bl-add { width: 100%; justify-content: center; }
-.nx-kit .nx-bl-mode { display: inline-flex; border: 1px solid var(--nx-border-subtle); border-radius: 4px; overflow: hidden; margin-left: 4px; }
-.nx-kit.nx-kit .nx-bl-mode button { border: 0; background: transparent; font: inherit; font-size: 10.5px; padding: 1px 6px; cursor: pointer; color: var(--nx-text-muted); }
-.nx-kit.nx-kit .nx-bl-mode button.nx-on { background: var(--nx-bg-hover); color: var(--nx-text); font-weight: 600; }
+/* a field's row (base.js frame()): [breakpoint \u25BE][static | binding \u25BE][the value] */
+.nx-kit .nx-fs-row { display: flex; align-items: stretch; gap: 0; min-width: 0; border: 1px solid var(--nx-border-subtle); border-radius: 4px; }
+.nx-kit .nx-fs-cell { display: flex; align-items: center; min-width: 0; }
+.nx-kit .nx-fs-cell + .nx-fs-cell { border-left: 1px solid var(--nx-border-subtle); }
+.nx-kit .nx-fs-bp { flex: 0 0 auto; }
+.nx-kit .nx-fs-mode { flex: 0 0 auto; }
+.nx-kit .nx-fs-value { flex: 1 1 auto; padding: 0; }
+.nx-kit .nx-fs-value > * { flex: 1 1 auto; min-width: 0; }
+.nx-kit.nx-kit .nx-fs-row .nx-bp-select, .nx-kit.nx-kit .nx-fs-row .nx-mode-select { width: auto; min-width: 0; border: 0; border-radius: 0; background-color: var(--nx-bg-subtle); font-size: 11px; padding-left: 6px; padding-right: 18px; height: 100%; min-height: 28px; }
+.nx-kit.nx-kit .nx-fs-row .nx-bp-select { max-width: 64px; }
+.nx-kit.nx-kit .nx-fs-row .nx-mode-select { max-width: 78px; }
+.nx-kit.nx-kit .nx-fs-value .nx-control, .nx-kit.nx-kit .nx-fs-value .nx-group { border-color: transparent; border-radius: 0 4px 4px 0; }
+.nx-kit .nx-fs-value .nx-inline { padding: 0 6px; }
+.nx-kit .nx-bp-clear { flex: 0 0 auto; }
+.nx-kit .nx-follows { display: flex; align-items: center; min-height: 28px; padding-top: 0; padding-bottom: 0; color: var(--nx-text-faint); font-style: italic; font-size: 11.5px; cursor: not-allowed; background: var(--nx-bg-subtle); }
+
+/* the binding priority table (binding-list.js + base.js frame()) */
+.nx-kit .nx-bt { margin-top: 6px; border: 1px solid var(--nx-border-subtle); border-radius: 4px; overflow: hidden; }
+.nx-kit .nx-bl { display: flex; flex-direction: column; }
+.nx-kit .nx-bt-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px 4px 4px 8px; background: var(--nx-bg-subtle); border-bottom: 1px solid var(--nx-border-subtle); }
+.nx-kit .nx-bt-title { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--nx-text-muted); }
+.nx-kit.nx-kit .nx-bl-add { height: 22px; padding: 0 8px; font-size: 11px; gap: 4px; }
+.nx-kit .nx-bt-body { max-height: 260px; overflow-y: auto; }
+.nx-kit .nx-bt-empty { padding: 8px; font-size: 11px; color: var(--nx-text-faint); }
+.nx-kit .nx-bt-row { display: grid; grid-template-columns: 26px minmax(84px, 112px) minmax(0, 1fr) auto; align-items: stretch; border-bottom: 1px solid var(--nx-border-subtle); min-height: 32px; }
+.nx-kit .nx-bt-row > * { min-width: 0; }
+.nx-kit .nx-bt-row > * + * { border-left: 1px solid var(--nx-border-subtle); }
+.nx-kit .nx-bt-static { border-bottom: 0; background: var(--nx-bg-subtle); }
+.nx-kit .nx-bt-n { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: var(--nx-text-muted); }
+.nx-kit .nx-bt-kind { display: flex; align-items: center; font-size: 11.5px; padding: 0; }
+.nx-kit .nx-bt-static .nx-bt-kind { padding: 0 8px; color: var(--nx-text-muted); }
+.nx-kit.nx-kit .nx-bt-kind select { border: 0; border-radius: 0; background-color: transparent; font-size: 11.5px; height: 100%; }
+.nx-kit .nx-bt-ref { display: flex; flex-direction: column; justify-content: center; padding: 3px 4px; gap: 3px; }
+.nx-kit .nx-bt-ref .nx-field { margin: 0; }
+.nx-kit .nx-bt-act { display: flex; align-items: center; gap: 0; padding: 0 2px; }
+.nx-kit .nx-bt-static .nx-bt-act { border-left: 0; }
+.nx-kit .nx-bt-row.nx-dragging { opacity: .45; }
+.nx-kit .nx-bt-row.nx-drop, .nx-kit .nx-bl-end.nx-drop { box-shadow: inset 0 2px 0 var(--nx-accent, #0f62fe); }
+.nx-kit .nx-bl-end { min-height: 6px; }
+.nx-kit .nx-bl-grip { cursor: grab; padding: 4px; color: var(--nx-text-faint); }
 /* nx-binding (binding.js) */
 .nx-kit .nx-binding { display: flex; flex-direction: column; gap: 6px; }
 .nx-kit .nx-binding-source { width: 100%; }
@@ -287,16 +312,7 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-fallback { margin-top: 6px; padding: 6px 0 0; border-top: 1px dashed var(--nx-border-subtle); }
 .nx-kit .nx-fallback-label { font-size: 10.5px; color: var(--nx-text-faint); margin-bottom: 3px; }
 /* a field's breakpoint chips (base.js frame, the \u{1F4F1} of a field) */
-.nx-kit .nx-bp-strip { display: flex; flex-wrap: wrap; gap: 3px; margin: 0 0 4px; }
-.nx-kit.nx-kit .nx-bp-chip { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 5px; margin: 0; font-size: 10px; line-height: 1;
     border: 1px solid var(--nx-border); border-radius: 9px; background: var(--nx-bg); color: var(--nx-text-faint); cursor: pointer; }
-.nx-kit.nx-kit .nx-bp-chip:hover { color: var(--nx-text); background: var(--nx-bg-hover); }
-.nx-kit.nx-kit .nx-bp-chip.nx-set { color: var(--nx-text-strong); border-color: var(--nx-accent); }
-.nx-kit.nx-kit .nx-bp-chip.nx-design { color: var(--nx-text-strong); }
-.nx-kit.nx-kit .nx-bp-chip.nx-sel { background: var(--nx-accent); border-color: var(--nx-accent); color: #fff; }
-.nx-kit .nx-bp-chip .nx-bp-val { font-family: var(--nx-mono, monospace); opacity: .85; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nx-kit .nx-bp-chip .nx-bp-x { margin-left: 1px; opacity: .8; }
-.nx-kit .nx-bp-chip .nx-bp-x:hover { opacity: 1; }
 .nx-kit.nx-kit .nx-binding-expr textarea { width: 100%; box-sizing: border-box; resize: vertical; }
 /* nx-align, nx-spacing (layout-widgets.js) */
 .nx-kit .nx-align { display: grid; grid-template-columns: repeat(3, 22px); grid-template-rows: repeat(3, 22px); gap: 2px; padding: 3px; width: max-content;
@@ -504,20 +520,47 @@ nx-tab[hidden] { display: none !important; }
         this._bindingChange = false;
       }
     }
-    _chips() {
+    // ---- the field's row: [breakpoint ▾][static | binding ▾][the value] -------------------------
+    _bpSelect() {
       var r = this.responsive;
       if (!r || !r.items || !r.items.length) return nothing;
-      return html`<div class="nx-bp-strip">${r.items.map(function(it) {
-        var cls = "nx-bp-chip" + (it.selected ? " nx-sel" : "") + (it.set ? " nx-set" : "") + (it.design ? " nx-design" : "");
-        var tip = it.name + (it.range ? " (" + it.range + ")" : "") + (it.design ? " \u2014 the design" : it.set ? " \u2014 set here" : " \u2014 inherited") + (it.value !== void 0 && it.value !== "" ? ": " + it.value : "");
-        return html`<button type="button" class="${cls}" data-bp="${it.id}" title="${tip}" @click="${function(e) {
-          e.stopPropagation();
-          r.pick(it.id);
-        }}">${it.design ? html`<i class="fa fa-star" aria-hidden="true"></i>` : nothing}<span>${it.name}</span>${(it.design || it.set) && it.value !== void 0 && it.value !== "" ? html`<span class="nx-bp-val">${it.value}</span>` : nothing}${it.set && it.selected ? html`<i class="fa fa-times nx-bp-x" title="Inherit again" @click="${function(e) {
-          e.stopPropagation();
-          r.clear(it.id);
-        }}"></i>` : nothing}</button>`;
-      })}</div>`;
+      var sel = r.selected || "";
+      var cur = r.items.filter(function(it) {
+        return it.id === sel;
+      })[0];
+      return html`<div class="nx-fs-cell nx-fs-bp">
+            <select class="nx-control nx-bp-select" title="Breakpoint: the value for every width, or for one band" aria-label="Breakpoint"
+                @change="${(e) => {
+        e.stopPropagation();
+        r.pick(e.target.value || null);
+      }}">
+                <option value="" ?selected="${!sel}">All</option>
+                ${r.items.map(function(it) {
+        var mark = it.design ? " \u2605" : it.set ? " \u2022" : "";
+        var tip = (it.range ? it.range : "") + (it.design ? " \u2014 the design" : it.set ? " \u2014 set here" : " \u2014 inherited") + (it.value !== void 0 && it.value !== "" ? ": " + it.value : "");
+        return html`<option value="${it.id}" ?selected="${it.id === sel}" title="${tip}">${it.name + mark}</option>`;
+      })}
+            </select>
+            ${cur && cur.set && !cur.design ? html`<button type="button" class="nx-icon-btn nx-bp-clear" title="${cur.name}: inherit again" @click="${(e) => {
+        e.stopPropagation();
+        r.clear(cur.id);
+      }}"><i class="fa fa-times"></i></button>` : nothing}
+        </div>`;
+    }
+    _modeSelect() {
+      var m = this.modes;
+      if (!m) return nothing;
+      return html`<div class="nx-fs-cell nx-fs-mode">
+            <select class="nx-control nx-mode-select" aria-label="Static or binding" title="Static: a fixed value. Binding: the first source with a value, in priority order"
+                @change="${(e) => {
+        e.stopPropagation();
+        if (e.target.value === "binding") m.toBinding();
+        else m.toStatic();
+      }}">
+                <option value="static" ?selected="${!m.bound}">static</option>
+                <option value="binding" ?selected="${!!m.bound}">binding</option>
+            </select>
+        </div>`;
     }
     get controlId() {
       return this._uid + "-c";
@@ -539,12 +582,22 @@ nx-tab[hidden] { display: none !important; }
      * nx-binding, and the control below it for the fallback), then the message / help.
      */
     frame(control) {
-      if (this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind)) {
-        var list = html`<nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => {
+      var listed = !!(this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind));
+      var table = nothing;
+      if (listed) {
+        table = html`<div class="nx-bt">
+                <nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => {
           e.stopPropagation();
           this._changeBinding(e.detail.value);
-        }}"></nx-binding-list>`;
-        control = html`${list}<div class="nx-fallback nx-bl-static"><div class="nx-fallback-label"><span class="nx-bl-n">${this.binding.$bind.length + 1}</span>Static — when no source above has a value</div>${control}</div>`;
+        }}"></nx-binding-list>
+                <div class="nx-bt-row nx-bt-static">
+                    <span class="nx-bt-n">${this.binding.$bind.length + 1}</span>
+                    <span class="nx-bt-kind">static</span>
+                    <div class="nx-bt-ref">${control}</div>
+                    <span class="nx-bt-act"></span>
+                </div>
+            </div>`;
+        control = html`<div class="nx-control nx-follows" aria-disabled="true">follows the binding priority below</div>`;
       } else if (this.binding !== void 0 && this.binding !== null) {
         var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => {
           e.stopPropagation();
@@ -556,7 +609,9 @@ nx-tab[hidden] { display: none !important; }
         var chip = this._tokenChip(this.value);
         if (chip) control = chip;
       }
-      return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${this._tokenPanel()}${this._chips()}${control}${this._foot()}</div>`;
+      var bar = this.responsive && this.responsive.items && this.responsive.items.length || this.modes;
+      var row = bar ? html`<div class="nx-fs-row">${this._bpSelect()}${this._modeSelect()}<div class="nx-fs-cell nx-fs-value">${control}</div></div>` : control;
+      return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">${this._head()}${this._tokenPanel()}${row}${table}${this._foot()}</div>`;
     }
   };
   __publicField(KitElement, "properties", {
@@ -578,8 +633,11 @@ nx-tab[hidden] { display: none !important; }
     binding: { attribute: false },
     // bound: its own control below the binding edits the fallback (nx-fallback event)
     fallback: { type: Boolean },
-    // a value per breakpoint: { items: [{ id, name, range, design, set, selected, value }], pick(id), clear(id) }
+    // a value per breakpoint: { items: [{ id, name, range, design, set, selected, value }],
+    //   selected (a band's id, null = all), pick(id | null), clear(id) }
     responsive: { attribute: false },
+    // Static | Binding: { bound, toStatic(), toBinding() } (null: no selector)
+    modes: { attribute: false },
     // theme tokens it can take ("colors", "fontSizes,spacing"…): a ◆ picker; {token:…} shows as a chip
     tokens: { type: String },
     _tokenOpen: { state: true },
@@ -830,10 +888,10 @@ nx-tab[hidden] { display: none !important; }
             ${this._tokenButton()}
             ${this.actions || nothing}
         </div>`;
+      var bar = this.responsive && this.responsive.items && this.responsive.items.length || this.modes;
       return html`<div class="nx-field ${this.invalid ? "nx-invalid" : ""}">
-            ${inline}
+            ${bar ? html`<div class="nx-fs-row">${this._bpSelect()}${this._modeSelect()}<div class="nx-fs-cell nx-fs-value">${inline}</div></div>` : inline}
             ${this._tokenPanel()}
-            ${this._chips()}
             ${this._foot()}
         </div>`;
     }
@@ -2629,17 +2687,8 @@ nx-tab[hidden] { display: none !important; }
     var b = toBindingList(value, fallback);
     return { $bind: b.sources, static: b.static };
   }
-  function modeSwitch(isBound, toStatic, toBinding) {
-    return html`<span class="nx-bl-mode" role="group" aria-label="Static or binding">
-        <button type="button" class="nx-bl-static-btn ${isBound ? "" : "nx-on"}" title="A fixed value" @click="${(e) => {
-      e.stopPropagation();
-      if (isBound) toStatic();
-    }}">Static</button>
-        <button type="button" class="nx-bl-bind-btn ${isBound ? "nx-on" : ""}" title="The first source with a value, in priority order; the static value last" @click="${(e) => {
-      e.stopPropagation();
-      if (!isBound) toBinding();
-    }}">Binding</button>
-    </span>`;
+  function modesOf(isBound, toStatic, toBinding) {
+    return { bound: !!isBound, toStatic, toBinding };
   }
   function validateProp(prop, value, p) {
     var empty = value === void 0 || value === null || value === "" || Array.isArray(value) && !value.length;
@@ -2686,7 +2735,6 @@ nx-tab[hidden] { display: none !important; }
     if (container && container.jquery) container = container.get(0);
     var meta = opts.meta;
     var persist = opts.persistKey || meta.id || "component";
-    var respOpen = {};
     var respSel = {};
     var asyncCache = {};
     var root = document.createElement("div");
@@ -2725,16 +2773,8 @@ nx-tab[hidden] { display: none !important; }
         return s.name === v;
       }) ? v : list[0] && list[0].name;
     }
-    function actionsFor(prop, value, bound, resp) {
+    function actionsFor(prop, value) {
       var btns = [];
-      if (resp) {
-        btns.push(html`<button type="button" class="nx-icon-btn nx-bp-toggle ${resp.shown ? "nx-on" : ""}" title="${resp.anySet ? "Responsive: set per breakpoint (clear them to go back to one value)" : resp.shown ? "Responsive: one value again" : "Responsive: a value per breakpoint (xs \u2026 3xl)"}"
-                @click="${() => {
-          respOpen[prop.key] = !resp.shown;
-          if (!respOpen[prop.key]) delete respSel[prop.key];
-          update();
-        }}"><i class="fa fa-mobile"></i></button>`);
-      }
       if (opts.keep) {
         if (opts.keep.isSet(prop.key)) btns.push(html`<button type="button" class="nx-btn nx-btn-ghost nx-keep-btn" title="Keep: this node does not change it" @click="${() => {
           opts.keep.keep(prop.key);
@@ -2745,18 +2785,6 @@ nx-tab[hidden] { display: none !important; }
           clearFallback(prop.key);
           set(prop.key, clone2(prop.default));
         }}"><i class="fa fa-undo"></i></button>`);
-      }
-      if (BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound)) {
-        btns.push(modeSwitch(
-          !!bound,
-          function() {
-            clearFallback(prop.key);
-            set(prop.key, bound.static !== void 0 ? clone2(bound.static) : clone2(prop.default));
-          },
-          function() {
-            set(prop.key, { $bind: [], static: clone2(value === void 0 ? prop.default : value) });
-          }
-        ));
       }
       return btns.length ? html`${btns}` : nothing;
     }
@@ -2789,34 +2817,30 @@ nx-tab[hidden] { display: none !important; }
       var R = opts.responsive, resp = null;
       if (R && !prop.noResponsive && R.canVary(key)) {
         var bands = R.list(), active = R.active();
-        var anySet = bands.some(function(b) {
-          return R.has(key, b.id);
-        });
-        var shown = !!respOpen[key] || anySet;
         var sel = respSel[key] && bands.some(function(b) {
           return b.id === respSel[key];
-        }) ? respSel[key] : active;
-        resp = { shown, anySet, sel, active };
-        if (shown) {
-          var at = function(id) {
-            var v = R.valueAt(key, id);
-            return v === void 0 ? prop.default : v;
-          };
-          value = at(sel);
-          el.responsive = {
-            items: bands.map(function(b) {
-              return { id: b.id, name: b.name, range: b.range, design: b.design, set: R.has(key, b.id), selected: b.id === sel, value: shortValue(at(b.id)) };
-            }),
-            pick: function(id) {
-              respSel[key] = id;
-              update();
-            },
-            clear: function(id) {
-              R.clearAt(key, id);
-              update();
-            }
-          };
-        } else el.responsive = null;
+        }) ? respSel[key] : null;
+        resp = { sel, active };
+        var at = function(id) {
+          var v = R.valueAt(key, id);
+          return v === void 0 ? prop.default : v;
+        };
+        if (sel) value = at(sel);
+        el.responsive = {
+          items: bands.map(function(b) {
+            return { id: b.id, name: b.name, range: b.range, design: b.design, set: R.has(key, b.id), selected: b.id === sel, value: shortValue(at(b.id)) };
+          }),
+          selected: sel,
+          pick: function(id) {
+            if (id) respSel[key] = id;
+            else delete respSel[key];
+            update();
+          },
+          clear: function(id) {
+            R.clearAt(key, id);
+            update();
+          }
+        };
       } else el.responsive = null;
       Object.keys(SCHEMA_ATTRS).forEach(function(name) {
         if (prop[name] !== void 0 && !el.hasAttribute(SCHEMA_ATTRS[name])) el[name] = prop[name];
@@ -2859,17 +2883,27 @@ nx-tab[hidden] { display: none !important; }
       el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same2(value, prop.default);
       el.invalid = !!message;
       el.message = message || "";
-      el.actions = actionsFor(prop, value, bound, resp);
-      if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
-      if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
       var commit = function(v) {
-        if (resp && resp.shown && resp.sel !== resp.active) {
+        if (resp && resp.sel && resp.sel !== resp.active) {
           R.setAt(key, resp.sel, v);
           update();
           return;
         }
         set(key, v);
       };
+      el.actions = actionsFor(prop, value);
+      el.modes = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound) ? modesOf(
+        !!bound,
+        function() {
+          clearFallback(key);
+          commit(bound && bound.static !== void 0 ? clone2(bound.static) : clone2(prop.default));
+        },
+        function() {
+          commit({ $bind: [], static: clone2(value === void 0 ? prop.default : value) });
+        }
+      ) : null;
+      if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
+      if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
       wire(el, function(v) {
         if (prop.type === "json" && typeof v === "string") {
           try {
@@ -2968,7 +3002,7 @@ nx-tab[hidden] { display: none !important; }
     }
     function plainWidget(f, v, onChange) {
       var b = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? shownBinding(v) : null;
-      var acts = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? modeSwitch(
+      var acts = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? modesOf(
         !!b,
         function() {
           onChange(b.static !== void 0 ? clone2(b.static) : clone2(f.default));
@@ -2976,7 +3010,7 @@ nx-tab[hidden] { display: none !important; }
         function() {
           onChange({ $bind: [], static: clone2(v === void 0 ? f.default : v) });
         }
-      ) : nothing;
+      ) : null;
       if (b) v = b.static === void 0 ? f.default : b.static;
       var ch = function(e) {
         e.stopPropagation();
@@ -2988,21 +3022,21 @@ nx-tab[hidden] { display: none !important; }
       };
       switch (f.type) {
         case "number":
-          return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
+          return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
         case "boolean":
-          return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
+          return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
         case "enum":
           return html`<nx-select .value="${v}" .options="${(f.options || []).map(function(o) {
             return typeof o === "object" ? o : { value: o, label: String(o) };
-          })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
+          })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
         case "color":
-          return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
+          return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
         case "tag":
           return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
         case "asset":
-          return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
+          return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
         default:
-          return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
+          return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
       }
     }
     function enumStyle(prop) {
@@ -3829,15 +3863,13 @@ nx-tab[hidden] { display: none !important; }
         return v;
       })}"></nx-text>`;
     }
+    // one row of the table: [#][kind ▾][its reference][≡ drag][🗑]
     _row(row, i) {
       var kinds = offeredKinds(this.access);
       if (!kinds.some(function(k) {
         return k.name === row.src;
       }) && sourceKind(row.src)) kinds = kinds.concat([sourceKind(row.src)]);
-      var opts = kinds.map(function(k) {
-        return { value: k.name, label: k.label || k.name };
-      });
-      var cls = "nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
+      var cls = "nx-bt-row nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
       return html`<div class="${cls}" data-i="${i}"
             @dragover="${(e) => {
         if (this._drag < 0) return;
@@ -3851,17 +3883,22 @@ nx-tab[hidden] { display: none !important; }
         this._over = -1;
         this._move(from, i);
       }}">
-            <span class="nx-bl-n" title="Priority ${i + 1}">${i + 1}</span>
-            <div class="nx-bl-main">
-                <nx-select class="nx-bl-kind" .options="${opts}" .value="${row.src}"
-                    @nx-change="${(e) => {
+            <span class="nx-bt-n" title="Priority ${i + 1}">${i + 1}</span>
+            <div class="nx-bt-kind">
+                <select class="nx-control nx-bl-kind" aria-label="Source"
+                    @change="${(e) => {
         e.stopPropagation();
-        if (e.detail.value !== row.src) this._setRow(i, { src: e.detail.value, ref: "" });
-      }}"></nx-select>
-                ${this._ref(row, i)}
+        if (e.target.value !== row.src) this._setRow(i, { src: e.target.value, ref: "" });
+      }}">
+                    ${kinds.map(function(k) {
+        return html`<option value="${k.name}" ?selected="${k.name === row.src}">${k.label || k.name}</option>`;
+      })}
+                </select>
             </div>
-            <span class="nx-bl-grip" draggable="true" title="Drag to change the priority"
-                @dragstart="${(e) => {
+            <div class="nx-bt-ref">${this._ref(row, i)}</div>
+            <span class="nx-bt-act">
+                <span class="nx-bl-grip" draggable="true" title="Drag to change the priority"
+                    @dragstart="${(e) => {
         this._drag = i;
         e.dataTransfer.effectAllowed = "move";
         try {
@@ -3869,32 +3906,37 @@ nx-tab[hidden] { display: none !important; }
         } catch (x) {
         }
       }}"
-                @dragend="${() => {
+                    @dragend="${() => {
         this._drag = -1;
         this._over = -1;
       }}"><i class="fa fa-bars"></i></span>
-            <button type="button" class="nx-icon-btn nx-bl-del" title="Remove this source" @click="${() => this._remove(i)}"><i class="fa fa-trash-o"></i></button>
+                <button type="button" class="nx-icon-btn nx-bl-del" title="Remove this source" @click="${() => this._remove(i)}"><i class="fa fa-trash-o"></i></button>
+            </span>
         </div>`;
     }
     render() {
       var rows = this.list.$bind;
       var n2 = rows.length;
       return html`<div class="nx-bl">
-            ${rows.map((r, i) => this._row(r, i))}
-            <div class="${"nx-bl-end" + (this._over === n2 ? " nx-drop" : "")}"
-                @dragover="${(e) => {
+            <div class="nx-bt-head">
+                <span class="nx-bt-title">Binding priority</span>
+                <button type="button" class="nx-btn nx-bl-add" title="Add a binding source (it goes last, above static)" @click="${() => this._add()}"><i class="fa fa-plus"></i><span>Add binding source</span></button>
+            </div>
+            <div class="nx-bt-body">
+                ${n2 ? rows.map((r, i) => this._row(r, i)) : html`<div class="nx-bt-empty">No source yet: the static value below is used.</div>`}
+                <div class="${"nx-bl-end" + (this._over === n2 ? " nx-drop" : "")}"
+                    @dragover="${(e) => {
         if (this._drag < 0) return;
         e.preventDefault();
         this._over = n2;
       }}"
-                @drop="${(e) => {
+                    @drop="${(e) => {
         e.preventDefault();
         var from = this._drag;
         this._drag = -1;
         this._over = -1;
         this._move(from, n2);
-      }}">
-                <button type="button" class="nx-btn nx-btn-ghost nx-bl-add" @click="${() => this._add()}"><i class="fa fa-plus"></i><span>Add source</span></button>
+      }}"></div>
             </div>
         </div>`;
     }
