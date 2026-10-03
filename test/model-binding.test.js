@@ -124,5 +124,32 @@ ok('what to subscribe and where a write goes', () => {
     assert.strictEqual(M.writeTargetOf('{speed}'), '{speed}');
 });
 
+ok('no static at all: an unknown tag still shows "???" (a tag binding always did)', () => {
+    const v = { $bind: [{ src: 'sparkplug', ref: 'G::E::D::M' }] };
+    assert.deepStrictEqual(M.resolveValue(v, reader({ sparkplug: { 'G::E::D::M': '???' } })), { value: '???', from: -1 });
+    assert.deepStrictEqual(M.resolveValue({ $bind: [{ src: 'app', ref: 'x' }] }, reader({ app: {} })), { value: undefined, from: -1 }, 'a variable without a value: nothing');
+    assert.deepStrictEqual(M.resolveValue(M.bindingList([{ src: 'sparkplug', ref: 'G::E::D::M' }], ''), reader({ sparkplug: { 'G::E::D::M': '???' } })).value, '', 'a static value wins over ???');
+});
+
+ok('converting legacy strings: only what the schema allows; the fallback becomes the static', () => {
+    const props = {
+        text: '{speed}', label: 'Line {line}: {sparkplug:G::E::D::S} rpm', value: '{sparkplug:G::E::D::V}', plain: 'hello', logo: '{asset:logo}',
+        tabs: [{ value: '{tabKey}', label: '{tabLabel}' }],
+        __fallback: { text: '0', value: 'x' }
+    };
+    const can = (k, f) => (f ? f === 'label' : k !== 'value');
+    assert.strictEqual(M.migrateLegacyBindings(props, can), 3);
+    assert.deepStrictEqual(props.text, { $bind: [{ src: 'var', ref: 'speed' }], static: '0' });
+    assert.strictEqual(props.label.$bind[0].src, 'expr');
+    assert.strictEqual(props.value, '{sparkplug:G::E::D::V}', 'a tag input stays a tag string');
+    assert.deepStrictEqual([props.plain, props.logo], ['hello', '{asset:logo}']);
+    assert.deepStrictEqual(props.tabs[0], { value: '{tabKey}', label: { $bind: [{ src: 'var', ref: 'tabLabel' }] } });
+    assert.deepStrictEqual(props.__fallback, { value: 'x' }, 'only the converted fallbacks go');
+    assert.strictEqual(M.migrateLegacyBindings(props, can), 0, 'again: nothing');
+    // the same value before and after
+    const w = reader({ var: { speed: 7 } });
+    assert.strictEqual(M.resolveValue(props.text, w).value, M.resolveValue('{speed}', w, '0').value);
+});
+
 console.log(passed + ' passed');
 console.log('ALL OK');

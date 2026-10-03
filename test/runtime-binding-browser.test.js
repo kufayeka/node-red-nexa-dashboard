@@ -16,7 +16,7 @@ async function main() {
     const server = await startServer({ mounts: { '/fx': path.join(__dirname, 'fixtures') } });
     try {
         const r = await withPage(server.url + '/fx/runtime-binding.html', async ({ js, logs }) => {
-            const texts = () => js(`(function () { var o = {}; ["a", "b", "c", "d", "e", "f", "g"].forEach(function (id) { var e = document.querySelector('[data-id="' + id + '"]'); o[id] = e ? e.textContent : null; }); return o; })()`);
+            const texts = () => js(`(function () { var o = {}; ["a", "b", "c", "d", "e", "f", "g", "h"].forEach(function (id) { var e = document.querySelector('[data-id="' + id + '"]'); o[id] = e ? e.textContent : null; }); return o; })()`);
             const settle = async (want) => {
                 for (let i = 0; i < 50; i++) {
                     if (JSON.stringify(await texts()) === JSON.stringify(want)) return;
@@ -32,15 +32,16 @@ async function main() {
                     d: 'waiting',       // no message yet, "empty" is null: static
                     e: 'off',           // the tag is unknown: static
                     f: 'screen title',  // a legacy string still reads the nearest
-                    g: 'App title,Tab 2'
+                    g: 'App title,Tab 2',
+                    h: 'static h'
                 });
             });
             await ok('a tag in a binding list is subscribed', async () => {
                 const keys = await js('Object.keys(window.__nexaRuntime.state.sparkplugBindingIndex)');
                 assert.ok(keys.includes('G::E::D::M'), JSON.stringify(keys));
             });
-            await ok('Update Component: a message source picks it up; the list itself is never overwritten', async () => {
-                await settle({ a: 'App title', b: 'Plant A', c: '10 rpm', d: 'hello', e: 'off', f: 'screen title', g: 'App title,Tab 2' });
+            await ok('Update Component: a message source picks it up; the list itself is never overwritten; a set value bound to the message', async () => {
+                await settle({ a: 'App title', b: 'Plant A', c: '10 rpm', d: 'hello', e: 'off', f: 'screen title', g: 'App title,Tab 2', h: 'from node' });
                 const raw = await js(`JSON.stringify(window.__nexaRuntime.state.sparkplugBoundComponents.map(function (e) { return e.screen; })[0].components.filter(function (c) { return c.id === "b" || c.id === "d"; }).map(function (c) { return c.props.text; }))`);
                 assert.ok(JSON.parse(raw).every((t) => t && Array.isArray(t.$bind)), raw);
             });

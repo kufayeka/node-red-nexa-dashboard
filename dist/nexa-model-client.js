@@ -23,6 +23,7 @@ var NexaModel = (() => {
   // src/model/index.js
   var index_exports = {};
   __export(index_exports, {
+    BINDABLE_TYPES: () => BINDABLE_TYPES,
     BindingRef: () => BindingRef,
     CAROUSEL_DEFAULT: () => CAROUSEL_DEFAULT,
     CONTAINER_TYPES: () => CONTAINER_TYPES,
@@ -128,6 +129,7 @@ var NexaModel = (() => {
     memberAt: () => memberAt,
     memberPaths: () => memberPaths,
     mentionsToken: () => mentionsToken,
+    migrateLegacyBindings: () => migrateLegacyBindings,
     migrateLogic: () => migrateLogic,
     migrateLogicNode: () => migrateLogicNode,
     migrateOverrideKeys: () => migrateOverrideKeys,
@@ -2072,12 +2074,14 @@ var NexaModel = (() => {
     return { sources: [], static: value, legacy: false };
   }
   function resolveValue(value, read, fallback) {
-    var b = toBindingList(value, fallback);
+    var b = toBindingList(value, fallback), unknown = false;
     for (var i = 0; i < b.sources.length; i++) {
       var s = b.sources[i];
       var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
       if (!hasNoValue(v)) return { value: v, from: i };
+      if (v === "???") unknown = true;
     }
+    if (b.static === void 0 && unknown) return { value: "???", from: -1 };
     return { value: b.static, from: -1 };
   }
   function tagRefsOf(value) {
@@ -2518,6 +2522,37 @@ var NexaModel = (() => {
       out[k] = resolveDeep(props[k], read);
     });
     return out || props;
+  }
+  var BINDABLE_TYPES = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+  function legacyToList(v, staticValue) {
+    var out = { $bind: toBindingList(v).sources };
+    if (staticValue !== void 0) out.static = staticValue;
+    return out;
+  }
+  function migrateLegacyBindings(props, canConvert) {
+    if (!props || typeof props !== "object") return 0;
+    var fb = props.__fallback || {}, n = 0;
+    Object.keys(props).forEach(function(k) {
+      if (k.slice(0, 2) === "__") return;
+      var v = props[k];
+      if (isLegacyBinding(v) && canConvert(k)) {
+        props[k] = legacyToList(v, fb[k]);
+        delete fb[k];
+        n++;
+      } else if (Array.isArray(v)) {
+        v.forEach(function(item) {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return;
+          Object.keys(item).forEach(function(f) {
+            if (isLegacyBinding(item[f]) && canConvert(k, f)) {
+              item[f] = legacyToList(item[f]);
+              n++;
+            }
+          });
+        });
+      }
+    });
+    if (props.__fallback && !Object.keys(props.__fallback).length) delete props.__fallback;
+    return n;
   }
 
   // src/model/migrate-logic.js

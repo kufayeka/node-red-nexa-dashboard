@@ -1,3 +1,4 @@
+import { registerConvertBindingsAction } from "./features/bindings/convert.js";
 import "./registry.js";
 import { registerHistoryRenderers } from "./history.js";
 import { renderActiveScreen } from "./canvas/canvas-ui.js";
@@ -34,6 +35,7 @@ function widenSidebar(share) {
 registerHistoryRenderers(renderActiveScreen, renderLogicCanvas);
 
 registerPagesEditorAction();
+registerConvertBindingsAction();
 
 if (typeof window.RED !== "undefined" && window.RED.plugins) {
     window.RED.plugins.registerPlugin("kufayeka-nexa-dashboard", {

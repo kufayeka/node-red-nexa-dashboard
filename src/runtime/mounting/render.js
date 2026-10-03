@@ -151,11 +151,13 @@ export function runUiUpdateNode(screen, node, msg) {
     const comp = findComponent(screen, node.compId);
     const compProps = (comp && comp.props) || {};
     if (comp) comp.__lastMsg = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
+    // the values this node sets: static, or a binding list (a Message source reads THIS message)
+    const config = comp ? resolveBindingProps(node.config || {}, runtimeReader(comp)) : (node.config || {});
     if (propsMention(compProps, "{msg") || Object.keys(compProps).some(function (k) { return readsMessage(compProps[k]); })) {
         const cfg = {};
-        Object.keys(node.config || {}).forEach(function (k) {
+        Object.keys(config).forEach(function (k) {
             const bound = (typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1) || readsMessage(compProps[k]);
-            if (!bound) cfg[k] = node.config[k];
+            if (!bound) cfg[k] = config[k];
         });
         applyUiUpdateMulti(screen, node.compId, cfg, null, msg && msg.properties);
         refreshComponentRender(screen, comp);
@@ -188,7 +190,7 @@ export function runUiUpdateNode(screen, node, msg) {
         });
     }
 
-    applyUiUpdateMulti(screen, node.compId, node.config, payloadProps, msg && msg.properties);
+    applyUiUpdateMulti(screen, node.compId, config, payloadProps, msg && msg.properties);
     if (comp) refreshComponentRender(screen, comp);
 }
 

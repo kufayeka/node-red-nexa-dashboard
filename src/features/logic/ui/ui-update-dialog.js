@@ -1,37 +1,88 @@
+// --- The Update Component node's dialog: the component's property tree, keep / set ---------
+// The same tree as the Properties tab (the kit's renderInspector, the component's own groups and
+// props, its place and size), over the NODE's config instead of the component: a prop the node
+// does not set shows "keep"; editing one sets it (Keep takes it back). A set value can be static
+// or a binding priority list: a Message source reads the message this node gets
+// (Message → payload.speed), resolved on the page when the node runs.
+// A prop the component itself binds (its Properties: Binding) is not set here: the message
+// reaches it through its own Message source, and its place in that list decides.
 import { findComponent, markDirty } from "../../../state.js";
+import { normalizeProp } from "../../../sdk/schema.js";
+import { isBindingList, isLegacyBinding } from "../../../model/binding.js";
+
+var GEOMETRY = {
+    x: { type: "number", label: "X", unit: "px" },
+    y: { type: "number", label: "Y", unit: "px" },
+    w: { type: "number", label: "Width", unit: "px" },
+    h: { type: "number", label: "Height", unit: "px" },
+    rotation: { type: "number", label: "Rotation", unit: "°" }
+};
+var SKIP_TYPES = { tag: 1, code: 1, action: 1 };
+
+function clone(v) {
+    return v === null || v === undefined || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+}
+
+/** The props the node can set, as kit props (defaults = the component's values now). */
+export function updatableProps(comp, typeDef) {
+    var out = {};
+    Object.keys(GEOMETRY).forEach(function (k) {
+        out[k] = normalizeProp(k, Object.assign({ group: "Position & Size", default: comp[k] !== undefined ? comp[k] : 0 }, GEOMETRY[k]));
+    });
+    var own = {};
+    if (comp.type === "@lit-component") {
+        (comp.litBindable || []).forEach(function (p) {
+            var type = p.type === "number" || p.type === "boolean" || p.type === "color" ? p.type : p.type === "object" || p.type === "array" ? "json" : "string";
+            own[p.name] = normalizeProp(p.name, { type: type, default: p.defaultValue, group: "Properties" });
+        });
+    } else if (typeDef && typeDef.nexa) {
+        Object.keys(typeDef.nexa.props).forEach(function (k) {
+            var p = typeDef.nexa.props[k];
+            if (SKIP_TYPES[p.type] || k.charAt(0) === "_") return;
+            own[k] = Object.assign({}, p);
+        });
+    } else if (typeDef) {
+        Object.keys(typeDef.defaults || {}).forEach(function (k) {
+            var d = typeDef.defaults[k] || {};
+            var type = d.type === "number" || d.type === "color" ? d.type : d.type === "checkbox" ? "boolean" : "string";
+            own[k] = normalizeProp(k, { type: type, default: d.value, group: "Properties" });
+        });
+    }
+    var props = comp.props || {};
+    Object.keys(own).forEach(function (k) {
+        var p = own[k], now = props[k];
+        if (isBindingList(now) || isLegacyBinding(now)) {
+            // bound by the component itself: the message reaches it through its Message source
+            p.enabledWhen = function () { return false; };
+            p.help = "Bound in the component's Properties (Binding): this node's message reaches it through a Message source there.";
+        } else if (now !== undefined) p.default = clone(now);
+        p.noReset = false;
+        out[k] = p;
+    });
+    return out;
+}
 
 export function openUiUpdateNodeEditor(node) {
     var comp = findComponent(node.props.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
-    var fieldEls = {};
     // an SDK component's declared actions (reload, open a URL…): the node can run one
     var actions = (typeDef && typeDef.nexa && typeDef.nexa.actionList) || [];
-    var actionSel = null, paramsInput = null;
+    var actionSel = null, paramsInput = null, handle = null;
+    var cfg = clone(node.props.config || {});
+    // the old dialog kept "" for a blank (kept) field: not set
+    Object.keys(cfg).forEach(function (k) { if (cfg[k] === "" || cfg[k] === null || cfg[k] === undefined) delete cfg[k]; });
+
     window.RED.tray.show({
         id: "nexa-logic-uiupdate-editor",
-        title: "Configure Update Node",
-        width: 450,
+        title: "Update Component",
+        width: 520,
         buttons: [
             { text: "Cancel", click: function () { window.RED.tray.close(); } },
             {
-                text: "Save", "class": "primary",
+                text: "Done", "class": "primary",
                 click: function () {
-                    var config = {};
-                    Object.keys(fieldEls).forEach(function (key) {
-                        var item = fieldEls[key];
-                        if (item.type === "checkbox") {
-                            if (item.overrideCheck.is(":checked")) {
-                                config[key] = item.input.is(":checked");
-                            }
-                        } else {
-                            var raw = item.input.val();
-                            if (raw !== "" && raw !== null && raw !== undefined) {
-                                config[key] = item.type === "number" ? (parseFloat(raw) || 0) : raw;
-                            }
-                        }
-                    });
-                    node.props.config = config;
+                    node.props.config = cfg;
                     var act = actionSel ? actionSel.val() : "";
                     if (act) {
                         node.props.action = act;
@@ -45,19 +96,20 @@ export function openUiUpdateNodeEditor(node) {
                 }
             }
         ],
+        close: function () { if (handle) { handle.destroy(); handle = null; } },
         open: function (tray) {
-            var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+            var body = tray.find(".red-ui-tray-body").css({ padding: "12px", overflow: "auto" });
             if (!comp || (!typeDef && !isLitComponent)) {
                 window.$("<div>").text("This component no longer exists.").appendTo(body);
                 return;
             }
-            // What it does: update properties, or run one of the component's actions
+            // What it does: set properties, or run one of the component's actions
             var propsBox = body;
             if (actions.length) {
                 var arow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
                 window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("What it does").appendTo(arow);
                 actionSel = window.$("<select>").css({ width: "100%" }).appendTo(arow);
-                window.$("<option>", { value: "" }).text("Update its properties").appendTo(actionSel);
+                window.$("<option>", { value: "" }).text("Set its properties").appendTo(actionSel);
                 actions.forEach(function (a) { window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel); });
                 actionSel.val(node.props.action || "");
                 var pbox = window.$("<div>").css({ "margin-top": "8px" }).appendTo(arow);
@@ -76,98 +128,31 @@ export function openUiUpdateNodeEditor(node) {
                 actionSel.on("change", sync);
                 sync();
             }
-            body = propsBox;
-            window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" })
-                .text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.")
-                .appendTo(body);
-
-            // Props bound to the message ({msg.payload.speed}, set with ⛓ in the
-            // component's inspector) take their value from what this node sends —
-            // this list follows the component's bindings, it isn't fixed.
-            var msgBound = {};
-            Object.keys(comp.props || {}).forEach(function (k) {
-                var v = comp.props[k];
-                if (typeof v !== "string" || v.indexOf("{msg") === -1) return;
-                msgBound[k] = (v.match(/\{(msg[^{}]*)\}/g) || []).map(function (m) { return m.slice(1, -1); });
-            });
-            var boundKeys = Object.keys(msgBound);
-            if (boundKeys.length) {
-                var box = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
-                window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box);
-                boundKeys.forEach(function (k) {
-                    window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  ←  " + msgBound[k].join(", ")).appendTo(box);
-                });
-                window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" })
-                    .text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box);
-            }
-
-            function field(key, label, type) {
-                if (msgBound[key]) return; // bound to the message: listed above
-                var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-                window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
-                var current = node.props.config && node.props.config[key] !== undefined ? node.props.config[key] : "";
-                var input;
-                if (type === "checkbox") {
-                    var checkWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
-                    var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.config && node.props.config[key] !== undefined).appendTo(checkWrap);
-                    window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
-                    input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current).appendTo(checkWrap);
-                    fieldEls[key] = { input: input, overrideCheck: overrideCheck, type: "checkbox" };
-                } else if (type === "color") {
-                    var colorWrap = window.$("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(row);
-                    input = window.$("<input>", { type: "text", placeholder: "leave blank to keep unchanged (e.g. #ff8800)" })
-                        .css({ flex: "1", "box-sizing": "border-box" })
-                        .val(current)
-                        .appendTo(colorWrap);
-                    var picker = window.$("<input>", { type: "color" })
-                        .css({ width: "36px", height: "26px", padding: "0", cursor: "pointer", border: "1px solid #ccc" })
-                        .val(current && /^#[0-9a-fA-F]{6}$/.test(current) ? current : "#cfe0ff")
-                        .appendTo(colorWrap);
-                    var clearBtn = window.$("<button>", { type: "button" })
-                        .text("Clear")
-                        .css({ "font-size": "11px", padding: "2px 6px" })
-                        .appendTo(colorWrap);
-                    picker.on("input change", function () {
-                        input.val(picker.val());
-                    });
-                    input.on("input change", function () {
-                        if (/^#[0-9a-fA-F]{6}$/.test(input.val())) {
-                            picker.val(input.val());
-                        }
-                    });
-                    clearBtn.on("click", function () {
-                        input.val("");
-                    });
-                    fieldEls[key] = { input: input, type: "color" };
-                } else {
-                    input = window.$("<input>", { type: type || "text", placeholder: "leave blank to keep unchanged" })
-                        .css({ width: "100%", "box-sizing": "border-box" })
-                        .val(current)
-                        .appendTo(row);
-                    fieldEls[key] = { input: input, type: type || "text" };
+            window.$("<div>").addClass("nexa-uiupdate-help").css({ "font-size": "12px", color: "#888", "margin-bottom": "8px" })
+                .text("Only what you set changes; the rest is kept. A set value can be a binding: Message → payload.speed takes it from the message this node gets.")
+                .appendTo(propsBox);
+            var host = window.$("<div>").addClass("nexa-uiupdate-tree").appendTo(propsBox);
+            if (!window.NexaKit) { host.text("The property kit is not loaded."); return; }
+            var nexa = typeDef && typeDef.nexa;
+            var meta = {
+                id: "ui-update:" + comp.type, label: nexa ? nexa.label : comp.type,
+                props: updatableProps(comp, typeDef), stateList: [], partList: [], inputs: [], outputs: [], eventList: [], actionList: [],
+                groupOrder: ["Position & Size"].concat(nexa && nexa.groupOrder ? nexa.groupOrder : [])
+            };
+            handle = window.NexaKit.renderInspector(host.get(0), {
+                meta: meta,
+                props: function () { return cfg; },
+                persistKey: "ui-update",
+                fallbacks: false,
+                set: function (k, v) {
+                    if (k.charAt(0) === "_" || !meta.props[k]) return;   // __fallback / __previewState: not the node's
+                    cfg[k] = v;
+                },
+                keep: {
+                    isSet: function (k) { return Object.prototype.hasOwnProperty.call(cfg, k); },
+                    keep: function (k) { delete cfg[k]; }
                 }
-            }
-            field("x", "X", "number");
-            field("y", "Y", "number");
-            field("w", "Width", "number");
-            field("h", "Height", "number");
-            field("rotation", "Rotation", "number");
-            if (isLitComponent) {
-                // object/array-typed bindable props aren't a good fit for
-                // this plain-text-field dialog — drive those via
-                // msg.properties.<field> (a Function node building a real
-                // object) instead of a static default here.
-                (comp.litBindable || []).forEach(function (p) {
-                    var inputType = p.type === "number" ? "number" : p.type === "color" ? "color" : p.type === "boolean" ? "checkbox" : "text";
-                    field(p.name, p.name, inputType);
-                });
-            } else {
-                Object.keys(typeDef.defaults || {}).forEach(function (key) {
-                    var fieldDef = typeDef.defaults[key] || {};
-                    var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-                    field(key, key, inputType);
-                });
-            }
+            });
         }
     });
 }

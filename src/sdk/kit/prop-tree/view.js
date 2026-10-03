@@ -77,6 +77,8 @@ function marks(text, q) {
  *   validate(prop, v, p)        the message or null;  state()  the preview state
  *   stateSwitcher()             the preview-state chips (a template or nothing)
  *   openDialog({ title, content, buttons })
+ *   keep                        optional { isSet(key) }: a prop not set shows "keep" (an Update
+ *                               Component node: it changes only what it sets)
  */
 export function createTreeView(A) {
     var mem = memoryFor(A.persist);
@@ -122,6 +124,7 @@ export function createTreeView(A) {
                 var s0 = typeof n.prop.summary === "function" ? n.prop.summary(P) : "";
                 return { text: s0 ? String(s0) : "", action: true };
             }
+            if (A.keep && !A.keep.isSet(n.key)) return { text: "", keep: true };
             var K = editorClass(n.prop);
             return summary(n.prop, P[n.key], P, K && typeof K.summary === "function" ? K.summary : null);
         }
@@ -161,6 +164,7 @@ export function createTreeView(A) {
     function valueCell(n, q) {
         var s = summaryOf(n);
         if (s.count) return html`<span class="nx-pt-val nx-pt-count">${s.text}</span>`;
+        if (s.keep) return html`<span class="nx-pt-val" title="Not changed by this node"><span class="nx-pt-t nx-pt-none">keep</span></span>`;
         var parts = [];
         if (s.swatch) parts.push(html`<span class="nx-pt-swatch" style="background:${s.swatch}"></span>`);
         if (s.check !== undefined) return html`<span class="nx-pt-val" title=${s.text}><span class="nx-pt-check ${s.check ? "nx-on" : ""}"></span></span>`;

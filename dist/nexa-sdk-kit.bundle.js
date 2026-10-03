@@ -1621,6 +1621,7 @@ nx-tab[hidden] { display: none !important; }
     CACHE[key] = r;
     return r;
   }
+  var BINDABLE_TYPES = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
 
   // src/sdk/kit/prop-tree/model.js
   function isEmpty(v) {
@@ -2118,6 +2119,7 @@ nx-tab[hidden] { display: none !important; }
           var s0 = typeof n2.prop.summary === "function" ? n2.prop.summary(P) : "";
           return { text: s0 ? String(s0) : "", action: true };
         }
+        if (A.keep && !A.keep.isSet(n2.key)) return { text: "", keep: true };
         var K = editorClass(n2.prop);
         return summary(n2.prop, P[n2.key], P, K && typeof K.summary === "function" ? K.summary : null);
       }
@@ -2161,6 +2163,7 @@ nx-tab[hidden] { display: none !important; }
     function valueCell(n2, q) {
       var s = summaryOf(n2);
       if (s.count) return html`<span class="nx-pt-val nx-pt-count">${s.text}</span>`;
+      if (s.keep) return html`<span class="nx-pt-val" title="Not changed by this node"><span class="nx-pt-t nx-pt-none">keep</span></span>`;
       var parts = [];
       if (s.swatch) parts.push(html`<span class="nx-pt-swatch" style="background:${s.swatch}"></span>`);
       if (s.check !== void 0) return html`<span class="nx-pt-val" title=${s.text}><span class="nx-pt-check ${s.check ? "nx-on" : ""}"></span></span>`;
@@ -2619,7 +2622,7 @@ nx-tab[hidden] { display: none !important; }
   function isBinding2(v) {
     return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
   }
-  var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+  var BINDABLE_BY_TOGGLE = BINDABLE_TYPES;
   function shownBinding(value, fallback) {
     if (isBindingList(value)) return value;
     if (!isBinding2(value)) return null;
@@ -2732,7 +2735,12 @@ nx-tab[hidden] { display: none !important; }
           update();
         }}"><i class="fa fa-mobile"></i></button>`);
       }
-      if (!prop.noReset && !same2(value, prop.default)) {
+      if (opts.keep) {
+        if (opts.keep.isSet(prop.key)) btns.push(html`<button type="button" class="nx-btn nx-btn-ghost nx-keep-btn" title="Keep: this node does not change it" @click="${() => {
+          opts.keep.keep(prop.key);
+          update();
+        }}"><i class="fa fa-undo"></i><span>Keep</span></button>`);
+      } else if (!prop.noReset && !same2(value, prop.default)) {
         btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => {
           clearFallback(prop.key);
           set(prop.key, clone2(prop.default));
@@ -2848,7 +2856,7 @@ nx-tab[hidden] { display: none !important; }
       el.fallback = !!bound || opts.fallbacks !== false && prop.type === "tag" && prop.access !== "write";
       if (prop.type === "tag") el.fallbackValue = fallbacks[key];
       el.tokens = prop.tokens !== void 0 ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
-      el.modified = !prop.noReset && !same2(value, prop.default);
+      el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same2(value, prop.default);
       el.invalid = !!message;
       el.message = message || "";
       el.actions = actionsFor(prop, value, bound, resp);
@@ -3084,7 +3092,8 @@ nx-tab[hidden] { display: none !important; }
       stateSwitcher: function() {
         return ui.stateSwitcher();
       },
-      openDialog
+      openDialog,
+      keep: opts.keep || null
     });
     function view() {
       if (opts.responsive && typeof opts.responsive.begin === "function") opts.responsive.begin();

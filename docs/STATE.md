@@ -48,37 +48,60 @@ A value that is exactly one binding keeps its type (a whole object or
 array). A binding inside more text becomes text. A name that can't be
 resolved stays as written.
 
-## 2b. Choosing where a prop's value comes from (⛓)
+## 2b. Where a prop's value comes from: Static | Binding
 
-Every prop of a component can be bound; a plugin can opt a prop out with
-`bindable: false`. Click ⛓ next to a field and pick the **source**:
+Every prop of a component can be bound, and so can the fields of its list items (a tab's label). A plugin can opt a prop or a field out with `bindable: false`.
+Each field has a **Static | Binding** switch:
 
-| Source | Writes | Updates when |
+- **Static:** the value you type.
+- **Binding:** a **binding priority** list of sources, then the static value.
+  - From the top, the **first source that has a value wins**.
+  - A source with no value falls through to the next one. "No value" means `null`, `undefined`, or an unknown tag (`???`: offline, not born yet).
+  - `0`, `false` and `""` are values.
+  - **Static is the last** in the list. Its input is typed like the prop (a number, a colour…).
+  - Drag a row (≡) to change its priority. When two sources change at once, the order decides.
+
+| Source | Reference | Reads |
 | --- | --- | --- |
-| **Variable** | `{speed}`, `{motor.speed}`: the nearest declaration, from frame to screen to app | the variable changes |
-| **Tag** | `{sparkplug:G::N::D::Speed}` | a live value arrives |
-| **Message** | `{msg.payload.speed}` | a Logic flow sends a message to the component (an **Update Component** node) |
-| **Expression** | text mixing any of them: `Line {line}: {sparkplug:G::N::D::Speed} rpm, order {msg.payload.id}` | any part changes; a tag inside the text updates live too |
+| **Screen variable** | `speed`, `motor.speed` | the nearest declaration below the app: a frame's, a group's, the screen's (a template's) |
+| **App variable** | `speed` | the app's own, even when a screen declares the same name |
+| **Shared variable** | `site` | the server-wide one |
+| **Template parameter** | `title` | the template instance's parameter |
+| **Message** | `payload.speed` | the last message an **Update Component** node sent this component; no value until one arrives |
+| **Sparkplug tag** | `G::N::D::Speed` | the live value (a number stays a number) |
+| **Expression** | `(0.5 * [screen]{var3}) / [app]{var1} + [sparkplug]{G::N::D::Speed} " rpm"` | arithmetic and text over references (see below) |
 
-- **The source comes from the value itself.** The editor shows a preview of
-  the result and warns about names that aren't declared around the node.
-- **"Insert a binding…"** puts a variable, `msg.payload` or a known tag at
-  the caret.
-- **Message:** the component keeps the last message it was sent. A
-  `{msg.*}` binding reads from that message, and shows as empty until one
-  arrives.
-- **The Update Component node** lists the props that take their value from
-  the message (the list follows the component's bindings, it isn't fixed).
-  For such a component, nothing is guessed from `msg.payload` and those props
-  are never overwritten.
-- **Run a component's action.** The Update Component node has *What it does*. Choose **Update its properties** (the default) or **Run: <action>** for any action the component declares, such as the Iframe's Reload / Open URL / Send a message.
+Stored: `{ $bind: [{ src: "app", ref: "speed" }, …], static: 0 }` (`src/model/binding.js`). One resolver serves the canvas and the page.
+Other tag providers (OPC UA…) add a source kind with `registerSourceKind`.
+
+**Expressions** (never `eval`):
+- references are `[kind]{ref}`;
+- operators: `+ - * / %`, comparisons, `&& || ! ?:`;
+- functions: `round(x, n)`, `fixed`, `floor`, `ceil`, `abs`, `min`, `max`, `sqrt`, `upper`, `lower`;
+- `"text"` in quotes. Two values side by side are joined: `[app]{n} " pcs"`;
+- a reference without a value gives the whole expression no value, so it falls through.
+
+**Legacy bindings.** A prop written the old way is still read the same way: `{speed}`, `{sparkplug:…}`, `{msg.payload.x}`, or text like `Line {line}: {sparkplug:…} rpm` with its fallback.
+- The inspector shows it as a list (`{speed}` = the "Variable (nearest)" source) and saves it as one when you edit it.
+- **Nexa: convert legacy bindings** (Node-RED's action list, Ctrl+Shift+P) converts the whole project at once:
+  - only the props each component's schema marks bindable (a tag input stays a tag);
+  - the fallback becomes the static value;
+  - then deploy to save.
+- A list with no static value shows `???` while its tag is unknown, as a tag binding always did.
+
+**The Update Component node.** Its dialog is the component's property tree, the same one as the Properties tab: its place and size, then its own groups.
+- A prop the node does not set shows **keep**. Edit it to set it; **Keep** takes it back.
+- A set value can be static or a binding. **Message → `payload.speed`** takes it from the message the node gets.
+- A prop the component itself binds (Properties: Binding) is not set here. The message reaches it through that list's **Message** source, and its place in the list decides.
+  The node never overwrites a binding list.
+- **Run a component's action.** *What it does* is **Set its properties** (the default) or **Run: <action>** for any action the component declares, such as the Iframe's Reload / Open URL / Send a message.
   - The action's parameters come from `msg.payload`. When it has none, the node's own *parameters* field (JSON or text) is used.
   - `msg.action = "<name>"` from a Function also runs an action.
-- **One value, many components:** use a variable. The flow does
-  **Set Variable** once, and every component binds `{name}`.
+- **One value, many components:** use a variable. The flow does **Set Variable** once, and every component binds it.
 
 **Writing (fields, buttons, knobs…):** a component's write target (its
-"Write Tag", or its read binding when that is left empty) can be:
+"Write Tag", or its read binding when that is left empty; for a binding list, its first tag or
+screen / app / shared variable source) can be:
 - a **tag**;
 - a **variable** (`{speed}`, or a path into one, `{cfg.limit}`), set on the
   scope that declares it, so watchers fire;

@@ -5193,12 +5193,14 @@
     return { sources: [], static: value, legacy: false };
   }
   function resolveValue(value, read, fallback) {
-    var b = toBindingList(value, fallback);
+    var b = toBindingList(value, fallback), unknown = false;
     for (var i = 0; i < b.sources.length; i++) {
       var s = b.sources[i];
       var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
       if (!hasNoValue(v)) return { value: v, from: i };
+      if (v === "???") unknown = true;
     }
+    if (b.static === void 0 && unknown) return { value: "???", from: -1 };
     return { value: b.static, from: -1 };
   }
   function tagRefsOf(value) {
@@ -6042,13 +6044,14 @@
     const comp = findComponent(screen2, node.compId);
     const compProps = comp && comp.props || {};
     if (comp) comp.__lastMsg = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
+    const config = comp ? resolveBindingProps(node.config || {}, runtimeReader(comp)) : node.config || {};
     if (propsMention(compProps, "{msg") || Object.keys(compProps).some(function(k) {
       return readsMessage(compProps[k]);
     })) {
       const cfg = {};
-      Object.keys(node.config || {}).forEach(function(k) {
+      Object.keys(config).forEach(function(k) {
         const bound = typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1 || readsMessage(compProps[k]);
-        if (!bound) cfg[k] = node.config[k];
+        if (!bound) cfg[k] = config[k];
       });
       applyUiUpdateMulti(screen2, node.compId, cfg, null, msg && msg.properties);
       refreshComponentRender(screen2, comp);
@@ -6077,7 +6080,7 @@
         }
       });
     }
-    applyUiUpdateMulti(screen2, node.compId, node.config, payloadProps, msg && msg.properties);
+    applyUiUpdateMulti(screen2, node.compId, config, payloadProps, msg && msg.properties);
     if (comp) refreshComponentRender(screen2, comp);
   }
   function makeCtx2(screen2, comp) {

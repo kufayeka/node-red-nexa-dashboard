@@ -5,6 +5,9 @@
 // The editor, the screen worker and the page do the same in memory every time a project
 // loads, so a project works without this script; run it to write the new format once
 // (for instance before committing flows.json to git, or before reading it with other tools).
+// Legacy binding strings ("{speed}" + __fallback) are NOT converted here: which props are
+// bindable is known only from the components' plugins, in the editor (Ctrl+Shift+P →
+// "Nexa: convert legacy bindings", src/features/bindings/convert.js). They keep working as they are.
 //
 //   node scripts/migrate-project.js <path/to/flows.json> [--dry-run]
 //

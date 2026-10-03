@@ -5,93 +5,6 @@
       __defProp(target, name2, { get: all[name2], enumerable: true });
   };
 
-  // src/sdk/registry.js
-  function normalizeEvents(events) {
-    return (events || []).map(function(e) {
-      return typeof e === "string" ? { name: e, label: "On " + e } : { name: e.name, label: e.label || "On " + e.name };
-    });
-  }
-  function ensureRegistry() {
-    var w = window;
-    if (w.NEXA && w.NEXA.__nexaRegistry) return w.NEXA;
-    var shim = w.NEXA || {};
-    var pendingDefs = shim._q || [];
-    var pendingSdkDefs = shim._c || [];
-    var registry = {};
-    var listeners = [];
-    var api = {
-      __nexaRegistry: true,
-      registerComponent: function(id2, def) {
-        registry[id2] = def;
-        listeners.forEach(function(fn) {
-          try {
-            fn(id2, def);
-          } catch (e) {
-          }
-        });
-      },
-      onRegister: function(fn) {
-        listeners.push(fn);
-      },
-      getComponent: function(id2) {
-        return registry[id2];
-      },
-      getComponents: function() {
-        return Object.keys(registry).map(function(id2) {
-          var def = registry[id2];
-          return {
-            id: id2,
-            category: def.category || "General",
-            label: def.label || id2,
-            icon: def.icon,
-            defaultSize: def.defaultSize || { w: 100, h: 60 },
-            capabilities: def.capabilities || {},
-            defaults: def.defaults || {},
-            bindable: def.bindable || [],
-            render: def.render,
-            onBind: def.onBind,
-            events: normalizeEvents(def.events)
-          };
-        });
-      },
-      // SDK entry point for plain scripts. Queued until the SDK runtime
-      // installs its compiler (see src/sdk/component.js).
-      defineComponent: function(def) {
-        if (api._defineComponent) return api._defineComponent(def);
-        api._c.push(def);
-        return void 0;
-      },
-      _c: [],
-      _defineComponent: null,
-      // Called once by the SDK runtime: from now on NEXA.defineComponent compiles immediately.
-      _installComponentCompiler: function(fn) {
-        api._defineComponent = fn;
-        var queued = api._c.splice(0);
-        queued.forEach(function(def) {
-          try {
-            fn(def);
-          } catch (e) {
-            console.error('[nexa] component "' + (def && def.id) + '" failed to register:', e);
-          }
-        });
-      }
-    };
-    w.NEXA = api;
-    pendingDefs.forEach(function(item) {
-      api.registerComponent(item[0], item[1]);
-    });
-    pendingSdkDefs.forEach(function(item) {
-      api._c.push(item);
-    });
-    return api;
-  }
-
-  // src/registry.js
-  function initNexaRegistry() {
-    return ensureRegistry();
-  }
-  initNexaRegistry();
-
   // src/state.js
   var state_exports = {};
   __export(state_exports, {
@@ -1791,12 +1704,14 @@
     return { sources: [], static: value, legacy: false };
   }
   function resolveValue(value, read, fallback) {
-    var b = toBindingList(value, fallback);
+    var b = toBindingList(value, fallback), unknown = false;
     for (var i2 = 0; i2 < b.sources.length; i2++) {
       var s = b.sources[i2];
       var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
       if (!hasNoValue(v)) return { value: v, from: i2 };
+      if (v === "???") unknown = true;
     }
+    if (b.static === void 0 && unknown) return { value: "???", from: -1 };
     return { value: b.static, from: -1 };
   }
   function tagRefsOf(value) {
@@ -2219,6 +2134,37 @@
       out[k] = resolveDeep(props[k], read);
     });
     return out || props;
+  }
+  var BINDABLE_TYPES = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+  function legacyToList(v, staticValue) {
+    var out = { $bind: toBindingList(v).sources };
+    if (staticValue !== void 0) out.static = staticValue;
+    return out;
+  }
+  function migrateLegacyBindings(props, canConvert) {
+    if (!props || typeof props !== "object") return 0;
+    var fb = props.__fallback || {}, n = 0;
+    Object.keys(props).forEach(function(k) {
+      if (k.slice(0, 2) === "__") return;
+      var v = props[k];
+      if (isLegacyBinding(v) && canConvert(k)) {
+        props[k] = legacyToList(v, fb[k]);
+        delete fb[k];
+        n++;
+      } else if (Array.isArray(v)) {
+        v.forEach(function(item) {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return;
+          Object.keys(item).forEach(function(f) {
+            if (isLegacyBinding(item[f]) && canConvert(k, f)) {
+              item[f] = legacyToList(item[f]);
+              n++;
+            }
+          });
+        });
+      }
+    });
+    if (props.__fallback && !Object.keys(props.__fallback).length) delete props.__fallback;
+    return n;
   }
 
   // src/model/breakpoints.js
@@ -3391,6 +3337,120 @@
     });
   }
 
+  // src/canvas/constraints.js
+  function snapshotBoxes(nodeOrList) {
+    var out = {};
+    (function walk2(list) {
+      list.forEach(function(c) {
+        out[c.id] = { x: c.x, y: c.y, w: c.w, h: c.h };
+        if (c.children) walk2(c.children);
+      });
+    })(Array.isArray(nodeOrList) ? nodeOrList : tree_exports.kids(nodeOrList));
+    return out;
+  }
+  function applyConstraints(parent, list, oldInner, newInner, orig) {
+    var changed4 = [];
+    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed4;
+    orig = orig || snapshotBoxes(list);
+    list.forEach(function(c) {
+      if (!layout_exports.hasConstraints(c, parent)) return;
+      var o = orig[c.id];
+      if (!o) return;
+      var nb = layout_exports.resizeWithConstraints(o, layout_exports.constraintsOf(c), oldInner, newInner);
+      if (c.type === "@group") {
+        nb.w = o.w;
+        nb.h = o.h;
+      }
+      if (nb.x === c.x && nb.y === c.y && nb.w === c.w && nb.h === c.h) return;
+      var oldChildInner = c.type === "@frame" ? layout_exports.innerSize(Object.assign({}, c, o)) : null;
+      c.x = nb.x;
+      c.y = nb.y;
+      c.w = nb.w;
+      c.h = nb.h;
+      changed4.push(c.id);
+      if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
+        changed4 = changed4.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
+      }
+    });
+    return changed4;
+  }
+  function constrainFrameChildren(frame2, oldBox, orig) {
+    if (!frame2 || frame2.type !== "@frame") return [];
+    return applyConstraints(frame2, tree_exports.kids(frame2), layout_exports.innerSize(Object.assign({}, frame2, oldBox)), layout_exports.innerSize(frame2), orig);
+  }
+
+  // src/canvas/layout-readback.js
+  function elementOf(id2) {
+    if (!state.artboardEl) return null;
+    var el = state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
+    return el && typeof el.offsetWidth === "number" && el.isConnected ? el : null;
+  }
+  function readbackLayout(screen) {
+    screen = screen || getActiveScreen();
+    var changed4 = [];
+    var redraw = false;
+    if (!screen) return changed4;
+    tree_exports.walk(screen, function(node, parent) {
+      if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
+        if (node.slotUnused) return false;
+        var sel = elementOf(node.id), hel = elementOf(parent.id);
+        if (!sel || !hel || !sel.getClientRects().length) return false;
+        var hr = hel.getBoundingClientRect(), sr = sel.getBoundingClientRect();
+        var k = hel.offsetWidth ? hr.width / hel.offsetWidth : 1;
+        if (!k) k = 1;
+        var sb = { x: Math.round((sr.left - hr.left) / k), y: Math.round((sr.top - hr.top) / k), w: sel.offsetWidth, h: sel.offsetHeight };
+        if (sb.x !== node.x || sb.y !== node.y || sb.w !== node.w || sb.h !== node.h) {
+          var was = { w: node.w, h: node.h };
+          node.x = sb.x;
+          node.y = sb.y;
+          node.w = sb.w;
+          node.h = sb.h;
+          changed4.push(node.id);
+          var shifted = constrainFrameChildren(node, was);
+          if (shifted.length) {
+            redraw = true;
+            changed4 = changed4.concat(shifted);
+          }
+        }
+        return;
+      }
+      var inFlow = layout_exports.isInFlow(node, parent) || layout_exports.placeOf(node, parent) === "dock";
+      var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
+      if (!inFlow && !hugW && !hugH) return;
+      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
+      var el = elementOf(node.id);
+      if (!el || !el.getClientRects().length) return;
+      var box2 = { x: node.x, y: node.y, w: node.w, h: node.h };
+      if (inFlow) {
+        box2.x = el.offsetLeft;
+        box2.y = el.offsetTop;
+      }
+      if (inFlow || hugW) box2.w = el.offsetWidth;
+      if (inFlow || hugH) box2.h = el.offsetHeight;
+      if (box2.x !== node.x || box2.y !== node.y || box2.w !== node.w || box2.h !== node.h) {
+        var old = { w: node.w, h: node.h };
+        node.x = box2.x;
+        node.y = box2.y;
+        node.w = box2.w;
+        node.h = box2.h;
+        changed4.push(node.id);
+        var moved = constrainFrameChildren(node, old);
+        if (moved.length) {
+          redraw = true;
+          changed4 = changed4.concat(moved);
+        }
+      }
+    });
+    changed4.forEach(function(id2) {
+      if (tree_exports.ancestors(screen, id2).some(function(a) {
+        return a.type === "@group";
+      })) redraw = true;
+      tree_exports.refitGroupsUp(screen, id2);
+    });
+    changed4.redraw = redraw;
+    return changed4;
+  }
+
   // src/history.js
   var _renderActiveScreenFn = null;
   var _renderLogicCanvasFn = null;
@@ -3582,120 +3642,6 @@
     var ev = state.redoStack.pop();
     applyHistoryEvent(ev, "redo");
     state.undoStack.push(ev);
-  }
-
-  // src/canvas/constraints.js
-  function snapshotBoxes(nodeOrList) {
-    var out = {};
-    (function walk2(list) {
-      list.forEach(function(c) {
-        out[c.id] = { x: c.x, y: c.y, w: c.w, h: c.h };
-        if (c.children) walk2(c.children);
-      });
-    })(Array.isArray(nodeOrList) ? nodeOrList : tree_exports.kids(nodeOrList));
-    return out;
-  }
-  function applyConstraints(parent, list, oldInner, newInner, orig) {
-    var changed4 = [];
-    if (!oldInner || !newInner || oldInner.w === newInner.w && oldInner.h === newInner.h) return changed4;
-    orig = orig || snapshotBoxes(list);
-    list.forEach(function(c) {
-      if (!layout_exports.hasConstraints(c, parent)) return;
-      var o = orig[c.id];
-      if (!o) return;
-      var nb = layout_exports.resizeWithConstraints(o, layout_exports.constraintsOf(c), oldInner, newInner);
-      if (c.type === "@group") {
-        nb.w = o.w;
-        nb.h = o.h;
-      }
-      if (nb.x === c.x && nb.y === c.y && nb.w === c.w && nb.h === c.h) return;
-      var oldChildInner = c.type === "@frame" ? layout_exports.innerSize(Object.assign({}, c, o)) : null;
-      c.x = nb.x;
-      c.y = nb.y;
-      c.w = nb.w;
-      c.h = nb.h;
-      changed4.push(c.id);
-      if (c.type === "@frame" && (nb.w !== o.w || nb.h !== o.h)) {
-        changed4 = changed4.concat(applyConstraints(c, tree_exports.kids(c), oldChildInner, layout_exports.innerSize(c), orig));
-      }
-    });
-    return changed4;
-  }
-  function constrainFrameChildren(frame2, oldBox, orig) {
-    if (!frame2 || frame2.type !== "@frame") return [];
-    return applyConstraints(frame2, tree_exports.kids(frame2), layout_exports.innerSize(Object.assign({}, frame2, oldBox)), layout_exports.innerSize(frame2), orig);
-  }
-
-  // src/canvas/layout-readback.js
-  function elementOf(id2) {
-    if (!state.artboardEl) return null;
-    var el = state.artboardEl.find('[data-id="' + id2 + '"]').get(0);
-    return el && typeof el.offsetWidth === "number" && el.isConnected ? el : null;
-  }
-  function readbackLayout(screen) {
-    screen = screen || getActiveScreen();
-    var changed4 = [];
-    var redraw = false;
-    if (!screen) return changed4;
-    tree_exports.walk(screen, function(node, parent) {
-      if (layout_exports.inSlot(node) && tree_exports.isSlotHost(parent)) {
-        if (node.slotUnused) return false;
-        var sel = elementOf(node.id), hel = elementOf(parent.id);
-        if (!sel || !hel || !sel.getClientRects().length) return false;
-        var hr = hel.getBoundingClientRect(), sr = sel.getBoundingClientRect();
-        var k = hel.offsetWidth ? hr.width / hel.offsetWidth : 1;
-        if (!k) k = 1;
-        var sb = { x: Math.round((sr.left - hr.left) / k), y: Math.round((sr.top - hr.top) / k), w: sel.offsetWidth, h: sel.offsetHeight };
-        if (sb.x !== node.x || sb.y !== node.y || sb.w !== node.w || sb.h !== node.h) {
-          var was = { w: node.w, h: node.h };
-          node.x = sb.x;
-          node.y = sb.y;
-          node.w = sb.w;
-          node.h = sb.h;
-          changed4.push(node.id);
-          var shifted = constrainFrameChildren(node, was);
-          if (shifted.length) {
-            redraw = true;
-            changed4 = changed4.concat(shifted);
-          }
-        }
-        return;
-      }
-      var inFlow = layout_exports.isInFlow(node, parent) || layout_exports.placeOf(node, parent) === "dock";
-      var hugW = layout_exports.frameHugs(node, "w"), hugH = layout_exports.frameHugs(node, "h");
-      if (!inFlow && !hugW && !hugH) return;
-      if (tree_exports.effectiveVisibility(screen, node.id) !== "show") return false;
-      var el = elementOf(node.id);
-      if (!el || !el.getClientRects().length) return;
-      var box2 = { x: node.x, y: node.y, w: node.w, h: node.h };
-      if (inFlow) {
-        box2.x = el.offsetLeft;
-        box2.y = el.offsetTop;
-      }
-      if (inFlow || hugW) box2.w = el.offsetWidth;
-      if (inFlow || hugH) box2.h = el.offsetHeight;
-      if (box2.x !== node.x || box2.y !== node.y || box2.w !== node.w || box2.h !== node.h) {
-        var old = { w: node.w, h: node.h };
-        node.x = box2.x;
-        node.y = box2.y;
-        node.w = box2.w;
-        node.h = box2.h;
-        changed4.push(node.id);
-        var moved = constrainFrameChildren(node, old);
-        if (moved.length) {
-          redraw = true;
-          changed4 = changed4.concat(moved);
-        }
-      }
-    });
-    changed4.forEach(function(id2) {
-      if (tree_exports.ancestors(screen, id2).some(function(a) {
-        return a.type === "@group";
-      })) redraw = true;
-      tree_exports.refitGroupsUp(screen, id2);
-    });
-    changed4.redraw = redraw;
-    return changed4;
   }
 
   // src/canvas/drop-target.js
@@ -31985,41 +31931,119 @@
     }
   });
 
+  // src/sdk/schema.js
+  var TYPE_DEFAULT = {
+    string: "",
+    text: "",
+    number: 0,
+    range: 0,
+    boolean: false,
+    enum: "",
+    color: "",
+    css: "",
+    code: "",
+    tag: "",
+    json: null,
+    list: [],
+    asset: ""
+  };
+  function humanize(key) {
+    var s = String(key).replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").toLowerCase();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function clone6(v) {
+    if (v === null || v === void 0 || typeof v !== "object") return v;
+    return JSON.parse(JSON.stringify(v));
+  }
+  function normalizeProp(key, p) {
+    p = Object.assign({}, p);
+    if (!p.type) p.type = typeof p.default === "number" ? "number" : typeof p.default === "boolean" ? "boolean" : Array.isArray(p.default) ? "list" : "string";
+    if (!("default" in p)) p.default = clone6(TYPE_DEFAULT[p.type] !== void 0 ? TYPE_DEFAULT[p.type] : "");
+    if (!p.label) p.label = humanize(key);
+    if (p.bindable === void 0) p.bindable = p.type !== "tag" && p.type !== "list" && p.type !== "css" && p.type !== "code";
+    if (p.type === "enum" && Array.isArray(p.options)) {
+      p.options = p.options.map(function(o) {
+        if (o !== null && typeof o === "object") return { value: o.value, label: o.label !== void 0 ? o.label : String(o.value), icon: o.icon };
+        return { value: o, label: String(o) };
+      });
+    }
+    p.key = key;
+    return p;
+  }
+
   // src/features/logic/ui/ui-update-dialog.js
+  var GEOMETRY = {
+    x: { type: "number", label: "X", unit: "px" },
+    y: { type: "number", label: "Y", unit: "px" },
+    w: { type: "number", label: "Width", unit: "px" },
+    h: { type: "number", label: "Height", unit: "px" },
+    rotation: { type: "number", label: "Rotation", unit: "\xB0" }
+  };
+  var SKIP_TYPES = { tag: 1, code: 1, action: 1 };
+  function clone7(v) {
+    return v === null || v === void 0 || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+  }
+  function updatableProps(comp, typeDef) {
+    var out = {};
+    Object.keys(GEOMETRY).forEach(function(k) {
+      out[k] = normalizeProp(k, Object.assign({ group: "Position & Size", default: comp[k] !== void 0 ? comp[k] : 0 }, GEOMETRY[k]));
+    });
+    var own = {};
+    if (comp.type === "@lit-component") {
+      (comp.litBindable || []).forEach(function(p) {
+        var type = p.type === "number" || p.type === "boolean" || p.type === "color" ? p.type : p.type === "object" || p.type === "array" ? "json" : "string";
+        own[p.name] = normalizeProp(p.name, { type, default: p.defaultValue, group: "Properties" });
+      });
+    } else if (typeDef && typeDef.nexa) {
+      Object.keys(typeDef.nexa.props).forEach(function(k) {
+        var p = typeDef.nexa.props[k];
+        if (SKIP_TYPES[p.type] || k.charAt(0) === "_") return;
+        own[k] = Object.assign({}, p);
+      });
+    } else if (typeDef) {
+      Object.keys(typeDef.defaults || {}).forEach(function(k) {
+        var d = typeDef.defaults[k] || {};
+        var type = d.type === "number" || d.type === "color" ? d.type : d.type === "checkbox" ? "boolean" : "string";
+        own[k] = normalizeProp(k, { type, default: d.value, group: "Properties" });
+      });
+    }
+    var props = comp.props || {};
+    Object.keys(own).forEach(function(k) {
+      var p = own[k], now = props[k];
+      if (isBindingList(now) || isLegacyBinding(now)) {
+        p.enabledWhen = function() {
+          return false;
+        };
+        p.help = "Bound in the component's Properties (Binding): this node's message reaches it through a Message source there.";
+      } else if (now !== void 0) p.default = clone7(now);
+      p.noReset = false;
+      out[k] = p;
+    });
+    return out;
+  }
   function openUiUpdateNodeEditor(node) {
     var comp = findComponent(node.props.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
-    var fieldEls = {};
     var actions = typeDef && typeDef.nexa && typeDef.nexa.actionList || [];
-    var actionSel = null, paramsInput = null;
+    var actionSel = null, paramsInput = null, handle = null;
+    var cfg = clone7(node.props.config || {});
+    Object.keys(cfg).forEach(function(k) {
+      if (cfg[k] === "" || cfg[k] === null || cfg[k] === void 0) delete cfg[k];
+    });
     window.RED.tray.show({
       id: "nexa-logic-uiupdate-editor",
-      title: "Configure Update Node",
-      width: 450,
+      title: "Update Component",
+      width: 520,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
         } },
         {
-          text: "Save",
+          text: "Done",
           "class": "primary",
           click: function() {
-            var config2 = {};
-            Object.keys(fieldEls).forEach(function(key) {
-              var item = fieldEls[key];
-              if (item.type === "checkbox") {
-                if (item.overrideCheck.is(":checked")) {
-                  config2[key] = item.input.is(":checked");
-                }
-              } else {
-                var raw = item.input.val();
-                if (raw !== "" && raw !== null && raw !== void 0) {
-                  config2[key] = item.type === "number" ? parseFloat(raw) || 0 : raw;
-                }
-              }
-            });
-            node.props.config = config2;
+            node.props.config = cfg;
             var act = actionSel ? actionSel.val() : "";
             if (act) {
               node.props.action = act;
@@ -32040,8 +32064,14 @@
           }
         }
       ],
+      close: function() {
+        if (handle) {
+          handle.destroy();
+          handle = null;
+        }
+      },
       open: function(tray) {
-        var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
+        var body = tray.find(".red-ui-tray-body").css({ padding: "12px", overflow: "auto" });
         if (!comp || !typeDef && !isLitComponent) {
           window.$("<div>").text("This component no longer exists.").appendTo(body);
           return;
@@ -32051,7 +32081,7 @@
           var arow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
           window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("What it does").appendTo(arow);
           actionSel = window.$("<select>").css({ width: "100%" }).appendTo(arow);
-          window.$("<option>", { value: "" }).text("Update its properties").appendTo(actionSel);
+          window.$("<option>", { value: "" }).text("Set its properties").appendTo(actionSel);
           actions.forEach(function(a) {
             window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel);
           });
@@ -32075,76 +32105,45 @@
           actionSel.on("change", sync);
           sync();
         }
-        body = propsBox;
-        window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Leave a field blank to keep it unchanged or set via msg.properties.<field> / msg.payload.<field> at runtime. Fill in a field to give it a fixed default value.").appendTo(body);
-        var msgBound = {};
-        Object.keys(comp.props || {}).forEach(function(k) {
-          var v = comp.props[k];
-          if (typeof v !== "string" || v.indexOf("{msg") === -1) return;
-          msgBound[k] = (v.match(/\{(msg[^{}]*)\}/g) || []).map(function(m) {
-            return m.slice(1, -1);
-          });
-        });
-        var boundKeys = Object.keys(msgBound);
-        if (boundKeys.length) {
-          var box2 = window.$("<div>").css({ border: "1px solid #c7ddf2", background: "#f2f8fd", "border-radius": "4px", padding: "8px", "margin-bottom": "12px" }).appendTo(body);
-          window.$("<div>").css({ "font-weight": "bold", "font-size": "12px", "margin-bottom": "4px" }).html('<i class="fa fa-envelope-o"></i> Taken from the message').appendTo(box2);
-          boundKeys.forEach(function(k) {
-            window.$("<div>").css({ "font-size": "12px", "font-family": "monospace" }).text(k + "  \u2190  " + msgBound[k].join(", ")).appendTo(box2);
-          });
-          window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).text("Send a msg with these properties. Nothing is guessed from msg.payload for this component, and these props can't be overwritten here.").appendTo(box2);
+        window.$("<div>").addClass("nexa-uiupdate-help").css({ "font-size": "12px", color: "#888", "margin-bottom": "8px" }).text("Only what you set changes; the rest is kept. A set value can be a binding: Message \u2192 payload.speed takes it from the message this node gets.").appendTo(propsBox);
+        var host = window.$("<div>").addClass("nexa-uiupdate-tree").appendTo(propsBox);
+        if (!window.NexaKit) {
+          host.text("The property kit is not loaded.");
+          return;
         }
-        function field(key, label, type) {
-          if (msgBound[key]) return;
-          var row = window.$("<div>").css({ "margin-bottom": "8px" }).appendTo(body);
-          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text(label).appendTo(row);
-          var current2 = node.props.config && node.props.config[key] !== void 0 ? node.props.config[key] : "";
-          var input;
-          if (type === "checkbox") {
-            var checkWrap = window.$("<div>").css({ display: "flex", "align-items": "center", gap: "6px" }).appendTo(row);
-            var overrideCheck = window.$("<input>", { type: "checkbox" }).prop("checked", node.props.config && node.props.config[key] !== void 0).appendTo(checkWrap);
-            window.$("<label>").css({ "font-size": "11px", color: "#555" }).text("Override").appendTo(checkWrap);
-            input = window.$("<input>", { type: "checkbox" }).prop("checked", !!current2).appendTo(checkWrap);
-            fieldEls[key] = { input, overrideCheck, type: "checkbox" };
-          } else if (type === "color") {
-            var colorWrap = window.$("<div>").css({ display: "flex", gap: "6px", "align-items": "center" }).appendTo(row);
-            input = window.$("<input>", { type: "text", placeholder: "leave blank to keep unchanged (e.g. #ff8800)" }).css({ flex: "1", "box-sizing": "border-box" }).val(current2).appendTo(colorWrap);
-            var picker = window.$("<input>", { type: "color" }).css({ width: "36px", height: "26px", padding: "0", cursor: "pointer", border: "1px solid #ccc" }).val(current2 && /^#[0-9a-fA-F]{6}$/.test(current2) ? current2 : "#cfe0ff").appendTo(colorWrap);
-            var clearBtn = window.$("<button>", { type: "button" }).text("Clear").css({ "font-size": "11px", padding: "2px 6px" }).appendTo(colorWrap);
-            picker.on("input change", function() {
-              input.val(picker.val());
-            });
-            input.on("input change", function() {
-              if (/^#[0-9a-fA-F]{6}$/.test(input.val())) {
-                picker.val(input.val());
-              }
-            });
-            clearBtn.on("click", function() {
-              input.val("");
-            });
-            fieldEls[key] = { input, type: "color" };
-          } else {
-            input = window.$("<input>", { type: type || "text", placeholder: "leave blank to keep unchanged" }).css({ width: "100%", "box-sizing": "border-box" }).val(current2).appendTo(row);
-            fieldEls[key] = { input, type: type || "text" };
+        var nexa = typeDef && typeDef.nexa;
+        var meta2 = {
+          id: "ui-update:" + comp.type,
+          label: nexa ? nexa.label : comp.type,
+          props: updatableProps(comp, typeDef),
+          stateList: [],
+          partList: [],
+          inputs: [],
+          outputs: [],
+          eventList: [],
+          actionList: [],
+          groupOrder: ["Position & Size"].concat(nexa && nexa.groupOrder ? nexa.groupOrder : [])
+        };
+        handle = window.NexaKit.renderInspector(host.get(0), {
+          meta: meta2,
+          props: function() {
+            return cfg;
+          },
+          persistKey: "ui-update",
+          fallbacks: false,
+          set: function(k, v) {
+            if (k.charAt(0) === "_" || !meta2.props[k]) return;
+            cfg[k] = v;
+          },
+          keep: {
+            isSet: function(k) {
+              return Object.prototype.hasOwnProperty.call(cfg, k);
+            },
+            keep: function(k) {
+              delete cfg[k];
+            }
           }
-        }
-        field("x", "X", "number");
-        field("y", "Y", "number");
-        field("w", "Width", "number");
-        field("h", "Height", "number");
-        field("rotation", "Rotation", "number");
-        if (isLitComponent) {
-          (comp.litBindable || []).forEach(function(p) {
-            var inputType = p.type === "number" ? "number" : p.type === "color" ? "color" : p.type === "boolean" ? "checkbox" : "text";
-            field(p.name, p.name, inputType);
-          });
-        } else {
-          Object.keys(typeDef.defaults || {}).forEach(function(key) {
-            var fieldDef = typeDef.defaults[key] || {};
-            var inputType = fieldDef.type === "number" ? "number" : fieldDef.type === "color" ? "color" : fieldDef.type === "checkbox" ? "checkbox" : "text";
-            field(key, key, inputType);
-          });
-        }
+        });
       }
     });
   }
@@ -36036,6 +36035,162 @@
     updateZoomLabel();
     return bar;
   }
+
+  // src/features/bindings/convert.js
+  function convertibleKeys(node) {
+    if (node.type === "@lit-component") {
+      var names = (node.litBindable || []).map(function(p) {
+        return p.name;
+      });
+      return function(k, f) {
+        return !f && names.indexOf(k) !== -1;
+      };
+    }
+    var def = window.NEXA && window.NEXA.getComponent(node.type);
+    var meta2 = def && def.nexa;
+    if (!meta2) return null;
+    var ioKeys = {};
+    (meta2.inputs || []).concat(meta2.outputs || []).forEach(function(io) {
+      ioKeys[io.key] = true;
+    });
+    return function(k, f) {
+      var p = meta2.props[k];
+      if (!p || ioKeys[k]) return false;
+      if (f === void 0) return !!(p.bindable && BINDABLE_TYPES[p.type]);
+      var fld = p.item && p.item.fields && p.item.fields[f];
+      return !!(fld && BINDABLE_TYPES[fld.type || "string"] && fld.bindable !== false);
+    };
+  }
+  function convertProjectBindings() {
+    var report = { values: 0, nodes: 0, skipped: 0 };
+    [].concat(state.screens || [], state.templates || []).forEach(function(surface) {
+      tree_exports.walk(surface, function(node) {
+        if (!node.props && !node.overrides) return;
+        var can = convertibleKeys(node);
+        if (!can) {
+          if (hasLegacy(node.props)) report.skipped++;
+          return;
+        }
+        var n = migrateLegacyBindings(node.props, can);
+        Object.keys(node.overrides || {}).forEach(function(band) {
+          var o = node.overrides[band];
+          if (o && o.props) n += migrateLegacyBindings(o.props, can);
+        });
+        if (n) {
+          report.values += n;
+          report.nodes++;
+        }
+      }, { orphans: true });
+    });
+    if (report.values) markDirty();
+    return report;
+  }
+  function hasLegacy(props) {
+    return !!props && Object.keys(props).some(function(k) {
+      return typeof props[k] === "string" && /\{[^{}]+\}/.test(props[k]) && !/^\{(asset|token):[^{}]+\}$/.test(props[k].trim());
+    });
+  }
+  function registerConvertBindingsAction() {
+    if (!window.RED || !window.RED.actions) return;
+    window.RED.actions.add("nexa:convert-legacy-bindings", function() {
+      var r = convertProjectBindings();
+      var text2 = r.values ? "Nexa: " + r.values + " binding(s) in " + r.nodes + " node(s) are binding lists now. Deploy to save." : "Nexa: no legacy binding to convert.";
+      if (r.skipped) text2 += " " + r.skipped + " node(s) skipped: their plugin is not loaded.";
+      window.RED.notify(text2, r.values ? "success" : "compact");
+      if (r.values && state.trayContent) {
+        redrawCanvas();
+        renderPropertiesPanel();
+      }
+    }, { label: "Nexa: convert legacy bindings" });
+  }
+  if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { convertProjectBindings });
+
+  // src/sdk/registry.js
+  function normalizeEvents(events) {
+    return (events || []).map(function(e) {
+      return typeof e === "string" ? { name: e, label: "On " + e } : { name: e.name, label: e.label || "On " + e.name };
+    });
+  }
+  function ensureRegistry() {
+    var w = window;
+    if (w.NEXA && w.NEXA.__nexaRegistry) return w.NEXA;
+    var shim = w.NEXA || {};
+    var pendingDefs = shim._q || [];
+    var pendingSdkDefs = shim._c || [];
+    var registry = {};
+    var listeners = [];
+    var api = {
+      __nexaRegistry: true,
+      registerComponent: function(id2, def) {
+        registry[id2] = def;
+        listeners.forEach(function(fn) {
+          try {
+            fn(id2, def);
+          } catch (e) {
+          }
+        });
+      },
+      onRegister: function(fn) {
+        listeners.push(fn);
+      },
+      getComponent: function(id2) {
+        return registry[id2];
+      },
+      getComponents: function() {
+        return Object.keys(registry).map(function(id2) {
+          var def = registry[id2];
+          return {
+            id: id2,
+            category: def.category || "General",
+            label: def.label || id2,
+            icon: def.icon,
+            defaultSize: def.defaultSize || { w: 100, h: 60 },
+            capabilities: def.capabilities || {},
+            defaults: def.defaults || {},
+            bindable: def.bindable || [],
+            render: def.render,
+            onBind: def.onBind,
+            events: normalizeEvents(def.events)
+          };
+        });
+      },
+      // SDK entry point for plain scripts. Queued until the SDK runtime
+      // installs its compiler (see src/sdk/component.js).
+      defineComponent: function(def) {
+        if (api._defineComponent) return api._defineComponent(def);
+        api._c.push(def);
+        return void 0;
+      },
+      _c: [],
+      _defineComponent: null,
+      // Called once by the SDK runtime: from now on NEXA.defineComponent compiles immediately.
+      _installComponentCompiler: function(fn) {
+        api._defineComponent = fn;
+        var queued = api._c.splice(0);
+        queued.forEach(function(def) {
+          try {
+            fn(def);
+          } catch (e) {
+            console.error('[nexa] component "' + (def && def.id) + '" failed to register:', e);
+          }
+        });
+      }
+    };
+    w.NEXA = api;
+    pendingDefs.forEach(function(item) {
+      api.registerComponent(item[0], item[1]);
+    });
+    pendingSdkDefs.forEach(function(item) {
+      api._c.push(item);
+    });
+    return api;
+  }
+
+  // src/registry.js
+  function initNexaRegistry() {
+    return ensureRegistry();
+  }
+  initNexaRegistry();
 
   // src/canvas/clipboard.js
   var clipboard = null;
@@ -42740,6 +42895,7 @@
   }
   registerHistoryRenderers(renderActiveScreen, renderLogicCanvas);
   registerPagesEditorAction();
+  registerConvertBindingsAction();
   if (typeof window.RED !== "undefined" && window.RED.plugins) {
     window.RED.plugins.registerPlugin("kufayeka-nexa-dashboard", {
       type: "node-red-editor-plugin",

@@ -118,12 +118,15 @@ export function toBindingList(value, fallback) {
  * -> { value, from } (from: the index of the source used, -1 = static)
  */
 export function resolveValue(value, read, fallback) {
-    var b = toBindingList(value, fallback);
+    var b = toBindingList(value, fallback), unknown = false;
     for (var i = 0; i < b.sources.length; i++) {
         var s = b.sources[i];
         var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
         if (!hasNoValue(v)) return { value: v, from: i };
+        if (v === "???") unknown = true;
     }
+    // no static value at all: an unknown tag still shows as unknown ("???"), as a tag binding always did
+    if (b.static === undefined && unknown) return { value: "???", from: -1 };
     return { value: b.static, from: -1 };
 }
 
@@ -482,4 +485,44 @@ export function resolveBindingProps(props, read) {
         out[k] = resolveDeep(props[k], read);
     });
     return out || props;
+}
+
+// ---- converting legacy binding strings -----------------------------------------------------
+/** The prop types a field can bind (Static | Binding): the inspector's switch, the migration. */
+export var BINDABLE_TYPES = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+
+function legacyToList(v, staticValue) {
+    var out = { $bind: toBindingList(v).sources };
+    if (staticValue !== undefined) out.static = staticValue;
+    return out;
+}
+
+/**
+ * Turns the legacy binding strings of a node's props into binding lists, in place: a prop
+ * ("{speed}" + its __fallback -> { $bind: [{ src: "var", ref: "speed" }], static: fallback }) and
+ * a list item's field. Only where canConvert(key, fieldKey?) says so: the component's schema
+ * knows which props are bindable (a tag input stays a tag). The value is the same either way.
+ * -> how many values it converted.
+ */
+export function migrateLegacyBindings(props, canConvert) {
+    if (!props || typeof props !== "object") return 0;
+    var fb = props.__fallback || {}, n = 0;
+    Object.keys(props).forEach(function (k) {
+        if (k.slice(0, 2) === "__") return;
+        var v = props[k];
+        if (isLegacyBinding(v) && canConvert(k)) {
+            props[k] = legacyToList(v, fb[k]);
+            delete fb[k];
+            n++;
+        } else if (Array.isArray(v)) {
+            v.forEach(function (item) {
+                if (!item || typeof item !== "object" || Array.isArray(item)) return;
+                Object.keys(item).forEach(function (f) {
+                    if (isLegacyBinding(item[f]) && canConvert(k, f)) { item[f] = legacyToList(item[f]); n++; }
+                });
+            });
+        }
+    });
+    if (props.__fallback && !Object.keys(props.__fallback).length) delete props.__fallback;
+    return n;
 }

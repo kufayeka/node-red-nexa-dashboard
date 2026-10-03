@@ -22,14 +22,18 @@ window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orp
     label("d", bind([["msg", "payload.t"], ["screen", "empty"]], "waiting")),
     label("e", bind([["sparkplug", "G::E::D::M"]], "off")),
     label("f", "{title}"),
+    label("h", "static h"),
     { id: "g", type: "lister", x: 0, y: 0, w: 200, h: 20, props: { items: [{ label: bind([["app", "title"]], "x") }, { label: bind([["screen", "nope"]], "Tab 2") }] } }
   ],
   logic: { nodes: [
     { id: "t1", type: "inject", once: true, onceDelay: 1200, intervalMs: 0, payloadType: "json", payload: "{\"t\":\"hello\"}" },
     { id: "u1", type: "ui-update", compId: "d", config: { text: "overwritten?" } },
     { id: "t2", type: "inject", once: true, onceDelay: 1200, intervalMs: 0, payloadType: "str", payload: "direct" },
-    { id: "u2", type: "ui-update", compId: "b" }
-  ], wires: [{ id: "w1", from: "t1", to: "u1" }, { id: "w2", from: "t2", to: "u2" }] } };
+    { id: "u2", type: "ui-update", compId: "b" },
+    // an Update node whose set value is a binding list: its Message source reads the node's message
+    { id: "t3", type: "inject", once: true, onceDelay: 1200, intervalMs: 0, payloadType: "json", payload: "{\"v\":\"from node\"}" },
+    { id: "u3", type: "ui-update", compId: "h", config: { text: bind([["msg", "payload.v"]], "none") } }
+  ], wires: [{ id: "w1", from: "t1", to: "u1" }, { id: "w2", from: "t2", to: "u2" }, { id: "w3", from: "t3", to: "u3" }] } };
 window.__NEXA_PARAMS__ = {}; window.__NEXA_QUERY__ = {};
 </script>
 <script src="/dist/nexa-model-client.js"></script>

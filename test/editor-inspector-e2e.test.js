@@ -28,7 +28,8 @@ function writeFlows() {
     const template = { id: 'tCard', name: 'Card', width: 160, height: 90, params: [{ name: 'title', label: 'Title', type: 'string', defaultValue: 'Pump' }, { name: 'speed', label: 'Speed', type: 'number', defaultValue: 0 }],
         components: [], variables: [], logic: { nodes: [], wires: [] } };
     const screen = { id: 'sI', name: 'Insp', path: '/insp', width: 900, height: 600, gridSize: 10, snap: false, treeVersion: 1, orphans: [], variables: [{ id: 'sv1', name: 'empty', type: 'string', defaultValue: null }],
-        logic: { nodes: [], wires: [] },
+        // an Update Component node on the button C: it sets its text only
+        logic: { nodes: [{ id: 'U1', type: 'ui-update', x: 200, y: 100, props: { compId: 'C', config: { text: 'Set!' } } }], wires: [] },
         components: [
             { id: 'F', type: '@frame', name: 'Row', x: 20, y: 20, w: 400, h: 120, layout: { mode: 'horizontal', gap: 8, padding: { t: 8, r: 8, b: 8, l: 8 } },
                 children: [{ id: 'C', type: 'nexa-ui-button', x: 0, y: 0, w: 120, h: 40, props: { text: 'In row' } }] },
@@ -38,6 +39,8 @@ function writeFlows() {
             { id: 'TB', type: 'nexa-ui-tabs', x: 20, y: 300, w: 360, h: 200, props: {} },
             // a binding priority list: the screen's "empty" has no value -> the app's "title"
             { id: 'BL', type: 'nexa-ui-button', x: 700, y: 400, w: 120, h: 40, props: { text: { $bind: [{ src: 'screen', ref: 'empty' }, { src: 'app', ref: 'title' }], static: 'Static' } } },
+            // the old way: a legacy binding string + its fallback (Convert legacy bindings)
+            { id: 'LG', type: 'nexa-ui-button', x: 700, y: 460, w: 120, h: 40, props: { text: '{title}', __fallback: { text: 'fb' } } },
             { id: 'L', type: '@lit-component', x: 500, y: 200, w: 160, h: 60, props: {}, litCode: 'render() { return html`<b>hi</b>`; }', litStyles: '', litBindable: [{ name: 'label', type: 'string', defaultValue: 'x' }], litEvents: [] }
         ] };
     const project = { id: 'proj', type: 'kufayeka-nexa-project', name: 'Insp', sparkplugConnection: '', screens: [screen], templates: [template], types: [], breakpoints: [], theme: null, variables: [{ id: 'av1', name: 'title', type: 'string', defaultValue: 'App T' }] };
@@ -69,10 +72,10 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             const groups = async () => (await rows()).filter((x) => /^@[^/]+$/.test(x)).map((x) => x.slice(1));
             const pick = async (id) => { const ok = await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="${id}"]'); if (!r) return false; r.click(); return true; })()`); await wait(250); return ok; };
             const node = (id) => `(function f(list){ for (var i=0;i<list.length;i++){ var n=list[i]; if (n.id===${JSON.stringify(id)}) return n; var c=f(n.children||[]); if (c) return c; } return null; })(__nexaEditorState.screens[0].components)`;
-            const shot = async (name) => {
+            const shot = async (name, clip) => {
                 if (!SHOTS) return;
                 // the editor's right part: the canvas edge and the whole sidebar
-                const img = await send('Page.captureScreenshot', { format: 'png', clip: { x: 900, y: 0, width: 700, height: 1100, scale: 1 } });
+                const img = await send('Page.captureScreenshot', { format: 'png', clip: clip || { x: 900, y: 0, width: 700, height: 1100, scale: 1 } });
                 fs.mkdirSync(SHOTS, { recursive: true });
                 fs.writeFileSync(path.join(SHOTS, name + '.png'), Buffer.from(img.result.data, 'base64'));
             };
@@ -202,6 +205,42 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Types: a new type is a tree (Type, Parameters, Members) + its instances', JSON.stringify(typeRows) === JSON.stringify(['Type', 'Parameters', 'Members', 'Instances (app — every screen)']), typeRows);
 
             const errs = logs.filter((l) => !/favicon|DevTools/.test(l));
+            // the Update Component node's dialog: the component's tree, keep / set
+            const U = `__nexaEditorState.screens[0].logic.nodes.filter(function(n){ return n.id === "U1"; })[0]`;
+            await js(`__nexaEditor.openUiUpdateNodeEditor(${U}); true`);
+            await wait(1200);
+            const upane = `document.querySelector(".nexa-uiupdate-tree")`;
+            const urows = () => js(`Array.from(${upane}.querySelectorAll(".nx-tree-row")).map(function(r){ return r.dataset.id; })`);
+            const uval = (id) => js(`(function(){ var r = ${upane}.querySelector('.nx-tree-row[data-id="${id}"] .nx-pt-val'); return r ? r.textContent.trim() : null; })()`);
+            const ugroups = (await urows()).filter((x) => /^@[^/]+$/.test(x)).map((x) => x.slice(1));
+            check('Update Component: the component\'s tree (Position & Size first, its own groups)', ugroups[0] === 'Position & Size' && ugroups.includes('Content'), ugroups);
+            check('... what it sets shows its value, the rest "keep"', (await uval('text')) === 'Set!' && (await uval('x')) === 'keep', [await uval('text'), await uval('x')]);
+            await shot('update-dialog', { x: 300, y: 0, width: 700, height: 1100, scale: 1 });
+            await js(`(function(){ var r = ${upane}.querySelector('.nx-tree-row[data-id="x"]'); r.click(); return 1; })()`);
+            await wait(300);
+            await js(`(function(){ var i = ${upane}.querySelector(".nx-pt-pane nx-number input"); i.focus(); i.value = "55"; i.dispatchEvent(new Event("input", {bubbles:true})); i.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true})); i.dispatchEvent(new Event("change", {bubbles:true})); i.blur(); return 1; })()`);
+            await wait(300);
+            check('... editing X sets it', (await uval('x')) !== 'keep', await uval('x'));
+            await js(`(function(){ var r = ${upane}.querySelector('.nx-tree-row[data-id="text"]'); r.click(); return 1; })()`);
+            await wait(300);
+            await js(`(function(){ var b = ${upane}.querySelector(".nx-pt-pane .nx-keep-btn"); if (b) b.click(); return !!b; })()`);
+            await wait(300);
+            check('... Keep: the text is not set any more', (await uval('text')) === 'keep', await uval('text'));
+            await js(`(function(){ var b = Array.from(document.querySelectorAll(".red-ui-tray-footer button, .red-ui-tray-toolbar button")).find(function(x){ return x.textContent.trim() === "Done"; }); if (b) b.click(); return !!b; })()`);
+            await wait(600);
+            const ucfg = await js(`JSON.stringify(${U}.props.config)`);
+            check('... Done: the node sets only X', ucfg === '{"x":55}', ucfg);
+
+            // Convert legacy bindings: the string becomes a list, the fallback its static, the canvas the same
+            const lgText = () => js(`(function(){ var e = document.querySelector('[data-id="LG"]'); if (!e) return null; var t = e.textContent; e.querySelectorAll('*').forEach(function(c){ if (c.shadowRoot) t += c.shadowRoot.textContent; }); return t.trim(); })()`);
+            const before = await lgText();
+            const report = await js(`JSON.stringify(__nexaEditor.convertProjectBindings())`);
+            await js('RED.actions.invoke("nexa:convert-legacy-bindings"); true');   // the action: nothing left, no error
+            await wait(800);
+            const lg = await js(`JSON.stringify(${node('LG')}.props)`);
+            check('Convert legacy bindings: {title} + its fallback -> a list, its static the fallback', lg === '{"text":{"$bind":[{"src":"var","ref":"title"}],"static":"fb"}}', { report, lg });
+            check('... the canvas shows the same', /App T/.test(before || '') && /App T/.test(await lgText() || ''), [before, await lgText()]);
+
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));
             return true;
         }, { width: 1600, height: 1100, ready: 'document.readyState === "complete" && !!window.RED && !!RED.sidebar', readyTries: 150 });

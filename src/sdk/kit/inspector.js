@@ -4,6 +4,9 @@
 //   props    its stored props (read here; every change goes through set)
 //   set(key, value)      commit one prop (the editor adds undo / dirty / re-render)
 //   preview(key, value)  design-time only (the state switcher); defaults to set
+//   keep                 optional { isSet(key), keep(key) }: only some props are set, the
+//                        rest are kept (an Update Component node). A row not set shows
+//                        "keep"; a set field gets a Keep button instead of Reset.
 //   responsive           optional, the host's values per breakpoint (the editor's
 //                        canvas/breakpoints-ui.js responsiveHost): every field gets a
 //                        📱 button and, when used, its breakpoint chips
@@ -22,7 +25,7 @@
 import { html, nothing, render } from "lit";
 import { str } from "./base.js";
 import { createTreeView } from "./prop-tree/view.js";
-import { isBindingList, toBindingList } from "../../model/binding.js";
+import { isBindingList, toBindingList, BINDABLE_TYPES } from "../../model/binding.js";
 
 var warnedInspector = {};
 
@@ -55,7 +58,7 @@ function isBinding(v) {
 }
 
 // Types whose widget can switch to a binding (Static | Binding: a priority list of sources).
-var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+var BINDABLE_BY_TOGGLE = BINDABLE_TYPES;
 
 /**
  * A field's value as a binding list to show, or null (static): a list as it is, a legacy
@@ -150,7 +153,9 @@ export function renderInspector(container, opts) {
             btns.push(html`<button type="button" class="nx-icon-btn nx-bp-toggle ${resp.shown ? "nx-on" : ""}" title="${resp.anySet ? "Responsive: set per breakpoint (clear them to go back to one value)" : resp.shown ? "Responsive: one value again" : "Responsive: a value per breakpoint (xs … 3xl)"}"
                 @click="${() => { respOpen[prop.key] = !resp.shown; if (!respOpen[prop.key]) delete respSel[prop.key]; update(); }}"><i class="fa fa-mobile"></i></button>`);
         }
-        if (!prop.noReset && !same(value, prop.default)) {
+        if (opts.keep) {
+            if (opts.keep.isSet(prop.key)) btns.push(html`<button type="button" class="nx-btn nx-btn-ghost nx-keep-btn" title="Keep: this node does not change it" @click="${() => { opts.keep.keep(prop.key); update(); }}"><i class="fa fa-undo"></i><span>Keep</span></button>`);
+        } else if (!prop.noReset && !same(value, prop.default)) {
             btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => { clearFallback(prop.key); set(prop.key, clone(prop.default)); }}"><i class="fa fa-undo"></i></button>`);
         }
         if (BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound)) {
@@ -244,7 +249,7 @@ export function renderInspector(container, opts) {
         if (prop.type === "tag") el.fallbackValue = fallbacks[key];
         // theme tokens: a colour takes the colour tokens; another prop names its categories (tokens: "fontSizes")
         el.tokens = prop.tokens !== undefined ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
-        el.modified = !prop.noReset && !same(value, prop.default);
+        el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same(value, prop.default);
         el.invalid = !!message;
         el.message = message || "";
         el.actions = actionsFor(prop, value, bound, resp);
@@ -419,7 +424,8 @@ export function renderInspector(container, opts) {
         validate: validateProp,
         state: currentState,
         stateSwitcher: function () { return ui.stateSwitcher(); },
-        openDialog: openDialog
+        openDialog: openDialog,
+        keep: opts.keep || null
     });
 
     function view() {
