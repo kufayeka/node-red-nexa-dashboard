@@ -25,6 +25,7 @@ export const {
     bind, defineInspectorWidget, definePropertyEditor, adminApi,
     kit, NexaKit, KitElement,
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
+    asBinding, isBindingList, isBound,
     defineCodec, getCodec, format, isUnknown,
     assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange,
     theme, zag

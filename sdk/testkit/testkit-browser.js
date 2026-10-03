@@ -31,7 +31,10 @@
             opts = opts || {};
             var def = NEXA.getComponent(type);
             if (!def) throw new Error("[nexa-test] unknown component " + type);
-            var item = { name: name, type: type, def: def, el: T.slot(opts), raw: Object.assign({}, rawProps), tags: {}, writes: [], events: [], acks: [] };
+            // props saved by an older version: brought up to date, as the host does on load
+            var raw = Object.assign({}, rawProps);
+            if (typeof def.migrateProps === "function" && raw.__v === undefined && opts.migrate) raw = def.migrateProps(Object.assign({ __v: 1 }, raw));
+            var item = { name: name, type: type, def: def, el: T.slot(opts), raw: raw, tags: {}, writes: [], events: [], acks: [] };
             var base = { namespace: name, getRawProps: function () { return item.raw; } };
             item.ctx = opts.design
                 ? Object.assign(base, { mode: "editor", emit: function () {} })
@@ -84,6 +87,16 @@
             Object.keys(p).forEach(function (k) {
                 var v = p[k];
                 p[k] = Array.isArray(v) ? v.map(function (x, i) { return resolve(x, k + "[" + i + "]"); }) : resolve(v, k);
+            });
+            // binding priority lists ({ $bind, static }: a prop, a list item's field): a tag source
+            // reads NexaTest.setTag(name, value, "<address>"), a message source the item's message,
+            // a variable source NexaTest.setVariable
+            var B = sdk()._bindings;
+            if (B) p = B.resolveProps(p, function (src, ref) {
+                var k = B.kind(src);
+                if (k && k.tag) return item.tags[ref] !== undefined ? item.tags[ref] : "???";
+                if (k && k.message) return ref ? path(item.msg || {}, String(ref).replace(/^msg\.?/, "")) : item.msg;
+                return path(T.vars, String(ref));
             });
             return p;
         },

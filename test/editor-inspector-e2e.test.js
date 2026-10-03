@@ -215,13 +215,26 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Tabs on → binding → Add source: the reference is empty, not "{}"', posUi.shown === '', posUi);
             await shot('enum-binding');
 
-            // an input tag: the field row and the binding table (not the old source picker)
+            // the line chart: a v1 chart (inputData) is Series 1 now; a series' sections; its Data is a binding table
             await select('CH');
-            const dataRow = await js(`(function(){ var r = Array.from(${pane}.querySelectorAll(".nx-tree-row")).find(function(x){ return /Data Array/.test(x.textContent); }); return r ? r.dataset.id : null; })()`);
-            await pick(dataRow);
+            await js(`(function(){ var t = ${pane}.querySelector("nx-tree"); if (t && t.expandAll) t.expandAll(); return 1; })()`);
+            await pick('series#0');
+            await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="series#0"] .nx-tree-caret'); if (r && !${pane}.querySelector('.nx-tree-row[data-id="series#0/Data"]')) r.click(); return 1; })()`);
+            await wait(300);
+            const chRows = await rows();
+            check('Line Chart: Series is a list, Series 1 its item, with sections (Data, Line, Fill …)', chRows.includes('series#0') && chRows.includes('series#0/Data') && chRows.includes('series#0/Line') && chRows.includes('series#0.data'), chRows.filter((x) => /^series/.test(x)));
+            await pick('series#0.data');
             const dataUi = await js(`(function(){ var p = ${pane}.querySelector(".nx-pt-pane"); return { table: !!p.querySelector("nx-binding-list"), old: !!p.querySelector("nx-binding"), rows: p.querySelectorAll(".nx-bl-row").length, kind: (p.querySelector(".nx-bl-kind") || {}).value, stat: !!p.querySelector(".nx-bt-static") }; })()`);
-            check('an input tag (chart Data): the binding table, its message source, a static row; no old picker', dataUi.table && !dataUi.old && dataUi.rows === 1 && dataUi.kind === 'msg' && dataUi.stat, dataUi);
+            check('... its Data (migrated from {msg.payload}): the binding table, a message source, a static row; no old picker', dataUi.table && !dataUi.old && dataUi.rows === 1 && dataUi.kind === 'msg' && dataUi.stat, dataUi);
             await shot('chart-data');
+            await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="series"] .nx-tree-actions button'); if (r) r.click(); return !!r; })()`);
+            await wait(500);
+            const added = await js(`JSON.stringify(${node('CH')}.props.series.map(function(s){ return [s.id, s.name]; }))`);
+            check('... + adds Series 2 (its own Id, s2)', added === '[["s1","Series 1"],["s2","Series 2"]]', added);
+            await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="series#1"] .nx-tree-caret'); if (r && !${pane}.querySelector('.nx-tree-row[data-id="series#1/Line"]')) r.click(); return 1; })()`);
+            await wait(300);
+            await pick('series#1.color');
+            await shot('chart-series');
 
             // the Update Component node's dialog: the component's tree, keep / set
             const U = `__nexaEditorState.screens[0].logic.nodes.filter(function(n){ return n.id === "U1"; })[0]`;

@@ -216,7 +216,10 @@ export function renderInspector(container, opts) {
             if (!el.renderItem || el._nxOwnItems) {
                 var item = prop.item || { type: "string" };
                 el.renderItem = function (it, _index, setItem) { return itemControl(item, it, setItem); };
-                el.newItem = function () { return clone(item.default !== undefined ? item.default : (item.fields ? defaultsOf(item.fields) : "")); };
+                el.newItem = function () {
+                    if (typeof item.create === "function") { var made = item.create((Array.isArray(props()[key]) ? props()[key] : []).slice()); if (made !== undefined) return clone(made); }
+                    return clone(item.default !== undefined ? item.default : (item.fields ? defaultsOf(item.fields) : ""));
+                };
                 el._nxOwnItems = true;
             }
         }
@@ -354,7 +357,12 @@ export function renderInspector(container, opts) {
             case "boolean": return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
             case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
             case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
-            case "tag": return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
+            case "tag": {
+                // a list item's input / output (a series' data): a binding list, its static last (an input)
+                var tb = shownBinding(v) || (isBindingList(v) ? v : { $bind: [] });
+                var tfb = function (e) { e.stopPropagation(); var nv = { $bind: tb.$bind.slice() }; if (e.detail.value !== undefined && e.detail.value !== "") nv.static = e.detail.value; onChange(nv); };
+                return html`<nx-tag .value="${tb.static}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" .binding="${tb}" ?fallback="${true}" @nx-change="${ch}" @nx-fallback="${tfb}"></nx-tag>`;
+            }
             case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
             default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
         }

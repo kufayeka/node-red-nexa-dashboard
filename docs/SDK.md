@@ -179,7 +179,7 @@ properties: {
 | `json` | any JSON | `nx-code` (JSON) |
 | `tag` | `"{provider:address}"` | `nx-tag` |
 | `asset` | `"{asset:name}"`, a URL, or `""` | `nx-asset`: the app's images (the Assets tab) as thumbnails, Import…, a URL. In the view, `assetUrl(this.p.key)` gives what to show. See [MEDIA.md](MEDIA.md). |
-| `list` | array | `nx-list`. `item` is one schema (a list of values) or `{ fields: {…}, row: true }` (a list of objects). |
+| `list` | array | `nx-list`. `item` is one schema (a list of values) or `{ fields: {…}, row: true }` (a list of objects). Its items are tree rows; see "List items" below. |
 
 These attributes apply to every type:
 - `default`, `label` (the key is humanized when omitted), `help`, `placeholder`, `icon`.
@@ -189,6 +189,12 @@ These attributes apply to every type:
 - `perState: "<state>"`, shown only while that state is previewed.
 - `bindable` (default `true` for plain values), `noReset`, `hidden`.
   - A list item's fields are bindable too. Give `bindable: false` to a field that names something: a slot's name (a Tabs tab's `value`), a key other code looks up.
+- **List items** (`type: "list"`, `item: { fields }`):
+  - a field's `section: "Data"` groups it inside the item in the tree. A Line Chart series has Data, Line, Fill, Points, Axis and Tooltip;
+  - `visibleWhen(item, props)` shows a field only for some items (`(s) => s.variant === "step"`);
+  - a field of `type: "tag"` is an input of that item: a binding priority list (its static last), resolved on the page like any prop. Its tags are subscribed;
+  - `item.create(items)` builds a new item ("Series 3", a unique id). Without it the fields' defaults are used.
+- `asBinding(value, static?)` turns a legacy binding string (`"{sparkplug:…}"`, `"{msg.x}"`) into a list, for a `migrate()` that moves a binding into a list item's field. `isBindingList(v)` and `isBound(v)` check a value.
 - `options` (an enum) may be a function `(p) → list | Promise<list>`: loaded once per inspector.
 - `summary(value, p) → text`: what the prop's tree row shows (default: a simple form of the value).
 - `editor: "<tag>"`: the prop's own editor ([§9](#9-the-inspector)).
@@ -645,7 +651,9 @@ withHarness({
     // NexaTest.inspector("acme-gauge", props, host) -> { box, props, sets, destroy, select(id), field(id) }:
     //   await ins.field("max") picks the row and resolves the widget in the pane; NexaTest.rows(ins.box) lists the rows
     //   (ids: a prop's key, "tabs#2" an item, "tabs#2.label" an item's field, "@Style" a group)
-    // NexaTest.mount(…, { design: true }) mounts in editor mode
+    // NexaTest.mount(…, { design: true }) mounts in editor mode; { migrate: true } runs migrate() first (v1 props)
+    // a binding priority list ({ $bind, static }) resolves too: a tag source reads
+    // NexaTest.setTag("g", value, "<address>"), a message source setMessage, a variable source setVariable
 });
 ```
 

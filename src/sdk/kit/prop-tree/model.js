@@ -179,9 +179,25 @@ export function buildTree(meta, p, opts) {
             items.forEach(function (item, i) {
                 var it = { id: key + "#" + i, kind: "item", label: itemLabel(prop, item, i), key: key, prop: prop, index: i, depth: node.depth + 1, children: [], parentId: node.id };
                 if (sch.fields) {
+                    // a field's `section` groups it inside the item (a series: Data, Line, Fill…);
+                    // visibleWhen(item, props) hides it with the item's own values
+                    var secs = {};
                     Object.keys(sch.fields).forEach(function (fk) {
                         var f = Object.assign({ label: fk, key: fk }, sch.fields[fk]);
-                        it.children.push({ id: it.id + "." + fk, kind: "itemField", label: f.label, key: key, prop: prop, index: i, field: f, fieldKey: fk, depth: it.depth + 1, children: [], parentId: it.id });
+                        if (typeof f.visibleWhen === "function") {
+                            var shown = true;
+                            try { shown = f.visibleWhen(item && typeof item === "object" ? item : {}, p); } catch (e) { shown = true; }
+                            if (!shown) return;
+                        }
+                        var host = it;
+                        if (f.section) {
+                            host = secs[f.section];
+                            if (!host) {
+                                host = secs[f.section] = { id: it.id + "/" + f.section, kind: "section", label: f.section, depth: it.depth + 1, children: [], parentId: it.id };
+                                it.children.push(host);
+                            }
+                        }
+                        host.children.push({ id: it.id + "." + fk, kind: "itemField", label: f.label, key: key, prop: prop, index: i, field: f, fieldKey: fk, depth: host.depth + 1, children: [], parentId: host.id });
                     });
                 }
                 node.children.push(it);

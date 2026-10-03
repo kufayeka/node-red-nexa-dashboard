@@ -291,6 +291,10 @@ export function createTreeView(A) {
 
     function newItem(prop) {
         var sch = itemSchema(prop);
+        // the plugin's own: item.create(items) -> a new item ("Series 3", a unique id…)
+        if (typeof sch.create === "function") {
+            try { var made = sch.create(items(prop.key).slice()); if (made !== undefined) return clone(made); } catch (e) { console.error("[nexa] item.create of " + prop.key + ":", e); }
+        }
         if (sch.default !== undefined) return clone(sch.default);
         if (sch.fields) {
             var o = {};

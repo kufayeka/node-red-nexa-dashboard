@@ -1860,9 +1860,27 @@ nx-tab[hidden] { display: none !important; }
         items.forEach(function(item, i) {
           var it = { id: key + "#" + i, kind: "item", label: itemLabel(prop, item, i), key, prop, index: i, depth: node.depth + 1, children: [], parentId: node.id };
           if (sch.fields) {
+            var secs = {};
             Object.keys(sch.fields).forEach(function(fk) {
               var f = Object.assign({ label: fk, key: fk }, sch.fields[fk]);
-              it.children.push({ id: it.id + "." + fk, kind: "itemField", label: f.label, key, prop, index: i, field: f, fieldKey: fk, depth: it.depth + 1, children: [], parentId: it.id });
+              if (typeof f.visibleWhen === "function") {
+                var shown = true;
+                try {
+                  shown = f.visibleWhen(item && typeof item === "object" ? item : {}, p);
+                } catch (e) {
+                  shown = true;
+                }
+                if (!shown) return;
+              }
+              var host2 = it;
+              if (f.section) {
+                host2 = secs[f.section];
+                if (!host2) {
+                  host2 = secs[f.section] = { id: it.id + "/" + f.section, kind: "section", label: f.section, depth: it.depth + 1, children: [], parentId: it.id };
+                  it.children.push(host2);
+                }
+              }
+              host2.children.push({ id: it.id + "." + fk, kind: "itemField", label: f.label, key, prop, index: i, field: f, fieldKey: fk, depth: host2.depth + 1, children: [], parentId: host2.id });
             });
           }
           node.children.push(it);
@@ -2387,6 +2405,14 @@ nx-tab[hidden] { display: none !important; }
     }
     function newItem(prop) {
       var sch = itemSchema(prop);
+      if (typeof sch.create === "function") {
+        try {
+          var made = sch.create(items(prop.key).slice());
+          if (made !== void 0) return clone(made);
+        } catch (e) {
+          console.error("[nexa] item.create of " + prop.key + ":", e);
+        }
+      }
       if (sch.default !== void 0) return clone(sch.default);
       if (sch.fields) {
         var o = {};
@@ -2879,6 +2905,10 @@ nx-tab[hidden] { display: none !important; }
             return itemControl(item, it, setItem);
           };
           el.newItem = function() {
+            if (typeof item.create === "function") {
+              var made = item.create((Array.isArray(props()[key]) ? props()[key] : []).slice());
+              if (made !== void 0) return clone2(made);
+            }
             return clone2(item.default !== void 0 ? item.default : item.fields ? defaultsOf(item.fields) : "");
           };
           el._nxOwnItems = true;
@@ -3047,8 +3077,16 @@ nx-tab[hidden] { display: none !important; }
           })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
         case "color":
           return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
-        case "tag":
-          return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
+        case "tag": {
+          var tb = shownBinding(v) || (isBindingList(v) ? v : { $bind: [] });
+          var tfb = function(e) {
+            e.stopPropagation();
+            var nv = { $bind: tb.$bind.slice() };
+            if (e.detail.value !== void 0 && e.detail.value !== "") nv.static = e.detail.value;
+            onChange(nv);
+          };
+          return html`<nx-tag .value="${tb.static}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" .binding="${tb}" ?fallback="${true}" @nx-change="${ch}" @nx-fallback="${tfb}"></nx-tag>`;
+        }
         case "asset":
           return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .modes="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
         default:

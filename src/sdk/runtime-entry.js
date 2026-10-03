@@ -26,6 +26,17 @@ import F from "./format.js";
 import { setAssets, listAssets, getAsset, onAssetsChange, assetRef, resolveAsset, assetUrl } from "./assets.js";
 import { theme, setTheme } from "./theme.js";
 import { zag } from "./zag.js";
+import { toBindingList, isBindingList, isBoundValue, resolveBindingProps, sourceKind } from "../model/binding.js";
+
+// A value as a binding priority list ({ $bind, static }): a list as it is, a legacy binding
+// string ("{sparkplug:…}", "{msg.x}", "{name}") converted, anything else static. For a
+// plugin's migrate() (a binding moved into a list item's field) and its own checks.
+function asBinding(value, staticValue) {
+    var b = toBindingList(value, staticValue);
+    var out = { $bind: b.sources };
+    if (b.static !== undefined) out.static = b.static;
+    return out;
+}
 
 export var SDK_VERSION = "1.0.0";
 
@@ -56,6 +67,9 @@ if (!window.NexaSDK) {
         get NexaKit() { return window.NexaKit; },
         get KitElement() { return window.NexaKit && window.NexaKit.KitElement; },
         // tags
+        asBinding: asBinding, isBindingList: isBindingList, isBound: isBoundValue,
+        // the testkit resolves binding lists like the page does (not for plugins)
+        _bindings: { resolveProps: resolveBindingProps, kind: sourceKind },
         defineTagProvider: defineTagProvider, extendTagProvider: extendTagProvider, getTagProvider: getTagProvider,
         listTagProviders: listTagProviders, parseTag: parseTag, makeTag: makeTag, isTag: isTag,
         // values
