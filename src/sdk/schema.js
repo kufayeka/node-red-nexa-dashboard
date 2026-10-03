@@ -67,7 +67,9 @@ function ioList(map, dir) {
             providers: io.providers || null,      // null = every registered provider
             type: io.type || "any",
             required: !!io.required,
-            fallback: io.fallback || null         // outputs: the input written to when this one is empty
+            fallback: io.fallback || null,        // outputs: the input written to when this one is empty
+            group: io.group || "Data",            // where the inspector shows its tag field
+            section: io.section || null
         };
     });
 }
@@ -112,6 +114,8 @@ export function buildMeta(def) {
         assets: def.assets || null,
         state: def.state || {},
         inspector: def.inspector || null,
+        // the inspector's group order (groups not named come after, in the order props declare them)
+        groupOrder: Array.isArray(def.groups) ? def.groups.slice() : null,
         help: def.help || "",
         slots: slotsFn(def.slots)
     };
@@ -129,13 +133,13 @@ export function buildMeta(def) {
     var props = {};
     meta.inputs.forEach(function (io) {
         props[io.key] = { type: io.multiple ? "list" : "tag", access: "read", label: io.label, help: io.help, providers: io.providers,
-            required: io.required, io: "input", ioName: io.name, item: io.multiple ? { type: "tag", access: "read", providers: io.providers } : undefined,
-            default: io.multiple ? [] : "", group: "Data" };
+            required: io.required, io: "input", ioName: io.name, noun: "tag", item: io.multiple ? { type: "tag", access: "read", providers: io.providers } : undefined,
+            default: io.multiple ? [] : "", group: io.group, section: io.section || undefined };
     });
     meta.outputs.forEach(function (io) {
         props[io.key] = { type: io.multiple ? "list" : "tag", access: "write", label: io.label, help: io.help, providers: io.providers,
-            required: io.required, io: "output", ioName: io.name, item: io.multiple ? { type: "tag", access: "write", providers: io.providers } : undefined,
-            default: io.multiple ? [] : "", group: "Data" };
+            required: io.required, io: "output", ioName: io.name, noun: "tag", item: io.multiple ? { type: "tag", access: "write", providers: io.providers } : undefined,
+            default: io.multiple ? [] : "", group: io.group, section: io.section || undefined };
     });
     Object.keys(def.properties || {}).forEach(function (k) {
         if (props[k]) throw new Error("[nexa] " + def.id + ": property \"" + k + "\" collides with an input / output prop");

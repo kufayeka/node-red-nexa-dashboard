@@ -77,15 +77,18 @@ async function main() {
 
         await ok('the Read / Write Tag picker (nx-tag) offers the sources: an input all four, an output Variable / Tag', async () => {
             const r = await js(`(async function () {
-                var ins = NexaTest.inspector("acme-gauge", {}), box = ins.box;
+                var ins = NexaTest.inspector("acme-gauge", {});
                 await NexaTest.wait(80);
-                var tags = Array.from(box.querySelectorAll("nx-tag:not([tags-only])"));
                 function sources(t) { return Array.from(t.querySelectorAll(".nx-binding-source button")).map(function (b) { return b.textContent.trim(); }); }
-                var out = { input: sources(tags[0]), output: sources(tags[2]), labels: tags.map(function (t) { return t.label; }) };
+                var out = {}, labels = [];
+                var w = await ins.field("outputSetpoint"); out.output = sources(w); labels.push(w.label);
+                w = await ins.field("inputSetpoint"); labels.unshift(w.label);
+                w = await ins.field("inputValue"); out.input = sources(w); labels.unshift(w.label);
+                out.labels = labels;
                 // Variable, then a name: the input is bound to it
-                Array.from(tags[0].querySelectorAll(".nx-binding-source button")).find(function (b) { return b.textContent.trim() === "Variable"; }).click();
+                Array.from(w.querySelectorAll(".nx-binding-source button")).find(function (b) { return b.textContent.trim() === "Variable"; }).click();
                 await NexaTest.wait();
-                var cb = tags[0].querySelector("nx-combobox input");
+                var cb = w.querySelector("nx-combobox input");
                 cb.value = "param1.speed"; cb.dispatchEvent(new Event("input")); cb.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
                 await NexaTest.wait();
                 out.saved = ins.props.inputValue;
@@ -160,94 +163,136 @@ async function main() {
             assert.deepStrictEqual(m, { barColor: 'red', max: 100, __v: 3 });
         });
 
-        await ok('the plugin\'s own inspector: tabs, generic tag pickers, list of tags, custom widget, ui.async, ui.alert, ui.dialog', async () => {
+        await ok('the inspector from the schema: tree groups, tag pickers, a tag list as tree children, plugin editors (inline, dialog), async options, warn, preview state, search', async () => {
             const r = await js(`(async function () {
                 var ins = NexaTest.inspector("acme-gauge", {}), box = ins.box, out = {};
                 await NexaTest.wait(80);
-                var tab = function (l) { Array.from(box.querySelectorAll(".nx-tab")).find(function (b) { return b.textContent.trim() === l; }).click(); };
-                out.tabs = Array.from(box.querySelectorAll(".nx-tab")).map(function (b) { return b.textContent.trim(); });
-                var tags = Array.from(box.querySelectorAll("nx-tab:not([hidden]) > nx-tag"));
-                out.valueChips = tags[0].querySelectorAll(".nx-tag-providers .nx-state").length;
-                out.setpointChips = tags[1].querySelectorAll(".nx-tag-providers .nx-state").length;
-                tags[1].querySelector("input").focus(); await NexaTest.wait();
-                out.suggestions = Array.from(tags[1].querySelectorAll(".nx-menu-item span")).map(function (s) { return s.textContent; });
-                tags[1].querySelector(".nx-menu-item").click(); await NexaTest.wait();
+                var row = function (id) { return NexaTest.rows(box).filter(function (x) { return x.id === id; })[0]; };
+                out.groups = NexaTest.rows(box).filter(function (x) { return /^@[^/]+$/.test(x.id); }).map(function (x) { return x.label; });
+                var v = await ins.field("inputValue");
+                out.valueChips = v.querySelectorAll(".nx-tag-providers .nx-state").length;
+                var sp = await ins.field("inputSetpoint");
+                out.setpointChips = sp.querySelectorAll(".nx-tag-providers .nx-state").length;
+                sp.querySelector("input").focus(); await NexaTest.wait();
+                out.suggestions = Array.from(sp.querySelectorAll(".nx-menu-item span")).map(function (s) { return s.textContent; });
+                sp.querySelector(".nx-menu-item").click(); await NexaTest.wait();
                 out.setpoint = ins.props.inputSetpoint;
-                out.setpointStatus = tags[1].querySelector(".nx-tag-status").textContent.trim();
-                var pens = box.querySelector("nx-list");
-                pens.querySelector(".nx-list-foot .nx-btn").click(); await NexaTest.wait();
-                pens.querySelector(".nx-list-foot .nx-btn").click(); await NexaTest.wait();
-                out.penRows = pens.querySelectorAll(".nx-list-row nx-tag:not([tags-only])").length;
+                out.setpointStatus = sp.querySelector(".nx-tag-status").textContent.trim();
+                // a list: its items are rows of the tree; the pane adds / removes
+                await ins.field("inputPens");
+                box.querySelector(".nx-pt-pane .nx-pt-add").click(); await NexaTest.wait();
+                out.firstAdded = ins.handle.selected();                  // the new item is picked
+                await ins.field("inputPens");
+                box.querySelector(".nx-pt-pane .nx-pt-add").click(); await NexaTest.wait();
                 out.pens = ins.props.inputPens;
-                tab("Scale"); await NexaTest.wait(80);
-                var stepper = box.querySelector("acme-stepper");
-                out.stepperLabel = stepper.label;
-                stepper.querySelector(".inc").click(); await NexaTest.wait();
-                out.steps = ins.props.steps;
-                out.units = Array.from(box.querySelector("nx-tab:not([hidden]) nx-select").querySelectorAll("option")).map(function (o) { return o.textContent; });
-                var max = box.querySelector("nx-tab:not([hidden]) nx-number input");
-                max.value = "5000"; max.dispatchEvent(new Event("change")); await NexaTest.wait();
-                out.alert = !!box.querySelector("nx-tab:not([hidden]) nx-alert");
-                max.value = ""; max.dispatchEvent(new Event("change")); await NexaTest.wait();
-                out.required = (box.querySelector("nx-tab:not([hidden]) nx-number .nx-message") || {}).textContent;
-                Array.from(box.querySelectorAll("nx-tab:not([hidden]) .nx-btn")).find(function (b) { return /Pick max/.test(b.textContent); }).click(); await NexaTest.wait();
+                out.penRows = NexaTest.rows(box).filter(function (x) { return /^inputPens#/.test(x.id); }).map(function (x) { return x.label; });
+                out.selAfterAdd = ins.handle.selected();
+                out.penWidget = (await ins.field("inputPens#1")).localName;
+                Array.from(box.querySelectorAll(".nx-pt-pane .nx-btn")).find(function (b) { return /Remove/.test(b.textContent); }).click(); await NexaTest.wait();
+                out.afterRemove = [ins.props.inputPens.length, ins.handle.selected()];
+                // a plugin's inline editor
+                var st = await ins.field("steps");
+                out.stepper = [st.localName, st.label];
+                st.querySelector(".inc").click(); await NexaTest.wait();
+                out.steps = [ins.props.steps, row("steps").value];
+                // options from a function (a Promise), in a section
+                await ins.field("unitsFrom"); await NexaTest.wait(80);
+                out.units = Array.from(box.querySelectorAll(".nx-pt-pane select option")).map(function (o) { return o.textContent; });
+                out.crumb = Array.from(box.querySelectorAll(".nx-pt-pane .nx-pt-crumb span")).map(function (s) { return s.textContent; });
+                // warn (does not block) and required (does)
+                var mx = await ins.field("max"), input = mx.querySelector("input");
+                input.value = "5000"; input.dispatchEvent(new Event("change")); await NexaTest.wait();
+                out.alert = [!!box.querySelector(".nx-pt-pane nx-alert"), !!box.querySelector('.nx-pt-row[data-id="max"] .nx-pt-warn'), ins.props.max];
+                input.value = ""; input.dispatchEvent(new Event("change")); await NexaTest.wait();
+                out.required = [(mx.querySelector(".nx-message") || {}).textContent, !!box.querySelector('.nx-pt-row[data-id="max"] .nx-pt-bad')];
+                // a plugin's dialog editor: summary + Edit..., Apply commits once
+                await ins.field("range");
+                box.querySelector(".nx-pt-pane .nx-pt-open").click(); await NexaTest.wait();
                 out.dialogTitle = document.querySelector(".nx-dialog-title").textContent;
-                Array.from(document.querySelectorAll(".nx-dialog-foot .nx-btn")).find(function (b) { return b.textContent === "Yes"; }).click(); await NexaTest.wait();
-                out.dialogResult = window.__dialogResult;
-                out.dialogGone = !document.querySelector(".nx-dialog");
-                tab("Style"); await NexaTest.wait();
-                Array.from(box.querySelectorAll(".nx-state")).find(function (b) { return b.textContent.trim() === "Alarm"; }).click(); await NexaTest.wait();
+                document.querySelector(".nx-dialog .acme-range .wide").click(); await NexaTest.wait();
+                out.beforeApply = ins.props.range;
+                Array.from(document.querySelectorAll(".nx-dialog-foot .nx-btn")).find(function (b) { return b.textContent === "Apply"; }).click(); await NexaTest.wait();
+                out.range = [JSON.stringify(ins.props.range), row("range").value, !document.querySelector(".nx-dialog")];
+                // the preview state (above the tree)
+                Array.from(box.querySelectorAll(".nx-pt-head .nx-state")).find(function (b) { return b.textContent.trim() === "Alarm"; }).click(); await NexaTest.wait();
                 out.preview = ins.props.__previewState;
-                out.alarmBadge = Array.from(box.querySelectorAll("nx-code")).find(function (e) { return e.label === "Alarm CSS"; }).badge;
+                out.alarmBadge = (await ins.field("cssAlarm")).badge;
+                // search: labels and values
+                ins.handle.search("rpm"); await NexaTest.wait();
+                out.searchNone = NexaTest.rows(box).length;
+                ins.handle.search("alarm"); await NexaTest.wait();
+                out.search = NexaTest.rows(box).map(function (x) { return x.id; });
+                ins.handle.search(""); await NexaTest.wait();
                 ins.destroy();
                 return out;
             })()`);
-            assert.deepStrictEqual(r.tabs, ['Data', 'Scale', 'Style']);
+            assert.deepStrictEqual(r.groups, ['Data', 'Scale', 'Style']);
             assert.deepStrictEqual([r.valueChips, r.setpointChips], [2, 0], 'any provider -> chips; OPC-UA-only input -> none');
             assert.deepStrictEqual(r.suggestions, ['Motor.Speed', 'Motor.Setpoint'], 'suggestions come from the provider');
             assert.strictEqual(r.setpoint, '{opcua:ns=2;s=Motor.Speed}');
             assert.strictEqual(r.setpointStatus, 'OPC UA: ns2 Motor.Speed');
-            assert.deepStrictEqual([r.penRows, r.pens], [2, ['', '']]);
-            assert.deepStrictEqual([r.stepperLabel, r.steps], ['Steps (custom widget)', 5]);
-            assert.deepStrictEqual(r.units, ['None', 'rpm'], 'ui.async options arrived');
-            assert.ok(r.alert, 'ui.alert follows p');
-            assert.strictEqual(r.required, 'Required');
-            assert.deepStrictEqual([r.dialogTitle, r.dialogResult, r.dialogGone], ['Max', 500, true]);
+            assert.deepStrictEqual([r.pens, r.penRows, r.firstAdded, r.selAfterAdd], [['', ''], ['Tag 1', 'Tag 2'], 'inputPens#0', 'inputPens#1'], 'the new item is selected');
+            assert.strictEqual(r.penWidget, 'nx-tag', 'an item of a tag list: a tag picker');
+            assert.deepStrictEqual(r.afterRemove, [1, 'inputPens#0'], 'removed: the selection goes to the item before');
+            assert.deepStrictEqual(r.stepper, ['acme-stepper', 'Steps (custom editor)']);
+            assert.deepStrictEqual(r.steps, [5, 'step 5'], 'the editor\'s own summary on its row');
+            assert.deepStrictEqual(r.units, ['None', 'rpm'], 'async options arrived');
+            assert.deepStrictEqual(r.crumb, ['Scale', 'Units']);
+            assert.deepStrictEqual(r.alert, [true, true, 5000], 'warn shows, and the value is kept');
+            assert.deepStrictEqual(r.required, ['Required', true]);
+            assert.strictEqual(r.dialogTitle, 'Range');
+            assert.strictEqual(r.beforeApply, null, 'nothing changes before Apply');
+            assert.deepStrictEqual(r.range, ['{"from":0,"to":500}', '0 … 500', true]);
             assert.deepStrictEqual([r.preview, r.alarmBadge], ['alarm', 'previewing']);
+            assert.strictEqual(r.searchNone, 0);
+            assert.deepStrictEqual(r.search, ['@Style', 'cssAlarm']);
         });
 
-        await ok('the automatic inspector: sections by group, validation, reset, bind toggle, visibleWhen live (focus kept)', async () => {
+        await ok('the inspector: rows by group, validation, reset, bind toggle, visibleWhen live (focus kept), keyboard', async () => {
             const r = await js(`(async function () {
                 var ins = NexaTest.inspector("acme-plain", { a: 5 }), box = ins.box, out = {};
                 await NexaTest.wait();
-                var w = function (label) { return Array.from(box.querySelectorAll("*")).find(function (e) { return e.localName.indexOf("nx-") === 0 && e.label === label; }); };
-                out.headings = Array.from(box.querySelectorAll(".nx-section-head .nx-title")).map(function (t) { return t.textContent; });
-                out.bRequired = (w("B").querySelector(".nx-message") || {}).textContent;
-                out.aModified = !!w("A").querySelector(".nx-dot") && !!w("A").querySelector("[title='Reset to default']");
-                var bInput = w("B").querySelector("input"); bInput.focus();
+                var ids = function () { return NexaTest.rows(box).map(function (x) { return x.id; }); };
+                var rowEl = function (id) { return box.querySelector('.nx-pt-row[data-id="' + id + '"]'); };
+                out.rows = ids();
+                out.aRow = [NexaTest.rows(box)[1].value, !!rowEl("a").querySelector(".nx-dot")];
+                out.bBad = !!rowEl("b").querySelector(".nx-pt-bad");
+                var b = await ins.field("b");
+                out.bRequired = (b.querySelector(".nx-message") || {}).textContent;
+                var bInput = b.querySelector("input"); bInput.focus();
                 ins.props.c = true; ins.update(); await NexaTest.wait();
                 out.focusKept = document.activeElement === bInput;
-                out.dShown = !!w("D");
+                out.dShown = ids().indexOf("d") !== -1;
                 ins.props.a = 50; ins.update(); await NexaTest.wait();
-                out.aMax = (w("A").querySelector(".nx-message") || {}).textContent;
-                w("A").querySelector("[title='Reset to default']").click(); await NexaTest.wait();
+                var a = await ins.field("a");
+                out.aMax = (a.querySelector(".nx-message") || {}).textContent;
+                a.querySelector("[title='Reset to default']").click(); await NexaTest.wait();
                 out.aReset = ins.props.a;
-                w("Fill").querySelector("[title^='Bind']").click(); await NexaTest.wait();
-                out.bindMode = w("Fill").binding === "" && !!w("Fill").querySelector("nx-binding");
-                var tagIn = w("Fill").querySelector("nx-binding nx-combobox input");   // the Variable source
+                var f = await ins.field("fill");
+                f.querySelector("[title^='Bind']").click(); await NexaTest.wait();
+                out.bindMode = f.binding === "" && !!f.querySelector("nx-binding");
+                var tagIn = f.querySelector("nx-binding nx-combobox input");   // the Variable source
                 tagIn.focus(); tagIn.value = "{color}"; tagIn.dispatchEvent(new Event("input")); tagIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
                 await NexaTest.wait();
-                out.fill = ins.props.fill;
+                out.fill = [ins.props.fill, !!rowEl("fill").querySelector(".fa-link")];
+                // the tree is one tab stop: arrows move the selection, Left goes to the parent
+                var tree = box.querySelector(".nx-pt-tree"); tree.focus();
+                var key = function (k) { tree.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); return NexaTest.wait(); };
+                await key("ArrowUp"); out.kbd = [ins.handle.selected()];
+                await key("ArrowLeft"); out.kbd.push(ins.handle.selected());
+                await key("ArrowLeft"); out.kbd.push(NexaTest.rows(box).map(function (x) { return x.id; }).join(","));
                 ins.destroy();
                 return out;
             })()`);
-            assert.deepStrictEqual(r.headings, ['One', 'Two']);
+            assert.deepStrictEqual(r.rows, ['@One', 'a', 'b', '@Two', 'c', 'fill'], 'd hidden while c is off');
+            assert.deepStrictEqual(r.aRow, ['5', true], 'a row shows the value and that it differs from the default');
+            assert.ok(r.bBad);
             assert.strictEqual(r.bRequired, 'Required');
-            assert.ok(r.aModified);
-            assert.ok(r.focusKept && r.dShown, 'visibleWhen re-evaluated in place');
+            assert.ok(r.focusKept && r.dShown, 'visibleWhen re-evaluated in place, the field being typed in keeps the focus');
             assert.deepStrictEqual([r.aMax, r.aReset], ['Maximum is 10', 1]);
             assert.ok(r.bindMode, 'the same widget switches to the binding editor');
-            assert.strictEqual(r.fill, '{color}');
+            assert.deepStrictEqual(r.fill, ['{color}', true]);
+            assert.deepStrictEqual(r.kbd, ['d', '@Two', '@One,a,b,@Two']);
         });
 
         await ok('widget contract: nx-text applies on Enter (once) and on blur, never while typing; nx-number keeps 0 and "" apart', async () => {
@@ -305,7 +350,7 @@ async function main() {
             assert.deepStrictEqual([r.afterAdd, r.afterRemove, r.afterMove], [['a', 'b', 'c', 'new'], ['b', 'c', 'new'], ['new', 'b', 'c']]);
         });
 
-        await ok('regression: a list that changes position is removed cleanly (NxList must not shadow Element.remove)', async () => {
+        await ok('regression: a re-render that shows another prop (perState) keeps the list selected and its value', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { rows: ["a"] };
@@ -314,15 +359,16 @@ async function main() {
                     rows: { key: "rows", type: "list", label: "Rows", default: [], item: { type: "string" } } } };
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { props[k] = v; } });
                 await NexaTest.wait();
+                await NexaTest.pick(h, "rows");
                 props.__previewState = "on"; h.update(); await NexaTest.wait();
-                var out = [root.querySelectorAll("nx-list").length, Array.from(root.querySelectorAll("nx-text")).filter(function (e) { return !e.closest("nx-list"); }).length, JSON.stringify(props.rows)];
+                var out = [NexaTest.rows(root).map(function (x) { return x.id; }).join(","), h.selected(), root.querySelectorAll(".nx-pt-pane .nx-pt-item").length, JSON.stringify(props.rows)];
                 h.destroy(); root.remove();
                 return out;
             })()`);
-            assert.deepStrictEqual(r, [1, 1, '["a"]']);
+            assert.deepStrictEqual(r, ['@General,t,rows,rows#0', 'rows', 1, '["a"]']);
         });
 
-        await ok('regression: two quick edits in one list row both stay (a row merges into its current value), then add', async () => {
+        await ok('regression: two quick edits in one list item both stay (an item merges into its current value), then add', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { rows: [{ name: "a", type: "string" }] }, sets = [];
@@ -332,21 +378,24 @@ async function main() {
                 // like an owner that saves elsewhere: it doesn't hand the kit a fresh props object
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { sets.push(JSON.stringify(v)); props[k] = v; } });
                 await NexaTest.wait();
-                var input = root.querySelector("nx-list nx-text input");
+                await NexaTest.pick(h, "rows#0");
+                var input = root.querySelector(".nx-pt-pane nx-text input");
                 input.value = "speed"; input.dispatchEvent(new Event("input", { bubbles: true }));
                 input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-                // straight away, before any re-render: the type of the same row
-                var sel = root.querySelector("nx-list nx-select select");
+                // straight away, before any re-render: the type of the same item
+                var sel = root.querySelector(".nx-pt-pane nx-select select");
                 sel.value = "1"; sel.dispatchEvent(new Event("change", { bubbles: true }));
                 await NexaTest.wait();
-                root.querySelector("nx-list .nx-list-foot button").click();
+                await NexaTest.pick(h, "rows");
+                root.querySelector(".nx-pt-pane .nx-pt-add").click();
                 await NexaTest.wait();
-                var out = { rows: JSON.stringify(props.rows), shown: Array.from(root.querySelectorAll("nx-list nx-text input")).map(function (i) { return i.value; }) };
+                var out = { rows: JSON.stringify(props.rows), labels: NexaTest.rows(root).filter(function (x) { return /^rows#[0-9]+$/.test(x.id); }).map(function (x) { return x.label; }), sel: h.selected() };
                 h.destroy(); root.remove();
                 return out;
             })()`);
             assert.strictEqual(r.rows, '[{"name":"speed","type":"number"},{"name":"","type":"string"}]');
-            assert.deepStrictEqual(r.shown, ['speed', ''], 'the list shows both rows at once');
+            assert.deepStrictEqual(r.labels, ['speed', 'Item 2'], 'items are tree rows, named by their first text field');
+            assert.strictEqual(r.sel, 'rows#1');
         });
 
         await ok('nx-binding: the source is read from the value; Variable / Tag / Message / Expression each write the right syntax', async () => {
@@ -475,11 +524,13 @@ async function main() {
                     fixed: { key: "fixed", type: "number", label: "Fixed", default: 0 } } };
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, responsive: responsive, set: function (k, v) { calls.push(["set", k, v]); props[k] = v; } });
                 await NexaTest.wait();
-                var field = function (label) { return Array.from(root.querySelectorAll("nx-number")).filter(function (e) { return e.label === label; })[0]; };
+                var fixed = await NexaTest.pick(h, "fixed"), fixedToggle = !!fixed.querySelector(".nx-bp-toggle");
+                var gap = await NexaTest.pick(h, "gap");
+                var field = function () { return gap; };
                 var chips = function () { return Array.from(field("Gap").querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp") + (c.classList.contains("nx-sel") ? "*" : "") + (c.classList.contains("nx-set") ? "!" : "") + ":" + c.textContent.trim(); }); };
                 var type = async function (label, v) { var i = field(label).querySelector("input"); i.value = v; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
                 var out = {};
-                out.toggles = [!!field("Gap").querySelector(".nx-bp-toggle"), !!field("Fixed").querySelector(".nx-bp-toggle")];
+                out.toggles = [!!field("Gap").querySelector(".nx-bp-toggle"), fixedToggle];
                 out.closed = chips().length;
                 field("Gap").querySelector(".nx-bp-toggle").click(); await NexaTest.wait();
                 out.open = chips();
@@ -607,13 +658,15 @@ async function main() {
                     outputValue: { key: "outputValue", type: "tag", label: "Write tag", default: "", access: "write" } } };
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { calls.push([k, JSON.stringify(v)]); props[k] = v; } });
                 await NexaTest.wait();
-                var byLabel = function (sel, label) { return Array.from(root.querySelectorAll(sel)).filter(function (e) { return e.label === label; })[0]; };
-                var label = byLabel("nx-text", "Label"), read = byLabel("nx-tag", "Read tag"), write = byLabel("nx-tag", "Write tag");
-                var out = { hasFallback: [!!label.querySelector(".nx-fallback"), !!read.querySelector(".nx-fallback"), !!write.querySelector(".nx-fallback")] };
                 var type = async function (input, v) { input.value = v; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
+                var write = await NexaTest.pick(h, "outputValue"), hasWrite = !!write.querySelector(".nx-fallback");
+                var label = await NexaTest.pick(h, "label"), hasLabel = !!label.querySelector(".nx-fallback");
                 await type(label.querySelector(".nx-fallback input"), "n/a");
+                var labelShown = label.querySelector(".nx-fallback input").value;
+                var read = await NexaTest.pick(h, "inputValue"), hasRead = !!read.querySelector(".nx-fallback");
                 await type(read.querySelector(".nx-fallback input"), "0");
-                out.shown = [label.querySelector(".nx-fallback input").value, read.querySelector(".nx-fallback input").value];
+                var out = { hasFallback: [hasLabel, hasRead, hasWrite] };
+                out.shown = [labelShown, read.querySelector(".nx-fallback input").value];
                 out.binding = props.label;
                 out.calls = calls;
                 h.destroy(); root.remove();
@@ -635,8 +688,10 @@ async function main() {
                     count: { key: "count", type: "number", label: "Count", default: 0 } } };
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { calls.push([k, v]); props[k] = v; h.update(); } });
                 await NexaTest.wait();
-                var by = function (sel, label) { return Array.from(root.querySelectorAll(sel)).filter(function (e) { return e.label === label; })[0]; };
-                var out = { buttons: [!!by("nx-color", "Colour").querySelector(".nx-token-btn"), !!by("nx-number", "Size").querySelector(".nx-token-btn"), !!by("nx-number", "Count").querySelector(".nx-token-btn")] };
+                var hasBtn = async function (id) { return !!(await NexaTest.pick(h, id)).querySelector(".nx-token-btn"); };
+                var out = { buttons: [await hasBtn("color"), await hasBtn("size"), await hasBtn("count")] };
+                var colour = await NexaTest.pick(h, "color");
+                var by = function () { return colour; };
                 by("nx-color", "Colour").querySelector(".nx-token-btn").click(); await NexaTest.wait();
                 out.listed = Array.from(by("nx-color", "Colour").querySelectorAll(".nx-token-item")).some(function (b) { return b.getAttribute("data-token") === "colors.primary.solid"; });
                 by("nx-color", "Colour").querySelector('.nx-token-item[data-token="colors.primary.solid"]').click(); await NexaTest.wait();
@@ -650,6 +705,32 @@ async function main() {
             assert.strictEqual(r.listed, true);
             assert.strictEqual(r.chip.replace(/\s/g, ''), 'colors.primary.solid#0f62fe');
             assert.deepStrictEqual(r.calls, [['color', '{token:colors.primary.solid}'], ['color', '#0f62fe']]);
+        });
+
+        await ok('a property editor\'s this.api calls its plugin\'s admin routes (sdk/package adminApi): URL, login, JSON, errors', async () => {
+            const r = await js(`(async function () {
+                var calls = [], real = window.fetch;
+                window.fetch = function (url, o) {
+                    calls.push([url, o.method, o.headers.Authorization || "", o.body || ""]);
+                    var bad = /fail/.test(url);
+                    return Promise.resolve(new Response(JSON.stringify(bad ? { error: "no such curve" } : { ok: true, url: url }), { status: bad ? 404 : 200 }));
+                };
+                localStorage.setItem("auth-tokens", JSON.stringify({ access_token: "T0K" }));
+                var out = {};
+                try {
+                    var el = document.createElement("acme-range");
+                    out.get = await el.api.get("/curves", { q: "pump 1" });
+                    out.post = await el.api.post("save", { a: 1 });
+                    try { await el.api.get("/fail"); } catch (e) { out.err = [e.message, e.status]; }
+                    out.sdk = typeof NexaSDK.adminApi("acme-gauges").get;
+                } finally { window.fetch = real; localStorage.removeItem("auth-tokens"); }
+                out.calls = calls;
+                return out;
+            })()`);
+            assert.deepStrictEqual(r.get, { ok: true, url: 'acme-gauges/api/curves?q=pump+1' });
+            assert.deepStrictEqual(r.err, ['no such curve', 404]);
+            assert.deepStrictEqual(r.calls[1], ['acme-gauges/api/save', 'POST', 'Bearer T0K', '{"a":1}']);
+            assert.strictEqual(r.sdk, 'function');
         });
 
         await ok('no JavaScript errors or warnings in the page', async () => {

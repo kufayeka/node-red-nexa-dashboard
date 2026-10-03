@@ -107,3 +107,12 @@ export function defineInspectorWidget(tag, factory) {
     (window.__nexaInspectorWidgets = window.__nexaInspectorWidgets || []).push([tag, factory]);
     return undefined;
 }
+
+// A prop's own editor in the inspector (prop.editor = tag):
+//   definePropertyEditor("acme-curve-editor", ({ PropertyEditor, html }) => class extends PropertyEditor {...})
+// Queued until the (editor-only) property kit loads, like defineInspectorWidget; a no-op on a page.
+export function definePropertyEditor(tag, factory) {
+    if (window.NexaKit && typeof window.NexaKit.definePropertyEditor === "function") return window.NexaKit.definePropertyEditor(tag, factory);
+    (window.__nexaPropertyEditors = window.__nexaPropertyEditors || []).push([tag, factory]);
+    return undefined;
+}

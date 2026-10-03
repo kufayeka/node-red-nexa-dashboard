@@ -7,7 +7,11 @@
 //   NexaTest.wc("f")                     the component's element
 //   NexaTest.settle()                    wait for Lit updates
 //   NexaTest.setMode("dark")             the theme's colour mode ({token:…} props, NexaSDK.theme)
-//   NexaTest.inspector("acme-gauge", props, host?) -> { box, props, sets, update, destroy }
+//   NexaTest.inspector("acme-gauge", props, host?) -> { box, props, sets, update, destroy, select(id), field(id) }
+//       the inspector is a tree + one editor pane: field(id) picks a row (a prop's key, "list#2",
+//       "list#2.field", "@Group") and resolves the widget the pane then shows
+//   NexaTest.pick(handle, id)   the same for a NexaKit.renderInspector() handle
+//   NexaTest.rows(box)          the tree's rows: [{ id, label, value }]
 // { design: true } mounts in editor mode (not interactive, previews).
 (function () {
     function sdk() { return window.NexaSDK; }
@@ -151,8 +155,26 @@
                 preview: function (k, v) { state.props[k] = v; }
             });
             state.update = h.update;
+            state.handle = h;
+            state.select = function (id) { h.select(id); };
+            state.field = function (id) { return T.pick(h, id); };
             state.destroy = function () { h.destroy(); box.remove(); };
             return state;
+        },
+        pick: function (h, id) {
+            h.select(id);
+            return T.wait().then(function () {
+                var pane = h.root.querySelector(".nx-pt-pane");
+                if (!pane) return null;
+                // the outermost custom element in the pane (not a warning)
+                var all = Array.from(pane.querySelectorAll("*")).filter(function (e) { return e.localName.indexOf("-") !== -1 && e.localName !== "nx-alert"; });
+                return all.filter(function (e) { return !all.some(function (o) { return o !== e && o.contains(e); }); })[0] || null;
+            });
+        },
+        rows: function (box) {
+            return Array.from(box.querySelectorAll(".nx-pt-row")).map(function (r) {
+                return { id: r.dataset.id, label: r.querySelector(".nx-pt-label .nx-pt-t").textContent, value: (r.querySelector(".nx-pt-val") || {}).textContent.trim() };
+            });
         },
         wait: function (ms) { return new Promise(function (r) { setTimeout(r, ms || 60); }); }
     };

@@ -57,12 +57,12 @@ function groupsWhileTyping(p, integer) {
 
 var NUMBER_FORMAT_PROPS = {
     decimalSeparator: {
-        type: "enum", default: ".", group: "Number Format", label: "Decimal separator", style: "select",
+        type: "enum", default: ".", group: "Data", section: "Number Format", label: "Decimal separator", style: "select",
         options: [{ value: ".", label: "Dot  ( 12.5 )" }, { value: ",", label: "Comma  ( 12,5 )" }],
         help: "Typing: a single \".\" or \",\" is always read as the decimal point (numpad)."
     },
     thousandsSeparator: {
-        type: "enum", default: "", group: "Number Format", label: "Thousands separator", style: "select",
+        type: "enum", default: "", group: "Data", section: "Number Format", label: "Thousands separator", style: "select",
         options: [
             { value: "", label: "None  ( 1234567 )" }, { value: ",", label: "Comma  ( 1,234,567 )" },
             { value: ".", label: "Dot  ( 1.234.567 )" }, { value: " ", label: "Space  ( 1 234 567 )" },
@@ -70,19 +70,19 @@ var NUMBER_FORMAT_PROPS = {
         ]
     },
     groupWhileTyping: {
-        type: "boolean", default: true, group: "Number Format", label: "Group thousands while typing",
+        type: "boolean", default: true, group: "Data", section: "Number Format", label: "Group thousands while typing",
         help: "The separator is inserted as the operator types (caret kept); a typed \".\" or \",\" is then always the decimal point. Off: the separator is only shown when not editing.",
         visibleWhen: function (p) { return !!p.thousandsSeparator; }
     },
-    min: { type: "number", default: "", group: "Number Format", label: "Minimum", placeholder: "none", help: "Typed values below are rejected (Invalid)." },
-    max: { type: "number", default: "", group: "Number Format", label: "Maximum", placeholder: "none", help: "Typed values above are rejected (Invalid)." }
+    min: { type: "number", default: "", group: "Data", section: "Number Format", label: "Minimum", placeholder: "none", help: "Typed values below are rejected (Invalid)." },
+    max: { type: "number", default: "", group: "Data", section: "Number Format", label: "Maximum", placeholder: "none", help: "Typed values above are rejected (Invalid)." }
 };
 
 function numberCodec(integer) {
     var props = {};
     if (!integer) {
         props.decimals = {
-            type: "number", default: 2, min: -1, max: 10, step: 1, group: "Number Format", label: "Decimals",
+            type: "number", default: 2, min: -1, max: 10, step: 1, group: "Data", section: "Number Format", label: "Decimals",
             help: "Shown and written with this many decimals. -1 = as the value comes (no rounding)."
         };
     }
@@ -129,13 +129,13 @@ defineCodec("float", numberCodec(false));
 defineCodec("text", {
     kind: "text",
     props: {
-        maxLength: { type: "number", default: "", min: 0, step: 1, group: "Text Input", label: "Max length", placeholder: "no limit" },
+        maxLength: { type: "number", default: "", min: 0, step: 1, group: "Data", section: "Text Input", label: "Max length", placeholder: "no limit" },
         pattern: {
-            type: "string", default: "", mono: true, group: "Text Input", label: "Pattern (regular expression)",
+            type: "string", default: "", mono: true, group: "Data", section: "Text Input", label: "Pattern (regular expression)",
             placeholder: "e.g. [A-Z]{2}-\\d{4}", help: "The whole text must match; otherwise Invalid."
         },
         patternMessage: {
-            type: "string", default: "", group: "Text Input", label: "Pattern message", placeholder: "does not match the required format",
+            type: "string", default: "", group: "Data", section: "Text Input", label: "Pattern message", placeholder: "does not match the required format",
             visibleWhen: function (p) { return !!p.pattern; }
         }
     },

@@ -9,9 +9,9 @@ The Nexa Component SDK is how you write a component, or a Logic node, for Nexa D
 - Tags are **generic**. Sparkplug B is the first tag provider; OPC UA, SQL and UDT tags plug in later, and components need no changes.
 
 > Reference plugins in this repo:
-> - `@kufayeka/nexa-component-fields`: inputs; hand-written inspector; `FieldController`.
+> - `@kufayeka/nexa-component-fields`: inputs; an inspector laid out with groups and sections; `FieldController`.
 > - `@kufayeka/nexa-component-buttons`: a boolean control; per-state CSS; migration.
-> - `@kufayeka/nexa-component-basic-shapes`: simple components with the automatic inspector.
+> - `@kufayeka/nexa-component-basic-shapes`: simple components, the inspector from `group` alone.
 > - `test/fixtures/sdk-plugin/plugin.js`: every advanced feature in one file.
 > - `test/fixtures/sdk-logic-plugin/plugin.js`: a Logic node.
 >
@@ -45,18 +45,21 @@ The Nexa Component SDK is how you write a component, or a Logic node, for Nexa D
 
 ```js
 // dist/gauge.js — an ES module
-import { defineComponent, NexaElement, html, css, bind } from "../../nexa-sdk/nexa-component-sdk.js";
+import { defineComponent, NexaElement, html, css } from "../../nexa-sdk/nexa-component-sdk.js";
 
 export default defineComponent({
     id: "acme-gauge",
     label: "Gauge", category: "Display", icon: "fa fa-tachometer",
     size: { w: 200, h: 120 },
 
-    // 1. PROPERTIES: what the user configures (saved in the screen)
+    // 1. PROPERTIES: what the user configures (saved in the screen).
+    //    `group` / `section` place them in the inspector's tree (§9)
     properties: {
-        max:      { type: "number", default: 100, min: 1, group: "Scale" },
+        max:      { type: "number", default: 100, min: 1, group: "Scale",
+                    warn: (v) => (v > 1000 ? "A very large scale" : "") },
         barColor: { type: "color",  default: "#16a34a", group: "Style" }
     },
+    groups: ["Data", "Scale", "Style"],          // the inspector's group order
 
     // 2. INPUTS (tags read) and 3. OUTPUTS (tags written)
     inputs:  { value:    { type: "number", label: "Value" } },
@@ -66,23 +69,7 @@ export default defineComponent({
     events:  { overMax: { label: "On Over Max", payload: { value: "number" } } },
     actions: { reset:   { label: "Reset peak" } },
 
-    // 4. THE PROPERTY PANEL, written with <nx-*> widgets
-    inspector: ({ p, ui }) => html`
-        <nx-tabs>
-            <nx-tab label="Data">
-                <nx-tag ${bind("inputs.value")}></nx-tag>
-                <nx-tag ${bind("outputs.setpoint")}></nx-tag>
-            </nx-tab>
-            <nx-tab label="Scale">
-                <nx-number ${bind("max")}></nx-number>
-                ${p.max > 1000 ? ui.alert("A very large scale", "warn") : ""}
-            </nx-tab>
-            <nx-tab label="Style">
-                <nx-color ${bind("barColor")}></nx-color>
-            </nx-tab>
-        </nx-tabs>`,
-
-    // 5. THE VIEW: a Lit component; event handling lives here
+    // 4. THE VIEW: a Lit component; event handling lives here
     state: { peak: 0 },                          // internal, reactive, not saved
     view: class extends NexaElement {
         static styles = css`:host { display: block; }`;
@@ -101,7 +88,7 @@ export default defineComponent({
 });
 ```
 
-That is the whole component. You don't write a registry call, a custom element name, inspector jQuery or tag-parsing code.
+That is the whole component. You don't write a registry call, a custom element name, a property panel or tag-parsing code: the inspector is built from `properties`, `inputs` and `outputs`.
 
 ---
 
@@ -158,7 +145,7 @@ If your plugin bundles itself, alias the bare name `nexa-component-sdk.js` to th
 | `events` / `actions` | object | [§6](#6-events-and-actions) |
 | `states`, `parts`, `css` | object, object, string | [§8](#8-states-parts-and-custom-css). They declare selectors and the component's own CSS; Custom CSS **fields** come only from `properties` (`cssFields`). |
 | `state` | object | Internal reactive fields of the view (`this.<name>`), not saved. |
-| `inspector` | `({ p, ui, bind }) => TemplateResult` | [§9](#9-the-inspector). Optional; the default is an automatic panel. |
+| `groups` | `["Data", "Style", …]` | The inspector's group order ([§9](#9-the-inspector)); groups not named follow in the order the props declare them. There is no hand-written panel: a def's `inspector` is ignored (a warning). |
 | `view` | class extending `NexaElement` | [§7](#7-the-view-nexaelement), **required** |
 | `preview` | `{ inputs: { name: value } }` | Values shown **in the editor** while an input is unbound or unknown, so a chart is not empty while you design. |
 | `editor` | `{ interactive: [selectors] }` | Parts of the view that still take clicks in the editor (tab headers, scrollbars). Everything else selects / drags the component. |
@@ -195,11 +182,16 @@ properties: {
 | `list` | array | `nx-list`. `item` is one schema (a list of values) or `{ fields: {…}, row: true }` (a list of objects). |
 
 These attributes apply to every type:
-- `default`, `label` (the key is humanized when omitted), `help`, `placeholder`, `icon`, `group`.
-- `required`; `validate(value, p) → message | null`.
-- `visibleWhen(p)` and `enabledWhen(p)`, used by the automatic panel.
+- `default`, `label` (the key is humanized when omitted), `help`, `placeholder`, `icon`.
+- `group` (default "General") and `section`: where the prop sits in the inspector's tree ([§9](#9-the-inspector)).
+- `required`; `validate(value, p) → message | null` (blocks: the row shows ⓘ); `warn(value, p) → message | ""` (does not block: a warning under the widget).
+- `visibleWhen(p)` and `enabledWhen(p)`.
 - `perState: "<state>"`, shown only while that state is previewed.
 - `bindable` (default `true` for plain values), `noReset`, `hidden`.
+- `options` (an enum) may be a function `(p) → list | Promise<list>`: loaded once per inspector.
+- `summary(value, p) → text`: what the prop's tree row shows (default: a simple form of the value).
+- `editor: "<tag>"`: the prop's own editor ([§9](#9-the-inspector)).
+- A `list`: `noun` ("tab": `[3 tabs]`, "Add tab"), `itemLabel` (an item field's key, or `(item, i) → text`), `min`, `max`.
 
 Keys you've saved must stay stable. If you rename one, bump `version` and add a `migrate` ([§13](#13-lifecycle-versions-and-migrations)).
 
@@ -237,7 +229,7 @@ outputs: {
   - `this.out.canWrite("sp")` and `this.out.target("sp")` tell you where a write would go.
   - `this.status("value")` returns `{ bound, unknown, provider, providerLabel, address, display, valid }`.
 - `providers` limits which tag providers the picker offers for that input or output.
-- In the inspector, `<nx-tag ${bind("inputs.value")}>` / `<nx-tag ${bind("outputs.sp")}>` shows a Source picker:
+- In the inspector (group "Data" unless the input / output gives `group` / `section`), its tag field shows a Source picker:
   - an input: Variable / Tag / Message / Expression;
   - an output: Variable / Tag.
   - `<nx-tag tags-only>` offers tags only.
@@ -311,65 +303,88 @@ properties: {
 - `cssFields({ base, parts, states, group })` writes those fields for you, with the keys screens already use: `css`, `css<Part>` (`cssLabel`), `css<State>` (`cssTrue`, `cssHover`). `base` is `true` (an empty "Base CSS" field), a default text, or `false` (no base field).
 - A CSS field that targets a part or a state the component doesn't declare is refused.
 - Stylesheet order: base, then parts / selectors, then states, so a state can still restyle a part.
-- States with `preview !== false` appear in the inspector's preview switcher (`ui.stateSwitcher()`). The view reads `this.previewState` to show that state in the editor.
+- States with `preview !== false` appear in the inspector's preview switcher, above its tree. The view reads `this.previewState` to show that state in the editor.
 
 ---
 
 ## 9. The inspector
 
-Write the panel with `<nx-*>` widgets and `bind()`:
+Every component gets the same inspector, built from its schema. There is nothing to write for it.
 
-```js
-inspector: ({ p, ui }) => html`
-    <nx-tabs persist-key="acme-gauge">
-        <nx-tab label="Data" icon="fa fa-exchange">
-            <nx-section heading="Tags">
-                <nx-tag ${bind("inputs.value")}></nx-tag>
-            </nx-section>
-        </nx-tab>
-        <nx-tab label="Style">
-            ${ui.stateSwitcher()}
-            <nx-row>
-                <nx-number ${bind("min")}></nx-number>
-                <nx-number ${bind("max")}></nx-number>
-            </nx-row>
-            ${p.showAdvanced ? html`<nx-code ${bind("css")}></nx-code>` : ""}
-        </nx-tab>
-    </nx-tabs>`
+```
+ Search properties and values
+ ▾ DATA                        3
+     Read Tag      {sparkplug:G::E::D::Speed}
+   ▾ Tabs          [3 tabs]
+     ▸ Overview
+     ▸ Alarms
+ ▾ STYLE                       4
+   ▾ Text                      2
+       Size        14 px
+       Weight      Semibold
+     Background    ■ #0f62fe
+     Custom CSS    3 lines · .x {
+ ─────────────────────────────── (drag to resize)
+ Style › Text
+ Size          [ 14        px ]
 ```
 
-- **`bind(key)`** connects a widget to a property (`"inputs.x"` / `"outputs.x"` for tags). The widget gets:
-  - the value;
-  - the property's label, help, placeholder, limits, options, access and providers, **unless you wrote that attribute yourself**;
-  - validation messages;
-  - a modified dot, a reset button and, for plain values, the **⛓ bind button**, which switches the same widget to a tag / parameter binding;
-  - bound (⛓, or a Read Tag input): a **Fallback** field below the binding, the value shown while it has none (no value yet, `null`, `???`, no message). Stored as `props.__fallback[key]`, applied before your view sees `this.p`;
-  - a **◆ theme token** picker for a `color` prop, or any prop with `tokens: "fontSizes"` (see docs/THEME.md): the value becomes `{token:…}`, resolved in `this.p`;
-  - in the editor, the **📱 responsive button**: a value per breakpoint (xs … 3xl, the app's Breakpoints tab), picked from chips above the widget (`★ xl 16 · md 8 · sm 4`). The view just gets `this.p` for the window's width: nothing to write. Opt a property out with `noResponsive: true`.
+- **The tree.** `group` makes the top rows (ordered by `groups`), `section` a level inside a group, then one row per prop. A list's items are rows under it, and an item's fields under the item.
+  - A row shows the value in a simple form only: a text's first line, a number with its unit, a check, a colour swatch, `[3 tabs]`, `4 lines · …`, a binding with ⛓. It never shows a control. Markers: a dot (changed from the default), ⓘ (invalid), ⚠ (`warn`), 📱 (set per breakpoint).
+  - Search (above the tree) matches labels, keys and values. Arrow keys move the selection, Left / Right collapse / expand, Enter goes to the editor.
+  - Which row is picked, what is open and the search are remembered per component type, so editing the same field on ten buttons is ten clicks on the canvas.
+- **The editor pane** (below) edits the ONE picked row:
+  - a prop: its widget. Bound widgets get the value, label, help, limits, options, validation, the reset button, the **⛓ bind button** (a tag / variable / message / expression instead of a value, with its **Fallback**, `props.__fallback[key]`), the **◆ theme token** picker (`color`, or `tokens: "fontSizes"`; docs/THEME.md) and, in the editor, the **📱 responsive button** (a value per breakpoint, chips above the widget; `noResponsive: true` opts out). Code, CSS, JSON and long text can make the pane bigger (⤢).
+  - a list: its items with move up / down / remove, and Add. The new item is picked.
+  - a list item: its fields, with Up / Down / Duplicate / Remove. An item's field: that field alone.
+  - a group or a section: its props with their values; click one to go to it.
 
-  Changes are applied live with undo, and consecutive edits of one field are one undo step.
-- **`p`** holds the current props. Show or hide parts with ordinary template logic.
-- **`ui`** helpers:
-  - `ui.stateSwitcher()`: the preview-state chips.
-  - `ui.field(key)`: the widget the automatic panel would use.
-  - `ui.alert(text, tone)`, `ui.badge(text, tone)`.
-  - `ui.async(cacheKey, loader)`: loads options once, returning `[]` until they arrive, e.g. `.options=${ui.async("units", fetchUnits)}`.
-  - `ui.dialog({ title, content, buttons })`: returns a Promise of the clicked button's value.
-  - `ui.action(label, fn)`, `ui.refresh()`.
-- **No `inspector`?** The panel is generated from `properties`, grouped by `group`: sections for up to two groups, tabs beyond that. The automatic panel honours `visibleWhen`, `enabledWhen` and `perState`.
-- **Custom inspector widgets:**
+  Every change is applied live with undo, and consecutive edits of one field are one undo step. A field being typed in is applied when you pick another row or another component, to the prop it was typed for.
+- **The selection is kept.** Any re-render (an edit, a breakpoint switch, undo, a plugin loading) keeps the picked row. When its node is gone (an item removed, `visibleWhen` false) the nearest one is picked.
 
-  ```js
-  import { defineInspectorWidget } from "../../nexa-sdk/nexa-component-sdk.js";
-  defineInspectorWidget("acme-curve-editor", ({ KitElement, html }) => class extends KitElement {
-      render() { return this.frame(html`…`); }   // same contract: .value + this.change(v)
-  });
-  ```
+### A prop's own editor: `definePropertyEditor`
 
-  Use it like any widget: `<acme-curve-editor ${bind("curve")}></acme-curve-editor>`. It is defined only in the editor.
-- **Never** style the panel yourself (no inline styles, no own CSS). The `<nx-*>` widgets are the look.
+When a prop needs more than a widget (a curve, a drawing, a picker that asks your server), give it an editor:
 
----
+```js
+import { definePropertyEditor } from "../../nexa-sdk/nexa-component-sdk.js";
+
+definePropertyEditor("acme-curve-editor", ({ PropertyEditor, html }) => class extends PropertyEditor {
+    static kind = "dialog";              // "inline" (in the pane, default) | "large" (the pane can grow) | "dialog"
+    static plugin = "acme-nexa-gauges";  // whose admin routes this.api calls (sdk/package `name`)
+    static summary(value, props) { return value ? value.points.length + " points" : ""; }   // its tree row
+    static properties = { curves: { state: true } };
+
+    async connectedCallback() { super.connectedCallback(); this.curves = await this.api.get("/curves", { q: "pump" }); }
+    render() {
+        return this.frame(html`${(this.curves || []).map((c) => html`
+            <button class="nx-btn" @click=${() => this.commit(c)}>${c.name}</button>`)}`);
+    }
+});
+
+// properties: { curve: { type: "json", default: null, editor: "acme-curve-editor" } }
+```
+
+- It is a `KitElement`, the same contract as the built-in widgets: `this.value` in, **`this.commit(value)`** out (one undo step), **`this.preview(value)`** to show a value on the canvas while picking (no undo step, not saved). `this.frame(control)` adds the label, help, reset / ⛓ / 📱 buttons.
+- `this.prop` is the prop's schema, `this.props` the component's props.
+- `kind: "dialog"`: the pane shows the summary and **Edit…**. The editor opens in a dialog with its own draft, and only **Apply** commits.
+- **`this.api`** calls your plugin's own server routes (below): `get(path, query)`, `post(path, body)`, `put(path, body)`, `del(path, query)`, JSON in and out, with the editor's login. A route that fails rejects with `error.message` and `error.status`. Outside an editor: `NexaSDK.adminApi(name)`.
+- It is defined only in the editor (queued until the property kit loads), never on a deployed page, so a page never pays for it.
+- `defineInspectorWidget(tag, factory)` (a plain `KitElement`) still works and can be named by `editor:` too.
+
+**Your plugin's admin routes.** Give `sdk/package` an `adminApi`:
+
+```js
+require("@kufayeka/node-red-nexa-dashboard/sdk/package")(RED, {
+    id: "acme-nexa-gauges", name: "acme-nexa-gauges", dir, modules: ["gauge.js"],
+    adminApi: (router, RED) => {
+        router.get("/curves", async (req, res) => res.json(await loadCurves(req.query.q)));
+        router.post("/curves", async (req, res) => res.json(await saveCurve(req.body)));
+    }
+});
+```
+
+They are mounted at `<admin root>/<name>/api/` on the editor only (never on deployed pages), behind Node-RED's login: GET needs `flows.read`, the rest `flows.write`. JSON bodies are parsed, and a handler that throws or rejects answers `500 { error }`. Secrets (an API key, a database password) stay on the server.
 
 ## 10. The `<nx-*>` widget catalog
 
@@ -615,7 +630,10 @@ withHarness({
     await js('NexaTest.settle()');
     const text = await js('NexaTest.wc("g").renderRoot.textContent');
     // NexaTest.item("g").writes / .events, NexaTest.ack("g", true | false), NexaTest.invoke("g", "reset"),
-    // NexaTest.inspector("acme-gauge", props, host) -> { box, props, sets, destroy }, { design: true } mounts in editor mode
+    // NexaTest.inspector("acme-gauge", props, host) -> { box, props, sets, destroy, select(id), field(id) }:
+    //   await ins.field("max") picks the row and resolves the widget in the pane; NexaTest.rows(ins.box) lists the rows
+    //   (ids: a prop's key, "tabs#2" an item, "tabs#2.label" an item's field, "@Style" a group)
+    // NexaTest.mount(…, { design: true }) mounts in editor mode
 });
 ```
 
@@ -629,7 +647,7 @@ The harness loads the registry, the SDK, the property kit and your modules in he
 - Props, event payloads and action params are **JSON-serializable**.
 - Writes go **only** through `this.out.write()` to declared outputs; components don't open their own connections to devices.
 - Codecs, validators and tag-provider `parse` / `format` are **pure and synchronous**.
-- The inspector uses **only `<nx-*>` widgets** (and your `defineInspectorWidget` widgets), with no own styling.
+- The inspector is built from the schema; your own UI in it is a `definePropertyEditor` editor, using `<nx-*>` widgets and no own styling.
 - Stored prop names are a compatibility promise: rename them only with a migration.
 - `NEXA.registerComponent(id, def)` (the pre-SDK contract, README §11) still works but is **legacy**.
 
@@ -639,7 +657,7 @@ The harness loads the registry, the SDK, the property kit and your modules in he
 
 **Source layout.** The source lives in `src/sdk/`, and `build.js` produces three browser files:
 - `dist/nexa-sdk.bundle.js`: Lit, the registry and the SDK runtime (`defineComponent`, `NexaElement`, `FieldController`, codecs, tags, `bind`). It is loaded by the editor (`/nexa-dashboard/_sdk.js`) and by deployed pages (`/nexa/_sdk.js`).
-- `dist/nexa-sdk-kit.bundle.js`: the property kit (`<nx-*>` widgets and the inspector renderer). Editor only. It uses the SDK's Lit and waits for it if loaded first.
+- `dist/nexa-sdk-kit.bundle.js`: the property kit (`<nx-*>` widgets and the inspector: `src/sdk/kit/prop-tree/`: `model.js` the pure tree (nodes, summaries, search, list ops; `test/kit-prop-tree.test.js`), `view.js` the tree + pane, `editors.js` `PropertyEditor` / `adminApi`). Editor only. It uses the SDK's Lit and waits for it if loaded first.
 - `dist/nexa-registry-client.js`: the deployed page's registry, generated from the same `src/sdk/registry.js` the editor bundles.
 
 **Facade.** `sdk/nexa-component-sdk.js` is served at `<root>/nexa-sdk/` on httpAdmin and httpNode.
@@ -650,7 +668,7 @@ The harness loads the registry, the SDK, the property kit and your modules in he
 - Both resolve `{sparkplug:…}` in string and array props, index `multiple` inputs for live re-render, run `migrateProps`, and re-render components whose plugin registered late.
 - The runtime also routes `msg.action` of an *Update Component* node to `def.invoke()`.
 
-**Editor inspector.** `src/sidebar/kit-inspector.js` hands `def.nexa` to `NexaKit.renderInspector`. Changes become `props` history events, and the same field within 1.5 s is merged into one undo step.
+**Editor inspector.** `src/sidebar/kit-inspector.js` hands `def.nexa` to `NexaKit.renderInspector`, which returns `{ update, destroy, select(id), selected(), search(q) }`. Changes become `props` history events, and the same field within 1.5 s is merged into one undo step.
 
 **Tests.**
 - `test/sdk-schema.test.js`, `test/sdk-format.test.js`: Node.

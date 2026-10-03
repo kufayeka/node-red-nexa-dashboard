@@ -18,6 +18,9 @@ function nexaKitInit() {
   var unsafeCSS = L.unsafeCSS;
   var render = L.render;
   var noChange = L.noChange;
+  var keyed = L.keyed;
+  var repeat = L.repeat;
+  var live = L.live;
 
   // src/sdk/kit/styles.js
   var CSS = `
@@ -242,6 +245,8 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-dialog-body { padding: 12px 14px; overflow: auto; }
 .nx-kit .nx-dialog-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--nx-border-subtle); }
 .nx-kit.nx-kit .nx-btn.nx-primary { background: var(--nx-accent); border-color: var(--nx-accent); color: #fff; }
+.nx-kit.nx-kit .nx-btn.nx-pt-action.nx-on { border-color: var(--nx-accent); background: var(--nx-bg-selected); font-weight: 600; }
+.nx-kit .nx-pt-info { margin: 0 0 8px; font-size: 11.5px; color: var(--nx-text-muted); }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
@@ -287,6 +292,69 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit.nx-kit .nx-align-cell.nx-on span { width: 12px; height: 12px; border-radius: 2px; background: var(--nx-accent, #ff5722); }
 .nx-kit .nx-spacing { display: flex; gap: 4px; align-items: center; }
 .nx-kit.nx-kit .nx-spacing-input { flex: 1 1 0; min-width: 0; width: auto; }
+
+/* ---- the inspector: property tree + editor pane (prop-tree/view.js) ---- */
+.nx-kit .nx-pt { display: flex; flex-direction: column; min-width: 0; }
+.nx-kit .nx-pt-head { display: grid; gap: 6px; padding: 0 0 6px; }
+.nx-kit .nx-pt-search { display: flex; align-items: center; gap: 6px; height: var(--nx-control-h); padding: 0 7px; margin: 0;
+    background: var(--nx-bg); border: 1px solid var(--nx-border); border-radius: var(--nx-radius); color: var(--nx-text-faint); cursor: text; font-weight: normal; }
+.nx-kit .nx-pt-search:focus-within { border-color: var(--nx-focus); box-shadow: 0 0 0 1px var(--nx-focus); }
+.nx-kit.nx-kit .nx-pt-search input.nx-pt-q { flex: 1 1 auto; min-width: 0; width: auto; height: 100%; margin: 0; padding: 0; border: none; outline: none; box-shadow: none;
+    background: transparent; color: var(--nx-text-strong); font: inherit; font-size: 12px; }
+.nx-kit .nx-pt-hits { flex: 0 0 auto; font-size: 10.5px; color: var(--nx-text-faint); white-space: nowrap; }
+.nx-kit .nx-pt-tree { height: var(--nx-pt-h, 260px); overflow: auto; outline: none; padding: 2px 0;
+    border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius) var(--nx-radius) 0 0; background: var(--nx-bg); }
+.nx-kit .nx-pt-max .nx-pt-tree { height: 84px; }
+.nx-kit .nx-pt-tree:focus-visible { border-color: var(--nx-focus); }
+.nx-kit .nx-pt-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; gap: 4px; height: 22px;
+    padding: 0 6px 0 calc(3px + var(--d, 0) * 12px); cursor: default; user-select: none; }
+.nx-kit .nx-pt-row:hover { background: var(--nx-bg-hover); }
+.nx-kit .nx-pt-row.nx-on { background: var(--nx-bg-selected); box-shadow: inset 2px 0 0 var(--nx-accent); }
+.nx-kit .nx-pt-group, .nx-kit .nx-pt-section { grid-template-columns: 14px minmax(0, 1fr) auto; }
+.nx-kit .nx-pt-group .nx-pt-label { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--nx-text-muted); }
+.nx-kit .nx-pt-section .nx-pt-label { font-weight: 600; color: var(--nx-text-muted); }
+.nx-kit .nx-pt-item .nx-pt-label { font-weight: 600; }
+.nx-kit.nx-kit .nx-pt-caret { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin: 0; padding: 0; border: none;
+    background: none; color: var(--nx-text-faint); cursor: pointer; border-radius: 2px; }
+.nx-kit .nx-pt-caret svg { transition: transform .1s; }
+.nx-kit .nx-pt-caret.nx-open svg { transform: rotate(90deg); }
+.nx-kit .nx-pt-label { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--nx-text-strong); }
+.nx-kit .nx-pt-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nx-kit .nx-pt-val { display: flex; align-items: center; gap: 5px; min-width: 0; font-family: var(--nx-mono); font-size: 10.5px; color: var(--nx-text-muted); font-variant-numeric: tabular-nums; }
+.nx-kit .nx-pt-count { color: var(--nx-text-faint); font-family: inherit; }
+.nx-kit .nx-pt-none { color: var(--nx-text-faint); font-style: italic; font-family: var(--nx-font); }
+.nx-kit .nx-pt-swatch { flex: 0 0 auto; width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--nx-border); }
+.nx-kit .nx-pt-check { flex: 0 0 auto; position: relative; width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--nx-border); background: var(--nx-bg); }
+.nx-kit .nx-pt-check.nx-on { background: var(--nx-accent); border-color: var(--nx-accent); }
+.nx-kit .nx-pt-check.nx-on::after { content: ""; position: absolute; left: 2.5px; top: 1px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.nx-kit .nx-pt-mark { flex: 0 0 auto; color: var(--nx-accent); font-size: 11px; }
+.nx-kit .nx-pt-bad { flex: 0 0 auto; color: var(--nx-error); font-size: 11px; }
+.nx-kit .nx-pt-warn { flex: 0 0 auto; color: var(--nx-warn); font-size: 11px; }
+.nx-kit .nx-pt mark { background: var(--nx-warn); color: #fff; border-radius: 2px; padding: 0 1px; }
+.nx-kit .nx-pt-empty { padding: 14px 8px; font-size: 11px; color: var(--nx-text-faint); text-align: center; }
+.nx-kit .nx-pt-split { flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none; display: flex; align-items: center; justify-content: center;
+    background: var(--nx-bg-subtle); border: 1px solid var(--nx-border-subtle); border-top: none; border-radius: 0 0 var(--nx-radius) var(--nx-radius); }
+.nx-kit .nx-pt-split::after { content: ""; width: 26px; height: 2px; border-radius: 1px; background: var(--nx-border); }
+.nx-kit .nx-pt-pane { padding: 10px 0 0; min-width: 0; }
+.nx-kit .nx-pt-panehead { display: flex; align-items: flex-start; gap: 6px; }
+.nx-kit .nx-pt-panehead .nx-pt-crumb { flex: 1 1 auto; }
+.nx-kit .nx-pt-crumb { display: flex; flex-wrap: wrap; gap: 0 5px; margin: 0 0 6px; font-size: 10.5px; color: var(--nx-text-faint); min-width: 0; }
+.nx-kit .nx-pt-crumb span + span::before { content: "\x83A"; margin-right: 5px; }
+.nx-kit .nx-pt-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--nx-text-strong); }
+.nx-kit .nx-pt-items { border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius); margin: 0 0 8px; }
+.nx-kit .nx-pt-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 26px; padding: 0 4px 0 8px; border-top: 1px solid var(--nx-border-subtle); }
+.nx-kit .nx-pt-item:first-child { border-top: none; }
+.nx-kit .nx-pt-item > .nx-pt-val { justify-content: flex-end; max-width: 150px; }
+.nx-kit.nx-kit .nx-pt-go { margin: 0; padding: 3px 0; border: none; background: none; text-align: left; font: inherit; color: var(--nx-text-strong); cursor: pointer;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nx-kit.nx-kit .nx-pt-go:hover { color: var(--nx-accent); text-decoration: underline; }
+.nx-kit .nx-pt-tools { display: inline-flex; gap: 1px; }
+.nx-kit .nx-pt-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 10px; }
+.nx-kit.nx-kit .nx-pt-danger { color: var(--nx-error); }
+.nx-kit .nx-pt-form > * { display: block; }
+.nx-kit .nx-pt-dialogrow { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 4px 4px 8px; border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius); }
+.nx-kit .nx-pt-dialogrow .nx-pt-t { flex: 1 1 auto; font-family: var(--nx-mono); font-size: 11px; }
+.nx-kit.nx-kit .nx-btn.nx-primary { background: var(--nx-accent); border-color: var(--nx-accent); color: #fff; }
 `;
   function ensureStyles(doc) {
     doc = doc || document;
@@ -1264,11 +1332,931 @@ nx-tab[hidden] { display: none !important; }
     }
   };
 
-  // src/sdk/kit/inspector.js
+  // src/sdk/kit/prop-tree/model.js
+  function isEmpty(v) {
+    return v === void 0 || v === null || v === "" || Array.isArray(v) && !v.length;
+  }
+  function isBinding(v) {
+    return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
+  }
+  function firstLine(s) {
+    var lines = String(s).replace(/\s+$/, "").split("\n");
+    var first = lines.filter(function(l) {
+      return l.trim();
+    })[0] || "";
+    return { first: first.trim(), count: lines.length };
+  }
+  function optionLabel(prop, v) {
+    var o = (Array.isArray(prop.options) ? prop.options : []).filter(function(x) {
+      return x && x.value === v;
+    })[0];
+    return o ? String(o.label) : String(v);
+  }
+  function itemNoun(prop) {
+    return prop.noun || prop.item && prop.item.noun || "item";
+  }
+  function plural(n2, noun) {
+    return n2 + " " + noun + (n2 === 1 ? "" : "s");
+  }
+  function summary(prop, value, props, summarize) {
+    var v = value === void 0 ? prop.default : value;
+    var custom = typeof summarize === "function" ? summarize : typeof prop.summary === "function" ? prop.summary : null;
+    if (custom) {
+      var t;
+      try {
+        t = custom(v, props || {});
+      } catch (e) {
+        t = "";
+      }
+      return { text: t === void 0 || t === null ? "" : String(t), empty: isEmpty(t) };
+    }
+    if (prop.bindable && isBinding(v)) return { text: v, bound: true };
+    var tok = typeof v === "string" && /^\{token:([^{}]+)\}$/.exec(v.trim());
+    if (tok) return { text: tok[1], token: true };
+    switch (prop.type) {
+      case "boolean":
+        return { text: v ? "on" : "off", check: !!v };
+      case "number":
+      case "range":
+        return isEmpty(v) ? { text: "", empty: true } : { text: String(v) + (prop.unit ? " " + prop.unit : "") };
+      case "enum":
+        return isEmpty(v) ? { text: "", empty: true } : { text: optionLabel(prop, v) };
+      case "color":
+        return isEmpty(v) ? { text: "", empty: true } : { text: String(v), swatch: String(v) };
+      case "css":
+      case "code":
+      case "text": {
+        if (isEmpty(v) || !String(v).trim()) return { text: "", empty: true };
+        var fl = firstLine(v);
+        return { text: fl.count > 1 ? fl.count + " lines \xB7 " + fl.first : fl.first };
+      }
+      case "json": {
+        if (isEmpty(v)) return { text: "", empty: true };
+        var s = typeof v === "string" ? v : JSON.stringify(v);
+        return { text: s.length > 60 ? s.slice(0, 59) + "\u2026" : s };
+      }
+      case "list": {
+        var n2 = Array.isArray(v) ? v.length : 0;
+        return { text: "[" + plural(n2, itemNoun(prop)) + "]", empty: !n2 };
+      }
+      case "asset":
+        return isEmpty(v) ? { text: "", empty: true } : { text: String(v).replace(/^\{asset:([^{}]+)\}$/, "$1") };
+      case "align":
+        return v && typeof v === "object" ? { text: (v.y || "start") + " / " + (v.x || "start") } : { text: "", empty: true };
+      case "spacing": {
+        if (!v || typeof v !== "object") return { text: "0" };
+        var t = Number(v.t) || 0, r = Number(v.r) || 0, b = Number(v.b) || 0, l = Number(v.l) || 0;
+        return { text: t === r && r === b && b === l ? String(t) : t === b && l === r ? t + " " + r : [t, r, b, l].join(" ") };
+      }
+      case "action":
+        return { text: "" };
+      default:
+        if (isEmpty(v)) return { text: "", empty: true };
+        if (typeof v === "object") {
+          var j = JSON.stringify(v);
+          return { text: j.length > 60 ? j.slice(0, 59) + "\u2026" : j };
+        }
+        return { text: firstLine(v).first };
+    }
+  }
+  function emptyText(prop) {
+    if (prop.type === "tag") return "not bound";
+    if (prop.type === "css" || prop.type === "code") return "empty";
+    if (prop.type === "list") return "none";
+    return "not set";
+  }
+  function itemSchema(prop) {
+    return prop.item || { type: "string" };
+  }
+  function itemLabel(prop, item, i) {
+    var sch = itemSchema(prop);
+    var noun = itemNoun(prop);
+    var fallback = noun.charAt(0).toUpperCase() + noun.slice(1) + " " + (i + 1);
+    if (typeof prop.itemLabel === "function") {
+      try {
+        var l = prop.itemLabel(item, i);
+        if (!isEmpty(l)) return String(l);
+      } catch (e) {
+      }
+      return fallback;
+    }
+    if (sch.fields && item && typeof item === "object") {
+      var key = prop.itemLabel || Object.keys(sch.fields).filter(function(k) {
+        var t = sch.fields[k].type || "string";
+        return t === "string" || t === "text";
+      })[0];
+      if (key && !isEmpty(item[key])) return String(item[key]);
+      return fallback;
+    }
+    if (!isEmpty(item) && typeof item !== "object") return String(item);
+    return fallback;
+  }
+  function isShown(prop, p, state) {
+    if (!prop || prop.hidden || prop.key === "__previewState" || prop.key === "__fallback") return false;
+    if (typeof prop.visibleWhen === "function") {
+      try {
+        if (!prop.visibleWhen(p || {})) return false;
+      } catch (e) {
+        return false;
+      }
+    }
+    if (prop.perState && state !== void 0 && prop.perState !== state) return false;
+    return true;
+  }
+  function buildTree(meta, p, opts) {
+    opts = opts || {};
+    p = p || {};
+    var groups = [], byGroup = {};
+    Object.keys(meta.props || {}).forEach(function(key) {
+      var prop = meta.props[key];
+      if (!isShown(prop, p, opts.state)) return;
+      var gName = prop.group || "General";
+      var g = byGroup[gName];
+      if (!g) {
+        g = byGroup[gName] = { id: "@" + gName, kind: "group", label: gName, depth: 0, children: [], parentId: null, sections: {} };
+        groups.push(g);
+      }
+      var parent = g;
+      if (prop.section) {
+        parent = g.sections[prop.section];
+        if (!parent) {
+          parent = g.sections[prop.section] = { id: g.id + "/" + prop.section, kind: "section", label: prop.section, depth: 1, children: [], parentId: g.id };
+          g.children.push(parent);
+        }
+      }
+      var node = { id: key, kind: "prop", label: prop.label || key, key, prop, depth: parent.depth + 1, children: [], parentId: parent.id };
+      if (prop.type === "list") {
+        var items = Array.isArray(p[key]) ? p[key] : Array.isArray(prop.default) && p[key] === void 0 ? prop.default : [];
+        var sch = itemSchema(prop);
+        items.forEach(function(item, i) {
+          var it = { id: key + "#" + i, kind: "item", label: itemLabel(prop, item, i), key, prop, index: i, depth: node.depth + 1, children: [], parentId: node.id };
+          if (sch.fields) {
+            Object.keys(sch.fields).forEach(function(fk) {
+              var f = Object.assign({ label: fk, key: fk }, sch.fields[fk]);
+              it.children.push({ id: it.id + "." + fk, kind: "itemField", label: f.label, key, prop, index: i, field: f, fieldKey: fk, depth: it.depth + 1, children: [], parentId: it.id });
+            });
+          }
+          node.children.push(it);
+        });
+      }
+      parent.children.push(node);
+    });
+    if (opts.groupOrder) {
+      var order = opts.groupOrder;
+      groups.sort(function(a, b) {
+        var ia = order.indexOf(a.label), ib = order.indexOf(b.label);
+        return (ia === -1 ? 1e6 : ia) - (ib === -1 ? 1e6 : ib);
+      });
+    }
+    groups.forEach(function(g) {
+      delete g.sections;
+    });
+    return groups;
+  }
+  function indexTree(roots) {
+    var map = /* @__PURE__ */ new Map();
+    (function walk(list) {
+      list.forEach(function(n2) {
+        map.set(n2.id, n2);
+        walk(n2.children);
+      });
+    })(roots);
+    return map;
+  }
+  function ancestorIds(map, id) {
+    var out = [], n2 = map.get(id);
+    while (n2 && n2.parentId) {
+      out.unshift(n2.parentId);
+      n2 = map.get(n2.parentId);
+    }
+    return out;
+  }
+  function nearestId(map, id, roots) {
+    var cur = id;
+    while (cur && !map.has(cur)) {
+      var m;
+      if (m = /^(.*#\d+)\.[^.#]+$/.exec(cur)) cur = m[1];
+      else if (m = /^(.*)#(\d+)$/.exec(cur)) cur = Number(m[2]) > 0 ? m[1] + "#" + (Number(m[2]) - 1) : m[1];
+      else if (m = /^(@.*)\/[^/]+$/.exec(cur)) cur = m[1];
+      else cur = null;
+    }
+    if (cur) return cur;
+    return firstLeafId(roots);
+  }
+  function firstLeafId(roots) {
+    var found = null;
+    (function walk(list) {
+      for (var i = 0; i < list.length && !found; i++) {
+        if (list[i].kind === "prop") {
+          found = list[i].id;
+          return;
+        }
+        walk(list[i].children);
+      }
+    })(roots || []);
+    return found;
+  }
+  function visibleRows(roots, q, isOpen, textOf) {
+    var rows = [], hits = 0;
+    q = (q || "").trim().toLowerCase();
+    if (!q) {
+      (function walk(list) {
+        list.forEach(function(n2) {
+          var has = n2.children.length > 0, open = has && isOpen(n2.id);
+          rows.push({ node: n2, open, hasKids: has });
+          if (open) walk(n2.children);
+        });
+      })(roots);
+      return { rows, hits: 0 };
+    }
+    var match = function(n2) {
+      if (String(n2.label).toLowerCase().indexOf(q) !== -1) return true;
+      if (n2.key && n2.kind === "prop" && String(n2.key).toLowerCase().indexOf(q) !== -1) return true;
+      var t = textOf ? textOf(n2) : "";
+      return !!t && String(t).toLowerCase().indexOf(q) !== -1;
+    };
+    var collect = function(n2) {
+      var self = match(n2);
+      var kids = n2.children.map(collect).filter(Boolean);
+      if (self) hits++;
+      return self || kids.length ? { n: n2, kids } : null;
+    };
+    (function flat(list) {
+      list.forEach(function(r) {
+        rows.push({ node: r.n, open: r.kids.length > 0, hasKids: r.n.children.length > 0 });
+        flat(r.kids);
+      });
+    })(roots.map(collect).filter(Boolean));
+    return { rows, hits };
+  }
+  function editorKind(prop) {
+    if (prop.type === "action") return "action";
+    if (prop.editor) return "custom";
+    if (prop.type === "list") return "list";
+    if (prop.type === "css" || prop.type === "code" || prop.type === "json" || prop.type === "text") return "large";
+    return "inline";
+  }
+  function listOp(items, op, i, make) {
+    var next = (Array.isArray(items) ? items : []).slice();
+    var copy = function(v) {
+      return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+    };
+    if (op === "add") {
+      next.push(make ? make() : "");
+      return { next, index: next.length - 1 };
+    }
+    if (op === "remove") {
+      next.splice(i, 1);
+      return { next, index: next.length ? Math.min(i, next.length - 1) : -1 };
+    }
+    if (op === "up" && i > 0) {
+      var a = next[i - 1];
+      next[i - 1] = next[i];
+      next[i] = a;
+      return { next, index: i - 1 };
+    }
+    if (op === "down" && i < next.length - 1) {
+      var b = next[i + 1];
+      next[i + 1] = next[i];
+      next[i] = b;
+      return { next, index: i + 1 };
+    }
+    if (op === "duplicate") {
+      next.splice(i + 1, 0, copy(next[i]));
+      return { next, index: i + 1 };
+    }
+    return { next, index: i };
+  }
+
+  // src/sdk/kit/prop-tree/editors.js
+  var PropertyEditor = class extends KitElement {
+    /** The value is final: one undo step. */
+    commit(value) {
+      this.change(value);
+    }
+    /** Show a value on the canvas while it is being picked: no undo step, not saved. */
+    preview(value) {
+      this.dispatchEvent(new CustomEvent("nx-preview", { detail: { value }, bubbles: true, composed: true }));
+    }
+    get api() {
+      return adminApi(this.constructor.plugin);
+    }
+  };
+  __publicField(PropertyEditor, "properties", { prop: { attribute: false }, props: { attribute: false } });
+  /** How the inspector shows it: "inline" | "large" (the pane can grow) | "dialog" (summary + Edit…). */
+  __publicField(PropertyEditor, "kind", "inline");
+  /** The plugin name its `api` talks to (sdk/package's `name`). */
+  __publicField(PropertyEditor, "plugin", "");
+  function adminApi(plugin) {
+    var base = String(plugin || "").replace(/^\/+|\/+$/g, "");
+    var call = function(method, path, query, body) {
+      if (!base) return Promise.reject(new Error("[nexa] this editor has no `static plugin` (its plugin's name): no api"));
+      var qs = query && Object.keys(query).length ? "?" + new URLSearchParams(query).toString() : "";
+      var headers = { Accept: "application/json" };
+      try {
+        var tok = JSON.parse(window.localStorage.getItem("auth-tokens") || "null");
+        if (tok && tok.access_token) headers.Authorization = "Bearer " + tok.access_token;
+      } catch (e) {
+      }
+      if (body !== void 0) headers["Content-Type"] = "application/json";
+      return fetch(base + "/api/" + String(path || "").replace(/^\/+/, "") + qs, {
+        method,
+        headers,
+        credentials: "same-origin",
+        body: body === void 0 ? void 0 : JSON.stringify(body)
+      }).then(function(r) {
+        return r.text().then(function(t) {
+          var data;
+          try {
+            data = t ? JSON.parse(t) : null;
+          } catch (e) {
+            data = t;
+          }
+          if (!r.ok) {
+            var err = new Error(data && data.error || method + " " + path + ": " + r.status);
+            err.status = r.status;
+            throw err;
+          }
+          return data;
+        });
+      });
+    };
+    return {
+      get: function(path, query) {
+        return call("GET", path, query);
+      },
+      post: function(path, body) {
+        return call("POST", path, null, body);
+      },
+      put: function(path, body) {
+        return call("PUT", path, null, body);
+      },
+      del: function(path, query) {
+        return call("DELETE", path, query);
+      }
+    };
+  }
+  function definePropertyEditor(tag, factory, kitApi) {
+    if (customElements.get(tag)) return customElements.get(tag);
+    var Klass = factory(Object.assign({ PropertyEditor }, kitApi || {}));
+    if (typeof Klass !== "function" || !(Klass.prototype instanceof PropertyEditor)) {
+      throw new Error('[nexa] definePropertyEditor("' + tag + '"): the factory must return a class extending PropertyEditor');
+    }
+    customElements.define(tag, Klass);
+    return Klass;
+  }
+  function editorClass(prop) {
+    return prop && prop.editor ? customElements.get(prop.editor) || null : null;
+  }
+
+  // src/sdk/kit/prop-tree/view.js
+  var MEMORY = {};
+  var HEIGHT_KEY = "nexa-inspector-tree-height";
+  var seq2 = 0;
+  function memoryFor(key) {
+    return MEMORY[key] || (MEMORY[key] = { sel: null, open: {}, q: "", max: false, top: 0 });
+  }
+  function storedHeight() {
+    try {
+      var v = Number(window.localStorage.getItem(HEIGHT_KEY));
+      return v >= 80 && v <= 2e3 ? v : 260;
+    } catch (e) {
+      return 260;
+    }
+  }
   function clone(v) {
     return v === null || v === void 0 || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function same(a, b) {
+    return str(a) === str(b);
+  }
+  function fieldProp(f) {
+    var p = Object.assign({ type: "string" }, f);
+    if (p.type === "enum" && Array.isArray(p.options)) {
+      p.options = p.options.map(function(o) {
+        return o !== null && typeof o === "object" ? o : { value: o, label: String(o) };
+      });
+    }
+    return p;
+  }
+  function marks(text, q) {
+    text = String(text);
+    if (!q) return text;
+    var out = [], low = text.toLowerCase(), i = 0, j;
+    while ((j = low.indexOf(q, i)) !== -1) {
+      out.push(text.slice(i, j), html`<mark>${text.slice(j, j + q.length)}</mark>`);
+      i = j + q.length;
+    }
+    out.push(text.slice(i));
+    return out;
+  }
+  var CARET = html`<svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 7 5 3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  function createTreeView(A) {
+    var mem = memoryFor(A.persist);
+    var uid = "nx-pt" + ++seq2;
+    var height = storedHeight();
+    var root = null;
+    var pending = null;
+    var first = true;
+    var editors = /* @__PURE__ */ new Map();
+    var map = /* @__PURE__ */ new Map(), roots = [], rows = [];
+    function p() {
+      return A.props();
+    }
+    function valueOf(key) {
+      var v = p()[key];
+      return v === void 0 ? A.meta.props[key].default : v;
+    }
+    function items(key) {
+      var v = valueOf(key);
+      return Array.isArray(v) ? v : [];
+    }
+    function isOpen(id) {
+      if (id in mem.open) return mem.open[id];
+      var n2 = map.get(id);
+      return !!n2 && n2.kind !== "item";
+    }
+    function openAncestors(id) {
+      ancestorIds(map, id).forEach(function(a) {
+        mem.open[a] = true;
+      });
+    }
+    function toggle(id) {
+      mem.open[id] = !isOpen(id);
+      A.update();
+    }
+    function commitPending() {
+      var a = document.activeElement;
+      var pane = root && root.querySelector(".nx-pt-pane");
+      if (a && pane && pane.contains(a) && typeof a.blur === "function") a.blur();
+    }
+    function select(id, o) {
+      o = o || {};
+      if (mem.sel === id) {
+        if (o.focus) {
+          pending = Object.assign(pending || {}, { focus: true });
+          A.update();
+        }
+        return;
+      }
+      commitPending();
+      mem.sel = id;
+      openAncestors(id);
+      pending = Object.assign(pending || {}, { scroll: true, focus: !!o.focus });
+      A.update();
+    }
+    function summaryOf(n2) {
+      var P = p();
+      if (n2.kind === "group" || n2.kind === "section") return { text: String(n2.children.length), count: true };
+      if (n2.kind === "prop") {
+        if (n2.prop.type === "action") {
+          var s0 = typeof n2.prop.summary === "function" ? n2.prop.summary(P) : "";
+          return { text: s0 ? String(s0) : "", action: true };
+        }
+        var K = editorClass(n2.prop);
+        return summary(n2.prop, P[n2.key], P, K && typeof K.summary === "function" ? K.summary : null);
+      }
+      var it = items(n2.key)[n2.index];
+      if (n2.kind === "item") {
+        var sch = itemSchema(n2.prop);
+        return sch.fields ? { text: "" } : summary(fieldProp(sch), it, P);
+      }
+      return summary(fieldProp(n2.field), it && typeof it === "object" ? it[n2.fieldKey] : void 0, P);
+    }
+    function textOf(n2) {
+      return summaryOf(n2).text;
+    }
+    function rowMarks(n2) {
+      if (n2.kind !== "prop") return nothing;
+      var P = p(), prop = n2.prop, v = valueOf(n2.key), out = [];
+      var R = A.responsive;
+      if (R && !prop.noResponsive && R.canVary(n2.key) && R.list().some(function(b) {
+        return R.has(n2.key, b.id);
+      })) {
+        out.push(html`<i class="fa fa-mobile nx-pt-mark" title="Set per breakpoint"></i>`);
+      }
+      if (!prop.noReset && !same(v, prop.default)) out.push(html`<span class="nx-dot" title="Changed from the default"></span>`);
+      var msg = A.validate(prop, v, P);
+      if (msg) out.push(html`<i class="fa fa-exclamation-circle nx-pt-bad" title="${msg}"></i>`);
+      else if (warnOf(prop)) out.push(html`<i class="fa fa-exclamation-triangle nx-pt-warn" title="${warnOf(prop)}"></i>`);
+      return out;
+    }
+    function warnOf(prop) {
+      if (typeof prop.warn !== "function") return "";
+      try {
+        return String(prop.warn(valueOf(prop.key), p()) || "");
+      } catch (e) {
+        return "";
+      }
+    }
+    function warnTpl(prop) {
+      var w = warnOf(prop);
+      return w ? html`<nx-alert tone="warn" text=${w}></nx-alert>` : nothing;
+    }
+    function valueCell(n2, q) {
+      var s = summaryOf(n2);
+      if (s.count) return html`<span class="nx-pt-val nx-pt-count">${s.text}</span>`;
+      var parts = [];
+      if (s.swatch) parts.push(html`<span class="nx-pt-swatch" style="background:${s.swatch}"></span>`);
+      if (s.check !== void 0) return html`<span class="nx-pt-val" title=${s.text}><span class="nx-pt-check ${s.check ? "nx-on" : ""}"></span></span>`;
+      if (s.bound) parts.push(html`<i class="fa fa-link nx-pt-mark" title="Bound"></i>`);
+      if (s.token) parts.push(html`<i class="fa fa-diamond nx-pt-mark" title="A theme token"></i>`);
+      if (s.action && !s.text) return html`<span class="nx-pt-val"><i class="fa fa-hand-pointer-o nx-pt-mark" title="Actions"></i></span>`;
+      if (s.empty || s.text === "") {
+        if (n2.kind === "prop" || n2.kind === "itemField") parts.push(html`<span class="nx-pt-t nx-pt-none">${n2.kind === "prop" ? emptyText(n2.prop) : "not set"}</span>`);
+      } else parts.push(html`<span class="nx-pt-t">${marks(s.text, q)}</span>`);
+      return html`<span class="nx-pt-val" title="${s.text}">${parts}</span>`;
+    }
+    function rowId(id) {
+      return uid + "-" + String(id).replace(/[^\w-]/g, "_");
+    }
+    function rowTpl(r, q) {
+      var n2 = r.node, on = n2.id === mem.sel;
+      var cls = "nx-pt-row nx-pt-" + n2.kind + (on ? " nx-on" : "");
+      return html`<div class=${cls} id=${rowId(n2.id)} role="treeitem" aria-level=${n2.depth + 1} aria-selected=${on ? "true" : "false"}
+                aria-expanded=${r.hasKids ? r.open ? "true" : "false" : nothing} data-id=${n2.id} style=${"--d:" + n2.depth}
+                @click=${function() {
+        select(n2.id);
+      }}
+                @dblclick=${function() {
+        if (r.hasKids && !q) toggle(n2.id);
+        else select(n2.id, { focus: true });
+      }}>
+            ${r.hasKids ? html`<button type="button" class="nx-pt-caret ${r.open ? "nx-open" : ""}" tabindex="-1" aria-label=${r.open ? "Collapse" : "Expand"}
+                @click=${function(e) {
+        e.stopPropagation();
+        if (!q) toggle(n2.id);
+      }}>${CARET}</button>` : html`<span></span>`}
+            <span class="nx-pt-label" title=${n2.label}><span class="nx-pt-t">${marks(n2.label, q)}</span>${rowMarks(n2)}</span>
+            ${valueCell(n2, q)}
+        </div>`;
+    }
+    function onTreeKey(e) {
+      var ids = rows.map(function(r) {
+        return r.node.id;
+      });
+      var i = ids.indexOf(mem.sel), n2 = map.get(mem.sel);
+      var go = function(j) {
+        if (ids[j] !== void 0) select(ids[j]);
+      };
+      var has = n2 && n2.children.length > 0;
+      if (e.key === "ArrowDown") go(i < 0 ? 0 : i + 1);
+      else if (e.key === "ArrowUp") go(Math.max(0, i - 1));
+      else if (e.key === "Home") go(0);
+      else if (e.key === "End") go(ids.length - 1);
+      else if (e.key === "ArrowRight" && n2) {
+        if (has && !isOpen(n2.id) && !mem.q) toggle(n2.id);
+        else if (has) go(i + 1);
+      } else if (e.key === "ArrowLeft" && n2) {
+        if (has && isOpen(n2.id) && !mem.q) toggle(n2.id);
+        else if (n2.parentId) select(n2.parentId);
+      } else if (e.key === "Enter" && n2) select(n2.id, { focus: true });
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    function onSearch(e) {
+      mem.q = e.target.value;
+      A.update();
+    }
+    function onSearchKey(e) {
+      if (e.key === "Escape" && mem.q) {
+        e.preventDefault();
+        e.stopPropagation();
+        mem.q = "";
+        e.target.value = "";
+        A.update();
+      } else if (e.key === "ArrowDown" || e.key === "Enter") {
+        e.preventDefault();
+        var first2 = rows.filter(function(r) {
+          return r.node.kind !== "group" && r.node.kind !== "section";
+        })[0];
+        if (first2) select(first2.node.id);
+        var t = root && root.querySelector(".nx-pt-tree");
+        if (t) t.focus();
+      }
+    }
+    function onSplit(e) {
+      var tree = root && root.querySelector(".nx-pt-tree");
+      if (!tree) return;
+      e.preventDefault();
+      var y0 = e.clientY, h0 = tree.getBoundingClientRect().height;
+      mem.max = false;
+      root.classList.remove("nx-pt-max");
+      var move = function(ev) {
+        height = Math.max(80, Math.min(1200, Math.round(h0 + ev.clientY - y0)));
+        root.style.setProperty("--nx-pt-h", height + "px");
+      };
+      var up = function() {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        try {
+          window.localStorage.setItem(HEIGHT_KEY, String(height));
+        } catch (err) {
+        }
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    }
+    function crumbs(n2) {
+      var list = ancestorIds(map, n2.id).map(function(id) {
+        return map.get(id).label;
+      });
+      return list.length ? html`<div class="nx-pt-crumb">${list.map(function(c) {
+        return html`<span>${c}</span>`;
+      })}</div>` : nothing;
+    }
+    function expandButton() {
+      return html`<button type="button" class="nx-icon-btn nx-pt-expand ${mem.max ? "nx-on" : ""}" title=${mem.max ? "Show the tree again" : "More room for the editor"}
+            @click=${function() {
+        mem.max = !mem.max;
+        A.update();
+      }}><i class="fa ${mem.max ? "fa-compress" : "fa-expand"}"></i></button>`;
+    }
+    function overviewPane(n2) {
+      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>
+            <div class="nx-pt-items">${n2.children.map(function(c) {
+        return html`<div class="nx-pt-item"><button type="button" class="nx-pt-go" @click=${function() {
+          select(c.id, { focus: c.kind === "prop" });
+        }}>${c.label}</button>${valueCell(c, "")}</div>`;
+      })}</div>`;
+    }
+    function newItem(prop) {
+      var sch = itemSchema(prop);
+      if (sch.default !== void 0) return clone(sch.default);
+      if (sch.fields) {
+        var o = {};
+        Object.keys(sch.fields).forEach(function(k) {
+          o[k] = clone(sch.fields[k].default !== void 0 ? sch.fields[k].default : "");
+        });
+        return o;
+      }
+      return "";
+    }
+    function listDo(n2, op, i) {
+      var r = listOp(items(n2.key), op, i, function() {
+        return newItem(n2.prop);
+      });
+      commitPending();
+      mem.sel = r.index >= 0 ? n2.key + "#" + r.index : n2.key;
+      mem.open[n2.key] = true;
+      pending = Object.assign(pending || {}, { scroll: true });
+      A.set(n2.key, r.next);
+    }
+    function setItem(n2, v) {
+      var next = items(n2.key).slice();
+      next[n2.index] = typeof v === "function" ? v(next[n2.index]) : v;
+      A.set(n2.key, next);
+    }
+    function listPane(n2) {
+      var prop = n2.prop, list = items(n2.key), noun = itemNoun(prop);
+      var canAdd = !prop.readonly && !(prop.max > 0 && list.length >= prop.max);
+      var canRemove = !prop.readonly && !(prop.min > 0 && list.length <= prop.min);
+      var msg = A.validate(prop, list, p());
+      return html`${crumbs(n2)}<div class="nx-pt-title">${prop.label}${prop.required ? html`<span class="nx-req">*</span>` : nothing}</div>
+            ${prop.help ? html`<div class="nx-help">${prop.help}</div>` : nothing}
+            ${list.length ? html`<div class="nx-pt-items">${list.map(function(it, i) {
+        return html`<div class="nx-pt-item">
+                    <button type="button" class="nx-pt-go" @click=${function() {
+          select(n2.key + "#" + i, { focus: true });
+        }}>${itemLabel(prop, it, i)}</button>
+                    <span class="nx-pt-tools">
+                        <button type="button" class="nx-icon-btn" title="Move up" ?disabled=${i === 0} @click=${function() {
+          listDo(n2, "up", i);
+        }}><i class="fa fa-arrow-up"></i></button>
+                        <button type="button" class="nx-icon-btn" title="Move down" ?disabled=${i === list.length - 1} @click=${function() {
+          listDo(n2, "down", i);
+        }}><i class="fa fa-arrow-down"></i></button>
+                        <button type="button" class="nx-icon-btn" title="Remove" ?disabled=${!canRemove} @click=${function() {
+          listDo(n2, "remove", i);
+        }}><i class="fa fa-trash-o"></i></button>
+                    </span></div>`;
+      })}</div>` : html`<div class="nx-list-empty">No ${noun}s yet.</div>`}
+            <div class="nx-pt-bar"><button type="button" class="nx-btn nx-pt-add" ?disabled=${!canAdd} @click=${function() {
+        listDo(n2, "add");
+      }}><i class="fa fa-plus"></i> Add ${noun}</button>
+                <span class="nx-badge">${list.length}</span></div>
+            ${msg ? html`<div class="nx-message">${msg}</div>` : nothing}
+            <div class="nx-help">Each ${noun} is also a row in the tree: pick it there to edit it.</div>`;
+    }
+    function itemPane(n2) {
+      var prop = n2.prop, list = items(n2.key), i = n2.index, sch = itemSchema(prop);
+      var canRemove = !prop.readonly && !(prop.min > 0 && list.length <= prop.min);
+      var canAdd = !prop.readonly && !(prop.max > 0 && list.length >= prop.max);
+      var list0 = map.get(n2.key);
+      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>
+            <div class="nx-pt-bar">
+                <button type="button" class="nx-btn" ?disabled=${i === 0} @click=${function() {
+        listDo(list0, "up", i);
+      }}><i class="fa fa-arrow-up"></i> Up</button>
+                <button type="button" class="nx-btn" ?disabled=${i === list.length - 1} @click=${function() {
+        listDo(list0, "down", i);
+      }}><i class="fa fa-arrow-down"></i> Down</button>
+                <button type="button" class="nx-btn" ?disabled=${!canAdd} @click=${function() {
+        listDo(list0, "duplicate", i);
+      }}><i class="fa fa-clone"></i> Duplicate</button>
+                <button type="button" class="nx-btn nx-pt-danger" ?disabled=${!canRemove} @click=${function() {
+        listDo(list0, "remove", i);
+      }}><i class="fa fa-trash-o"></i> Remove</button>
+            </div>
+            <div class="nx-pt-form">${A.itemWidget(sch, list[i], function(v) {
+        setItem(n2, v);
+      })}</div>`;
+    }
+    function itemFieldPane(n2) {
+      var it = items(n2.key)[n2.index];
+      var v = it && typeof it === "object" && it[n2.fieldKey] !== void 0 ? it[n2.fieldKey] : n2.field.default;
+      return html`${crumbs(n2)}${A.plainWidget(fieldProp(n2.field), v, function(nv) {
+        setItem(n2, function(cur) {
+          var o = Object.assign({}, cur || {});
+          o[n2.fieldKey] = nv;
+          return o;
+        });
+      })}`;
+    }
+    function customEditor(n2) {
+      var K = editorClass(n2.prop);
+      var el = editors.get(n2.id);
+      if (!el || el.localName !== n2.prop.editor) {
+        el = document.createElement(n2.prop.editor);
+        editors.set(n2.id, el);
+      }
+      el.prop = n2.prop;
+      el.props = p();
+      A.decorate(el, n2.key);
+      if (!el._nxPreviewWired) {
+        el._nxPreviewWired = true;
+        el.addEventListener("nx-preview", function(e) {
+          if (e.target !== el) return;
+          e.stopPropagation();
+          A.preview(n2.key, e.detail.value);
+        });
+      }
+      return K;
+    }
+    function dialogEditor(n2) {
+      var s = summaryOf(n2);
+      var open = function() {
+        var el = document.createElement(n2.prop.editor);
+        var draft = clone(valueOf(n2.key));
+        el.prop = n2.prop;
+        el.props = p();
+        el.value = clone(draft);
+        el.addEventListener("nx-change", function(e) {
+          if (e.target !== el) return;
+          e.stopPropagation();
+          draft = e.detail.value;
+          el.value = draft;
+        });
+        el.addEventListener("nx-preview", function(e) {
+          e.stopPropagation();
+        });
+        A.openDialog({ title: n2.prop.label, content: el, buttons: [{ label: "Cancel", value: null }, { label: "Apply", primary: true, value: function() {
+          return { v: draft };
+        } }] }).then(function(r) {
+          if (r && !same(r.v, valueOf(n2.key))) A.set(n2.key, r.v);
+        });
+      };
+      return html`<div class="nx-field"><div class="nx-field-head"><label class="nx-label"><span>${n2.prop.label}</span></label></div>
+            <div class="nx-pt-dialogrow"><span class="nx-pt-t ${s.text ? "" : "nx-pt-none"}">${s.text || emptyText(n2.prop)}</span>
+                <button type="button" class="nx-btn nx-primary nx-pt-open" ?disabled=${n2.prop.readonly} @click=${open}><i class="fa fa-pencil"></i> Edit…</button></div>
+            ${n2.prop.help ? html`<div class="nx-help">${n2.prop.help}</div>` : nothing}</div>`;
+    }
+    function actionPane(n2) {
+      var prop = n2.prop, P = p();
+      var buttons = (typeof prop.buttons === "function" ? prop.buttons(P) : prop.buttons) || [];
+      var info = typeof prop.info === "function" ? prop.info(P) : prop.info;
+      return html`${crumbs(n2)}<div class="nx-pt-title">${prop.label}</div>
+            ${info ? html`<div class="nx-pt-info">${info}</div>` : nothing}
+            ${buttons.length ? html`<div class="nx-pt-bar">${buttons.map(function(b) {
+        var off = typeof b.disabled === "function" ? b.disabled(P) : !!b.disabled;
+        var on = typeof b.on === "function" ? b.on(P) : !!b.on;
+        return html`<button type="button" class="nx-btn nx-pt-action ${on ? "nx-on" : ""}" title=${b.title || b.label} ?disabled=${off}
+                    @click=${function() {
+          commitPending();
+          b.run(p());
+          A.update();
+        }}>${b.icon ? html`<i class=${b.icon}></i>` : nothing} ${b.label}</button>`;
+      })}</div>` : nothing}
+            ${prop.help ? html`<div class="nx-help">${prop.help}</div>` : nothing}`;
+    }
+    function propPane(n2) {
+      var kind = editorKind(n2.prop);
+      if (kind === "action") return actionPane(n2);
+      if (kind === "list") return listPane(n2);
+      if (kind === "custom") {
+        var K = editorClass(n2.prop);
+        if (!K) {
+          return html`${crumbs(n2)}<nx-alert tone="warn" text=${'The editor "' + n2.prop.editor + '" is not loaded (is its plugin installed?). Showing a plain field.'}></nx-alert>${A.field(n2.key)}`;
+        }
+        if (K.kind === "dialog") return html`${crumbs(n2)}${dialogEditor(n2)}${warnTpl(n2.prop)}`;
+        customEditor(n2);
+        return html`<div class="nx-pt-panehead">${crumbs(n2)}${K.kind === "large" ? expandButton() : nothing}</div>${editors.get(n2.id)}${warnTpl(n2.prop)}`;
+      }
+      if (kind === "large") return html`<div class="nx-pt-panehead">${crumbs(n2)}${expandButton()}</div>${A.field(n2.key)}${warnTpl(n2.prop)}`;
+      return html`${crumbs(n2)}${A.field(n2.key)}${warnTpl(n2.prop)}`;
+    }
+    function paneTpl(n2) {
+      if (!n2) return html`<div class="nx-pt-empty">${roots.length ? "Pick a property in the tree." : "Nothing to set here."}</div>`;
+      if (n2.kind === "group" || n2.kind === "section") return overviewPane(n2);
+      if (n2.kind === "item") return itemPane(n2);
+      if (n2.kind === "itemField") return itemFieldPane(n2);
+      return propPane(n2);
+    }
+    function view() {
+      roots = buildTree(A.meta, p(), { state: A.state(), groupOrder: A.meta.groupOrder || null });
+      map = indexTree(roots);
+      if (mem.sel && !map.has(mem.sel)) mem.sel = nearestId(map, mem.sel, roots);
+      if (!mem.sel) mem.sel = firstLeafId(roots);
+      if (mem.sel) openAncestors(mem.sel);
+      editors.forEach(function(_el, id) {
+        if (id !== mem.sel) editors.delete(id);
+      });
+      var q = mem.q.trim().toLowerCase();
+      var vr = visibleRows(roots, q, isOpen, textOf);
+      rows = vr.rows;
+      var sel = map.get(mem.sel);
+      return html`<div class="nx-pt ${mem.max ? "nx-pt-max" : ""}" style=${"--nx-pt-h:" + height + "px"}>
+            <div class="nx-pt-head">
+                ${A.stateSwitcher()}
+                <label class="nx-pt-search"><i class="fa fa-search" aria-hidden="true"></i>
+                    <input type="search" class="nx-pt-q" placeholder="Search properties and values" aria-label="Search properties" autocomplete="off" spellcheck="false"
+                        .value=${live(mem.q)} @input=${onSearch} @keydown=${onSearchKey}>
+                    ${q ? html`<span class="nx-pt-hits">${vr.hits} ${vr.hits === 1 ? "match" : "matches"}</span>` : nothing}</label>
+            </div>
+            <div class="nx-pt-tree" role="tree" tabindex="0" aria-label="Properties" aria-activedescendant=${sel ? rowId(sel.id) : nothing} @keydown=${onTreeKey}
+                @scroll=${function(e) {
+        mem.top = e.target.scrollTop;
+      }}>
+                ${rows.map(function(r) {
+        return rowTpl(r, q);
+      })}
+                ${!rows.length ? html`<div class="nx-pt-empty">${q ? "Nothing matches \u201C" + mem.q.trim() + "\u201D." : "No properties."}</div>` : nothing}
+            </div>
+            <div class="nx-pt-split" role="separator" aria-orientation="horizontal" title="Drag to resize" @pointerdown=${onSplit}></div>
+            <div class="nx-pt-pane" data-node=${mem.sel || ""}>${keyed(mem.sel || "", paneTpl(sel))}</div>
+        </div>`;
+    }
+    function fitHeight() {
+      var el = root && root.parentNode;
+      while (el && el !== document.body) {
+        var oy = window.getComputedStyle(el).overflowY;
+        if ((oy === "auto" || oy === "scroll") && el.clientHeight > 0) break;
+        el = el.parentNode;
+      }
+      var avail = el && el !== document.body ? el.clientHeight : window.innerHeight;
+      var h = mem.max ? height : Math.max(96, Math.min(height, Math.round(avail * 0.55)));
+      root.style.setProperty("--nx-pt-h", h + "px");
+    }
+    function afterRender(container) {
+      root = container.querySelector(".nx-pt");
+      if (root) fitHeight();
+      var todo = pending;
+      pending = null;
+      if (root && first) {
+        first = false;
+        var t = root.querySelector(".nx-pt-tree");
+        if (t) t.scrollTop = mem.top || 0;
+        todo = Object.assign({ scroll: true }, todo || {});
+      }
+      if (!root || !todo) return;
+      if (todo.scroll) {
+        var row = root.querySelector(".nx-pt-row.nx-on");
+        if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
+      }
+      if (todo.focus) {
+        setTimeout(function() {
+          var pane = root && root.querySelector(".nx-pt-pane");
+          var el = pane && pane.querySelector("input:not([type=hidden]):not([disabled]),textarea:not([disabled]),select:not([disabled]),button.nx-btn:not([disabled]),[tabindex='0']");
+          if (el) el.focus();
+        }, 0);
+      }
+    }
+    return {
+      view,
+      afterRender,
+      select: function(id, o) {
+        select(id, o);
+      },
+      selected: function() {
+        return mem.sel;
+      },
+      search: function(q) {
+        mem.q = q || "";
+        A.update();
+      },
+      destroy: function() {
+        editors.clear();
+      }
+    };
+  }
+
+  // src/sdk/kit/inspector.js
+  var warnedInspector = {};
+  function clone2(v) {
+    return v === null || v === void 0 || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
+  }
+  function same2(a, b) {
     return str(a) === str(b);
   }
   function shortValue(v) {
@@ -1283,14 +2271,14 @@ nx-tab[hidden] { display: none !important; }
     var s = String(v);
     return s.length > 10 ? s.slice(0, 9) + "\u2026" : s;
   }
-  function isBinding(v) {
+  function isBinding2(v) {
     return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
   }
   var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1 };
   function validateProp(prop, value, p) {
     var empty = value === void 0 || value === null || value === "" || Array.isArray(value) && !value.length;
     if (prop.required && empty) return "Required";
-    if ((prop.type === "number" || prop.type === "range") && !empty && !isBinding(value) && !/^\{token:[^{}]+\}$/.test(String(value).trim())) {
+    if ((prop.type === "number" || prop.type === "range") && !empty && !isBinding2(value) && !/^\{token:[^{}]+\}$/.test(String(value).trim())) {
       var n2 = Number(value);
       if (!Number.isFinite(n2)) return "Not a number";
       if (prop.min !== void 0 && prop.min !== null && n2 < prop.min) return "Minimum is " + prop.min;
@@ -1387,17 +2375,17 @@ nx-tab[hidden] { display: none !important; }
                 @click="${() => {
           if (bound) {
             delete bindMode[prop.key];
-            set(prop.key, clone(prop.default));
+            set(prop.key, clone2(prop.default));
           } else {
             bindMode[prop.key] = true;
             update();
           }
         }}"><i class="fa fa-link"></i></button>`);
       }
-      if (!prop.noReset && !same(value, prop.default)) {
+      if (!prop.noReset && !same2(value, prop.default)) {
         btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => {
           delete bindMode[prop.key];
-          set(prop.key, clone(prop.default));
+          set(prop.key, clone2(prop.default));
         }}"><i class="fa fa-undo"></i></button>`);
       }
       return btns.length ? html`${btns}` : nothing;
@@ -1456,8 +2444,17 @@ nx-tab[hidden] { display: none !important; }
       Object.keys(SCHEMA_ATTRS).forEach(function(name) {
         if (prop[name] !== void 0 && !el.hasAttribute(SCHEMA_ATTRS[name])) el[name] = prop[name];
       });
-      if (prop.options && prop.options.length && (el._nxOwnOptions || !el.options || !el.options.length)) {
-        el.options = prop.options;
+      var options = prop.options;
+      if (typeof options === "function") {
+        var loadOptions = options;
+        options = (ui.async("options:" + key, function() {
+          return loadOptions(props());
+        }) || []).map(function(o2) {
+          return o2 !== null && typeof o2 === "object" ? { value: o2.value, label: o2.label !== void 0 ? o2.label : String(o2.value), icon: o2.icon } : { value: o2, label: String(o2) };
+        });
+      }
+      if (options && options.length && (el._nxOwnOptions || !el.options || !el.options.length)) {
+        el.options = options;
         el._nxOwnOptions = true;
       }
       if (prop.providers && el.providers === void 0) el.providers = prop.providers;
@@ -1468,22 +2465,22 @@ nx-tab[hidden] { display: none !important; }
             return itemControl(item, it, setItem);
           };
           el.newItem = function() {
-            return clone(item.default !== void 0 ? item.default : item.fields ? defaultsOf(item.fields) : "");
+            return clone2(item.default !== void 0 ? item.default : item.fields ? defaultsOf(item.fields) : "");
           };
           el._nxOwnItems = true;
         }
       }
-      var bound = !!BINDABLE_BY_TOGGLE[prop.type] && prop.bindable && (isBinding(value) || !!bindMode[key]);
+      var bound = !!BINDABLE_BY_TOGGLE[prop.type] && prop.bindable && (isBinding2(value) || !!bindMode[key]);
       var message = validateProp(prop, value, p);
       el.value = prop.type === "json" && value !== null && typeof value !== "string" ? JSON.stringify(value, null, 2) : value;
-      el.binding = bound ? isBinding(value) ? value : "" : null;
+      el.binding = bound ? isBinding2(value) ? value : "" : null;
       var fallbacks = p.__fallback || {};
       var takesFallback = opts.fallbacks !== false && (bound || prop.type === "tag" && prop.access !== "write");
       el.fallback = takesFallback;
       if (bound && takesFallback) el.value = fallbacks[key] !== void 0 ? fallbacks[key] : prop.default;
       if (prop.type === "tag") el.fallbackValue = fallbacks[key];
       el.tokens = prop.tokens !== void 0 ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
-      el.modified = !prop.noReset && !same(value, prop.default);
+      el.modified = !prop.noReset && !same2(value, prop.default);
       el.invalid = !!message;
       el.message = message || "";
       el.actions = actionsFor(prop, value, bound, resp);
@@ -1538,21 +2535,11 @@ nx-tab[hidden] { display: none !important; }
       return window.NexaSDK && window.NexaSDK._withInspector ? window.NexaSDK._withInspector(ctx, fn) : fn();
     }
     var ui = {
-      /** The preview-state chips (states of the component). */
+      /** The preview-state chips (states of the component), above the tree. */
       stateSwitcher: function() {
         return previewStates().length > 1 ? html`<nx-state-switcher icon="fa fa-eye" ${bind("__previewState")}></nx-state-switcher>` : nothing;
       },
-      /** The widget the automatic layout would use for a prop. */
-      field: function(key, o) {
-        return autoField(key, o);
-      },
-      alert: function(text, tone) {
-        return html`<nx-alert tone="${tone || "info"}" text="${text}"></nx-alert>`;
-      },
-      badge: function(text, tone) {
-        return html`<nx-badge tone="${tone || ""}" text="${text}"></nx-badge>`;
-      },
-      /** Options (or any value) loaded once by `loader()` (may return a Promise); [] until then. */
+      /** A value loaded once by `loader()` (may return a Promise), `fallback` ([]) until then (async options). */
       async: function(cacheKey, loader, fallback) {
         if (!(cacheKey in asyncCache)) {
           asyncCache[cacheKey] = fallback !== void 0 ? fallback : [];
@@ -1560,27 +2547,16 @@ nx-tab[hidden] { display: none !important; }
             asyncCache[cacheKey] = v;
             update();
           }).catch(function(e) {
-            console.error("[nexa] ui.async(" + cacheKey + "):", e);
+            console.error("[nexa] options of " + cacheKey + ":", e);
           });
         }
         return asyncCache[cacheKey];
-      },
-      /** A modal dialog; resolves the button's value (null = closed). */
-      dialog: function(d) {
-        return openDialog(d || {});
-      },
-      action: function(label, fn, o) {
-        return html`<button type="button" class="nx-btn ${o && o.block ? "nx-block" : ""}" @click="${fn}">${o && o.icon ? html`<i class="${o.icon}"></i>` : nothing} ${label}</button>`;
-      },
-      /** Re-render the inspector (e.g. after changing your own closure state). */
-      refresh: function() {
-        update();
       }
     };
     function defaultsOf(fields) {
       var o = {};
       Object.keys(fields).forEach(function(k) {
-        o[k] = clone(fields[k].default !== void 0 ? fields[k].default : "");
+        o[k] = clone2(fields[k].default !== void 0 ? fields[k].default : "");
       });
       return o;
     }
@@ -1625,6 +2601,7 @@ nx-tab[hidden] { display: none !important; }
     }
     function enumStyle(prop) {
       if (prop.style) return prop.style;
+      if (typeof prop.options === "function") return "select";
       var o = prop.options || [];
       return o.length <= 3 && o.every(function(x) {
         return String(x.label).length <= 8;
@@ -1664,47 +2641,62 @@ nx-tab[hidden] { display: none !important; }
           return html`<nx-tag ${b}></nx-tag>`;
         case "asset":
           return html`<nx-asset ${b}></nx-asset>`;
+        case "align":
+          return html`<nx-align ${b}></nx-align>`;
+        case "spacing":
+          return html`<nx-spacing ${b}></nx-spacing>`;
         case "list":
           return html`<nx-list ${b}></nx-list>`;
         default:
           return html`<nx-text ${b} addon-before="${prop.prefix || ""}" addon-after="${prop.suffix || ""}"></nx-text>`;
       }
     }
-    function autoInspector() {
-      var groups = [], byName = {};
-      Object.keys(meta.props).forEach(function(k) {
-        var prop = meta.props[k];
-        if (prop.hidden) return;
-        var g = prop.group || "General";
-        if (!byName[g]) {
-          byName[g] = { name: g, keys: [] };
-          groups.push(byName[g]);
-        }
-        byName[g].keys.push(k);
-      });
-      var body = function(g) {
-        var cells = g.keys.map(function(k) {
-          return autoField(k);
-        }).filter(function(c) {
-          return c !== nothing;
-        });
-        return g.name === "Style" ? html`${ui.stateSwitcher()}${cells}` : cells;
-      };
-      if (groups.length <= 2) {
-        return html`${groups.map(function(g) {
-          return html`<nx-section heading="${g.name}" persist-key="${persist + ":" + g.name}">${body(g)}</nx-section>`;
-        })}`;
-      }
-      return html`<nx-tabs persist-key="${persist}">${groups.map(function(g) {
-        return html`<nx-tab label="${g.name}">${body(g)}</nx-tab>`;
-      })}</nx-tabs>`;
+    if (typeof meta.inspector === "function" && !warnedInspector[meta.id]) {
+      warnedInspector[meta.id] = true;
+      console.warn("[nexa] " + meta.id + ": `inspector` is no longer used \u2014 every component gets the property tree (use group / section / visibleWhen / editor on the props)");
     }
+    var tree = createTreeView({
+      meta,
+      props,
+      persist,
+      responsive: opts.responsive,
+      set: function(key, value) {
+        set(key, value);
+      },
+      preview: function(key, value) {
+        preview(key, value);
+      },
+      update: function() {
+        update();
+      },
+      field: function(key) {
+        return autoField(key);
+      },
+      decorate: function(el, key) {
+        decorate(el, key);
+      },
+      itemWidget: function(sch, value, setItem) {
+        return itemControl(sch, value, setItem);
+      },
+      plainWidget: function(f, v, onChange) {
+        return plainWidget(f, v, onChange);
+      },
+      validate: validateProp,
+      state: currentState,
+      stateSwitcher: function() {
+        return ui.stateSwitcher();
+      },
+      openDialog
+    });
     function view() {
       if (opts.responsive && typeof opts.responsive.begin === "function") opts.responsive.begin();
       return withCtx(function() {
-        if (typeof meta.inspector === "function") return meta.inspector({ p: props(), ui, bind, meta });
-        return autoInspector();
+        return tree.view();
       });
+    }
+    function draw() {
+      render(view(), root);
+      tree.afterRender(root);
     }
     var queued = false;
     function update() {
@@ -1712,17 +2704,28 @@ nx-tab[hidden] { display: none !important; }
       queued = true;
       queueMicrotask(function() {
         queued = false;
-        if (root.parentNode) render(view(), root);
+        if (root.parentNode) draw();
       });
     }
-    render(view(), root);
+    draw();
     return {
       update,
       destroy: function() {
+        tree.destroy();
         render(nothing, root);
         if (root.parentNode) root.parentNode.removeChild(root);
       },
-      root
+      root,
+      /** Pick a node of the tree (a prop's key, "list#2", "list#2.field", "@Group"). */
+      select: function(id, o) {
+        tree.select(id, o);
+      },
+      selected: function() {
+        return tree.selected();
+      },
+      search: function(q) {
+        tree.search(q);
+      }
     };
   }
   function openDialog(d) {
@@ -2428,6 +3431,11 @@ nx-tab[hidden] { display: none !important; }
       setHost,
       getHost,
       defineWidget,
+      definePropertyEditor: function(tag, factory) {
+        return definePropertyEditor(tag, factory, { KitElement, html, css, nothing, str, icon });
+      },
+      PropertyEditor,
+      adminApi,
       ensureStyles,
       KitElement,
       elements: Object.keys(ELEMENTS)
@@ -2435,6 +3443,13 @@ nx-tab[hidden] { display: none !important; }
     (window.__nexaInspectorWidgets || []).splice(0).forEach(function(w) {
       try {
         defineWidget(w[0], w[1]);
+      } catch (e) {
+        console.error(e);
+      }
+    });
+    (window.__nexaPropertyEditors || []).splice(0).forEach(function(w) {
+      try {
+        window.NexaKit.definePropertyEditor(w[0], w[1]);
       } catch (e) {
         console.error(e);
       }

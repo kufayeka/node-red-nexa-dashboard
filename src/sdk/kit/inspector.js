@@ -1,4 +1,4 @@
-// --- The inspector: a component's `inspector` template, or an automatic one -----
+// --- The inspector: a property tree over one editor pane (prop-tree/view.js) -----
 // renderInspector(container, { meta, props, set, preview, persistKey, responsive })
 //   meta     the component's normalized metadata (def.nexa, see src/sdk/schema.js)
 //   props    its stored props (read here; every change goes through set)
@@ -7,25 +7,23 @@
 //   responsive           optional, the host's values per breakpoint (the editor's
 //                        canvas/breakpoints-ui.js responsiveHost): every field gets a
 //                        📱 button and, when used, its breakpoint chips
-// Returns { update(), destroy(), root }.
+// Returns { update(), destroy(), root, select(id), selected(), search(q) }
+// (ids: a prop's key, "list#2" an item, "list#2.field" an item's field, "@Group" a group).
 //
 // Every bound field (⛓, and a tag input) also edits its fallback: the value shown
 // while the binding has none (props.__fallback[key]). Nothing to write for either:
 // bind(key) does it.
 //
-// The component writes its panel itself:
-//   inspector: ({ p, ui, bind }) => html`
-//       <nx-tabs>
-//         <nx-tab label="Data"><nx-tag ${bind("inputs.value")}></nx-tag></nx-tab>
-//         <nx-tab label="Style">${ui.stateSwitcher()}<nx-code ${bind("css")}></nx-code></nx-tab>
-//       </nx-tabs>`
-// `p` = current props (show / hide parts with plain template logic),
-// `bind(key)` = connect a widget to a prop ("inputs.x" / "outputs.x" for tags),
-// `ui` = helpers (see makeUi). Without `inspector`, props are laid out by `group`.
-// Re-renders are batched into a microtask; Lit only touches what changed, so
-// focus and the caret survive.
+// Every component gets the same inspector, from its schema: prop.group / prop.section
+// make the tree, visibleWhen / perState show or hide a prop, prop.editor names a plugin's
+// own editor (prop-tree/editors.js). There is no handwritten panel (a def's `inspector`
+// is ignored). Re-renders are batched into a microtask; Lit only touches what changed,
+// so focus and the caret survive.
 import { html, nothing, render } from "lit";
 import { str } from "./base.js";
+import { createTreeView } from "./prop-tree/view.js";
+
+var warnedInspector = {};
 
 function clone(v) {
     return v === null || v === undefined || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
@@ -185,9 +183,17 @@ export function renderInspector(container, opts) {
         Object.keys(SCHEMA_ATTRS).forEach(function (name) {
             if (prop[name] !== undefined && !el.hasAttribute(SCHEMA_ATTRS[name])) el[name] = prop[name];
         });
-        // options from the schema, unless the template binds its own (.options=${...}, e.g. ui.async)
-        if (prop.options && prop.options.length && (el._nxOwnOptions || !el.options || !el.options.length)) {
-            el.options = prop.options;
+        // options from the schema: a list, or a function returning one (or a Promise of one:
+        // loaded once per inspector, [] until then)
+        var options = prop.options;
+        if (typeof options === "function") {
+            var loadOptions = options;
+            options = (ui.async("options:" + key, function () { return loadOptions(props()); }) || []).map(function (o) {
+                return o !== null && typeof o === "object" ? { value: o.value, label: o.label !== undefined ? o.label : String(o.value), icon: o.icon } : { value: o, label: String(o) };
+            });
+        }
+        if (options && options.length && (el._nxOwnOptions || !el.options || !el.options.length)) {
+            el.options = options;
             el._nxOwnOptions = true;
         }
         if (prop.providers && el.providers === undefined) el.providers = prop.providers;
@@ -261,35 +267,24 @@ export function renderInspector(container, opts) {
         return window.NexaSDK && window.NexaSDK._withInspector ? window.NexaSDK._withInspector(ctx, fn) : fn();
     }
 
-    // ---- ui helpers (the `ui` argument of an inspector) ---------------------------------
+    // ---- helpers of the tree view ------------------------------------------------------------
     var ui = {
-        /** The preview-state chips (states of the component). */
+        /** The preview-state chips (states of the component), above the tree. */
         stateSwitcher: function () {
             return previewStates().length > 1 ? html`<nx-state-switcher icon="fa fa-eye" ${bind("__previewState")}></nx-state-switcher>` : nothing;
         },
-        /** The widget the automatic layout would use for a prop. */
-        field: function (key, o) { return autoField(key, o); },
-        alert: function (text, tone) { return html`<nx-alert tone="${tone || "info"}" text="${text}"></nx-alert>`; },
-        badge: function (text, tone) { return html`<nx-badge tone="${tone || ""}" text="${text}"></nx-badge>`; },
-        /** Options (or any value) loaded once by `loader()` (may return a Promise); [] until then. */
+        /** A value loaded once by `loader()` (may return a Promise), `fallback` ([]) until then (async options). */
         async: function (cacheKey, loader, fallback) {
             if (!(cacheKey in asyncCache)) {
                 asyncCache[cacheKey] = fallback !== undefined ? fallback : [];
                 Promise.resolve().then(loader).then(function (v) { asyncCache[cacheKey] = v; update(); })
-                    .catch(function (e) { console.error("[nexa] ui.async(" + cacheKey + "):", e); });
+                    .catch(function (e) { console.error("[nexa] options of " + cacheKey + ":", e); });
             }
             return asyncCache[cacheKey];
-        },
-        /** A modal dialog; resolves the button's value (null = closed). */
-        dialog: function (d) { return openDialog(d || {}); },
-        action: function (label, fn, o) {
-            return html`<button type="button" class="nx-btn ${(o && o.block) ? "nx-block" : ""}" @click="${fn}">${o && o.icon ? html`<i class="${o.icon}"></i>` : nothing} ${label}</button>`;
-        },
-        /** Re-render the inspector (e.g. after changing your own closure state). */
-        refresh: function () { update(); }
+        }
     };
 
-    // ---- the automatic inspector ------------------------------------------------------------
+    // ---- the widgets ------------------------------------------------------------------------------
     function defaultsOf(fields) {
         var o = {};
         Object.keys(fields).forEach(function (k) { o[k] = clone(fields[k].default !== undefined ? fields[k].default : ""); });
@@ -324,6 +319,7 @@ export function renderInspector(container, opts) {
 
     function enumStyle(prop) {
         if (prop.style) return prop.style;
+        if (typeof prop.options === "function") return "select";
         var o = prop.options || [];
         return o.length <= 3 && o.every(function (x) { return String(x.label).length <= 8; }) ? "segmented" : "select";
     }
@@ -353,40 +349,41 @@ export function renderInspector(container, opts) {
             case "json": return html`<nx-code ${b} language="json"></nx-code>`;
             case "tag": return html`<nx-tag ${b}></nx-tag>`;
             case "asset": return html`<nx-asset ${b}></nx-asset>`;
+            case "align": return html`<nx-align ${b}></nx-align>`;
+            case "spacing": return html`<nx-spacing ${b}></nx-spacing>`;
             case "list": return html`<nx-list ${b}></nx-list>`;
             default: return html`<nx-text ${b} addon-before="${prop.prefix || ""}" addon-after="${prop.suffix || ""}"></nx-text>`;
         }
     }
 
-    function autoInspector() {
-        var groups = [], byName = {};
-        Object.keys(meta.props).forEach(function (k) {
-            var prop = meta.props[k];
-            if (prop.hidden) return;
-            var g = prop.group || "General";
-            if (!byName[g]) { byName[g] = { name: g, keys: [] }; groups.push(byName[g]); }
-            byName[g].keys.push(k);
-        });
-        var body = function (g) {
-            var cells = g.keys.map(function (k) { return autoField(k); }).filter(function (c) { return c !== nothing; });
-            return g.name === "Style" ? html`${ui.stateSwitcher()}${cells}` : cells;
-        };
-        if (groups.length <= 2) {
-            return html`${groups.map(function (g) {
-                return html`<nx-section heading="${g.name}" persist-key="${persist + ":" + g.name}">${body(g)}</nx-section>`;
-            })}`;
-        }
-        return html`<nx-tabs persist-key="${persist}">${groups.map(function (g) {
-            return html`<nx-tab label="${g.name}">${body(g)}</nx-tab>`;
-        })}</nx-tabs>`;
+    if (typeof meta.inspector === "function" && !warnedInspector[meta.id]) {
+        warnedInspector[meta.id] = true;
+        console.warn("[nexa] " + meta.id + ": `inspector` is no longer used — every component gets the property tree (use group / section / visibleWhen / editor on the props)");
     }
+
+    var tree = createTreeView({
+        meta: meta, props: props, persist: persist, responsive: opts.responsive,
+        set: function (key, value) { set(key, value); },
+        preview: function (key, value) { preview(key, value); },
+        update: function () { update(); },
+        field: function (key) { return autoField(key); },
+        decorate: function (el, key) { decorate(el, key); },
+        itemWidget: function (sch, value, setItem) { return itemControl(sch, value, setItem); },
+        plainWidget: function (f, v, onChange) { return plainWidget(f, v, onChange); },
+        validate: validateProp,
+        state: currentState,
+        stateSwitcher: function () { return ui.stateSwitcher(); },
+        openDialog: openDialog
+    });
 
     function view() {
         if (opts.responsive && typeof opts.responsive.begin === "function") opts.responsive.begin();
-        return withCtx(function () {
-            if (typeof meta.inspector === "function") return meta.inspector({ p: props(), ui: ui, bind: bind, meta: meta });
-            return autoInspector();
-        });
+        return withCtx(function () { return tree.view(); });
+    }
+
+    function draw() {
+        render(view(), root);
+        tree.afterRender(root);
     }
 
     var queued = false;
@@ -395,15 +392,19 @@ export function renderInspector(container, opts) {
         queued = true;
         queueMicrotask(function () {
             queued = false;
-            if (root.parentNode) render(view(), root);
+            if (root.parentNode) draw();
         });
     }
 
-    render(view(), root);
+    draw();
     return {
         update: update,
-        destroy: function () { render(nothing, root); if (root.parentNode) root.parentNode.removeChild(root); },
-        root: root
+        destroy: function () { tree.destroy(); render(nothing, root); if (root.parentNode) root.parentNode.removeChild(root); },
+        root: root,
+        /** Pick a node of the tree (a prop's key, "list#2", "list#2.field", "@Group"). */
+        select: function (id, o) { tree.select(id, o); },
+        selected: function () { return tree.selected(); },
+        search: function (q) { tree.search(q); }
     };
 }
 

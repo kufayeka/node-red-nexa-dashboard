@@ -3,6 +3,8 @@
 //   NexaKit.renderInspector(container, { meta, props, set, preview, persistKey })
 //   NexaKit.setHost({ openCode, ... })       what the widgets ask the editor for
 //   NexaKit.defineWidget(tag, factory)       a plugin's own inspector widget
+//   NexaKit.definePropertyEditor(tag, factory)  a prop's own editor (prop.editor), see prop-tree/editors.js
+//   NexaKit.adminApi(plugin)                 { get, post, put, del } to a plugin's admin routes
 //   NexaKit.openDialog({ title, content, buttons })
 //   NexaKit.validateProp(propSchema, value, props)
 import { html, css, nothing } from "lit";
@@ -15,6 +17,7 @@ import { NxTree } from "./tree.js";
 import { NxAlign, NxSpacing } from "./layout-widgets.js";
 import { NxBinding } from "./binding.js";
 import { NxAsset } from "./asset.js";
+import { PropertyEditor, definePropertyEditor, adminApi } from "./prop-tree/editors.js";
 
 var ELEMENTS = {
     "nx-text": NxText, "nx-textarea": NxTextarea, "nx-number": NxNumber, "nx-select": NxSelect, "nx-segmented": NxSegmented,
@@ -46,6 +49,11 @@ if (!window.NexaKit) {
         setHost: setHost,
         getHost: getHost,
         defineWidget: defineWidget,
+        definePropertyEditor: function (tag, factory) {
+            return definePropertyEditor(tag, factory, { KitElement: KitElement, html: html, css: css, nothing: nothing, str: str, icon: icon });
+        },
+        PropertyEditor: PropertyEditor,
+        adminApi: adminApi,
         ensureStyles: ensureStyles,
         KitElement: KitElement,
         elements: Object.keys(ELEMENTS)
@@ -53,5 +61,8 @@ if (!window.NexaKit) {
     // inspector widgets plugins defined before the kit loaded
     (window.__nexaInspectorWidgets || []).splice(0).forEach(function (w) {
         try { defineWidget(w[0], w[1]); } catch (e) { console.error(e); }
+    });
+    (window.__nexaPropertyEditors || []).splice(0).forEach(function (w) {
+        try { window.NexaKit.definePropertyEditor(w[0], w[1]); } catch (e) { console.error(e); }
     });
 }

@@ -10,8 +10,11 @@
 // the editor bundle because Lit runs browser feature detection at import time.
 import { LitElement, html, css, nothing, svg, unsafeCSS, render, noChange } from "lit";
 import { directive, Directive, PartType } from "lit/directive.js";
+import { keyed } from "lit/directives/keyed.js";
+import { repeat } from "lit/directives/repeat.js";
+import { live } from "lit/directives/live.js";
 import { ensureRegistry } from "./registry.js";
-import { defineComponent, defineInspectorWidget } from "./component.js";
+import { defineComponent, defineInspectorWidget, definePropertyEditor } from "./component.js";
 import { NexaElement, isUnknown } from "./element.js";
 import { FieldController } from "./field/controller.js";
 import { cssFields } from "./schema.js";
@@ -27,7 +30,8 @@ import { zag } from "./zag.js";
 export var SDK_VERSION = "1.0.0";
 
 if (!window.NexaSDK) {
-    window.NEXA_LIT = { LitElement: LitElement, html: html, css: css, nothing: nothing, svg: svg, unsafeCSS: unsafeCSS, render: render, noChange: noChange, directive: directive, Directive: Directive, PartType: PartType };
+    window.NEXA_LIT = { LitElement: LitElement, html: html, css: css, nothing: nothing, svg: svg, unsafeCSS: unsafeCSS, render: render, noChange: noChange, directive: directive, Directive: Directive, PartType: PartType,
+        keyed: keyed, repeat: repeat, live: live };
     window.NexaFieldFormat = window.NexaFieldFormat || F; // pre-SDK field plugins
     window.NexaSDK = {
         version: SDK_VERSION,
@@ -44,6 +48,9 @@ if (!window.NexaSDK) {
         // inspector & kit
         bind: bind,
         defineInspectorWidget: defineInspectorWidget,
+        // a prop's own editor in the inspector (prop.editor), and its plugin's admin routes
+        definePropertyEditor: definePropertyEditor,
+        adminApi: function (plugin) { return window.NexaKit ? window.NexaKit.adminApi(plugin) : null; },
         _withInspector: withInspector,
         get kit() { return window.NexaKit; },
         get NexaKit() { return window.NexaKit; },

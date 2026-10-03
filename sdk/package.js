@@ -18,6 +18,12 @@
 // plugin's .html file next to this .js:
 //   <script type="module" src="acme-nexa-gauges/vendor/gauges.js"></script>
 // `scripts` (plain, non-module files) is accepted too.
+//
+// `adminApi(router, RED)`: the plugin's own routes for its editor side (a property editor's
+// `this.api`, NexaSDK.adminApi(name)), mounted at <admin root>/<name>/api/ on the editor only,
+// JSON bodies parsed, behind Node-RED's login: GET needs "flows.read", the rest "flows.write".
+//   adminApi: (router) => { router.get("/curves", (req, res) => res.json([...])); }
+// A handler that throws (or rejects) answers 500 { error }.
 const express = require("express");
 
 module.exports = function registerNexaComponentPackage(RED, opts) {
@@ -37,5 +43,34 @@ module.exports = function registerNexaComponentPackage(RED, opts) {
             if (RED.httpNode) RED.httpNode.use(route, serve);
         }
     });
-    return { route: route, runtimeScripts: runtimeScripts };
+    var apiRoute = null;
+    if (typeof opts.adminApi === "function") {
+        apiRoute = "/" + opts.name + "/api";
+        const router = express.Router();
+        router.use(express.json({ limit: "2mb" }));
+        const can = function (perm) {
+            return RED.auth && typeof RED.auth.needsPermission === "function" ? RED.auth.needsPermission(perm) : function (req, res, next) { next(); };
+        };
+        const read = can("flows.read"), write = can("flows.write");
+        router.use(function (req, res, next) { (req.method === "GET" || req.method === "HEAD" ? read : write)(req, res, next); });
+        // an async handler that rejects goes to the error handler below (Express 4 would hang)
+        ["get", "post", "put", "patch", "delete"].forEach(function (m) {
+            const orig = router[m].bind(router);
+            router[m] = function (path) {
+                const handlers = Array.prototype.slice.call(arguments, 1).map(function (h) {
+                    if (typeof h !== "function" || h.length >= 4) return h;
+                    return function (req, res, next) {
+                        try { const r = h(req, res, next); if (r && typeof r.then === "function") r.catch(next); } catch (e) { next(e); }
+                    };
+                });
+                return orig.apply(null, [path].concat(handlers));
+            };
+        });
+        opts.adminApi(router, RED);
+        router.use(function (err, req, res, next) { // eslint-disable-line no-unused-vars
+            res.status(err && err.status || 500).json({ error: String(err && err.message || err) });
+        });
+        if (RED.httpAdmin) RED.httpAdmin.use(apiRoute, router);
+    }
+    return { route: route, runtimeScripts: runtimeScripts, apiRoute: apiRoute };
 };

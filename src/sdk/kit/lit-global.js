@@ -10,3 +10,6 @@ export var svg = L.svg;
 export var unsafeCSS = L.unsafeCSS;
 export var render = L.render;
 export var noChange = L.noChange;
+export var keyed = L.keyed;
+export var repeat = L.repeat;
+export var live = L.live;

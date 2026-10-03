@@ -1,8 +1,8 @@
 // FIXTURE for test/sdk-kit-browser.test.js — a component plugin that uses
 // every SDK feature at once, written the way a real plugin is.
 import {
-    defineComponent, cssFields, NexaElement, html, css, nothing, bind,
-    defineTagProvider, defineInspectorWidget, makeTag
+    defineComponent, cssFields, NexaElement, html, css,
+    defineTagProvider, definePropertyEditor, makeTag
 } from "../../nexa-sdk/nexa-component-sdk.js";
 
 // A second tag provider: tags are generic, Sparkplug is just the first one.
@@ -16,15 +16,29 @@ defineTagProvider("opcua", {
     write: (ref, value) => { opcuaWrites.push([ref.id, value]); return Promise.resolve({ ok: true }); }
 });
 
-// A plugin's own inspector widget, same contract as the built-in ones.
-defineInspectorWidget("acme-stepper", ({ KitElement, html }) => class extends KitElement {
+// A prop's own editor (prop.editor), in the inspector's pane, same contract as the built-in widgets.
+definePropertyEditor("acme-stepper", ({ PropertyEditor, html }) => class extends PropertyEditor {
+    static summary(v) { return "step " + v; }
     render() {
         const v = Number(this.value) || 0;
         return this.frame(html`<div class="acme-stepper">
-            <button type="button" class="nx-btn dec" @click=${() => this.change(v - 1)}>-</button>
+            <button type="button" class="nx-btn dec" @click=${() => this.commit(v - 1)}>-</button>
             <span class="val">${v}</span>
-            <button type="button" class="nx-btn inc" @click=${() => this.change(v + 1)}>+</button>
+            <button type="button" class="nx-btn inc" @click=${() => this.commit(v + 1)}>+</button>
         </div>`);
+    }
+});
+
+// One that needs room: a dialog (the pane shows its summary and Edit…); its plugin's routes as this.api.
+definePropertyEditor("acme-range", ({ PropertyEditor, html }) => class extends PropertyEditor {
+    static kind = "dialog";
+    static plugin = "acme-gauges";
+    static summary(v) { return v ? v.from + " … " + v.to : ""; }
+    render() {
+        const v = this.value || { from: 0, to: 100 };
+        return html`<div class="acme-range">
+            <button type="button" class="nx-btn wide" @click=${() => this.commit({ from: 0, to: 500 })}>0 … 500</button>
+            <span class="now">${v.from} … ${v.to}</span></div>`;
     }
 });
 
@@ -43,12 +57,14 @@ export const gauge = defineComponent({
     },
 
     properties: {
-        max: { type: "number", default: 100, min: 1, group: "Scale", required: true },
-        steps: { type: "number", default: 4, min: 1, max: 10, group: "Scale" },
+        max: { type: "number", default: 100, min: 1, group: "Scale", required: true, warn: (v) => (v > 1000 ? "Very large scale" : "") },
+        steps: { type: "number", default: 4, min: 1, max: 10, group: "Scale", label: "Steps (custom editor)", editor: "acme-stepper" },
+        range: { type: "json", default: null, group: "Scale", label: "Range", editor: "acme-range" },
         barColor: { type: "color", default: "#16a34a", group: "Style" },
         showPens: { type: "boolean", default: true, group: "Style" },
         mode: { type: "enum", default: "bar", group: "Style", options: [{ value: "bar", label: "Bar" }, { value: "needle", label: "Needle" }] },
-        unitsFrom: { type: "enum", default: "none", group: "Scale", options: [] },
+        unitsFrom: { type: "enum", default: "none", group: "Scale", section: "Units",
+            options: () => new Promise((r) => setTimeout(() => r([{ value: "none", label: "None" }, { value: "rpm", label: "rpm" }]), 30)) },
         // its Custom CSS fields (the inspector binds them): the base and the alarm state
         ...cssFields({ base: GAUGE_CSS, states: GAUGE_STATES, group: "Style" })
     },
@@ -71,36 +87,6 @@ export const gauge = defineComponent({
     preview: { inputs: { value: 42 } },
     editor: { interactive: [".knob"] },
     assets: { base: import.meta.url, scripts: ["./vendor-lib.js"], styles: ["./vendor-style.css"] },
-
-    inspector: ({ p, ui }) => html`
-        <nx-tabs persist-key="acme-gauge-test">
-            <nx-tab label="Data">
-                <nx-tag ${bind("inputs.value")}></nx-tag>
-                <nx-list ${bind("inputs.pens")} add-label="Add pen"></nx-list>
-                <nx-tag ${bind("inputs.setpoint")}></nx-tag>
-                <nx-tag ${bind("outputs.setpoint")}></nx-tag>
-            </nx-tab>
-            <nx-tab label="Scale">
-                <nx-row>
-                    <nx-number ${bind("max")}></nx-number>
-                    <acme-stepper ${bind("steps")} label="Steps (custom widget)"></acme-stepper>
-                </nx-row>
-                <nx-select ${bind("unitsFrom")} .options=${ui.async("units", () => new Promise((r) => setTimeout(() => r([{ value: "none", label: "None" }, { value: "rpm", label: "rpm" }]), 30)))}></nx-select>
-                ${p.max > 1000 ? ui.alert("Very large scale", "warn") : nothing}
-                ${ui.action("Pick max…", async () => {
-                    const v = await ui.dialog({ title: "Max", content: "Set max to 500?", buttons: [{ label: "No", value: null }, { label: "Yes", value: 500, primary: true }] });
-                    if (v !== null) window.__dialogResult = v;
-                })}
-            </nx-tab>
-            <nx-tab label="Style">
-                ${ui.stateSwitcher()}
-                <nx-color ${bind("barColor")}></nx-color>
-                <nx-segmented ${bind("mode")}></nx-segmented>
-                <nx-checkbox ${bind("showPens")}></nx-checkbox>
-                <nx-code ${bind("css")}></nx-code>
-                <nx-code ${bind("cssAlarm")}></nx-code>
-            </nx-tab>
-        </nx-tabs>`,
 
     view: class extends NexaElement {
         static styles = css`:host { display: block; width: 100%; height: 100%; } .g { width: 100%; height: 100%; }`;
@@ -135,7 +121,7 @@ export const gauge = defineComponent({
     }
 });
 
-// A component without an inspector: the automatic panel.
+// A plain one: the same inspector, from the schema alone.
 export const plain = defineComponent({
     id: "acme-plain", label: "Plain", category: "Test",
     properties: {
