@@ -13,6 +13,8 @@ import { renderLitComponentInstance, coerceLitBindableValue } from "./lit.js";
 import { mountAndFlatten } from "../features/navigation.js";
 import { runLogicGraph, fireUiEvent } from "../logic/runner.js";
 import { THEME } from "../features/theme.js";
+import { resolveBindingProps, isBindingList, readsMessage, writeTargetOf } from "../../model/binding.js";
+import { runtimeReader } from "../state/binding-reader.js";
 
 export const LOGIC_GEOMETRY_KEYS = { x: 1, y: 1, w: 1, h: 1, rotation: 1, flipH: 1, flipV: 1 };
 export const LOCAL_TARGET_RE = /^\{(\$route\.query\.([A-Za-z_$][\w$]*)|([A-Za-z_][\w$]*)((?:\.[A-Za-z_$][\w$]*)*))\}$/;
@@ -40,6 +42,8 @@ export function interpolateProps(props, paramState, comp) {
         withTemplateBindings = out;
     }
     let resolved = resolveSparkplugProps(withTemplateBindings);
+    // binding priority lists: the first source with a value, static last (src/model/binding.js)
+    resolved = resolveBindingProps(resolved, runtimeReader(comp, paramState));
     if (window.NexaModel && window.NexaModel.resolveTokenProps && propsMention(resolved, "{token:")) {
         const t = (window.__NEXA_THEME__ && window.__NEXA_THEME__.theme) ? window.__NEXA_THEME__ : THEME;
         resolved = window.NexaModel.resolveTokenProps(resolved, t.theme, t.mode);
@@ -82,6 +86,9 @@ export function applyUiUpdateProp(screen, compId, key, value) {
         return;
     }
     comp.props = comp.props || {};
+    // a binding priority list is never overwritten: the message reaches it as its "message"
+    // source (comp.__lastMsg), and its place in the list decides
+    if (isBindingList(comp.props[key])) { refreshComponentRender(screen, comp); return; }
     comp.props[key] = value;
 
     if (comp.type === "@lit-component") {
@@ -144,10 +151,10 @@ export function runUiUpdateNode(screen, node, msg) {
     const comp = findComponent(screen, node.compId);
     const compProps = (comp && comp.props) || {};
     if (comp) comp.__lastMsg = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
-    if (propsMention(compProps, "{msg")) {
+    if (propsMention(compProps, "{msg") || Object.keys(compProps).some(function (k) { return readsMessage(compProps[k]); })) {
         const cfg = {};
         Object.keys(node.config || {}).forEach(function (k) {
-            const bound = typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1;
+            const bound = (typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1) || readsMessage(compProps[k]);
             if (!bound) cfg[k] = node.config[k];
         });
         applyUiUpdateMulti(screen, node.compId, cfg, null, msg && msg.properties);
@@ -201,7 +208,7 @@ export function makeCtx(screen, comp) {
             return comp.props || {};
         },
         writeTag: function (propKey, value) {
-            const raw = (comp.props || {})[propKey];
+            const raw = writeTargetOf((comp.props || {})[propKey]);
             const local = writeLocalTarget(screen, comp, raw, value);
             if (local) return local;
             let resolved = raw;
@@ -216,7 +223,7 @@ export function makeCtx(screen, comp) {
             return Promise.reject(new Error("tag provider \"" + t.provider + "\" can't write on a deployed page"));
         },
         writeSparkplugProp: function (propKey, value) {
-            let raw = (comp.props || {})[propKey];
+            let raw = writeTargetOf((comp.props || {})[propKey]);
             if (typeof raw === "string" && comp.__paramState) raw = resolveBindableValue(raw, comp.__paramState);
             const ref = parseSparkplugBindingPath(raw);
             if (!ref) return Promise.reject(new Error("props." + propKey + " is not a valid {sparkplug:...} binding: " + JSON.stringify(raw)));

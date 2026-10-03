@@ -53,7 +53,9 @@ __export(index_exports, {
   applyOverrides: () => applyOverrides,
   bandOf: () => bandOf,
   baseOf: () => baseOf,
+  bindingCandidates: () => bindingCandidates,
   bindingList: () => bindingList,
+  bindingListsIn: () => bindingListsIn,
   borderOf: () => borderOf,
   boxCss: () => boxCss,
   breakpointsOf: () => breakpointsOf,
@@ -68,6 +70,7 @@ __export(index_exports, {
   cloneWithNewIds: () => cloneWithNewIds,
   constraintCss: () => constraintCss,
   constraintsOf: () => constraintsOf,
+  containsBindingList: () => containsBindingList,
   contentOrigin: () => contentOrigin,
   currentTheme: () => currentTheme,
   defaultFlow: () => defaultFlow,
@@ -118,6 +121,7 @@ __export(index_exports, {
   makeFrame: () => makeFrame,
   makeScope: () => makeScope,
   marginOf: () => marginOf,
+  markScopeLayer: () => markScopeLayer,
   matchScreenPath: () => matchScreenPath,
   memberAt: () => memberAt,
   memberPaths: () => memberPaths,
@@ -147,12 +151,14 @@ __export(index_exports, {
   registerSourceKind: () => registerSourceKind,
   remove: () => remove,
   resizeWithConstraints: () => resizeWithConstraints,
+  resolveBindingProps: () => resolveBindingProps,
   resolveNode: () => resolveNode,
   resolveScreenRoute: () => resolveScreenRoute,
   resolveToken: () => resolveToken,
   resolveTokenProps: () => resolveTokenProps,
   resolveTokenValue: () => resolveTokenValue,
   resolveValue: () => resolveValue,
+  scopeReader: () => scopeReader,
   setTheme: () => setTheme,
   setTypes: () => setTypes,
   slotOf: () => slotOf,
@@ -182,6 +188,7 @@ __export(index_exports, {
   walk: () => walk,
   wrapIn: () => wrapIn,
   wrapInGroup: () => wrapInGroup,
+  writeTargetOf: () => writeTargetOf,
   zOf: () => zOf,
   zoomOf: () => zoomOf
 });
@@ -1689,7 +1696,7 @@ function clone4(v) {
   return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
 }
 function isPlain(v) {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
+  return v !== null && typeof v === "object" && !Array.isArray(v) && !Array.isArray(v.$bind);
 }
 function merge(into, patch) {
   var out = isPlain(into) ? clone4(into) : {};
@@ -1991,7 +1998,8 @@ function resolveScreenRoute(project, subPath, opts) {
 }
 
 // src/model/binding.js
-var KINDS = {};
+var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
 function registerSourceKind(name, def) {
   KINDS[name] = Object.assign({ name, label: name }, def || {});
   return KINDS[name];
@@ -2083,7 +2091,45 @@ function tagRefsOf(value) {
   });
   return out;
 }
+function bindingListsIn(v, out) {
+  out = out || [];
+  if (isBindingList(v)) out.push(v);
+  else if (Array.isArray(v)) v.forEach(function(x) {
+    bindingListsIn(x, out);
+  });
+  else if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) Object.keys(v).forEach(function(k) {
+    bindingListsIn(v[k], out);
+  });
+  return out;
+}
+function bindingCandidates(v) {
+  var out = [];
+  bindingListsIn(v).forEach(function(list) {
+    tagRefsOf(list).forEach(function(t) {
+      if (t.provider === "sparkplug") out.push("{sparkplug:" + t.address + "}");
+    });
+    list.$bind.forEach(function(s) {
+      var refs = s.src === "expr" ? referencesOf(s.ref) : [s];
+      refs.forEach(function(r) {
+        var k = KINDS[r.src];
+        if (k && k.variable) out.push("{" + firstSegment(r.ref) + "}");
+      });
+    });
+  });
+  return out;
+}
+function writeTargetOf(value) {
+  if (!isBindingList(value)) return typeof value === "string" ? value : null;
+  for (var i = 0; i < value.$bind.length; i++) {
+    var s = value.$bind[i], k = KINDS[s.src];
+    if (!k || !s.ref) continue;
+    if (k.tag) return "{" + (k.provider || s.src) + ":" + s.ref + "}";
+    if (k.variable && k.variable !== "param") return "{" + s.ref + "}";
+  }
+  return null;
+}
 function readsMessage(value) {
+  if (!isBindingList(value) && !isLegacyBinding(value)) return bindingListsIn(value).some(readsMessage);
   return toBindingList(value).sources.some(function(s) {
     return s.src === "msg" || s.src === "expr" && referencesOf(s.ref).some(function(r) {
       return r.src === "msg";
@@ -2395,6 +2441,83 @@ function evaluateExpression(textOrAst, read) {
     return null;
   }
 }
+function markScopeLayer(scope, layer) {
+  if (scope && typeof scope === "object") Object.defineProperty(scope, "__nexaLayer", { value: layer, enumerable: false, configurable: true });
+  return scope;
+}
+function layerOf(scope, layer) {
+  for (var s = scope; s; s = Object.getPrototypeOf(s)) if (Object.prototype.hasOwnProperty.call(s, "__nexaLayer") && s.__nexaLayer === layer) return s;
+  return null;
+}
+function readPath(root, path) {
+  var segs = String(path || "").match(/[^.[\]]+/g) || [];
+  var cur = root;
+  for (var i = 0; i < segs.length; i++) {
+    if (cur === null || cur === void 0) return void 0;
+    cur = cur[segs[i]];
+  }
+  return cur;
+}
+function firstSegment(path) {
+  return (String(path || "").match(/[^.[\]]+/) || [""])[0];
+}
+function scopeReader(o) {
+  var app = layerOf(o.scope, "app"), shared = layerOf(o.scope, "shared");
+  function nearest(ref, belowApp) {
+    var name = firstSegment(ref);
+    for (var s = o.scope; s; s = Object.getPrototypeOf(s)) {
+      if (belowApp && (s === app || s === shared)) return void 0;
+      if (Object.prototype.hasOwnProperty.call(s, name)) return readPath(s, ref);
+    }
+    return void 0;
+  }
+  function own(layer, ref) {
+    return layer && Object.prototype.hasOwnProperty.call(layer, firstSegment(ref)) ? readPath(layer, ref) : void 0;
+  }
+  return function read(src, ref) {
+    var v;
+    if (src === "screen" || src === "param") v = nearest(ref, true);
+    else if (src === "app") v = own(app, ref);
+    else if (src === "shared") v = own(shared, ref);
+    else if (src === "var") v = nearest(ref, false);
+    else if (src === "msg") v = o.msg ? ref ? readPath(o.msg, String(ref).replace(/^msg\.?/, "")) : o.msg : void 0;
+    else {
+      var k = KINDS[src];
+      if (!k || !k.tag || !o.tag) return void 0;
+      return o.tag(k.provider || src, o.address ? o.address(ref) : ref);
+    }
+    return v && typeof v === "object" && typeof v.__nexaBinding === "string" && o.deref ? o.deref(v.__nexaBinding) : v;
+  };
+}
+function containsBindingList(v) {
+  if (isBindingList(v)) return true;
+  if (Array.isArray(v)) return v.some(containsBindingList);
+  if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+    for (var k in v) if (containsBindingList(v[k])) return true;
+  }
+  return false;
+}
+function resolveDeep(v, read) {
+  if (isBindingList(v)) return resolveValue(v, read).value;
+  if (!containsBindingList(v)) return v;
+  if (Array.isArray(v)) return v.map(function(x) {
+    return resolveDeep(x, read);
+  });
+  var o = {};
+  Object.keys(v).forEach(function(k) {
+    o[k] = resolveDeep(v[k], read);
+  });
+  return o;
+}
+function resolveBindingProps(props, read) {
+  var out = null;
+  Object.keys(props || {}).forEach(function(k) {
+    if (!containsBindingList(props[k])) return;
+    if (!out) out = Object.assign({}, props);
+    out[k] = resolveDeep(props[k], read);
+  });
+  return out || props;
+}
 
 // src/model/migrate-logic.js
 var LOGIC_NODE_OWN_KEYS = ["id", "type", "x", "y", "w", "h", "props"];
@@ -2568,7 +2691,9 @@ function migrateProject(project) {
   applyOverrides,
   bandOf,
   baseOf,
+  bindingCandidates,
   bindingList,
+  bindingListsIn,
   borderOf,
   boxCss,
   breakpointsOf,
@@ -2583,6 +2708,7 @@ function migrateProject(project) {
   cloneWithNewIds,
   constraintCss,
   constraintsOf,
+  containsBindingList,
   contentOrigin,
   currentTheme,
   defaultFlow,
@@ -2633,6 +2759,7 @@ function migrateProject(project) {
   makeFrame,
   makeScope,
   marginOf,
+  markScopeLayer,
   matchScreenPath,
   memberAt,
   memberPaths,
@@ -2662,12 +2789,14 @@ function migrateProject(project) {
   registerSourceKind,
   remove,
   resizeWithConstraints,
+  resolveBindingProps,
   resolveNode,
   resolveScreenRoute,
   resolveToken,
   resolveTokenProps,
   resolveTokenValue,
   resolveValue,
+  scopeReader,
   setTheme,
   setTypes,
   slotOf,
@@ -2697,6 +2826,7 @@ function migrateProject(project) {
   walk,
   wrapIn,
   wrapInGroup,
+  writeTargetOf,
   zOf,
   zoomOf
 });

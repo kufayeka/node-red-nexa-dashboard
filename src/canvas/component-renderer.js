@@ -4,7 +4,8 @@ import { updateComponentBox } from "./selection-handles.js";
 import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
 import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } from "./drag-feedback.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
-import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString } from "./sparkplug-live.js";
+import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString, parseSparkplugBindingPath, getSparkplugEntry } from "./sparkplug-live.js";
+import { resolveBindingProps, bindingCandidates, scopeReader } from "../model/binding.js";
 import { applyFallbacks } from "../model/breakpoints.js";
 import * as Theme from "../model/theme.js";
 
@@ -109,8 +110,13 @@ function buildSparkplugBindingIndex(screen) {
             var v = props[k];
             if (typeof v === "string") list.push(v);
             else if (Array.isArray(v)) v.forEach(function (x) { if (typeof x === "string") list.push(x); }); // `multiple` inputs
+            // binding priority lists (a prop or a list item's field): their tags and variables
+            if (v && typeof v === "object") bindingCandidates(v).forEach(function (c) { list.push(c); });
         });
+        var scope = nodeScopes.has(comp) ? nodeScopes.get(comp) : null;
         list.forEach(function (v) {
+            // a variable may hold a tag (a type member): the tag it holds
+            if (scope && /^\{[^{}:]+\}$/.test(v)) { var r = resolveBindableValue(v, scope); if (typeof r === "string") v = r; }
             // the whole value, or every tag inside a text
             refKeysInString(v).forEach(function (key) {
                 if (!index[key]) index[key] = [];
@@ -312,9 +318,39 @@ export function interpolateProps(props, paramState) {
     // theme tokens ({token:…}): their value in the canvas's preview mode; then a bound prop
     // with no value (yet): its fallback (props.__fallback), as on the live page
     var resolved = resolveSparkplugProps(withTemplateBindings);
+    // binding priority lists: the first source with a value, static last (src/model/binding.js);
+    // the canvas has no message, so a "message" source falls through
+    resolved = resolveBindingProps(resolved, editorReader(paramState));
     var th = Theme.currentTheme();
     resolved = Theme.resolveTokenProps(resolved, th.theme, th.mode);
     return applyFallbacks(props, resolved);
+}
+
+// The canvas's reader for binding lists: the node's scope chain (declared values), the live
+// Sparkplug cache (typed), no message.
+function editorTagValue(address) {
+    var ref = parseSparkplugBindingPath("{sparkplug:" + address + "}");
+    var entry = ref && getSparkplugEntry(ref);
+    if (!entry || !entry.online || entry.isNull || entry.value === undefined || entry.value === null) return "???";
+    return entry.value;
+}
+
+export function editorReader(paramState) {
+    var inner = null;   // built on the first read: most nodes have no binding list
+    return function (src, ref) { return (inner || (inner = editorScopeReader(paramState || appScope())))(src, ref); };
+}
+
+function editorScopeReader(s) {
+    return scopeReader({
+        scope: s,
+        msg: null,
+        address: function (text) { return String(text).indexOf("{") !== -1 ? resolveBindableValue(String(text), s) : text; },
+        tag: function (provider, address) { return provider === "sparkplug" ? editorTagValue(address) : undefined; },
+        deref: function (text) {
+            var v = resolveBindableValue(text, s);
+            return typeof v === "string" ? resolveSparkplugProps({ v: v }).v : v;
+        }
+    });
 }
 
 // A "@template" instance's per-instance param state (Subflow env-vars

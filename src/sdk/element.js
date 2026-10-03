@@ -25,6 +25,7 @@ import { parseTag, getTagProvider, isWriteTarget } from "./tags.js";
 import F from "./format.js";
 import { theme as themeApi } from "./theme.js";
 import { resolveTokenProps } from "../model/theme.js";
+import { isBindingList, writeTargetOf } from "../model/binding.js";
 
 export function isUnknown(v) {
     return v === undefined || v === null || v === "???";
@@ -33,8 +34,9 @@ export function isUnknown(v) {
 // A prop bound to something: a tag, a variable / template param ({param1.description}),
 // the message ({msg.payload.x}) or an expression ("Line {line}: {speed} rpm").
 var ANY_BINDING_RE = /\{[^{}]+\}/;
+// A binding priority list ({ $bind, static }) is bound too.
 export function isBound(raw) {
-    return typeof raw === "string" && ANY_BINDING_RE.test(raw);
+    return isBindingList(raw) || (typeof raw === "string" && ANY_BINDING_RE.test(raw));
 }
 
 function coerce(value, type) {
@@ -193,8 +195,8 @@ export class NexaElement extends LitElement {
              */
             target: function (name) {
                 var o = self._outputDecl(name);
-                if (isWriteTarget(self.raw[o.key])) return o.key;
-                if (o.fallbackKey && isWriteTarget(self.raw[o.fallbackKey])) return o.fallbackKey;
+                if (isWriteTarget(writeTargetOf(self.raw[o.key]))) return o.key;
+                if (o.fallbackKey && isWriteTarget(writeTargetOf(self.raw[o.fallbackKey]))) return o.fallbackKey;
                 return null;
             },
             canWrite: function (name) {
@@ -206,7 +208,7 @@ export class NexaElement extends LitElement {
                 var key = this.target(name), c = self._ctx;
                 if (!key || !c) return Promise.resolve({ local: true });
                 if (typeof c.writeTag === "function") return Promise.resolve(c.writeTag(key, value));
-                var t = parseTag(self.raw[key]);
+                var t = parseTag(writeTargetOf(self.raw[key]));
                 if (t && t.provider === "sparkplug" && typeof c.writeSparkplugProp === "function") return Promise.resolve(c.writeSparkplugProp(key, value));
                 return Promise.resolve({ local: true });
             }
@@ -218,7 +220,8 @@ export class NexaElement extends LitElement {
         var decl = (this.meta.inputs.filter(function (i) { return i.name === name; })[0]) || (this.meta.outputs.filter(function (o) { return o.name === name; })[0]);
         if (!decl) throw new Error("[nexa] " + this.meta.id + ": no input / output \"" + name + "\"");
         var raw = this.raw[decl.key];
-        var t = parseTag(Array.isArray(raw) ? raw[0] : raw);
+        // a binding list: its first tag / variable source is the one shown
+        var t = parseTag(isBindingList(raw) ? writeTargetOf(raw) : Array.isArray(raw) ? raw[0] : raw);
         var bound = !!t || isBound(Array.isArray(raw) ? raw[0] : raw) || (this.isEditor && typeof raw === "string" && raw !== "");
         var isInput = this.meta.inputs.indexOf(decl) !== -1;
         return {
@@ -362,7 +365,8 @@ export class NexaElement extends LitElement {
                 var raw = self.raw[io.key];
                 var bound = isBound(raw);
                 // not resolved (a variable not declared here, no message yet): unknown, not its text
-                var unresolved = bound && v === raw && !parseTag(raw);
+                // (a binding list always resolves: to its static value when no source has one)
+                var unresolved = bound && !isBindingList(raw) && v === raw && !parseTag(raw);
                 value = bound && !unresolved ? coerce(v, io.type) : null;
                 if (preview && value === null && preview[io.name] !== undefined) value = preview[io.name];
             }

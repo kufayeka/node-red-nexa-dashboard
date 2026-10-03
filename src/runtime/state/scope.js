@@ -5,6 +5,7 @@ import { resolveBindableValue } from "./variable.js";
 import { refreshComponentRender, updateInstanceParam } from "../mounting/render.js";
 import { registerSparkplugBoundComponentsFrom } from "../io/sparkplug.js";
 import { isStructural } from "../mounting/slots.js";
+import { markScopeLayer } from "../../model/binding.js";
 
 export function storeFor(kind) {
     try {
@@ -43,6 +44,7 @@ export function makeSharedScope(app) {
         root.$route = makeRoute();
         state.currentSharedScope = makeScope(root, (app && app.sharedVariables) || []);
         state.currentSharedScope.__isSharedScope = true;
+        markScopeLayer(state.currentSharedScope, "shared");
     } else if (app && Array.isArray(app.sharedVariables)) {
         app.sharedVariables.forEach(function (v) {
             if (v && v.name && !(v.name in state.currentSharedScope)) {
@@ -55,7 +57,7 @@ export function makeSharedScope(app) {
 
 export function makeAppScope(app) {
     const shared = state.currentSharedScope || makeSharedScope(app);
-    const scope = makeScope(shared, app.variables);
+    const scope = markScopeLayer(makeScope(shared, app.variables), "app");
     scope.__persist = {};
     (app.variables || []).forEach(function (v) {
         if (!v || !v.name || !storeFor(v.persist)) return;

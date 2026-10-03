@@ -1580,8 +1580,8 @@
   function isTypeRef(dataType) {
     return typeof dataType === "string" && dataType.indexOf("type:") === 0;
   }
-  function BindingRef(text, access) {
-    this.__nexaBinding = text;
+  function BindingRef(text2, access) {
+    this.__nexaBinding = text2;
     this.access = access || "read";
   }
   BindingRef.prototype.toString = function() {
@@ -1596,8 +1596,8 @@
   function clone2(v) {
     return v !== null && typeof v === "object" ? JSON.parse(JSON.stringify(v)) : v;
   }
-  function fillParams(text, params2) {
-    return String(text).replace(/\{([A-Za-z_$][\w$]*)\}/g, function(whole, name2) {
+  function fillParams(text2, params2) {
+    return String(text2).replace(/\{([A-Za-z_$][\w$]*)\}/g, function(whole, name2) {
       return Object.prototype.hasOwnProperty.call(params2, name2) && params2[name2] !== void 0 && params2[name2] !== null ? String(params2[name2]) : whole;
     });
   }
@@ -1733,6 +1733,494 @@
     return out;
   }
 
+  // src/model/binding.js
+  var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
+  function registerSourceKind(name2, def) {
+    KINDS[name2] = Object.assign({ name: name2, label: name2 }, def || {});
+    return KINDS[name2];
+  }
+  registerSourceKind("screen", { label: "Screen variable", variable: "screen" });
+  registerSourceKind("app", { label: "App variable", variable: "app" });
+  registerSourceKind("shared", { label: "Shared variable", variable: "shared" });
+  registerSourceKind("param", { label: "Template parameter", variable: "param" });
+  registerSourceKind("msg", { label: "Message", message: true });
+  registerSourceKind("sparkplug", { label: "Sparkplug tag", tag: true, provider: "sparkplug" });
+  registerSourceKind("expr", { label: "Expression", expression: true });
+  registerSourceKind("var", { label: "Variable (nearest)", variable: "any", legacy: true });
+  function isBindingList(v) {
+    return !!v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.$bind);
+  }
+  var LEGACY_RE = /\{[^{}]+\}/;
+  function isLegacyBinding(v) {
+    return typeof v === "string" && LEGACY_RE.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
+  }
+  function hasNoValue(v) {
+    return v === void 0 || v === null || v === "???" || typeof v === "number" && !isFinite(v);
+  }
+  var WHOLE_RE = /^\{([^{}]+)\}$/;
+  function legacySource(text2) {
+    var m = WHOLE_RE.exec(String(text2).trim());
+    if (m) {
+      var inner = m[1];
+      var tag = /^([A-Za-z][\w-]*):([\s\S]+)$/.exec(inner);
+      if (tag) return { src: KINDS[tag[1]] && KINDS[tag[1]].tag ? tag[1] : "sparkplug", ref: tag[2], provider: tag[1] };
+      if (/^msg(\.|\[|$)/.test(inner)) return { src: "msg", ref: inner.replace(/^msg\.?/, "") };
+      return { src: "var", ref: inner };
+    }
+    return { src: "expr", ref: templateToExpression(text2) };
+  }
+  function templateToExpression(text2) {
+    var out = [], re = /\{([^{}]+)\}/g, last2 = 0, m;
+    text2 = String(text2);
+    while (m = re.exec(text2)) {
+      if (m.index > last2) out.push(JSON.stringify(text2.slice(last2, m.index)));
+      var s = legacySource(m[0]);
+      out.push(s.src === "var" ? "{" + s.ref + "}" : s.src === "msg" ? "[msg]{" + s.ref + "}" : "[" + (s.provider || s.src) + "]{" + s.ref + "}");
+      last2 = re.lastIndex;
+    }
+    if (last2 < text2.length) out.push(JSON.stringify(text2.slice(last2)));
+    return out.join(" ");
+  }
+  function toBindingList(value, fallback) {
+    if (isBindingList(value)) return { sources: value.$bind.slice(), static: value.static, legacy: false };
+    if (isLegacyBinding(value)) {
+      var s = legacySource(value);
+      return { sources: [{ src: s.src, ref: s.ref }], static: fallback, legacy: true };
+    }
+    return { sources: [], static: value, legacy: false };
+  }
+  function resolveValue(value, read, fallback) {
+    var b = toBindingList(value, fallback);
+    for (var i2 = 0; i2 < b.sources.length; i2++) {
+      var s = b.sources[i2];
+      var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
+      if (!hasNoValue(v)) return { value: v, from: i2 };
+    }
+    return { value: b.static, from: -1 };
+  }
+  function tagRefsOf(value) {
+    var out = [];
+    toBindingList(value).sources.forEach(function(s) {
+      var k = KINDS[s.src];
+      if (k && k.tag) out.push({ provider: k.provider || s.src, address: s.ref });
+      else if (s.src === "expr") referencesOf(s.ref).forEach(function(r) {
+        var rk = KINDS[r.src];
+        if (rk && rk.tag) out.push({ provider: rk.provider || r.src, address: r.ref });
+      });
+    });
+    return out;
+  }
+  function bindingListsIn(v, out) {
+    out = out || [];
+    if (isBindingList(v)) out.push(v);
+    else if (Array.isArray(v)) v.forEach(function(x) {
+      bindingListsIn(x, out);
+    });
+    else if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) Object.keys(v).forEach(function(k) {
+      bindingListsIn(v[k], out);
+    });
+    return out;
+  }
+  function bindingCandidates(v) {
+    var out = [];
+    bindingListsIn(v).forEach(function(list) {
+      tagRefsOf(list).forEach(function(t2) {
+        if (t2.provider === "sparkplug") out.push("{sparkplug:" + t2.address + "}");
+      });
+      list.$bind.forEach(function(s) {
+        var refs = s.src === "expr" ? referencesOf(s.ref) : [s];
+        refs.forEach(function(r) {
+          var k = KINDS[r.src];
+          if (k && k.variable) out.push("{" + firstSegment(r.ref) + "}");
+        });
+      });
+    });
+    return out;
+  }
+  function tokenize(text2) {
+    var t2 = [], i2 = 0, s = String(text2);
+    while (i2 < s.length) {
+      var c = s[i2];
+      if (/\s/.test(c)) {
+        i2++;
+        continue;
+      }
+      if (c === "[" || c === "{") {
+        var kind = "var";
+        if (c === "[") {
+          var close = s.indexOf("]", i2);
+          if (close === -1) throw new Error("a [kind] is not closed");
+          kind = s.slice(i2 + 1, close).trim();
+          i2 = close + 1;
+          while (/\s/.test(s[i2] || "")) i2++;
+          if (s[i2] !== "{") throw new Error("[" + kind + "] needs {ref} after it");
+        }
+        var end = s.indexOf("}", i2);
+        if (end === -1) throw new Error("a {ref} is not closed");
+        t2.push({ t: "ref", src: kind === "var" ? "var" : kind, ref: s.slice(i2 + 1, end).trim() });
+        i2 = end + 1;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        var j = i2 + 1, str = "";
+        while (j < s.length && s[j] !== c) {
+          if (s[j] === "\\" && j + 1 < s.length) {
+            j++;
+          }
+          str += s[j];
+          j++;
+        }
+        if (j >= s.length) throw new Error("a text is not closed");
+        t2.push({ t: "str", v: str });
+        i2 = j + 1;
+        continue;
+      }
+      var num3 = /^(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)/.exec(s.slice(i2));
+      if (num3) {
+        t2.push({ t: "num", v: Number(num3[1]) });
+        i2 += num3[1].length;
+        continue;
+      }
+      var op = /^(==|!=|<=|>=|&&|\|\||[-+*/%()<>!?:,])/.exec(s.slice(i2));
+      if (op) {
+        t2.push({ t: "op", v: op[1] });
+        i2 += op[1].length;
+        continue;
+      }
+      var id2 = /^[A-Za-z_][\w]*/.exec(s.slice(i2));
+      if (id2) {
+        t2.push({ t: "id", v: id2[0] });
+        i2 += id2[0].length;
+        continue;
+      }
+      throw new Error('unexpected "' + c + '"');
+    }
+    return t2;
+  }
+  var FUNCS = {
+    round: function(x, d) {
+      var p = Math.pow(10, d || 0);
+      return Math.round(x * p) / p;
+    },
+    floor: Math.floor,
+    ceil: Math.ceil,
+    abs: Math.abs,
+    min: Math.min,
+    max: Math.max,
+    sqrt: Math.sqrt,
+    fixed: function(x, d) {
+      return Number(x).toFixed(d === void 0 ? 0 : d);
+    },
+    upper: function(s) {
+      return String(s).toUpperCase();
+    },
+    lower: function(s) {
+      return String(s).toLowerCase();
+    }
+  };
+  function parse(tokens) {
+    var i2 = 0;
+    function peek() {
+      return tokens[i2];
+    }
+    function isOp(v) {
+      var x = tokens[i2];
+      return x && x.t === "op" && x.v === v;
+    }
+    function next() {
+      return tokens[i2++];
+    }
+    function expect(v) {
+      if (!isOp(v)) throw new Error('expected "' + v + '"');
+      i2++;
+    }
+    function startsValue() {
+      var x = peek();
+      return !!x && (x.t === "num" || x.t === "str" || x.t === "ref" || x.t === "id" || x.t === "op" && (x.v === "(" || x.v === "!"));
+    }
+    function primary() {
+      var x = next();
+      if (!x) throw new Error("the expression ends too early");
+      if (x.t === "num") return { k: "lit", v: x.v };
+      if (x.t === "str") return { k: "lit", v: x.v };
+      if (x.t === "ref") return { k: "ref", src: x.src, ref: x.ref };
+      if (x.t === "id") {
+        if (x.v === "true" || x.v === "false") return { k: "lit", v: x.v === "true" };
+        if (x.v === "null") return { k: "lit", v: null };
+        if (!FUNCS[x.v]) throw new Error('unknown function "' + x.v + '"');
+        expect("(");
+        var args = [];
+        if (!isOp(")")) {
+          args.push(ternary());
+          while (isOp(",")) {
+            i2++;
+            args.push(ternary());
+          }
+        }
+        expect(")");
+        return { k: "call", f: x.v, args };
+      }
+      if (x.t === "op" && x.v === "(") {
+        var e = ternary();
+        expect(")");
+        return e;
+      }
+      throw new Error('unexpected "' + x.v + '"');
+    }
+    function unary() {
+      if (isOp("-")) {
+        i2++;
+        return { k: "neg", a: unary() };
+      }
+      if (isOp("!")) {
+        i2++;
+        return { k: "not", a: unary() };
+      }
+      return primary();
+    }
+    function mul() {
+      var a = unary();
+      while (isOp("*") || isOp("/") || isOp("%")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: unary() };
+      }
+      return a;
+    }
+    function add() {
+      var a = mul();
+      while (isOp("+") || isOp("-")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: mul() };
+      }
+      return a;
+    }
+    function join() {
+      var a = add();
+      while (startsValue() && !isOp("!")) a = { k: "join", a, b: add() };
+      return a;
+    }
+    function cmp() {
+      var a = join();
+      while (isOp("==") || isOp("!=") || isOp("<") || isOp("<=") || isOp(">") || isOp(">=")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: join() };
+      }
+      return a;
+    }
+    function and() {
+      var a = cmp();
+      while (isOp("&&")) {
+        i2++;
+        a = { k: "and", a, b: cmp() };
+      }
+      return a;
+    }
+    function or() {
+      var a = and();
+      while (isOp("||")) {
+        i2++;
+        a = { k: "or", a, b: and() };
+      }
+      return a;
+    }
+    function ternary() {
+      var c = or();
+      if (isOp("?")) {
+        i2++;
+        var a = ternary();
+        expect(":");
+        return { k: "if", c, a, b: ternary() };
+      }
+      return c;
+    }
+    var ast = ternary();
+    if (i2 < tokens.length) throw new Error('unexpected "' + (tokens[i2].v || tokens[i2].ref) + '"');
+    return ast;
+  }
+  var CACHE = {};
+  function parseExpression(text2) {
+    var key = String(text2);
+    if (CACHE[key]) return CACHE[key];
+    var r;
+    try {
+      r = { ast: parse(tokenize(key)) };
+    } catch (e) {
+      r = { error: e.message };
+    }
+    CACHE[key] = r;
+    return r;
+  }
+  function referencesOf(text2) {
+    var p = parseExpression(text2), out = [];
+    (function walk2(n) {
+      if (!n) return;
+      if (n.k === "ref") out.push({ src: n.src, ref: n.ref });
+      ["a", "b", "c"].forEach(function(k) {
+        if (n[k]) walk2(n[k]);
+      });
+      if (n.args) n.args.forEach(walk2);
+    })(p.ast);
+    return out;
+  }
+  var NONE = {};
+  function num2(v) {
+    if (typeof v === "number") return v;
+    if (typeof v === "boolean") return v ? 1 : 0;
+    if (typeof v === "string" && v.trim() !== "" && isFinite(Number(v))) return Number(v);
+    return NaN;
+  }
+  function text(v) {
+    return v === null || v === void 0 ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  function evalNode(n, read) {
+    switch (n.k) {
+      case "lit":
+        return n.v;
+      case "ref": {
+        var v = read(n.src, n.ref);
+        if (hasNoValue(v)) throw NONE;
+        return v;
+      }
+      case "neg":
+        return -num2(evalNode(n.a, read));
+      case "not":
+        return !evalNode(n.a, read);
+      case "join":
+        return text(evalNode(n.a, read)) + text(evalNode(n.b, read));
+      case "and":
+        return evalNode(n.a, read) && evalNode(n.b, read);
+      case "or":
+        return evalNode(n.a, read) || evalNode(n.b, read);
+      case "if":
+        return evalNode(n.c, read) ? evalNode(n.a, read) : evalNode(n.b, read);
+      case "call":
+        return FUNCS[n.f].apply(null, n.args.map(function(x2) {
+          return evalNode(x2, read);
+        }));
+      case "bin": {
+        var a = evalNode(n.a, read), b = evalNode(n.b, read);
+        switch (n.o) {
+          case "+": {
+            var x = num2(a), y = num2(b);
+            return isNaN(x) || isNaN(y) ? text(a) + text(b) : x + y;
+          }
+          case "-":
+            return num2(a) - num2(b);
+          case "*":
+            return num2(a) * num2(b);
+          case "/":
+            return num2(a) / num2(b);
+          case "%":
+            return num2(a) % num2(b);
+          case "==":
+            return a == b;
+          // eslint-disable-line eqeqeq
+          case "!=":
+            return a != b;
+          // eslint-disable-line eqeqeq
+          case "<":
+            return num2(a) < num2(b);
+          case "<=":
+            return num2(a) <= num2(b);
+          case ">":
+            return num2(a) > num2(b);
+          case ">=":
+            return num2(a) >= num2(b);
+        }
+      }
+    }
+    return null;
+  }
+  function evaluateExpression(textOrAst, read) {
+    var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
+    if (!p.ast) return null;
+    try {
+      var v = evalNode(p.ast, read);
+      return typeof v === "number" && !isFinite(v) ? null : v;
+    } catch (e) {
+      if (e === NONE) return null;
+      return null;
+    }
+  }
+  function markScopeLayer(scope, layer) {
+    if (scope && typeof scope === "object") Object.defineProperty(scope, "__nexaLayer", { value: layer, enumerable: false, configurable: true });
+    return scope;
+  }
+  function layerOf(scope, layer) {
+    for (var s = scope; s; s = Object.getPrototypeOf(s)) if (Object.prototype.hasOwnProperty.call(s, "__nexaLayer") && s.__nexaLayer === layer) return s;
+    return null;
+  }
+  function readPath(root, path) {
+    var segs = String(path || "").match(/[^.[\]]+/g) || [];
+    var cur2 = root;
+    for (var i2 = 0; i2 < segs.length; i2++) {
+      if (cur2 === null || cur2 === void 0) return void 0;
+      cur2 = cur2[segs[i2]];
+    }
+    return cur2;
+  }
+  function firstSegment(path) {
+    return (String(path || "").match(/[^.[\]]+/) || [""])[0];
+  }
+  function scopeReader(o) {
+    var app2 = layerOf(o.scope, "app"), shared = layerOf(o.scope, "shared");
+    function nearest(ref, belowApp) {
+      var name2 = firstSegment(ref);
+      for (var s = o.scope; s; s = Object.getPrototypeOf(s)) {
+        if (belowApp && (s === app2 || s === shared)) return void 0;
+        if (Object.prototype.hasOwnProperty.call(s, name2)) return readPath(s, ref);
+      }
+      return void 0;
+    }
+    function own(layer, ref) {
+      return layer && Object.prototype.hasOwnProperty.call(layer, firstSegment(ref)) ? readPath(layer, ref) : void 0;
+    }
+    return function read(src, ref) {
+      var v;
+      if (src === "screen" || src === "param") v = nearest(ref, true);
+      else if (src === "app") v = own(app2, ref);
+      else if (src === "shared") v = own(shared, ref);
+      else if (src === "var") v = nearest(ref, false);
+      else if (src === "msg") v = o.msg ? ref ? readPath(o.msg, String(ref).replace(/^msg\.?/, "")) : o.msg : void 0;
+      else {
+        var k = KINDS[src];
+        if (!k || !k.tag || !o.tag) return void 0;
+        return o.tag(k.provider || src, o.address ? o.address(ref) : ref);
+      }
+      return v && typeof v === "object" && typeof v.__nexaBinding === "string" && o.deref ? o.deref(v.__nexaBinding) : v;
+    };
+  }
+  function containsBindingList(v) {
+    if (isBindingList(v)) return true;
+    if (Array.isArray(v)) return v.some(containsBindingList);
+    if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+      for (var k in v) if (containsBindingList(v[k])) return true;
+    }
+    return false;
+  }
+  function resolveDeep(v, read) {
+    if (isBindingList(v)) return resolveValue(v, read).value;
+    if (!containsBindingList(v)) return v;
+    if (Array.isArray(v)) return v.map(function(x) {
+      return resolveDeep(x, read);
+    });
+    var o = {};
+    Object.keys(v).forEach(function(k) {
+      o[k] = resolveDeep(v[k], read);
+    });
+    return o;
+  }
+  function resolveBindingProps(props, read) {
+    var out = null;
+    Object.keys(props || {}).forEach(function(k) {
+      if (!containsBindingList(props[k])) return;
+      if (!out) out = Object.assign({}, props);
+      out[k] = resolveDeep(props[k], read);
+    });
+    return out || props;
+  }
+
   // src/model/breakpoints.js
   var DEFAULT_BREAKPOINTS = [
     { id: "xs", name: "xs", min: 0, preview: 390, device: "Phone" },
@@ -1789,7 +2277,7 @@
     return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
   function isPlain(v) {
-    return v !== null && typeof v === "object" && !Array.isArray(v);
+    return v !== null && typeof v === "object" && !Array.isArray(v) && !Array.isArray(v.$bind);
   }
   function merge(into, patch) {
     var out = isPlain(into) ? clone4(into) : {};
@@ -2687,8 +3175,8 @@
   }
   function appScope() {
     var app2 = getApp();
-    var shared = makeScope(null, app2.sharedVariables || []);
-    return makeScope(shared, app2.variables);
+    var shared = markScopeLayer(makeScope(null, app2.sharedVariables || []), "shared");
+    return markScopeLayer(makeScope(shared, app2.variables), "app");
   }
   function markDirty() {
     if (state.projectConfigNode) {
@@ -3786,8 +4274,16 @@
         else if (Array.isArray(v)) v.forEach(function(x) {
           if (typeof x === "string") list.push(x);
         });
+        if (v && typeof v === "object") bindingCandidates(v).forEach(function(c) {
+          list.push(c);
+        });
       });
+      var scope = nodeScopes.has(comp) ? nodeScopes.get(comp) : null;
       list.forEach(function(v) {
+        if (scope && /^\{[^{}:]+\}$/.test(v)) {
+          var r = resolveBindableValue(v, scope);
+          if (typeof r === "string") v = r;
+        }
         refKeysInString(v).forEach(function(key) {
           if (!index[key]) index[key] = [];
           if (index[key].indexOf(comp) === -1) index[key].push(comp);
@@ -3936,9 +4432,38 @@
       withTemplateBindings = out;
     }
     var resolved = resolveSparkplugProps(withTemplateBindings);
+    resolved = resolveBindingProps(resolved, editorReader(paramState));
     var th = currentTheme();
     resolved = resolveTokenProps(resolved, th.theme, th.mode);
     return applyFallbacks(props, resolved);
+  }
+  function editorTagValue(address) {
+    var ref = parseSparkplugBindingPath("{sparkplug:" + address + "}");
+    var entry = ref && getSparkplugEntry(ref);
+    if (!entry || !entry.online || entry.isNull || entry.value === void 0 || entry.value === null) return "???";
+    return entry.value;
+  }
+  function editorReader(paramState) {
+    var inner = null;
+    return function(src, ref) {
+      return (inner || (inner = editorScopeReader(paramState || appScope())))(src, ref);
+    };
+  }
+  function editorScopeReader(s) {
+    return scopeReader({
+      scope: s,
+      msg: null,
+      address: function(text2) {
+        return String(text2).indexOf("{") !== -1 ? resolveBindableValue(String(text2), s) : text2;
+      },
+      tag: function(provider, address) {
+        return provider === "sparkplug" ? editorTagValue(address) : void 0;
+      },
+      deref: function(text2) {
+        var v = resolveBindableValue(text2, s);
+        return typeof v === "string" ? resolveSparkplugProps({ v }).v : v;
+      }
+    });
   }
   function resolveInstanceParamState(comp, template, enclosingParamState) {
     var paramState = appScope();
@@ -5147,7 +5672,7 @@
     /**
     Replace a range of the text with the given content.
     */
-    replace(from, to, text) {
+    replace(from, to, text2) {
       [from, to] = clip(this, from, to);
       let parts = [];
       this.decompose(
@@ -5157,10 +5682,10 @@
         2
         /* Open.To */
       );
-      if (text.length)
-        text.decompose(
+      if (text2.length)
+        text2.decompose(
           0,
-          text.length,
+          text2.length,
           parts,
           1 | 2
           /* Open.To */
@@ -5172,7 +5697,7 @@
         1
         /* Open.From */
       );
-      return TextNode.from(parts, this.length - (to - from) + text.length);
+      return TextNode.from(parts, this.length - (to - from) + text2.length);
     }
     /**
     Append another document to this one.
@@ -5268,18 +5793,18 @@
     /**
     Create a `Text` instance for the given array of lines.
     */
-    static of(text) {
-      if (text.length == 0)
+    static of(text2) {
+      if (text2.length == 0)
         throw new RangeError("A document must have at least one line");
-      if (text.length == 1 && !text[0])
+      if (text2.length == 1 && !text2[0])
         return _Text.empty;
-      return text.length <= 32 ? new TextLeaf(text) : TextNode.from(TextLeaf.split(text, []));
+      return text2.length <= 32 ? new TextLeaf(text2) : TextNode.from(TextLeaf.split(text2, []));
     }
   };
   var TextLeaf = class _TextLeaf extends Text {
-    constructor(text, length = textLength(text)) {
+    constructor(text2, length = textLength(text2)) {
       super();
-      this.text = text;
+      this.text = text2;
       this.length = length;
     }
     get lines() {
@@ -5298,26 +5823,26 @@
       }
     }
     decompose(from, to, target, open) {
-      let text = from <= 0 && to >= this.length ? this : new _TextLeaf(sliceText(this.text, from, to), Math.min(to, this.length) - Math.max(0, from));
+      let text2 = from <= 0 && to >= this.length ? this : new _TextLeaf(sliceText(this.text, from, to), Math.min(to, this.length) - Math.max(0, from));
       if (open & 1) {
         let prev = target.pop();
-        let joined = appendText(text.text, prev.text.slice(), 0, text.length);
+        let joined = appendText(text2.text, prev.text.slice(), 0, text2.length);
         if (joined.length <= 32) {
-          target.push(new _TextLeaf(joined, prev.length + text.length));
+          target.push(new _TextLeaf(joined, prev.length + text2.length));
         } else {
           let mid = joined.length >> 1;
           target.push(new _TextLeaf(joined.slice(0, mid)), new _TextLeaf(joined.slice(mid)));
         }
       } else {
-        target.push(text);
+        target.push(text2);
       }
     }
-    replace(from, to, text) {
-      if (!(text instanceof _TextLeaf))
-        return super.replace(from, to, text);
+    replace(from, to, text2) {
+      if (!(text2 instanceof _TextLeaf))
+        return super.replace(from, to, text2);
       [from, to] = clip(this, from, to);
-      let lines2 = appendText(this.text, appendText(text.text, sliceText(this.text, 0, from)), to);
-      let newLen = this.length + text.length - (to - from);
+      let lines2 = appendText(this.text, appendText(text2.text, sliceText(this.text, 0, from)), to);
+      let newLen = this.length + text2.length - (to - from);
       if (lines2.length <= 32)
         return new _TextLeaf(lines2, newLen);
       return TextNode.from(_TextLeaf.split(lines2, []), newLen);
@@ -5342,9 +5867,9 @@
     scanIdentical() {
       return 0;
     }
-    static split(text, target) {
+    static split(text2, target) {
       let part2 = [], len = -1;
-      for (let line of text) {
+      for (let line of text2) {
         part2.push(line);
         len += line.length + 1;
         if (part2.length == 32) {
@@ -5389,24 +5914,24 @@
         pos = end + 1;
       }
     }
-    replace(from, to, text) {
+    replace(from, to, text2) {
       [from, to] = clip(this, from, to);
-      if (text.lines < this.lines)
+      if (text2.lines < this.lines)
         for (let i2 = 0, pos = 0; i2 < this.children.length; i2++) {
           let child = this.children[i2], end = pos + child.length;
           if (from >= pos && to <= end) {
-            let updated = child.replace(from - pos, to - pos, text);
+            let updated = child.replace(from - pos, to - pos, text2);
             let totalLines = this.lines - child.lines + updated.lines;
             if (updated.lines < totalLines >> 5 - 1 && updated.lines > totalLines >> 5 + 1) {
               let copy = this.children.slice();
               copy[i2] = updated;
-              return new _TextNode(copy, this.length - (to - from) + text.length);
+              return new _TextNode(copy, this.length - (to - from) + text2.length);
             }
             return super.replace(pos, end, updated);
           }
           pos = end + 1;
         }
-      return super.replace(from, to, text);
+      return super.replace(from, to, text2);
     }
     sliceString(from, to = this.length, lineSep = "\n") {
       [from, to] = clip(this, from, to);
@@ -5489,15 +6014,15 @@
     }
   };
   Text.empty = /* @__PURE__ */ new TextLeaf([""], 0);
-  function textLength(text) {
+  function textLength(text2) {
     let length = -1;
-    for (let line of text)
+    for (let line of text2)
       length += line.length + 1;
     return length;
   }
-  function appendText(text, target, from = 0, to = 1e9) {
-    for (let pos = 0, i2 = 0, first = true; i2 < text.length && pos <= to; i2++) {
-      let line = text[i2], end = pos + line.length;
+  function appendText(text2, target, from = 0, to = 1e9) {
+    for (let pos = 0, i2 = 0, first = true; i2 < text2.length && pos <= to; i2++) {
+      let line = text2[i2], end = pos + line.length;
       if (end >= from) {
         if (end > to)
           line = line.slice(0, to - pos);
@@ -5513,17 +6038,17 @@
     }
     return target;
   }
-  function sliceText(text, from, to) {
-    return appendText(text, [""], from, to);
+  function sliceText(text2, from, to) {
+    return appendText(text2, [""], from, to);
   }
   var RawTextCursor = class {
-    constructor(text, dir = 1) {
+    constructor(text2, dir = 1) {
       this.dir = dir;
       this.done = false;
       this.lineBreak = false;
       this.value = "";
-      this.nodes = [text];
-      this.offsets = [dir > 0 ? 1 : (text instanceof TextLeaf ? text.text.length : text.children.length) << 1];
+      this.nodes = [text2];
+      this.offsets = [dir > 0 ? 1 : (text2 instanceof TextLeaf ? text2.text.length : text2.children.length) << 1];
     }
     nextInner(skip, dir) {
       this.done = this.lineBreak = false;
@@ -5580,11 +6105,11 @@
     }
   };
   var PartialTextCursor = class {
-    constructor(text, start, end) {
+    constructor(text2, start, end) {
       this.value = "";
       this.done = false;
-      this.cursor = new RawTextCursor(text, start > end ? -1 : 1);
-      this.pos = start > end ? text.length : 0;
+      this.cursor = new RawTextCursor(text2, start > end ? -1 : 1);
+      this.pos = start > end ? text2.length : 0;
       this.from = Math.min(start, end);
       this.to = Math.max(start, end);
     }
@@ -5660,11 +6185,11 @@
     /**
     @internal
     */
-    constructor(from, to, number2, text) {
+    constructor(from, to, number2, text2) {
       this.from = from;
       this.to = to;
       this.number = number2;
-      this.text = text;
+      this.text = text2;
     }
     /**
     The length of the line (not including any line break after it).
@@ -5673,9 +6198,9 @@
       return this.to - this.from;
     }
   };
-  function clip(text, from, to) {
-    from = Math.max(0, Math.min(text.length, from));
-    return [from, Math.max(from, Math.min(text.length, to))];
+  function clip(text2, from, to) {
+    from = Math.max(0, Math.min(text2.length, from));
+    return [from, Math.max(from, Math.min(text2.length, to))];
   }
   function findClusterBreak2(str, pos, forward = true, includeExtending = true) {
     return findClusterBreak(str, pos, forward, includeExtending);
@@ -5893,7 +6418,7 @@
     apply(doc2) {
       if (this.length != doc2.length)
         throw new RangeError("Applying change set to a document with the wrong length");
-      iterChanges(this, (fromA, toA, fromB, _toB, text) => doc2 = doc2.replace(fromB, fromB + (toA - fromA), text), false);
+      iterChanges(this, (fromA, toA, fromB, _toB, text2) => doc2 = doc2.replace(fromB, fromB + (toA - fromA), text2), false);
       return doc2;
     }
     mapDesc(other, before = false) {
@@ -6137,18 +6662,18 @@
         posA += len;
         posB += len;
       } else {
-        let endA = posA, endB = posB, text = Text.empty;
+        let endA = posA, endB = posB, text2 = Text.empty;
         for (; ; ) {
           endA += len;
           endB += ins;
           if (ins && inserted)
-            text = text.append(inserted[i2 - 2 >> 1]);
+            text2 = text2.append(inserted[i2 - 2 >> 1]);
           if (individual || i2 == desc.sections.length || desc.sections[i2 + 1] < 0)
             break;
           len = desc.sections[i2++];
           ins = desc.sections[i2++];
         }
-        f(posA, endA, posB, endB, text);
+        f(posA, endA, posB, endB, text2);
         posA = endA;
         posB = endB;
       }
@@ -7424,12 +7949,12 @@
     Create a [transaction spec](https://codemirror.net/6/docs/ref/#state.TransactionSpec) that
     replaces every selection range with the given content.
     */
-    replaceSelection(text) {
-      if (typeof text == "string")
-        text = this.toText(text);
+    replaceSelection(text2) {
+      if (typeof text2 == "string")
+        text2 = this.toText(text2);
       return this.changeByRange((range) => ({
-        changes: { from: range.from, to: range.to, insert: text },
-        range: EditorSelection.cursor(range.from + text.length)
+        changes: { from: range.from, to: range.to, insert: text2 },
+        range: EditorSelection.cursor(range.from + text2.length)
       }));
     }
     /**
@@ -7648,18 +8173,18 @@
     this returns null.
     */
     wordAt(pos) {
-      let { text, from, length } = this.doc.lineAt(pos);
+      let { text: text2, from, length } = this.doc.lineAt(pos);
       let cat = this.charCategorizer(pos);
       let start = pos - from, end = pos - from;
       while (start > 0) {
-        let prev = findClusterBreak2(text, start, false);
-        if (cat(text.slice(prev, start)) != CharCategory.Word)
+        let prev = findClusterBreak2(text2, start, false);
+        if (cat(text2.slice(prev, start)) != CharCategory.Word)
           break;
         start = prev;
       }
       while (end < length) {
-        let next = findClusterBreak2(text, end);
-        if (cat(text.slice(end, next)) != CharCategory.Word)
+        let next = findClusterBreak2(text2, end);
+        if (cat(text2.slice(end, next)) != CharCategory.Word)
           break;
         end = next;
       }
@@ -8652,10 +9177,10 @@
         if (root.adoptedStyleSheets.indexOf(this.sheet) < 0)
           root.adoptedStyleSheets = [this.sheet, ...root.adoptedStyleSheets];
       } else {
-        let text = "";
+        let text2 = "";
         for (let i2 = 0; i2 < this.modules.length; i2++)
-          text += this.modules[i2].getRules() + "\n";
-        this.styleTag.textContent = text;
+          text2 += this.modules[i2].getRules() + "\n";
+        this.styleTag.textContent = text2;
         let target = root.head || root;
         if (this.styleTag.parentNode != target)
           target.insertBefore(this.styleTag, target.firstChild);
@@ -9873,9 +10398,9 @@
       return EditorSelection.cursor(nextSpan.side(!forward, dir) + line.from, nextSpan.forward(forward, dir) ? 1 : -1, nextSpan.level);
     return EditorSelection.cursor(nextIndex + line.from, span.forward(forward, dir) ? -1 : 1, span.level);
   }
-  function autoDirection(text, from, to) {
+  function autoDirection(text2, from, to) {
     for (let i2 = from; i2 < to; i2++) {
-      let type = charType(text.charCodeAt(i2));
+      let type = charType(text2.charCodeAt(i2));
       if (type == 1)
         return LTR;
       if (type == 2 || type == 4)
@@ -10581,9 +11106,9 @@
     }
   };
   var TextTile = class _TextTile extends Tile {
-    constructor(dom, text) {
-      super(dom, text.length);
-      this.text = text;
+    constructor(dom, text2) {
+      super(dom, text2.length);
+      this.text = text2;
     }
     sync(track2) {
       if (this.flags & 2)
@@ -10630,8 +11155,8 @@
         rect = Array.prototype.find.call(rects, (r) => r.width) || rect;
       return rtl == null ? rect : flattenRect(rect, (flatten2 ? flatten2 > 0 : side < 0) == rtl);
     }
-    static of(text, dom) {
-      let tile = new _TextTile(dom || document.createTextNode(text), text);
+    static of(text2, dom) {
+      let tile = new _TextTile(dom || document.createTextNode(text2), text2);
       if (!dom)
         tile.flags |= 2;
       return tile;
@@ -10804,23 +11329,23 @@
       this.wrappers = [];
       this.wrapperPos = 0;
     }
-    addText(text, marks2, openStart, tile) {
+    addText(text2, marks2, openStart, tile) {
       var _a2;
       this.flushBuffer();
       let parent = this.ensureMarks(marks2, openStart);
       let prev = parent.lastChild;
-      if (prev && prev.isText() && !(prev.flags & 8) && prev.length + text.length < 512) {
+      if (prev && prev.isText() && !(prev.flags & 8) && prev.length + text2.length < 512) {
         this.cache.reused.set(
           prev,
           2
           /* Reused.DOM */
         );
-        let tile2 = parent.children[parent.children.length - 1] = new TextTile(prev.dom, prev.text + text);
+        let tile2 = parent.children[parent.children.length - 1] = new TextTile(prev.dom, prev.text + text2);
         tile2.parent = parent;
       } else {
-        parent.append(tile || TextTile.of(text, (_a2 = this.cache.find(TextTile)) === null || _a2 === void 0 ? void 0 : _a2.dom));
+        parent.append(tile || TextTile.of(text2, (_a2 = this.cache.find(TextTile)) === null || _a2 === void 0 ? void 0 : _a2.dom));
       }
-      this.pos += text.length;
+      this.pos += text2.length;
       this.afterWidget = null;
     }
     addComposition(composition, context) {
@@ -10864,10 +11389,10 @@
           2
           /* Reused.DOM */
         );
-      let text = new TextTile(composition.text, composition.text.nodeValue);
-      text.flags |= 8;
+      let text2 = new TextTile(composition.text, composition.text.nodeValue);
+      text2.flags |= 8;
       this.pos = composition.range.toB;
-      head.append(text);
+      head.append(text2);
     }
     addInlineWidget(widget, marks2, openStart) {
       let noSpace = this.afterWidget && widget.flags & 48 && (this.afterWidget.flags & 48) == (widget.flags & 48);
@@ -11344,9 +11869,9 @@
         this.old.advance(5, side, this.reuseWalker);
       }
     }
-    getCompositionContext(text) {
+    getCompositionContext(text2) {
       let marks2 = [], line = null;
-      for (let parent = text.parentNode; ; parent = parent.parentNode) {
+      for (let parent = text2.parentNode; ; parent = parent.parentNode) {
         let tile = Tile.get(parent);
         if (parent == this.view.contentDOM)
           break;
@@ -11585,9 +12110,9 @@
             if (browser.gecko) {
               let nextTo = nextToUneditable(anchor.node, anchor.offset);
               if (nextTo && nextTo != (1 | 2)) {
-                let text = (nextTo == 1 ? textNodeBefore : textNodeAfter)(anchor.node, anchor.offset);
-                if (text)
-                  anchor = new DOMPos(text.node, text.offset);
+                let text2 = (nextTo == 1 ? textNodeBefore : textNodeAfter)(anchor.node, anchor.offset);
+                if (text2)
+                  anchor = new DOMPos(text2.node, text2.offset);
               }
             }
             rawSel.collapse(anchor.node, anchor.offset);
@@ -12005,10 +12530,10 @@
     let found = findCompositionNode(view, headPos);
     if (!found)
       return null;
-    let { node: textNode, from, to } = found, text = textNode.nodeValue;
-    if (/[\n\r]/.test(text))
+    let { node: textNode, from, to } = found, text2 = textNode.nodeValue;
+    if (/[\n\r]/.test(text2))
       return null;
-    if (view.state.doc.sliceString(found.from, found.to) != text)
+    if (view.state.doc.sliceString(found.from, found.to) != text2)
       return null;
     let inv = changes.invertedDesc;
     return { range: new ChangedRange(inv.mapPos(from), inv.mapPos(to), from, to), text: textNode };
@@ -12482,8 +13007,8 @@
       this.text = "";
       this.lineSeparator = view.state.facet(EditorState.lineSeparator);
     }
-    append(text) {
-      this.text += text;
+    append(text2) {
+      this.text += text2;
     }
     lineBreak() {
       this.text += LineBreakPlaceholder;
@@ -12511,20 +13036,20 @@
       return this;
     }
     readTextNode(node) {
-      let text = node.nodeValue;
+      let text2 = node.nodeValue;
       for (let point of this.points)
         if (point.node == node)
-          point.pos = this.text.length + Math.min(point.offset, text.length);
+          point.pos = this.text.length + Math.min(point.offset, text2.length);
       for (let off = 0, re = this.lineSeparator ? null : /\r\n?|\n/g; ; ) {
         let nextBreak = -1, breakSize = 1, m;
         if (this.lineSeparator) {
-          nextBreak = text.indexOf(this.lineSeparator, off);
+          nextBreak = text2.indexOf(this.lineSeparator, off);
           breakSize = this.lineSeparator.length;
-        } else if (m = re.exec(text)) {
+        } else if (m = re.exec(text2)) {
           nextBreak = m.index;
           breakSize = m[0].length;
         }
-        this.append(text.slice(off, nextBreak < 0 ? text.length : nextBreak));
+        this.append(text2.slice(off, nextBreak < 0 ? text2.length : nextBreak));
         if (nextBreak < 0)
           break;
         this.lineBreak();
@@ -12747,12 +13272,12 @@
     // after a completion when you press enter
     (change.from == sel.from || change.from == sel.from - 1 && view.state.sliceDoc(change.from, sel.from) == " ") && change.insert.length == 1 && change.insert.lines == 2 && dispatchKey(view.contentDOM, "Enter", 13) || (change.from == sel.from - 1 && change.to == sel.to && change.insert.length == 0 || lastKey == 8 && change.insert.length < change.to - change.from && change.to > sel.head) && dispatchKey(view.contentDOM, "Backspace", 8) || change.from == sel.from && change.to == sel.to + 1 && change.insert.length == 0 && dispatchKey(view.contentDOM, "Delete", 46)))
       return true;
-    let text = change.insert.toString();
+    let text2 = change.insert.toString();
     if (view.inputState.composing >= 0)
       view.inputState.composing++;
     let defaultTr;
     let defaultInsert = () => defaultTr || (defaultTr = applyDefaultInsert(view, change, newSel));
-    if (!view.state.facet(inputHandler).some((h) => h(view, change.from, change.to, text, defaultInsert)))
+    if (!view.state.facet(inputHandler).some((h) => h(view, change.from, change.to, text2, defaultInsert)))
       view.dispatch(defaultInsert());
     return true;
   }
@@ -13220,16 +13745,16 @@
       doPaste(view, target.value);
     }, 50);
   }
-  function textFilter(state2, facet, text) {
+  function textFilter(state2, facet, text2) {
     for (let filter of state2.facet(facet))
-      text = filter(text, state2);
-    return text;
+      text2 = filter(text2, state2);
+    return text2;
   }
   function doPaste(view, input) {
     input = textFilter(view.state, clipboardInputFilter, input);
-    let { state: state2 } = view, changes, i2 = 1, text = state2.toText(input);
-    let byLine = text.lines == state2.selection.ranges.length;
-    let linewise = lastLinewiseCopy != null && state2.selection.ranges.every((r) => r.empty) && lastLinewiseCopy == text.toString();
+    let { state: state2 } = view, changes, i2 = 1, text2 = state2.toText(input);
+    let byLine = text2.lines == state2.selection.ranges.length;
+    let linewise = lastLinewiseCopy != null && state2.selection.ranges.every((r) => r.empty) && lastLinewiseCopy == text2.toString();
     if (linewise) {
       let lastLine = -1;
       changes = state2.changeByRange((range) => {
@@ -13237,7 +13762,7 @@
         if (line.from == lastLine)
           return { range };
         lastLine = line.from;
-        let insert3 = state2.toText((byLine ? text.line(i2++).text : input) + state2.lineBreak);
+        let insert3 = state2.toText((byLine ? text2.line(i2++).text : input) + state2.lineBreak);
         return {
           changes: { from: line.from, insert: insert3 },
           range: EditorSelection.cursor(range.from + insert3.length)
@@ -13245,14 +13770,14 @@
       });
     } else if (byLine) {
       changes = state2.changeByRange((range) => {
-        let line = text.line(i2++);
+        let line = text2.line(i2++);
         return {
           changes: { from: range.from, to: range.to, insert: line.text },
           range: EditorSelection.cursor(range.from + line.length)
         };
       });
     } else {
-      changes = state2.replaceSelection(text);
+      changes = state2.replaceSelection(text2);
     }
     view.dispatch(changes, {
       userEvent: "input.paste",
@@ -13409,14 +13934,14 @@
     view.inputState.draggedContent = null;
     return false;
   };
-  function dropText(view, event, text, direct) {
-    text = textFilter(view.state, clipboardInputFilter, text);
-    if (!text)
+  function dropText(view, event, text2, direct) {
+    text2 = textFilter(view.state, clipboardInputFilter, text2);
+    if (!text2)
       return;
     let dropPos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
     let { draggedContent } = view.inputState;
     let del = direct && draggedContent && dragMovesSelection(view, event) ? { from: draggedContent.from, to: draggedContent.to } : null;
-    let ins = { from: dropPos, insert: text };
+    let ins = { from: dropPos, insert: text2 };
     let changes = view.state.changes(del ? [del, ins] : ins);
     view.focus();
     view.dispatch({
@@ -13433,26 +13958,26 @@
       return true;
     let files = event.dataTransfer.files;
     if (files && files.length) {
-      let text = Array(files.length), read = 0;
+      let text2 = Array(files.length), read = 0;
       let finishFile = () => {
         if (++read == files.length)
-          dropText(view, event, text.filter((s) => s != null).join(view.state.lineBreak), false);
+          dropText(view, event, text2.filter((s) => s != null).join(view.state.lineBreak), false);
       };
       for (let i2 = 0; i2 < files.length; i2++) {
         let reader = new FileReader();
         reader.onerror = finishFile;
         reader.onload = () => {
           if (!/[\x00-\x08\x0e-\x1f]{2}/.test(reader.result))
-            text[i2] = reader.result;
+            text2[i2] = reader.result;
           finishFile();
         };
         reader.readAsText(files[i2]);
       }
       return true;
     } else {
-      let text = event.dataTransfer.getData("Text");
-      if (text) {
-        dropText(view, event, text, true);
+      let text2 = event.dataTransfer.getData("Text");
+      if (text2) {
+        dropText(view, event, text2, true);
         return true;
       }
     }
@@ -13471,15 +13996,15 @@
       return false;
     }
   };
-  function captureCopy(view, text) {
+  function captureCopy(view, text2) {
     let parent = view.dom.parentNode;
     if (!parent)
       return;
     let target = parent.appendChild(document.createElement("textarea"));
     target.style.cssText = "position: fixed; left: -10000px; top: 10px";
-    target.value = text;
+    target.value = text2;
     target.focus();
-    target.selectionEnd = text.length;
+    target.selectionEnd = text2.length;
     target.selectionStart = 0;
     setTimeout(() => {
       target.remove();
@@ -13511,10 +14036,10 @@
   handlers.copy = handlers.cut = (view, event) => {
     if (!hasSelection(view.contentDOM, view.observer.selectionRange))
       return false;
-    let { text, ranges, linewise } = copiedRange(view.state);
-    if (!text && !linewise)
+    let { text: text2, ranges, linewise } = copiedRange(view.state);
+    if (!text2 && !linewise)
       return false;
-    lastLinewiseCopy = linewise ? text : null;
+    lastLinewiseCopy = linewise ? text2 : null;
     if (event.type == "cut" && !view.state.readOnly)
       view.dispatch({
         changes: ranges,
@@ -13524,10 +14049,10 @@
     let data = brokenClipboardAPI ? null : event.clipboardData;
     if (data) {
       data.clearData();
-      data.setData("text/plain", text);
+      data.setData("text/plain", text2);
       return true;
     } else {
-      captureCopy(view, text);
+      captureCopy(view, text2);
       return false;
     }
   };
@@ -13603,11 +14128,11 @@
       view.inputState.insertingTextAt = Date.now();
     }
     if (event.inputType == "insertReplacementText" && view.observer.editContext) {
-      let text = (_a2 = event.dataTransfer) === null || _a2 === void 0 ? void 0 : _a2.getData("text/plain"), ranges = event.getTargetRanges();
-      if (text && ranges.length) {
+      let text2 = (_a2 = event.dataTransfer) === null || _a2 === void 0 ? void 0 : _a2.getData("text/plain"), ranges = event.getTargetRanges();
+      if (text2 && ranges.length) {
         let r = ranges[0];
         let from = view.posAtDOM(r.startContainer, r.startOffset), to = view.posAtDOM(r.endContainer, r.endOffset);
-        applyDOMChangeInner(view, { from, to, insert: view.state.toText(text) }, null);
+        applyDOMChangeInner(view, { from, to, insert: view.state.toText(text2) }, null);
         return true;
       }
     }
@@ -19665,9 +20190,9 @@
     Run a full parse, returning the resulting tree.
     */
     parse(input, fragments, ranges) {
-      let parse2 = this.startParse(input, fragments, ranges);
+      let parse3 = this.startParse(input, fragments, ranges);
       for (; ; ) {
-        let done = parse2.advance();
+        let done = parse3.advance();
         if (done)
           return done;
       }
@@ -21025,18 +21550,18 @@
     textAfterPos(pos, bias = 1) {
       if (this.options.simulateDoubleBreak && pos == this.options.simulateBreak)
         return "";
-      let { text, from } = this.lineAt(pos, bias);
-      return text.slice(pos - from, Math.min(text.length, pos + 100 - from));
+      let { text: text2, from } = this.lineAt(pos, bias);
+      return text2.slice(pos - from, Math.min(text2.length, pos + 100 - from));
     }
     /**
     Find the column for the given position.
     */
     column(pos, bias = 1) {
-      let { text, from } = this.lineAt(pos, bias);
-      let result = this.countColumn(text, pos - from);
+      let { text: text2, from } = this.lineAt(pos, bias);
+      let result = this.countColumn(text2, pos - from);
       let override = this.options.overrideIndentation ? this.options.overrideIndentation(from) : -1;
       if (override > -1)
-        result += override - this.countColumn(text, text.search(/\S|$/));
+        result += override - this.countColumn(text2, text2.search(/\S|$/));
       return result;
     }
     /**
@@ -21050,14 +21575,14 @@
     Find the indentation column of the line at the given point.
     */
     lineIndent(pos, bias = 1) {
-      let { text, from } = this.lineAt(pos, bias);
+      let { text: text2, from } = this.lineAt(pos, bias);
       let override = this.options.overrideIndentation;
       if (override) {
         let overriden = override(from);
         if (overriden > -1)
           return overriden;
       }
-      return this.countColumn(text, text.search(/\S|$/));
+      return this.countColumn(text2, text2.search(/\S|$/));
     }
     /**
     Returns the [simulated line
@@ -21558,12 +22083,12 @@
     let startToken = { from: dir < 0 ? pos - 1 : pos, to: dir > 0 ? pos + 1 : pos };
     let iter = state2.doc.iterRange(pos, dir > 0 ? state2.doc.length : 0), depth = 0;
     for (let distance = 0; !iter.next().done && distance <= maxScanDistance; ) {
-      let text = iter.value;
+      let text2 = iter.value;
       if (dir < 0)
-        distance += text.length;
+        distance += text2.length;
       let basePos = pos + distance * dir;
-      for (let pos2 = dir > 0 ? 0 : text.length - 1, end = dir > 0 ? text.length : -1; pos2 != end; pos2 += dir) {
-        let found = brackets.indexOf(text[pos2]);
+      for (let pos2 = dir > 0 ? 0 : text2.length - 1, end = dir > 0 ? text2.length : -1; pos2 != end; pos2 += dir) {
+        let found = brackets.indexOf(text2[pos2]);
         if (found < 0 || tree.resolveInner(basePos + pos2, 1).type != tokenType)
           continue;
         if (found % 2 == 0 == dir > 0) {
@@ -21575,7 +22100,7 @@
         }
       }
       if (dir > 0)
-        distance += text.length;
+        distance += text2.length;
     }
     return iter.done ? { start: startToken, matched: false } : null;
   }
@@ -22868,13 +23393,13 @@
     return new RegExp(`${addStart ? "^" : ""}(?:${source})${addEnd ? "$" : ""}`, (_a2 = expr.flags) !== null && _a2 !== void 0 ? _a2 : expr.ignoreCase ? "i" : "");
   }
   var pickedCompletion = /* @__PURE__ */ Annotation.define();
-  function insertCompletionText(state2, text, from, to) {
+  function insertCompletionText(state2, text2, from, to) {
     let { main } = state2.selection, fromOff = from - main.from, toOff = to - main.from;
     return {
       ...state2.changeByRange((range) => {
         if (range != main && from != to && state2.sliceDoc(range.from + fromOff, range.from + toOff) != state2.sliceDoc(from, to))
           return { range };
-        let lines2 = state2.toText(text);
+        let lines2 = state2.toText(text2);
         return {
           changes: { from: range.from + fromOff, to: to == main.from ? range.to : range.from + toOff, insert: lines2 },
           range: EditorSelection.cursor(range.from + fromOff + lines2.length)
@@ -23714,8 +24239,8 @@
   function checkValid(validFor, state2, from, to) {
     if (!validFor)
       return false;
-    let text = state2.sliceDoc(from, to);
-    return typeof validFor == "function" ? validFor(text, from, to, state2) : ensureAnchor(validFor, true).test(text);
+    let text2 = state2.sliceDoc(from, to);
+    return typeof validFor == "function" ? validFor(text2, from, to, state2) : ensureAnchor(validFor, true).test(text2);
   }
   var setActiveEffect = /* @__PURE__ */ StateEffect.define({
     map(sources, mapping) {
@@ -24115,21 +24640,21 @@
       this.fieldPositions = fieldPositions;
     }
     instantiate(state2, pos) {
-      let text = [], lineStart = [pos];
+      let text2 = [], lineStart = [pos];
       let lineObj = state2.doc.lineAt(pos), baseIndent = /^\s*/.exec(lineObj.text)[0];
       for (let line of this.lines) {
-        if (text.length) {
+        if (text2.length) {
           let indent = baseIndent, tabs = /^\t*/.exec(line)[0].length;
           for (let i2 = 0; i2 < tabs; i2++)
             indent += state2.facet(indentUnit);
           lineStart.push(pos + indent.length - tabs);
           line = indent + line.slice(tabs);
         }
-        text.push(line);
+        text2.push(line);
         pos += line.length + 1;
       }
       let ranges = this.fieldPositions.map((pos2) => new FieldRange(pos2.field, lineStart[pos2.line] + pos2.from, lineStart[pos2.line] + pos2.to));
-      return { text, ranges };
+      return { text: text2, ranges };
     }
     static parse(template) {
       let fields = [];
@@ -24238,10 +24763,10 @@
   function snippet(template) {
     let snippet2 = Snippet.parse(template);
     return (editor, completion, from, to) => {
-      let { text, ranges } = snippet2.instantiate(editor.state, from);
+      let { text: text2, ranges } = snippet2.instantiate(editor.state, from);
       let { main } = editor.state.selection;
       let spec = {
-        changes: { from, to: to == main.from ? main.to : to, insert: Text.of(text) },
+        changes: { from, to: to == main.from ? main.to : to, insert: Text.of(text2) },
         scrollIntoView: true,
         annotations: completion ? [pickedCompletion.of(completion), Transaction.userEvent.of("input.complete")] : void 0
       };
@@ -26071,10 +26596,10 @@
       this.top = this.topRules[Object.keys(this.topRules)[0]];
     }
     createParse(input, fragments, ranges) {
-      let parse2 = new Parse(this, input, fragments, ranges);
+      let parse3 = new Parse(this, input, fragments, ranges);
       for (let w of this.wrappers)
-        parse2 = w(parse2, input, fragments, ranges);
-      return parse2;
+        parse3 = w(parse3, input, fragments, ranges);
+      return parse3;
     }
     /**
     Get a goto table entry @internal
@@ -26812,8 +27337,8 @@
     return "";
   }
   var android2 = typeof navigator == "object" && /* @__PURE__ */ /Android\b/.test(navigator.userAgent);
-  var autoCloseTags = /* @__PURE__ */ EditorView.inputHandler.of((view, from, to, text, defaultInsert) => {
-    if ((android2 ? view.composing : view.compositionStarted) || view.state.readOnly || from != to || text != ">" && text != "/" || !javascriptLanguage.isActiveAt(view.state, from, -1))
+  var autoCloseTags = /* @__PURE__ */ EditorView.inputHandler.of((view, from, to, text2, defaultInsert) => {
+    if ((android2 ? view.composing : view.compositionStarted) || view.state.readOnly || from != to || text2 != ">" && text2 != "/" || !javascriptLanguage.isActiveAt(view.state, from, -1))
       return false;
     let base2 = defaultInsert(), { state: state2 } = base2;
     let closeTags = state2.changeByRange((range) => {
@@ -26821,16 +27346,16 @@
       let { head } = range, around = syntaxTree(state2).resolveInner(head - 1, -1), name2;
       if (around.name == "JSXStartTag")
         around = around.parent;
-      if (state2.doc.sliceString(head - 1, head) != text || around.name == "JSXAttributeValue" && around.to > head) ;
-      else if (text == ">" && around.name == "JSXFragmentTag") {
+      if (state2.doc.sliceString(head - 1, head) != text2 || around.name == "JSXAttributeValue" && around.to > head) ;
+      else if (text2 == ">" && around.name == "JSXFragmentTag") {
         return { range, changes: { from: head, insert: `</>` } };
-      } else if (text == "/" && around.name == "JSXStartCloseTag") {
+      } else if (text2 == "/" && around.name == "JSXStartCloseTag") {
         let empty = around.parent, base3 = empty.parent;
         if (base3 && empty.from == head - 2 && ((name2 = elementName(state2.doc, base3.firstChild, head)) || ((_a2 = base3.firstChild) === null || _a2 === void 0 ? void 0 : _a2.name) == "JSXFragmentTag")) {
           let insert3 = `${name2}>`;
           return { range: EditorSelection.cursor(head + insert3.length, -1), changes: { from: head, insert: insert3 } };
         }
-      } else if (text == ">") {
+      } else if (text2 == ">") {
         let openTag = findOpenTag(around);
         if (openTag && openTag.name == "JSXOpenTag" && !/^\/?>|^<\//.test(state2.doc.sliceString(head, head + 2)) && (name2 = elementName(state2.doc, openTag, head)))
           return { range, changes: { from: head, insert: `</${name2}>` } };
@@ -29624,14 +30149,14 @@
     var P = function(group, type, label, extra) {
       return Object.assign({ group, type, label }, extra || {});
     };
-    var G = "Position & Size", O = "Overlay", A = "Auto layout", S = "Slides", F = "Fill & stroke", Z = "Zoom & pan";
+    var G2 = "Position & Size", O = "Overlay", A = "Auto layout", S = "Slides", F = "Fill & stroke", Z = "Zoom & pan";
     return {
-      x: P(G, "number", "X", { unit: "px", visibleWhen: box2 }),
-      y: P(G, "number", "Y", { unit: "px", visibleWhen: box2 }),
-      w: P(G, "number", "Width", { unit: "px", min: 1, visibleWhen: box2, enabledWhen: function(v) {
+      x: P(G2, "number", "X", { unit: "px", visibleWhen: box2 }),
+      y: P(G2, "number", "Y", { unit: "px", visibleWhen: box2 }),
+      w: P(G2, "number", "Width", { unit: "px", min: 1, visibleWhen: box2, enabledWhen: function(v) {
         return !(auto(v) && v.sizeW === "hug");
       } }),
-      h: P(G, "number", "Height", { unit: "px", min: 1, visibleWhen: box2, enabledWhen: function(v) {
+      h: P(G2, "number", "Height", { unit: "px", min: 1, visibleWhen: box2, enabledWhen: function(v) {
         return !(auto(v) && v.sizeH === "hug");
       } }),
       oKind: P(O, "enum", "Show as", {
@@ -29817,9 +30342,9 @@
       return k + "=" + p[k];
     }).join(", ");
   }
-  function parseParams(text) {
+  function parseParams(text2) {
     var out = {};
-    String(text || "").split(",").forEach(function(pair2) {
+    String(text2 || "").split(",").forEach(function(pair2) {
       var i2 = pair2.indexOf("=");
       if (i2 > 0) out[pair2.slice(0, i2).trim()] = pair2.slice(i2 + 1).trim();
     });
@@ -29837,8 +30362,8 @@
     if (type === "object" || type === "array") return JSON.stringify(v);
     return String(v);
   }
-  function parse(text, type) {
-    var t2 = text === void 0 || text === null ? "" : String(text);
+  function parse2(text2, type) {
+    var t2 = text2 === void 0 || text2 === null ? "" : String(text2);
     if (type === "number") {
       var n = parseFloat(t2);
       return isFinite(n) ? n : 0;
@@ -29917,7 +30442,7 @@
           if (isInst) {
             v.params = parseParams(it.value);
             v.overrides = old[i2] && old[i2].overrides || {};
-          } else v.defaultValue = parse(it.value, type);
+          } else v.defaultValue = parse2(it.value, type);
           if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
           return v;
         });
@@ -30179,8 +30704,8 @@
       node.paramValues[key] = v;
     }
   };
-  function parseTyped(text, type) {
-    var t2 = text === void 0 || text === null ? "" : String(text);
+  function parseTyped(text2, type) {
+    var t2 = text2 === void 0 || text2 === null ? "" : String(text2);
     if (type === "number") {
       var n = parseFloat(t2);
       return isFinite(n) ? n : 0;
@@ -30407,8 +30932,8 @@
       return loadAssets(true);
     });
   }
-  function notify2(text, type) {
-    if (window.RED && window.RED.notify) window.RED.notify(text, { type: type || "compact", timeout: 4e3 });
+  function notify2(text2, type) {
+    if (window.RED && window.RED.notify) window.RED.notify(text2, { type: type || "compact", timeout: 4e3 });
   }
 
   // src/sidebar/kit-inspector.js
@@ -32256,8 +32781,8 @@
       trayEl = tray;
       var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
       var helpDiv = window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color,#64748b)", "margin-bottom": "14px", "line-height": "1.4" }).appendTo(body);
-      function label(text, parent) {
-        return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color,#475569)", margin: "12px 0 4px" }).text(text).appendTo(parent || body);
+      function label(text2, parent) {
+        return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color,#475569)", margin: "12px 0 4px" }).text(text2).appendTo(parent || body);
       }
       if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") window.NexaKit.ensureStyles();
       label("Mode");
@@ -32518,8 +33043,8 @@
         trayEl = tray;
         var body = tray.find(".red-ui-tray-body").css({ padding: "14px" });
         window.$("<div>").css({ "font-size": "12px", color: "var(--red-ui-secondary-text-color, #64748b)", "margin-bottom": "14px", "line-height": "1.4" }).text(HELP[type]).appendTo(body);
-        var label = function(text, parent) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text).appendTo(parent || body);
+        var label = function(text2, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", "font-weight": "600", color: "var(--red-ui-secondary-text-color, #475569)", margin: "10px 0 4px" }).text(text2).appendTo(parent || body);
         };
         if (window.NexaKit && typeof window.NexaKit.ensureStyles === "function") {
           window.NexaKit.ensureStyles();
@@ -33216,8 +33741,8 @@
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text("Repeats a template, one copy per item, into the Layout node(s) it is wired to. Each copy gets its item in the template param chosen below ({param.field} inside) and {index}; the template's own Logic runs per copy (e.g. a button \u2192 HTTP Request with body {param}), and an event from inside a copy gives msg.item / msg.index.").appendTo(body);
-        var label = function(text) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text).appendTo(body);
+        var label = function(text2) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(body);
         };
         var select = function(key, options, onChange) {
           var sel = window.$("<select>").css({ width: "100%" }).appendTo(body);
@@ -34086,10 +34611,10 @@
       open: function(tray) {
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px" });
         window.$("<div>").css({ "font-size": "12px", color: "#888", "margin-bottom": "10px" }).text(HELP2[type]).appendTo(body);
-        var label = function(text2, parent) {
-          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text2).appendTo(parent || body);
+        var label = function(text3, parent) {
+          return window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888", margin: "8px 0 4px" }).text(text3).appendTo(parent || body);
         };
-        var text = function(key, placeholder, parent) {
+        var text2 = function(key, placeholder, parent) {
           return window.$("<input>", { type: "text", placeholder: placeholder || "" }).css({ width: "100%", "box-sizing": "border-box" }).val(d[key] === void 0 ? "" : d[key]).appendTo(parent || body).on("change", function() {
             d[key] = this.value;
           });
@@ -34111,7 +34636,7 @@
           label("Method");
           select("method", [["GET", "GET"], ["POST", "POST"], ["PUT", "PUT"], ["PATCH", "PATCH"], ["DELETE", "DELETE"]]);
           label("URL");
-          text("url", "https://api.example.com/orders/{msg.payload.id}?line={line}");
+          text2("url", "https://api.example.com/orders/{msg.payload.id}?line={line}");
           label("Headers (JSON \u2014 values take bindings)");
           var h = window.$("<textarea>", { rows: 3, placeholder: '{"Authorization": "Bearer {token}"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(typeof d.headers === "string" ? d.headers : d.headers ? JSON.stringify(d.headers, null, 1) : "").appendTo(body).on("change", function() {
             d.headers = this.value.trim();
@@ -34122,10 +34647,10 @@
           select("body", [["payload", "msg.payload (JSON)"], ["binding", "A binding / text, e.g. {item}"], ["none", "No body"]], body, function() {
             bodyText.toggle(d.body === "binding");
           });
-          bodyText = text("bodyText", '{item}  \u2014 or {"qty": 1, "id": "{item.id}"} as text');
+          bodyText = text2("bodyText", '{item}  \u2014 or {"qty": 1, "id": "{item.id}"} as text');
           bodyText.toggle(d.body === "binding");
           label("Timeout (ms, 0 = none)");
-          text("timeout", "10000");
+          text2("timeout", "10000");
           label("Cookies");
           select("credentials", [["same-origin", "Same site only (default)"], ["include", "Always send (cross-site API with cookies)"], ["omit", "Never"]]);
           return;
@@ -34142,14 +34667,14 @@
           label("Store");
           select("store", [["local", "Local (kept across visits)"], ["session", "Session (until the tab closes)"]]);
           label("Key");
-          text("key", "e.g. cart or prefs-{user}");
+          text2("key", "e.g. cart or prefs-{user}");
         } else {
           label("Cookie name");
-          text("name", "e.g. session");
+          text2("name", "e.g. session");
         }
         targetWrap = window.$("<div>").appendTo(body);
         label("Into msg property", targetWrap);
-        text("target", "payload", targetWrap);
+        text2("target", "payload", targetWrap);
         valueWrap = window.$("<div>").appendTo(body);
         label("Value", valueWrap);
         var staticRow = window.$("<div>").css({ "margin-top": "6px" });
@@ -34164,9 +34689,9 @@
         if (type === "cookie") {
           cookieOpts = window.$("<div>").appendTo(body);
           label("Expires after (days; empty = when the browser closes)", cookieOpts);
-          text("days", "7", cookieOpts);
+          text2("days", "7", cookieOpts);
           label("Path", cookieOpts);
-          text("path", "/", cookieOpts);
+          text2("path", "/", cookieOpts);
           label("SameSite", cookieOpts);
           select("sameSite", [["Lax", "Lax (default)"], ["Strict", "Strict"], ["None", "None (needs Secure)"]], cookieOpts);
           var secRow = window.$("<label>").css({ display: "flex", gap: "6px", "align-items": "center", "margin-top": "8px", "font-size": "12px" }).appendTo(cookieOpts);
@@ -41485,8 +42010,8 @@
     if (n) markDirty();
     return n;
   }
-  function notify3(text, type) {
-    if (window.RED && window.RED.notify) window.RED.notify(text, { type: type || "compact", timeout: 3e3 });
+  function notify3(text2, type) {
+    if (window.RED && window.RED.notify) window.RED.notify(text2, { type: type || "compact", timeout: 3e3 });
   }
   function renderAssetsPanel() {
     var pane = state.assetsPane;
@@ -41596,9 +42121,9 @@
           });
         }
         act("fa-clipboard", "Copy {asset:" + a.name + "}", function() {
-          var text = "{asset:" + a.name + "}";
-          if (navigator.clipboard) navigator.clipboard.writeText(text).then(function() {
-            notify3("Copied " + text);
+          var text2 = "{asset:" + a.name + "}";
+          if (navigator.clipboard) navigator.clipboard.writeText(text2).then(function() {
+            notify3("Copied " + text2);
           });
         });
         act("fa-pencil", "Rename", function() {

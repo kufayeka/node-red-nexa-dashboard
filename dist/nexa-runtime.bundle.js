@@ -4688,11 +4688,11 @@
   });
 
   // src/features/logic/web/web-ops.js
-  function bindText(screen2, node, msg, text) {
-    if (typeof text !== "string" || text.indexOf("{") === -1) return text;
+  function bindText(screen2, node, msg, text2) {
+    if (typeof text2 !== "string" || text2.indexOf("{") === -1) return text2;
     const scope = Object.create(resolveScope(screen2, "", node.id) || null);
     scope.msg = msg || {};
-    return resolveBindableValue(text, scope);
+    return resolveBindableValue(text2, scope);
   }
   function parseHeaders(raw, screen2, node, msg) {
     const h = {};
@@ -4873,11 +4873,11 @@
       nextPort: function(port, m) {
         continueFromPort(screen2, node, m, port, budget);
       },
-      resolve: function(text, m) {
-        if (typeof text !== "string" || text.indexOf("{") === -1) return text;
+      resolve: function(text2, m) {
+        if (typeof text2 !== "string" || text2.indexOf("{") === -1) return text2;
         var scope = Object.create(resolveScope(screen2, "", node.id) || null);
         scope.msg = m || {};
-        return resolveBindableValue(text, scope);
+        return resolveBindableValue(text2, scope);
       },
       vars: varsFor(screen2, node),
       log: function() {
@@ -5135,6 +5135,512 @@
     }
   }
 
+  // src/model/binding.js
+  var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
+  function registerSourceKind(name, def) {
+    KINDS[name] = Object.assign({ name, label: name }, def || {});
+    return KINDS[name];
+  }
+  registerSourceKind("screen", { label: "Screen variable", variable: "screen" });
+  registerSourceKind("app", { label: "App variable", variable: "app" });
+  registerSourceKind("shared", { label: "Shared variable", variable: "shared" });
+  registerSourceKind("param", { label: "Template parameter", variable: "param" });
+  registerSourceKind("msg", { label: "Message", message: true });
+  registerSourceKind("sparkplug", { label: "Sparkplug tag", tag: true, provider: "sparkplug" });
+  registerSourceKind("expr", { label: "Expression", expression: true });
+  registerSourceKind("var", { label: "Variable (nearest)", variable: "any", legacy: true });
+  function isBindingList(v) {
+    return !!v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.$bind);
+  }
+  var LEGACY_RE = /\{[^{}]+\}/;
+  function isLegacyBinding(v) {
+    return typeof v === "string" && LEGACY_RE.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
+  }
+  function hasNoValue(v) {
+    return v === void 0 || v === null || v === "???" || typeof v === "number" && !isFinite(v);
+  }
+  var WHOLE_RE = /^\{([^{}]+)\}$/;
+  function legacySource(text2) {
+    var m = WHOLE_RE.exec(String(text2).trim());
+    if (m) {
+      var inner = m[1];
+      var tag = /^([A-Za-z][\w-]*):([\s\S]+)$/.exec(inner);
+      if (tag) return { src: KINDS[tag[1]] && KINDS[tag[1]].tag ? tag[1] : "sparkplug", ref: tag[2], provider: tag[1] };
+      if (/^msg(\.|\[|$)/.test(inner)) return { src: "msg", ref: inner.replace(/^msg\.?/, "") };
+      return { src: "var", ref: inner };
+    }
+    return { src: "expr", ref: templateToExpression(text2) };
+  }
+  function templateToExpression(text2) {
+    var out = [], re = /\{([^{}]+)\}/g, last = 0, m;
+    text2 = String(text2);
+    while (m = re.exec(text2)) {
+      if (m.index > last) out.push(JSON.stringify(text2.slice(last, m.index)));
+      var s = legacySource(m[0]);
+      out.push(s.src === "var" ? "{" + s.ref + "}" : s.src === "msg" ? "[msg]{" + s.ref + "}" : "[" + (s.provider || s.src) + "]{" + s.ref + "}");
+      last = re.lastIndex;
+    }
+    if (last < text2.length) out.push(JSON.stringify(text2.slice(last)));
+    return out.join(" ");
+  }
+  function toBindingList(value, fallback) {
+    if (isBindingList(value)) return { sources: value.$bind.slice(), static: value.static, legacy: false };
+    if (isLegacyBinding(value)) {
+      var s = legacySource(value);
+      return { sources: [{ src: s.src, ref: s.ref }], static: fallback, legacy: true };
+    }
+    return { sources: [], static: value, legacy: false };
+  }
+  function resolveValue(value, read, fallback) {
+    var b = toBindingList(value, fallback);
+    for (var i = 0; i < b.sources.length; i++) {
+      var s = b.sources[i];
+      var v = s.src === "expr" ? evaluateExpression(s.ref, read) : read(s.src, s.ref);
+      if (!hasNoValue(v)) return { value: v, from: i };
+    }
+    return { value: b.static, from: -1 };
+  }
+  function tagRefsOf(value) {
+    var out = [];
+    toBindingList(value).sources.forEach(function(s) {
+      var k = KINDS[s.src];
+      if (k && k.tag) out.push({ provider: k.provider || s.src, address: s.ref });
+      else if (s.src === "expr") referencesOf(s.ref).forEach(function(r) {
+        var rk = KINDS[r.src];
+        if (rk && rk.tag) out.push({ provider: rk.provider || r.src, address: r.ref });
+      });
+    });
+    return out;
+  }
+  function bindingListsIn(v, out) {
+    out = out || [];
+    if (isBindingList(v)) out.push(v);
+    else if (Array.isArray(v)) v.forEach(function(x) {
+      bindingListsIn(x, out);
+    });
+    else if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) Object.keys(v).forEach(function(k) {
+      bindingListsIn(v[k], out);
+    });
+    return out;
+  }
+  function bindingCandidates(v) {
+    var out = [];
+    bindingListsIn(v).forEach(function(list) {
+      tagRefsOf(list).forEach(function(t) {
+        if (t.provider === "sparkplug") out.push("{sparkplug:" + t.address + "}");
+      });
+      list.$bind.forEach(function(s) {
+        var refs = s.src === "expr" ? referencesOf(s.ref) : [s];
+        refs.forEach(function(r) {
+          var k = KINDS[r.src];
+          if (k && k.variable) out.push("{" + firstSegment(r.ref) + "}");
+        });
+      });
+    });
+    return out;
+  }
+  function writeTargetOf(value) {
+    if (!isBindingList(value)) return typeof value === "string" ? value : null;
+    for (var i = 0; i < value.$bind.length; i++) {
+      var s = value.$bind[i], k = KINDS[s.src];
+      if (!k || !s.ref) continue;
+      if (k.tag) return "{" + (k.provider || s.src) + ":" + s.ref + "}";
+      if (k.variable && k.variable !== "param") return "{" + s.ref + "}";
+    }
+    return null;
+  }
+  function readsMessage(value) {
+    if (!isBindingList(value) && !isLegacyBinding(value)) return bindingListsIn(value).some(readsMessage);
+    return toBindingList(value).sources.some(function(s) {
+      return s.src === "msg" || s.src === "expr" && referencesOf(s.ref).some(function(r) {
+        return r.src === "msg";
+      });
+    });
+  }
+  function tokenize(text2) {
+    var t = [], i = 0, s = String(text2);
+    while (i < s.length) {
+      var c = s[i];
+      if (/\s/.test(c)) {
+        i++;
+        continue;
+      }
+      if (c === "[" || c === "{") {
+        var kind = "var";
+        if (c === "[") {
+          var close = s.indexOf("]", i);
+          if (close === -1) throw new Error("a [kind] is not closed");
+          kind = s.slice(i + 1, close).trim();
+          i = close + 1;
+          while (/\s/.test(s[i] || "")) i++;
+          if (s[i] !== "{") throw new Error("[" + kind + "] needs {ref} after it");
+        }
+        var end = s.indexOf("}", i);
+        if (end === -1) throw new Error("a {ref} is not closed");
+        t.push({ t: "ref", src: kind === "var" ? "var" : kind, ref: s.slice(i + 1, end).trim() });
+        i = end + 1;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        var j = i + 1, str = "";
+        while (j < s.length && s[j] !== c) {
+          if (s[j] === "\\" && j + 1 < s.length) {
+            j++;
+          }
+          str += s[j];
+          j++;
+        }
+        if (j >= s.length) throw new Error("a text is not closed");
+        t.push({ t: "str", v: str });
+        i = j + 1;
+        continue;
+      }
+      var num2 = /^(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)/.exec(s.slice(i));
+      if (num2) {
+        t.push({ t: "num", v: Number(num2[1]) });
+        i += num2[1].length;
+        continue;
+      }
+      var op = /^(==|!=|<=|>=|&&|\|\||[-+*/%()<>!?:,])/.exec(s.slice(i));
+      if (op) {
+        t.push({ t: "op", v: op[1] });
+        i += op[1].length;
+        continue;
+      }
+      var id = /^[A-Za-z_][\w]*/.exec(s.slice(i));
+      if (id) {
+        t.push({ t: "id", v: id[0] });
+        i += id[0].length;
+        continue;
+      }
+      throw new Error('unexpected "' + c + '"');
+    }
+    return t;
+  }
+  var FUNCS = {
+    round: function(x, d) {
+      var p = Math.pow(10, d || 0);
+      return Math.round(x * p) / p;
+    },
+    floor: Math.floor,
+    ceil: Math.ceil,
+    abs: Math.abs,
+    min: Math.min,
+    max: Math.max,
+    sqrt: Math.sqrt,
+    fixed: function(x, d) {
+      return Number(x).toFixed(d === void 0 ? 0 : d);
+    },
+    upper: function(s) {
+      return String(s).toUpperCase();
+    },
+    lower: function(s) {
+      return String(s).toLowerCase();
+    }
+  };
+  function parse(tokens) {
+    var i = 0;
+    function peek() {
+      return tokens[i];
+    }
+    function isOp(v) {
+      var x = tokens[i];
+      return x && x.t === "op" && x.v === v;
+    }
+    function next() {
+      return tokens[i++];
+    }
+    function expect(v) {
+      if (!isOp(v)) throw new Error('expected "' + v + '"');
+      i++;
+    }
+    function startsValue() {
+      var x = peek();
+      return !!x && (x.t === "num" || x.t === "str" || x.t === "ref" || x.t === "id" || x.t === "op" && (x.v === "(" || x.v === "!"));
+    }
+    function primary() {
+      var x = next();
+      if (!x) throw new Error("the expression ends too early");
+      if (x.t === "num") return { k: "lit", v: x.v };
+      if (x.t === "str") return { k: "lit", v: x.v };
+      if (x.t === "ref") return { k: "ref", src: x.src, ref: x.ref };
+      if (x.t === "id") {
+        if (x.v === "true" || x.v === "false") return { k: "lit", v: x.v === "true" };
+        if (x.v === "null") return { k: "lit", v: null };
+        if (!FUNCS[x.v]) throw new Error('unknown function "' + x.v + '"');
+        expect("(");
+        var args = [];
+        if (!isOp(")")) {
+          args.push(ternary());
+          while (isOp(",")) {
+            i++;
+            args.push(ternary());
+          }
+        }
+        expect(")");
+        return { k: "call", f: x.v, args };
+      }
+      if (x.t === "op" && x.v === "(") {
+        var e = ternary();
+        expect(")");
+        return e;
+      }
+      throw new Error('unexpected "' + x.v + '"');
+    }
+    function unary() {
+      if (isOp("-")) {
+        i++;
+        return { k: "neg", a: unary() };
+      }
+      if (isOp("!")) {
+        i++;
+        return { k: "not", a: unary() };
+      }
+      return primary();
+    }
+    function mul() {
+      var a = unary();
+      while (isOp("*") || isOp("/") || isOp("%")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: unary() };
+      }
+      return a;
+    }
+    function add() {
+      var a = mul();
+      while (isOp("+") || isOp("-")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: mul() };
+      }
+      return a;
+    }
+    function join() {
+      var a = add();
+      while (startsValue() && !isOp("!")) a = { k: "join", a, b: add() };
+      return a;
+    }
+    function cmp() {
+      var a = join();
+      while (isOp("==") || isOp("!=") || isOp("<") || isOp("<=") || isOp(">") || isOp(">=")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: join() };
+      }
+      return a;
+    }
+    function and() {
+      var a = cmp();
+      while (isOp("&&")) {
+        i++;
+        a = { k: "and", a, b: cmp() };
+      }
+      return a;
+    }
+    function or() {
+      var a = and();
+      while (isOp("||")) {
+        i++;
+        a = { k: "or", a, b: and() };
+      }
+      return a;
+    }
+    function ternary() {
+      var c = or();
+      if (isOp("?")) {
+        i++;
+        var a = ternary();
+        expect(":");
+        return { k: "if", c, a, b: ternary() };
+      }
+      return c;
+    }
+    var ast = ternary();
+    if (i < tokens.length) throw new Error('unexpected "' + (tokens[i].v || tokens[i].ref) + '"');
+    return ast;
+  }
+  var CACHE = {};
+  function parseExpression(text2) {
+    var key = String(text2);
+    if (CACHE[key]) return CACHE[key];
+    var r;
+    try {
+      r = { ast: parse(tokenize(key)) };
+    } catch (e) {
+      r = { error: e.message };
+    }
+    CACHE[key] = r;
+    return r;
+  }
+  function referencesOf(text2) {
+    var p = parseExpression(text2), out = [];
+    (function walk(n) {
+      if (!n) return;
+      if (n.k === "ref") out.push({ src: n.src, ref: n.ref });
+      ["a", "b", "c"].forEach(function(k) {
+        if (n[k]) walk(n[k]);
+      });
+      if (n.args) n.args.forEach(walk);
+    })(p.ast);
+    return out;
+  }
+  var NONE = {};
+  function num(v) {
+    if (typeof v === "number") return v;
+    if (typeof v === "boolean") return v ? 1 : 0;
+    if (typeof v === "string" && v.trim() !== "" && isFinite(Number(v))) return Number(v);
+    return NaN;
+  }
+  function text(v) {
+    return v === null || v === void 0 ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  function evalNode(n, read) {
+    switch (n.k) {
+      case "lit":
+        return n.v;
+      case "ref": {
+        var v = read(n.src, n.ref);
+        if (hasNoValue(v)) throw NONE;
+        return v;
+      }
+      case "neg":
+        return -num(evalNode(n.a, read));
+      case "not":
+        return !evalNode(n.a, read);
+      case "join":
+        return text(evalNode(n.a, read)) + text(evalNode(n.b, read));
+      case "and":
+        return evalNode(n.a, read) && evalNode(n.b, read);
+      case "or":
+        return evalNode(n.a, read) || evalNode(n.b, read);
+      case "if":
+        return evalNode(n.c, read) ? evalNode(n.a, read) : evalNode(n.b, read);
+      case "call":
+        return FUNCS[n.f].apply(null, n.args.map(function(x2) {
+          return evalNode(x2, read);
+        }));
+      case "bin": {
+        var a = evalNode(n.a, read), b = evalNode(n.b, read);
+        switch (n.o) {
+          case "+": {
+            var x = num(a), y = num(b);
+            return isNaN(x) || isNaN(y) ? text(a) + text(b) : x + y;
+          }
+          case "-":
+            return num(a) - num(b);
+          case "*":
+            return num(a) * num(b);
+          case "/":
+            return num(a) / num(b);
+          case "%":
+            return num(a) % num(b);
+          case "==":
+            return a == b;
+          // eslint-disable-line eqeqeq
+          case "!=":
+            return a != b;
+          // eslint-disable-line eqeqeq
+          case "<":
+            return num(a) < num(b);
+          case "<=":
+            return num(a) <= num(b);
+          case ">":
+            return num(a) > num(b);
+          case ">=":
+            return num(a) >= num(b);
+        }
+      }
+    }
+    return null;
+  }
+  function evaluateExpression(textOrAst, read) {
+    var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
+    if (!p.ast) return null;
+    try {
+      var v = evalNode(p.ast, read);
+      return typeof v === "number" && !isFinite(v) ? null : v;
+    } catch (e) {
+      if (e === NONE) return null;
+      return null;
+    }
+  }
+  function markScopeLayer(scope, layer) {
+    if (scope && typeof scope === "object") Object.defineProperty(scope, "__nexaLayer", { value: layer, enumerable: false, configurable: true });
+    return scope;
+  }
+  function layerOf(scope, layer) {
+    for (var s = scope; s; s = Object.getPrototypeOf(s)) if (Object.prototype.hasOwnProperty.call(s, "__nexaLayer") && s.__nexaLayer === layer) return s;
+    return null;
+  }
+  function readPath(root, path) {
+    var segs = String(path || "").match(/[^.[\]]+/g) || [];
+    var cur = root;
+    for (var i = 0; i < segs.length; i++) {
+      if (cur === null || cur === void 0) return void 0;
+      cur = cur[segs[i]];
+    }
+    return cur;
+  }
+  function firstSegment(path) {
+    return (String(path || "").match(/[^.[\]]+/) || [""])[0];
+  }
+  function scopeReader(o) {
+    var app = layerOf(o.scope, "app"), shared = layerOf(o.scope, "shared");
+    function nearest(ref, belowApp) {
+      var name = firstSegment(ref);
+      for (var s = o.scope; s; s = Object.getPrototypeOf(s)) {
+        if (belowApp && (s === app || s === shared)) return void 0;
+        if (Object.prototype.hasOwnProperty.call(s, name)) return readPath(s, ref);
+      }
+      return void 0;
+    }
+    function own(layer, ref) {
+      return layer && Object.prototype.hasOwnProperty.call(layer, firstSegment(ref)) ? readPath(layer, ref) : void 0;
+    }
+    return function read(src, ref) {
+      var v;
+      if (src === "screen" || src === "param") v = nearest(ref, true);
+      else if (src === "app") v = own(app, ref);
+      else if (src === "shared") v = own(shared, ref);
+      else if (src === "var") v = nearest(ref, false);
+      else if (src === "msg") v = o.msg ? ref ? readPath(o.msg, String(ref).replace(/^msg\.?/, "")) : o.msg : void 0;
+      else {
+        var k = KINDS[src];
+        if (!k || !k.tag || !o.tag) return void 0;
+        return o.tag(k.provider || src, o.address ? o.address(ref) : ref);
+      }
+      return v && typeof v === "object" && typeof v.__nexaBinding === "string" && o.deref ? o.deref(v.__nexaBinding) : v;
+    };
+  }
+  function containsBindingList(v) {
+    if (isBindingList(v)) return true;
+    if (Array.isArray(v)) return v.some(containsBindingList);
+    if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+      for (var k in v) if (containsBindingList(v[k])) return true;
+    }
+    return false;
+  }
+  function resolveDeep(v, read) {
+    if (isBindingList(v)) return resolveValue(v, read).value;
+    if (!containsBindingList(v)) return v;
+    if (Array.isArray(v)) return v.map(function(x) {
+      return resolveDeep(x, read);
+    });
+    var o = {};
+    Object.keys(v).forEach(function(k) {
+      o[k] = resolveDeep(v[k], read);
+    });
+    return o;
+  }
+  function resolveBindingProps(props, read) {
+    var out = null;
+    Object.keys(props || {}).forEach(function(k) {
+      if (!containsBindingList(props[k])) return;
+      if (!out) out = Object.assign({}, props);
+      out[k] = resolveDeep(props[k], read);
+    });
+    return out || props;
+  }
+
   // src/runtime/io/sparkplug.js
   var SPARKPLUG_BINDING_PREFIX = "sparkplug:";
   var EMBEDDED_TAG_RE = /\{sparkplug:[^{}]+\}/g;
@@ -5197,11 +5703,11 @@
     }
     return out || props;
   }
-  function tagRefsIn(text) {
-    if (typeof text !== "string") return [];
-    const whole = parseSparkplugBindingPath(text);
+  function tagRefsIn(text2) {
+    if (typeof text2 !== "string") return [];
+    const whole = parseSparkplugBindingPath(text2);
     if (whole) return [whole];
-    return (text.match(EMBEDDED_TAG_RE) || []).map(parseSparkplugBindingPath).filter(Boolean);
+    return (text2.match(EMBEDDED_TAG_RE) || []).map(parseSparkplugBindingPath).filter(Boolean);
   }
   var sparkplugIndexPending = null;
   function batchSparkplugIndex(fn) {
@@ -5235,6 +5741,9 @@
         if (typeof v === "string") candidates.push(v);
         else if (Array.isArray(v)) v.forEach(function(x) {
           if (typeof x === "string") candidates.push(x);
+        });
+        if (v && typeof v === "object") bindingCandidates(v).forEach(function(c) {
+          candidates.push(c);
         });
       });
       candidates.forEach(function(v) {
@@ -5372,12 +5881,36 @@
     });
   }
 
+  // src/runtime/state/binding-reader.js
+  function sparkplugTagValue(address) {
+    const ref = parseSparkplugBindingPath("{sparkplug:" + address + "}");
+    if (!ref || state.sparkplugConnectionLost) return "???";
+    const entry = state.sparkplugCache[sparkplugRefKey(ref)];
+    if (!entry || !entry.online || entry.isNull || entry.value === void 0 || entry.value === null) return "???";
+    return entry.value;
+  }
+  function runtimeReader(comp, scope) {
+    const s = scope || comp && comp.__paramState || state.currentAppScope || null;
+    return scopeReader({
+      scope: s,
+      msg: comp && comp.__lastMsg ? comp.__lastMsg : null,
+      // a tag address may hold {variables} (…::{line}/Speed)
+      address: (text2) => String(text2).indexOf("{") !== -1 && s ? resolveBindableValue(String(text2), s) : text2,
+      tag: (provider, address) => provider === "sparkplug" ? sparkplugTagValue(address) : void 0,
+      // a type member whose source is a tag: the legacy pipeline reads it
+      deref: (text2) => {
+        const v = s ? resolveBindableValue(text2, s) : text2;
+        return typeof v === "string" ? resolveSparkplugProps({ v }).v : v;
+      }
+    });
+  }
+
   // src/runtime/mounting/render.js
   var LOGIC_GEOMETRY_KEYS = { x: 1, y: 1, w: 1, h: 1, rotation: 1, flipH: 1, flipV: 1 };
   var LOCAL_TARGET_RE2 = /^\{(\$route\.query\.([A-Za-z_$][\w$]*)|([A-Za-z_][\w$]*)((?:\.[A-Za-z_$][\w$]*)*))\}$/;
-  function propsMention(props, text) {
+  function propsMention(props, text2) {
     for (const k in props || {}) {
-      if (typeof props[k] === "string" && props[k].indexOf(text) !== -1) return true;
+      if (typeof props[k] === "string" && props[k].indexOf(text2) !== -1) return true;
     }
     return false;
   }
@@ -5397,6 +5930,7 @@
       withTemplateBindings = out;
     }
     let resolved = resolveSparkplugProps(withTemplateBindings);
+    resolved = resolveBindingProps(resolved, runtimeReader(comp, paramState));
     if (window.NexaModel && window.NexaModel.resolveTokenProps && propsMention(resolved, "{token:")) {
       const t = window.__NEXA_THEME__ && window.__NEXA_THEME__.theme ? window.__NEXA_THEME__ : THEME;
       resolved = window.NexaModel.resolveTokenProps(resolved, t.theme, t.mode);
@@ -5436,6 +5970,10 @@
       return;
     }
     comp.props = comp.props || {};
+    if (isBindingList(comp.props[key])) {
+      refreshComponentRender(screen2, comp);
+      return;
+    }
     comp.props[key] = value;
     if (comp.type === "@lit-component") {
       const litEl = document.querySelector('[data-id="' + comp.id + '"]') || document.querySelector('[data-component-id="' + comp.id + '"]');
@@ -5504,10 +6042,12 @@
     const comp = findComponent(screen2, node.compId);
     const compProps = comp && comp.props || {};
     if (comp) comp.__lastMsg = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
-    if (propsMention(compProps, "{msg")) {
+    if (propsMention(compProps, "{msg") || Object.keys(compProps).some(function(k) {
+      return readsMessage(compProps[k]);
+    })) {
       const cfg = {};
       Object.keys(node.config || {}).forEach(function(k) {
-        const bound = typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1;
+        const bound = typeof compProps[k] === "string" && compProps[k].indexOf("{msg") !== -1 || readsMessage(compProps[k]);
         if (!bound) cfg[k] = node.config[k];
       });
       applyUiUpdateMulti(screen2, node.compId, cfg, null, msg && msg.properties);
@@ -5556,7 +6096,7 @@
         return comp.props || {};
       },
       writeTag: function(propKey, value) {
-        const raw = (comp.props || {})[propKey];
+        const raw = writeTargetOf((comp.props || {})[propKey]);
         const local = writeLocalTarget2(screen2, comp, raw, value);
         if (local) return local;
         let resolved = raw;
@@ -5571,7 +6111,7 @@
         return Promise.reject(new Error('tag provider "' + t.provider + `" can't write on a deployed page`));
       },
       writeSparkplugProp: function(propKey, value) {
-        let raw = (comp.props || {})[propKey];
+        let raw = writeTargetOf((comp.props || {})[propKey]);
         if (typeof raw === "string" && comp.__paramState) raw = resolveBindableValue(raw, comp.__paramState);
         const ref = parseSparkplugBindingPath(raw);
         if (!ref) return Promise.reject(new Error("props." + propKey + " is not a valid {sparkplug:...} binding: " + JSON.stringify(raw)));
@@ -6068,6 +6608,7 @@
       root.$route = makeRoute();
       state.currentSharedScope = makeScope(root, app && app.sharedVariables || []);
       state.currentSharedScope.__isSharedScope = true;
+      markScopeLayer(state.currentSharedScope, "shared");
     } else if (app && Array.isArray(app.sharedVariables)) {
       app.sharedVariables.forEach(function(v) {
         if (v && v.name && !(v.name in state.currentSharedScope)) {
@@ -6079,7 +6620,7 @@
   }
   function makeAppScope(app) {
     const shared = state.currentSharedScope || makeSharedScope(app);
-    const scope = makeScope(shared, app.variables);
+    const scope = markScopeLayer(makeScope(shared, app.variables), "app");
     scope.__persist = {};
     (app.variables || []).forEach(function(v) {
       if (!v || !v.name || !storeFor(v.persist)) return;

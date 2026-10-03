@@ -27,7 +27,7 @@ function writeFlows() {
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'nr-inspector', version: '0.0.1', private: true }));
     const template = { id: 'tCard', name: 'Card', width: 160, height: 90, params: [{ name: 'title', label: 'Title', type: 'string', defaultValue: 'Pump' }, { name: 'speed', label: 'Speed', type: 'number', defaultValue: 0 }],
         components: [], variables: [], logic: { nodes: [], wires: [] } };
-    const screen = { id: 'sI', name: 'Insp', path: '/insp', width: 900, height: 600, gridSize: 10, snap: false, treeVersion: 1, orphans: [], variables: [],
+    const screen = { id: 'sI', name: 'Insp', path: '/insp', width: 900, height: 600, gridSize: 10, snap: false, treeVersion: 1, orphans: [], variables: [{ id: 'sv1', name: 'empty', type: 'string', defaultValue: null }],
         logic: { nodes: [], wires: [] },
         components: [
             { id: 'F', type: '@frame', name: 'Row', x: 20, y: 20, w: 400, h: 120, layout: { mode: 'horizontal', gap: 8, padding: { t: 8, r: 8, b: 8, l: 8 } },
@@ -36,9 +36,11 @@ function writeFlows() {
                 children: [{ id: 'G1', type: 'nexa-ui-button', x: 0, y: 0, w: 90, h: 40, props: { text: 'G1' } }, { id: 'G2', type: 'nexa-ui-button', x: 100, y: 10, w: 90, h: 40, props: { text: 'G2' } }] },
             { id: 'I', type: '@template', templateId: 'tCard', x: 500, y: 20, w: 160, h: 90, props: {}, paramValues: { title: 'P-101' } },
             { id: 'TB', type: 'nexa-ui-tabs', x: 20, y: 300, w: 360, h: 200, props: {} },
+            // a binding priority list: the screen's "empty" has no value -> the app's "title"
+            { id: 'BL', type: 'nexa-ui-button', x: 700, y: 400, w: 120, h: 40, props: { text: { $bind: [{ src: 'screen', ref: 'empty' }, { src: 'app', ref: 'title' }], static: 'Static' } } },
             { id: 'L', type: '@lit-component', x: 500, y: 200, w: 160, h: 60, props: {}, litCode: 'render() { return html`<b>hi</b>`; }', litStyles: '', litBindable: [{ name: 'label', type: 'string', defaultValue: 'x' }], litEvents: [] }
         ] };
-    const project = { id: 'proj', type: 'kufayeka-nexa-project', name: 'Insp', sparkplugConnection: '', screens: [screen], templates: [template], types: [], breakpoints: [], theme: null, variables: [] };
+    const project = { id: 'proj', type: 'kufayeka-nexa-project', name: 'Insp', sparkplugConnection: '', screens: [screen], templates: [template], types: [], breakpoints: [], theme: null, variables: [{ id: 'av1', name: 'title', type: 'string', defaultValue: 'App T' }] };
     fs.writeFileSync(path.join(dir, 'flows.json'), JSON.stringify([{ id: 'tab1', type: 'tab', label: 'T' }, project], null, 1));
     return dir;
 }
@@ -164,6 +166,8 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Types: a new type is a tree (Type, Parameters, Members) + its instances', JSON.stringify(typeRows) === JSON.stringify(['Type', 'Parameters', 'Members', 'Instances (app — every screen)']), typeRows);
 
             const errs = logs.filter((l) => !/favicon|DevTools/.test(l));
+            const blText = await js(`(function(){ var e = document.querySelector('.nexa-artboard [data-id="BL"]') || document.querySelector('[data-id="BL"]'); if (!e) return null; var t = e.textContent; e.querySelectorAll('*').forEach(function(c){ if (c.shadowRoot) t += c.shadowRoot.textContent; }); return t; })()`);
+            check('canvas: a binding list shows its first source with a value (the app variable)', /App T/.test(blText || '') && !/Static/.test(blText || ''), blText);
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));
             return true;
         }, { width: 1600, height: 1100, ready: 'document.readyState === "complete" && !!window.RED && !!RED.sidebar', readyTries: 150 });

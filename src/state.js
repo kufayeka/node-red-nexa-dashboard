@@ -4,6 +4,7 @@ import * as Layout from "./model/layout.js";
 import * as Scope from "./model/scope.js";
 import * as Types from "./model/types.js";
 import * as Theme from "./model/theme.js";
+import { markScopeLayer } from "./model/binding.js";
 import { migrateSurface, TREE_VERSION } from "./model/migrate.js";
 import { logicMeta, logicTypes, logicOutputCount } from "./features/logic/registry.js";
 import { migrateLogic } from "./model/migrate-logic.js";
@@ -519,8 +520,8 @@ export function getApp() {
 }
 export function appScope() {
     var app = getApp();
-    var shared = Scope.makeScope(null, app.sharedVariables || []);
-    return Scope.makeScope(shared, app.variables);
+    var shared = markScopeLayer(Scope.makeScope(null, app.sharedVariables || []), "shared");
+    return markScopeLayer(Scope.makeScope(shared, app.variables), "app");
 }
 
 export function markDirty() {

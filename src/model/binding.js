@@ -17,7 +17,9 @@
 // A reference without a value makes the whole expression have none (it falls through).
 
 // ---- the source kinds (a registry: OPC UA, SQL… register later) ---------------------------
-var KINDS = {};
+// one registry per page, shared by every bundle that carries this module (editor, page, SDK)
+var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
 
 /**
  * registerSourceKind("opcua", { label, tag: true, provider: "opcua" })
@@ -139,8 +141,52 @@ export function tagRefsOf(value) {
     return out;
 }
 
+/** Every binding list in a value (a prop, the fields of its list items). */
+export function bindingListsIn(v, out) {
+    out = out || [];
+    if (isBindingList(v)) out.push(v);
+    else if (Array.isArray(v)) v.forEach(function (x) { bindingListsIn(x, out); });
+    else if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) Object.keys(v).forEach(function (k) { bindingListsIn(v[k], out); });
+    return out;
+}
+
+/**
+ * What the binding lists in a value read, as the legacy strings the existing pipelines index:
+ * "{sparkplug:address}" per tag, "{name}" per variable (a type member's tag is found through it).
+ */
+export function bindingCandidates(v) {
+    var out = [];
+    bindingListsIn(v).forEach(function (list) {
+        tagRefsOf(list).forEach(function (t) { if (t.provider === "sparkplug") out.push("{sparkplug:" + t.address + "}"); });
+        list.$bind.forEach(function (s) {
+            var refs = s.src === "expr" ? referencesOf(s.ref) : [s];
+            refs.forEach(function (r) {
+                var k = KINDS[r.src];
+                if (k && k.variable) out.push("{" + firstSegment(r.ref) + "}");
+            });
+        });
+    });
+    return out;
+}
+
+/**
+ * Where a write to a binding list goes: its first writable source (a tag, a screen / app / shared
+ * variable), as the legacy string the write paths take ("{sparkplug:…}", "{name}"); null = none.
+ */
+export function writeTargetOf(value) {
+    if (!isBindingList(value)) return typeof value === "string" ? value : null;
+    for (var i = 0; i < value.$bind.length; i++) {
+        var s = value.$bind[i], k = KINDS[s.src];
+        if (!k || !s.ref) continue;
+        if (k.tag) return "{" + (k.provider || s.src) + ":" + s.ref + "}";
+        if (k.variable && k.variable !== "param") return "{" + s.ref + "}";
+    }
+    return null;
+}
+
 /** Whether a prop value reads the message (an Update Component node feeds it). */
 export function readsMessage(value) {
+    if (!isBindingList(value) && !isLegacyBinding(value)) return bindingListsIn(value).some(readsMessage);
     return toBindingList(value).sources.some(function (s) {
         return s.src === "msg" || (s.src === "expr" && referencesOf(s.ref).some(function (r) { return r.src === "msg"; }));
     });
@@ -337,4 +383,103 @@ export function evaluateExpression(textOrAst, read) {
         if (e === NONE) return null;
         return null;
     }
+}
+
+// ---- reading the sources from scope chains (the editor's and the page's) ----------------------
+// A scope chain is prototype objects: containers -> the surface (screen / template instance) ->
+// the app layer -> the shared layer (-> the page's root with $route). The app and shared layers
+// are marked (markScopeLayer) so a reader finds them in either the editor's or the page's chain.
+export function markScopeLayer(scope, layer) {
+    if (scope && typeof scope === "object") Object.defineProperty(scope, "__nexaLayer", { value: layer, enumerable: false, configurable: true });
+    return scope;
+}
+
+function layerOf(scope, layer) {
+    for (var s = scope; s; s = Object.getPrototypeOf(s)) if (Object.prototype.hasOwnProperty.call(s, "__nexaLayer") && s.__nexaLayer === layer) return s;
+    return null;
+}
+
+function readPath(root, path) {
+    var segs = String(path || "").match(/[^.[\]]+/g) || [];
+    var cur = root;
+    for (var i = 0; i < segs.length; i++) {
+        if (cur === null || cur === undefined) return undefined;
+        cur = cur[segs[i]];
+    }
+    return cur;
+}
+
+function firstSegment(path) { return (String(path || "").match(/[^.[\]]+/) || [""])[0]; }
+
+/**
+ * A read(src, ref) for resolveValue, from a node's scope chain.
+ *   o.scope           the node's nearest scope
+ *   o.msg             the message an Update Component node sent it (or null)
+ *   o.tag(provider, address)   a tag's value now (null / "???" when it has none)
+ *   o.address(text)   a tag address with {variables} in it -> the address
+ *   o.deref(text)     a variable whose value is itself a binding (a type member's tag) -> its value
+ * screen / param: the nearest declaration below the app layer; app / shared: that layer's own;
+ * var: the nearest anywhere (the legacy "{name}").
+ */
+export function scopeReader(o) {
+    var app = layerOf(o.scope, "app"), shared = layerOf(o.scope, "shared");
+    function nearest(ref, belowApp) {
+        var name = firstSegment(ref);
+        for (var s = o.scope; s; s = Object.getPrototypeOf(s)) {
+            if (belowApp && (s === app || s === shared)) return undefined;
+            if (Object.prototype.hasOwnProperty.call(s, name)) return readPath(s, ref);
+        }
+        return undefined;
+    }
+    function own(layer, ref) {
+        return layer && Object.prototype.hasOwnProperty.call(layer, firstSegment(ref)) ? readPath(layer, ref) : undefined;
+    }
+    return function read(src, ref) {
+        var v;
+        if (src === "screen" || src === "param") v = nearest(ref, true);
+        else if (src === "app") v = own(app, ref);
+        else if (src === "shared") v = own(shared, ref);
+        else if (src === "var") v = nearest(ref, false);
+        else if (src === "msg") v = o.msg ? (ref ? readPath(o.msg, String(ref).replace(/^msg\.?/, "")) : o.msg) : undefined;
+        else {
+            var k = KINDS[src];
+            if (!k || !k.tag || !o.tag) return undefined;
+            return o.tag(k.provider || src, o.address ? o.address(ref) : ref);
+        }
+        return v && typeof v === "object" && typeof v.__nexaBinding === "string" && o.deref ? o.deref(v.__nexaBinding) : v;
+    };
+}
+
+/** Whether a value holds a binding list anywhere (a prop, a field of a list item). */
+export function containsBindingList(v) {
+    if (isBindingList(v)) return true;
+    if (Array.isArray(v)) return v.some(containsBindingList);
+    if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) {
+        for (var k in v) if (containsBindingList(v[k])) return true;
+    }
+    return false;
+}
+
+function resolveDeep(v, read) {
+    if (isBindingList(v)) return resolveValue(v, read).value;
+    if (!containsBindingList(v)) return v;
+    if (Array.isArray(v)) return v.map(function (x) { return resolveDeep(x, read); });
+    var o = {};
+    Object.keys(v).forEach(function (k) { o[k] = resolveDeep(v[k], read); });
+    return o;
+}
+
+/**
+ * Resolves every binding list in `props` (a prop, or a field of a list item; the legacy strings
+ * are left to the caller's own pipeline): -> a copy with their values, or `props` itself when it
+ * has none.
+ */
+export function resolveBindingProps(props, read) {
+    var out = null;
+    Object.keys(props || {}).forEach(function (k) {
+        if (!containsBindingList(props[k])) return;
+        if (!out) out = Object.assign({}, props);
+        out[k] = resolveDeep(props[k], read);
+    });
+    return out || props;
 }

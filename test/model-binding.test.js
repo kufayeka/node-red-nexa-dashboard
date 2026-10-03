@@ -85,5 +85,44 @@ ok('source kinds are a registry (OPC UA and others later)', () => {
     assert.ok(M.sourceKinds().map((x) => x.name).includes('param'));
 });
 
+ok('scope layers: screen / app / shared read their own layer; var reads the nearest', () => {
+    const shared = M.markScopeLayer({ s: 'S', x: 'shared-x' }, 'shared');
+    const app = M.markScopeLayer(Object.assign(Object.create(shared), { a: 'A', x: 'app-x' }), 'app');
+    const screen = Object.assign(Object.create(app), { v: 1, x: 'screen-x', m: { n: 5 } });
+    const read = M.scopeReader({ scope: screen, msg: { payload: { t: 7 } }, tag: (p, a) => (a === 'G::E::D::M' ? 42 : '???') });
+    assert.strictEqual(read('screen', 'x'), 'screen-x');
+    assert.strictEqual(read('app', 'x'), 'app-x');
+    assert.strictEqual(read('shared', 'x'), 'shared-x');
+    assert.strictEqual(read('screen', 'a'), undefined, 'an app variable is not a screen variable');
+    assert.strictEqual(read('app', 's'), undefined, 'a shared variable is not an app variable');
+    assert.strictEqual(read('var', 's'), 'S');
+    assert.strictEqual(read('screen', 'm.n'), 5);
+    assert.strictEqual(read('msg', 'payload.t'), 7);
+    assert.strictEqual(read('sparkplug', 'G::E::D::M'), 42);
+    assert.strictEqual(read('msg', 'payload.t'), 7);
+    const none = M.scopeReader({ scope: screen, msg: null });
+    assert.strictEqual(none('msg', 'payload.t'), undefined, 'no message yet: no value');
+});
+
+ok('fields of list items resolve too; band merges keep a list whole', () => {
+    const read = reader({ app: { t1: 'From app' } });
+    const props = { title: 'x', tabs: [{ label: M.bindingList([{ src: 'app', ref: 't1' }], 'Tab 1') }, { label: M.bindingList([{ src: 'app', ref: 'no' }], 'Tab 2') }] };
+    const out = M.resolveBindingProps(props, read);
+    assert.deepStrictEqual(out.tabs.map((t) => t.label), ['From app', 'Tab 2']);
+    assert.ok(M.isBindingList(props.tabs[0].label), 'the stored value is untouched');
+    const plain = { a: 1, b: [{ c: 2 }] };
+    assert.strictEqual(M.resolveBindingProps(plain, read), plain, 'nothing bound: the same object');
+});
+
+ok('what to subscribe and where a write goes', () => {
+    const v = { items: [{ v: M.bindingList([{ src: 'msg', ref: 'payload' }, { src: 'expr', ref: '[screen]{speed} * [sparkplug]{G::E::D::B}' }], 0) }] };
+    assert.deepStrictEqual(M.bindingCandidates(v).sort(), ['{sparkplug:G::E::D::B}', '{speed}']);
+    assert.strictEqual(M.readsMessage(v), true, 'a list item field reads the message');
+    assert.strictEqual(M.writeTargetOf(M.bindingList([{ src: 'msg', ref: 'x' }, { src: 'sparkplug', ref: 'G::E::D::W' }], 0)), '{sparkplug:G::E::D::W}');
+    assert.strictEqual(M.writeTargetOf(M.bindingList([{ src: 'param', ref: 'p' }, { src: 'app', ref: 'speed' }], 0)), '{speed}');
+    assert.strictEqual(M.writeTargetOf(M.bindingList([{ src: 'expr', ref: '1+1' }], 0)), null);
+    assert.strictEqual(M.writeTargetOf('{speed}'), '{speed}');
+});
+
 console.log(passed + ' passed');
 console.log('ALL OK');

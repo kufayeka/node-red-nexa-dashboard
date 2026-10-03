@@ -53,7 +53,8 @@ export var OVERRIDABLE = ["x", "y", "w", "h", "visibility", "layout", "layoutChi
 var MERGED = { layout: true, layoutChild: true, style: true, constraints: true, props: true, overlay: true, dock: true };
 
 function clone(v) { return v === undefined || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v)); }
-function isPlain(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+// a binding list ({ $bind, static }) is one value: a band replaces it whole, never merges into it
+function isPlain(v) { return v !== null && typeof v === "object" && !Array.isArray(v) && !Array.isArray(v.$bind); }
 function merge(into, patch) {
     var out = isPlain(into) ? clone(into) : {};
     Object.keys(patch || {}).forEach(function (k) {

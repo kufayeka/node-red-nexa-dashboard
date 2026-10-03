@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>binding</title>
+<style>html,body{margin:0;padding:0}#nexa-runtime-artboard{position:relative;margin:0}</style></head>
+<body>
+<!-- Binding priority lists on a deployed page (see test/runtime-binding-browser.test.js):
+     { $bind: [sources], static } — the first source with a value wins, static last. -->
+<div id="nexa-runtime-artboard" style="width:800px;height:400px;"></div>
+<script src="/dist/nexa-registry-client.js"></script>
+<script>
+NEXA.registerComponent("label", { render: function (el, p) { el.textContent = String(p.text); } });
+NEXA.registerComponent("lister", { render: function (el, p) { el.textContent = (p.items || []).map(function (i) { return i.label; }).join(","); } });
+function label(id, text) { return { id: id, type: "label", x: 0, y: 0, w: 200, h: 20, props: { text: text } }; }
+function v(name, value, type) { return { id: "v-" + name, name: name, type: type || (typeof value === "number" ? "number" : "string"), defaultValue: value }; }
+function bind(sources, st) { return { $bind: sources.map(function (s) { return { src: s[0], ref: s[1] }; }), static: st }; }
+window.__NEXA_APP__ = { variables: [v("title", "App title"), v("speed", 5), v("site", "app-site")], sharedVariables: [v("site", "Plant A")] };
+window.__NEXA_SCREEN__ = { id: "s", width: 800, height: 400, treeVersion: 1, orphans: [],
+  variables: [v("empty", null), v("title", "screen title")],
+  components: [
+    label("a", bind([["screen", "empty"], ["app", "title"]], "S")),
+    label("b", bind([["shared", "site"]], "none")),
+    label("c", bind([["expr", '[app]{speed} * 2 " rpm"']], "")),
+    label("d", bind([["msg", "payload.t"], ["screen", "empty"]], "waiting")),
+    label("e", bind([["sparkplug", "G::E::D::M"]], "off")),
+    label("f", "{title}"),
+    { id: "g", type: "lister", x: 0, y: 0, w: 200, h: 20, props: { items: [{ label: bind([["app", "title"]], "x") }, { label: bind([["screen", "nope"]], "Tab 2") }] } }
+  ],
+  logic: { nodes: [
+    { id: "t1", type: "inject", once: true, onceDelay: 1200, intervalMs: 0, payloadType: "json", payload: "{\"t\":\"hello\"}" },
+    { id: "u1", type: "ui-update", compId: "d", config: { text: "overwritten?" } },
+    { id: "t2", type: "inject", once: true, onceDelay: 1200, intervalMs: 0, payloadType: "str", payload: "direct" },
+    { id: "u2", type: "ui-update", compId: "b" }
+  ], wires: [{ id: "w1", from: "t1", to: "u1" }, { id: "w2", from: "t2", to: "u2" }] } };
+window.__NEXA_PARAMS__ = {}; window.__NEXA_QUERY__ = {};
+</script>
+<script src="/dist/nexa-model-client.js"></script>
+<script src="/dist/nexa-runtime.bundle.js"></script>
+</body></html>

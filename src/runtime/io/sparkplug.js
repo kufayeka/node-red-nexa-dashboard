@@ -6,6 +6,7 @@ import { resolveBindableValue } from "../state/variable.js";
 import { ioSyncSubscription } from "./client.js";
 import { refreshComponentRender } from "../mounting/render.js";
 import { fireUiEvent } from "../logic/runner.js";
+import { bindingCandidates } from "../../model/binding.js";
 
 export const SPARKPLUG_BINDING_PREFIX = "sparkplug:";
 export const EMBEDDED_TAG_RE = /\{sparkplug:[^{}]+\}/g;
@@ -111,6 +112,8 @@ export function registerSparkplugBoundComponentsFrom(effectiveScreen) {
             const v = props[k];
             if (typeof v === "string") candidates.push(v);
             else if (Array.isArray(v)) v.forEach(function (x) { if (typeof x === "string") candidates.push(x); });
+            // binding priority lists (a prop or a list item's field): their tags and variables
+            if (v && typeof v === "object") bindingCandidates(v).forEach(function (c) { candidates.push(c); });
         });
         candidates.forEach(function (v) {
             const resolved = resolveBindableValue(v, comp.__paramState);
