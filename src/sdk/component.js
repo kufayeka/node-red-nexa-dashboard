@@ -74,6 +74,16 @@ export function defineComponent(def) {
         version: meta.version,
         nexa: meta,
         tag: tag,
+        /**
+         * The items of a target list (a chart's series) in these props: the saved ones, else the
+         * schema's default (a component just dropped has its default series, not saved yet).
+         */
+        targetItems: function (props, key) {
+            var v = props && props[key];
+            if (Array.isArray(v)) return v;
+            var p = meta.props[key];
+            return p && Array.isArray(p.default) ? JSON.parse(JSON.stringify(p.default)) : [];
+        },
         /** Props saved by an older version, brought up to date (the editor persists the result). */
         migrateProps: function (props) { return migrateProps(meta, props || {}); },
         render: function (el, props, ctx) {

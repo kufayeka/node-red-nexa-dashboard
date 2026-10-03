@@ -31870,7 +31870,7 @@
           return { type: "ui-update", compId: comp.id, config: {} };
         }, comp.id, "ui-update");
         (typeDef && typeDef.targets || []).forEach(function(t2) {
-          var items = comp.props && Array.isArray(comp.props[t2.key]) ? comp.props[t2.key] : [];
+          var items = typeDef.targetItems ? typeDef.targetItems(comp.props, t2.key) : [];
           items.forEach(function(it, i2) {
             var id2 = it && it[t2.idField || "id"];
             if (!id2) return;
@@ -32127,7 +32127,7 @@
       return t2.key === ref.list;
     })[0] : null;
     var listProp = target ? nexa.props[target.key] : null;
-    var items = target && comp.props && Array.isArray(comp.props[target.key]) ? comp.props[target.key] : [];
+    var items = target && typeDef.targetItems ? typeDef.targetItems(comp.props, target.key) : [];
     var item = target ? items.filter(function(it) {
       return it && it[target.idField] === ref.id;
     })[0] : null;
@@ -32489,7 +32489,7 @@
     const t2 = def && (def.targets || []).filter(function(x) {
       return x.key === ref.list;
     })[0];
-    const list = comp && comp.props && Array.isArray(comp.props[ref.list]) ? comp.props[ref.list] : [];
+    const list = comp && def && def.targetItems ? def.targetItems(comp.props, ref.list) : [];
     const it = list.filter(function(x) {
       return x && x[t2 && t2.idField || "id"] === ref.id;
     })[0];

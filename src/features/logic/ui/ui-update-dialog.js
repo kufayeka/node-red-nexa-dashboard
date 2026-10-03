@@ -118,7 +118,7 @@ export function openUiUpdateNodeEditor(node) {
     var ref = node.props.item && node.props.item.list ? node.props.item : null;
     var target = ref && nexa ? (nexa.targetList || []).filter(function (t) { return t.key === ref.list; })[0] : null;
     var listProp = target ? nexa.props[target.key] : null;
-    var items = target && comp.props && Array.isArray(comp.props[target.key]) ? comp.props[target.key] : [];
+    var items = target && typeDef.targetItems ? typeDef.targetItems(comp.props, target.key) : [];
     var item = target ? items.filter(function (it) { return it && it[target.idField] === ref.id; })[0] : null;
     var itemName = item ? (item.name || item.label || ref.id) : ref ? ref.id : "";
 

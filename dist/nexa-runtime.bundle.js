@@ -6192,7 +6192,8 @@
     const t = targetListsOf(comp).filter(function(x) {
       return x.key === node.item.list;
     })[0];
-    const list = comp.props && Array.isArray(comp.props[node.item.list]) ? comp.props[node.item.list] : null;
+    const def = window.NEXA && window.NEXA.getComponent(comp.type);
+    const list = def && def.targetItems ? def.targetItems(comp.props, node.item.list) : null;
     const idField = t && t.idField || "id";
     const index = list ? list.findIndex(function(it) {
       return it && it[idField] === node.item.id;
@@ -6224,6 +6225,7 @@
       });
       const next = list.slice();
       next[index] = item;
+      comp.props = comp.props || {};
       comp.props[node.item.list] = next;
     }
     refreshComponentRender(screen2, comp);

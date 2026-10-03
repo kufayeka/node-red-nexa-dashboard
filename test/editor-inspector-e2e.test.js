@@ -46,6 +46,8 @@ function writeFlows() {
             { id: 'LG', type: 'nexa-ui-button', x: 700, y: 460, w: 120, h: 40, props: { text: '{title}', __fallback: { text: 'fb' } } },
             // an input tag (Data Array): a binding list like every bound prop, its static last
             { id: 'CH', type: 'nexa-ui-line-chart', x: 20, y: 520, w: 400, h: 200, props: { inputData: '{msg.payload}' } },
+            // a chart just dropped: its series are the schema's default, not saved in its props
+            { id: 'CH0', type: 'nexa-ui-line-chart', x: 450, y: 520, w: 300, h: 180, props: {} },
             { id: 'L', type: '@lit-component', x: 500, y: 200, w: 160, h: 60, props: {}, litCode: 'render() { return html`<b>hi</b>`; }', litStyles: '', litBindable: [{ name: 'label', type: 'string', defaultValue: 'x' }], litEvents: [] }
         ] };
     const project = { id: 'proj', type: 'kufayeka-nexa-project', name: 'Insp', sparkplugConnection: '', screens: [screen], templates: [template], types: [], breakpoints: [], theme: null, variables: [{ id: 'av1', name: 'title', type: 'string', defaultValue: 'App T' }] };
@@ -287,7 +289,9 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await js('__nexaEditorState.sidebarTabs.activateTab("events"); true');
             await wait(600);
             const chips = await js(`Array.from(document.querySelectorAll('.nexa-palette-item[data-comp-id="CH"]')).map(function(e){ return e.textContent.trim(); })`);
-            check('Events tab: the chart Update and events, and per series its own Update and events', chips.some((t) => /Line Chart #w+ → Update$/.test(t)) && chips.some((t) => /· Series 1 → Update$/.test(t)) && chips.some((t) => /· Series 1 → On Threshold Crossed$/.test(t)) && chips.some((t) => /→ On Range Change$/.test(t)), chips);
+            check('Events tab: the chart Update and events, and per series its own Update and events', chips.some((t) => /Line Chart #\w+ → Update$/.test(t)) && chips.some((t) => /· Series 1 → Update$/.test(t)) && chips.some((t) => /· Series 1 → On Threshold Crossed$/.test(t)) && chips.some((t) => /→ On Range Change$/.test(t)), chips);
+            const chips0 = await js(`Array.from(document.querySelectorAll('.nexa-palette-item[data-comp-id="CH0"]')).map(function(e){ return e.textContent.trim(); })`);
+            check('a chart just dropped (series not saved yet): its Series 1 has its Update node and events', chips0.some((t) => /· Series 1 → Update$/.test(t)) && chips0.some((t) => /· Series 1 → On Stale$/.test(t)), chips0);
             await js('__nexaEditorState.sidebarTabs.activateTab("properties"); true');
 
             // the series' Update node: only that series' props and its actions (cards that say what they do)

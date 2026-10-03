@@ -603,7 +603,7 @@ export function renderEventsPanel() {
             }, comp.id, "ui-update");
             // the items of its target lists (a chart's series): each its own Update node and events
             ((typeDef && typeDef.targets) || []).forEach(function (t) {
-                var items = comp.props && Array.isArray(comp.props[t.key]) ? comp.props[t.key] : [];
+                var items = typeDef.targetItems ? typeDef.targetItems(comp.props, t.key) : [];
                 items.forEach(function (it, i) {
                     var id = it && it[t.idField || "id"];
                     if (!id) return;

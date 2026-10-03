@@ -29,7 +29,7 @@ function itemOf(node, def) {
     if (!ref || !ref.list) return null;
     const comp = findComponent(node.props.compId);
     const t = def && (def.targets || []).filter(function (x) { return x.key === ref.list; })[0];
-    const list = comp && comp.props && Array.isArray(comp.props[ref.list]) ? comp.props[ref.list] : [];
+    const list = comp && def && def.targetItems ? def.targetItems(comp.props, ref.list) : [];
     const it = list.filter(function (x) { return x && x[(t && t.idField) || "id"] === ref.id; })[0];
     return { name: it ? (it.name || it.label || ref.id) : ref.id + " (removed)", target: t };
 }
