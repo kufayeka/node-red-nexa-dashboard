@@ -233,6 +233,21 @@ nx-tab[hidden] { display: none !important; }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
+/* nx-binding-list (binding-list.js): the binding priority */
+.nx-kit .nx-bl { display: flex; flex-direction: column; gap: 4px; }
+.nx-kit .nx-bl-row { display: flex; align-items: flex-start; gap: 4px; padding: 4px; border-radius: 4px; background: var(--nx-bg-subtle); border: 1px solid transparent; }
+.nx-kit .nx-bl-row.nx-dragging { opacity: .45; }
+.nx-kit .nx-bl-row.nx-drop, .nx-kit .nx-bl-end.nx-drop { border-top: 2px solid var(--nx-accent, #0f62fe); }
+.nx-kit .nx-bl-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.nx-kit .nx-bl-n { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 6px 2px 0 0; padding: 0 3px; border-radius: 8px; font-size: 10px; font-weight: 600; color: var(--nx-text-muted); background: var(--nx-bg-hover); }
+.nx-kit .nx-bl-static .nx-bl-n { margin: 0 4px 0 0; }
+.nx-kit .nx-bl-static .nx-fallback-label { display: flex; align-items: center; }
+.nx-kit .nx-bl-grip { flex: 0 0 auto; cursor: grab; padding: 6px 4px; color: var(--nx-text-faint); }
+.nx-kit .nx-bl-del { flex: 0 0 auto; }
+.nx-kit .nx-bl-add { width: 100%; justify-content: center; }
+.nx-kit .nx-bl-mode { display: inline-flex; border: 1px solid var(--nx-border-subtle); border-radius: 4px; overflow: hidden; margin-left: 4px; }
+.nx-kit.nx-kit .nx-bl-mode button { border: 0; background: transparent; font: inherit; font-size: 10.5px; padding: 1px 6px; cursor: pointer; color: var(--nx-text-muted); }
+.nx-kit.nx-kit .nx-bl-mode button.nx-on { background: var(--nx-bg-hover); color: var(--nx-text); font-weight: 600; }
 /* nx-binding (binding.js) */
 .nx-kit .nx-binding { display: flex; flex-direction: column; gap: 6px; }
 .nx-kit .nx-binding-source { width: 100%; }

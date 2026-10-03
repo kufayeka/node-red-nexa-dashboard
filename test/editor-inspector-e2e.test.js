@@ -125,6 +125,42 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Tabs: + on the list row adds a tab (an item row more), the new one picked', listId && itemsAfter === itemsBefore + 1 && new RegExp('^' + listId + '#' + itemsBefore + '$').test(await js(`${pane}.querySelector(".nx-tree-row.nx-on").dataset.id`)), { listId, itemsBefore, itemsAfter });
             await shot('tabs-list');
 
+            // a list item's field: Static | Binding like a prop
+            // (the item's pane: its fields; Value names the tab's panel, so it is never bindable)
+            const fieldRow = listId + '#0.label';
+            await pick(listId + '#0');
+            check('... a tab Value (its panel) has no Binding switch, its Label has', await js(`(function(){ var f = Array.from(${pane}.querySelectorAll(".nx-pt-pane nx-text")); return f.length >= 2 && !f[0].querySelector(".nx-bl-mode") && !!f[1].querySelector(".nx-bl-mode"); })()`), null);
+            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn"); if (b) b.click(); return !!b; })()`);
+            await wait(400);
+            const fieldKey = fieldRow ? fieldRow.split('.').pop() : '';
+            const itemVal = await js(`JSON.stringify(${node('TB')}.props[${JSON.stringify(listId || '')}][0][${JSON.stringify(fieldKey)}])`);
+            check('a list item field → Binding: a priority list, the old value its static', /"\$bind":\[\]/.test(itemVal || '') && /"static"/.test(itemVal || ''), { fieldRow, itemVal, props: await js(`JSON.stringify(${node('TB')}.props)`) });
+            check('... the pane shows the list editor', await js(`!!${pane}.querySelector(".nx-pt-pane nx-binding-list")`), null);
+
+            const blText = await js(`(function(){ var e = document.querySelector('.nexa-artboard [data-id="BL"]') || document.querySelector('[data-id="BL"]'); if (!e) return null; var t = e.textContent; e.querySelectorAll('*').forEach(function(c){ if (c.shadowRoot) t += c.shadowRoot.textContent; }); return t; })()`);
+            check('canvas: a binding list shows its first source with a value (the app variable)', /App T/.test(blText || '') && !/Static/.test(blText || ''), blText);
+            // a prop bound to a priority list: its sources in order, the static last
+            await select('BL');
+            const textRow = await js(`(function(){ var r = Array.from(${pane}.querySelectorAll(".nx-tree-row.nx-pt-k-prop")).find(function(x){ return /(^|\\$)text$/.test(x.dataset.id); }); return r ? r.dataset.id : null; })()`);
+            const summary = await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="${textRow}"] .nx-pt-val'); return r ? r.textContent.trim() : null; })()`);
+            check('a binding list: the row shows its sources then the static', summary === 'screen: empty › app: title › Static', summary);
+            await pick(textRow);
+            const blRows = await js(`${pane}.querySelectorAll(".nx-pt-pane nx-binding-list .nx-bl-row").length`);
+            check('... the pane: one row per source, Binding on', blRows === 2 && await js(`!!${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn.nx-on")`), blRows);
+            await shot('binding-list');
+            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-add"); if (b) b.click(); return !!b; })()`);
+            await wait(400);
+            check('Add source: a third source', (await js(`${node('BL')}.props.text.$bind.length`)) === 3, await js(`JSON.stringify(${node('BL')}.props.text)`));
+            await js(`(function(){ var i = ${pane}.querySelector(".nx-pt-pane .nx-bl-static input, .nx-pt-pane .nx-bl-static textarea"); if (!i) return false; i.value = "New static"; i.dispatchEvent(new Event("input", {bubbles:true})); i.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true})); i.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
+            await wait(400);
+            check('the control below the list edits the static value', (await js(`${node('BL')}.props.text.static`)) === 'New static', await js(`JSON.stringify(${node('BL')}.props.text)`));
+            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-static-btn"); if (b) b.click(); return !!b; })()`);
+            await wait(400);
+            check('Static: the static value is the value again', (await js(`JSON.stringify(${node('BL')}.props.text)`)) === '"New static"', await js(`JSON.stringify(${node('BL')}.props.text)`));
+            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-bind-btn"); if (b) b.click(); return !!b; })()`);
+            await wait(400);
+            check('Binding: an empty list, the value kept as its static', (await js(`JSON.stringify(${node('BL')}.props.text)`)) === '{"$bind":[],"static":"New static"}', await js(`JSON.stringify(${node('BL')}.props.text)`));
+
             // a group: its X / Y and size (follows children), Ungroup, Variables
             await select('G');
             check('a group: General, Position & Size, Variables …', JSON.stringify((await groups()).slice(0, 2)) === '["General","Position & Size"]' && (await groups()).includes('Variables'), await groups());
@@ -166,8 +202,6 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Types: a new type is a tree (Type, Parameters, Members) + its instances', JSON.stringify(typeRows) === JSON.stringify(['Type', 'Parameters', 'Members', 'Instances (app — every screen)']), typeRows);
 
             const errs = logs.filter((l) => !/favicon|DevTools/.test(l));
-            const blText = await js(`(function(){ var e = document.querySelector('.nexa-artboard [data-id="BL"]') || document.querySelector('[data-id="BL"]'); if (!e) return null; var t = e.textContent; e.querySelectorAll('*').forEach(function(c){ if (c.shadowRoot) t += c.shadowRoot.textContent; }); return t; })()`);
-            check('canvas: a binding list shows its first source with a value (the app variable)', /App T/.test(blText || '') && !/Static/.test(blText || ''), blText);
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));
             return true;
         }, { width: 1600, height: 1100, ready: 'document.readyState === "complete" && !!window.RED && !!RED.sidebar', readyTries: 150 });

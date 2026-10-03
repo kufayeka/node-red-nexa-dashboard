@@ -16,6 +16,7 @@ import { renderInspector, validateProp, openDialog } from "./inspector.js";
 import { NxTree } from "./tree.js";
 import { NxAlign, NxSpacing } from "./layout-widgets.js";
 import { NxBinding } from "./binding.js";
+import { NxBindingList } from "./binding-list.js";
 import { NxAsset } from "./asset.js";
 import { PropertyEditor, definePropertyEditor, adminApi } from "./prop-tree/editors.js";
 
@@ -25,7 +26,7 @@ var ELEMENTS = {
     "nx-code": NxCode, "nx-tag": NxTag, "nx-list": NxList, "nx-state-switcher": NxStateSwitcher,
     "nx-alert": NxAlert, "nx-badge": NxBadge, "nx-field": NxField,
     "nx-section": NxSection, "nx-tabs": NxTabs, "nx-tab": NxTab, "nx-row": NxRow,
-    "nx-tree": NxTree, "nx-align": NxAlign, "nx-spacing": NxSpacing, "nx-binding": NxBinding, "nx-asset": NxAsset
+    "nx-tree": NxTree, "nx-align": NxAlign, "nx-spacing": NxSpacing, "nx-binding": NxBinding, "nx-binding-list": NxBindingList, "nx-asset": NxAsset
 };
 
 // A plugin's own inspector widget: factory({ KitElement, html, css, nothing, str, icon }) -> class.

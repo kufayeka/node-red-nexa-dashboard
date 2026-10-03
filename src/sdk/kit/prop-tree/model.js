@@ -8,6 +8,8 @@
 //   "label"                   a prop (its key: the same wherever its group is)
 //   "tabs#2"  "tabs#2.label"  the 3rd item of the list prop "tabs", that item's field "label"
 
+import { isBindingList } from "../../../model/binding.js";
+
 function isEmpty(v) {
     return v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
 }
@@ -53,6 +55,12 @@ export function summary(prop, value, props, summarize) {
         return { text: t === undefined || t === null ? "" : String(t), empty: isEmpty(t) };
     }
     if (prop.bindable && isBinding(v)) return { text: v, bound: true };
+    // a binding priority list: its sources in order, then the static value
+    if (isBindingList(v)) {
+        var parts = v.$bind.map(function (s) { return s.src === "expr" ? s.ref : s.src + ": " + (s.ref || "…"); });
+        if (v.static !== undefined && v.static !== null && v.static !== "") parts.push(typeof v.static === "object" ? JSON.stringify(v.static) : String(v.static));
+        return { text: parts.join(" › ") || "no source", bound: true };
+    }
     var tok = typeof v === "string" && /^\{token:([^{}]+)\}$/.exec(v.trim());
     if (tok) return { text: tok[1], token: true };
     switch (prop.type) {

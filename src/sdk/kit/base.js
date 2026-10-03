@@ -178,7 +178,11 @@ export class KitElement extends LitElement {
      * nx-binding, and the control below it for the fallback), then the message / help.
      */
     frame(control) {
-        if (this.binding !== undefined && this.binding !== null) {
+        if (this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind)) {
+            // a binding priority list: its sources, then the static value (this widget's control), last
+            var list = html`<nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding-list>`;
+            control = html`${list}<div class="nx-fallback nx-bl-static"><div class="nx-fallback-label"><span class="nx-bl-n">${this.binding.$bind.length + 1}</span>Static — when no source above has a value</div>${control}</div>`;
+        } else if (this.binding !== undefined && this.binding !== null) {
             var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding>`;
             control = this.fallback
                 ? html`${editor}<div class="nx-fallback"><div class="nx-fallback-label">Fallback — shown while the binding has no value (none yet, null, ???)</div>${control}</div>`

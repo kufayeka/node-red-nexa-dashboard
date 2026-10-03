@@ -269,12 +269,16 @@ async function main() {
                 a.querySelector("[title='Reset to default']").click(); await NexaTest.wait();
                 out.aReset = ins.props.a;
                 var f = await ins.field("fill");
-                f.querySelector("[title^='Bind']").click(); await NexaTest.wait();
-                out.bindMode = f.binding === "" && !!f.querySelector("nx-binding");
-                var tagIn = f.querySelector("nx-binding nx-combobox input");   // the Variable source
-                tagIn.focus(); tagIn.value = "{color}"; tagIn.dispatchEvent(new Event("input")); tagIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+                var before = ins.props.fill;
+                f.querySelector(".nx-bl-bind-btn").click(); await NexaTest.wait();
+                f = await ins.field("fill");
+                out.bindMode = !!f.binding && f.binding.$bind.length === 0 && f.binding.static === before && !!f.querySelector("nx-binding-list");
+                f.querySelector(".nx-bl-add").click(); await NexaTest.wait();
+                f = await ins.field("fill");
+                var varIn = f.querySelector("nx-binding-list nx-combobox input");   // the first kind: a screen variable
+                varIn.focus(); varIn.value = "color"; varIn.dispatchEvent(new Event("input")); varIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
                 await NexaTest.wait();
-                out.fill = [ins.props.fill, !!rowEl("fill").querySelector(".fa-link")];
+                out.fill = [JSON.stringify(ins.props.fill.$bind), !!rowEl("fill").querySelector(".fa-link")];
                 // the tree is one tab stop: arrows move the selection, Left goes to the parent
                 var tree = box.querySelector(".nx-pt-tree"); tree.focus();
                 var key = function (k) { tree.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })); return NexaTest.wait(); };
@@ -290,8 +294,8 @@ async function main() {
             assert.strictEqual(r.bRequired, 'Required');
             assert.ok(r.focusKept && r.dShown, 'visibleWhen re-evaluated in place, the field being typed in keeps the focus');
             assert.deepStrictEqual([r.aMax, r.aReset], ['Maximum is 10', 1]);
-            assert.ok(r.bindMode, 'the same widget switches to the binding editor');
-            assert.deepStrictEqual(r.fill, ['{color}', true]);
+            assert.ok(r.bindMode, 'Binding: the same widget shows the priority list, the value kept as its static');
+            assert.deepStrictEqual(r.fill, ['[{"src":"screen","ref":"color"}]', true]);
             assert.deepStrictEqual(r.kbd, ['d', '@Two', '@One,a,b,@Two']);
         });
 
@@ -559,7 +563,7 @@ async function main() {
             assert.deepStrictEqual(r.calls, [['setAt', 'gap', 'md', 4], ['set', 'gap', 12], ['clearAt', 'gap', 'md']]);
         });
 
-        await ok('nx-checkbox: ⛓ bind button opens nx-binding with Message source, fallback edits boolean, and 📱 opens breakpoint chips', async () => {
+        await ok('nx-checkbox: Static | Binding opens the priority list (a Message source), its static edits the boolean, and 📱 opens breakpoint chips', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { disabled: false }, calls = [];
@@ -590,65 +594,53 @@ async function main() {
                 bpBtn.click(); await NexaTest.wait();
                 out.bpChips = Array.from(cb.querySelectorAll(".nx-bp-chip")).map(function (c) { return c.getAttribute("data-bp"); });
 
-                // 2. Bind button (⛓)
-                var bindBtn = cb.querySelector("[title^='Bind']");
+                // 2. Static | Binding: Binding
+                var bindBtn = cb.querySelector(".nx-bl-bind-btn");
                 out.hasBindBtn = !!bindBtn;
                 bindBtn.click(); await NexaTest.wait();
+                out.hasBindingWidget = !!cb.querySelector("nx-binding-list");
 
-                // Has nx-binding rendered now?
-                var bindingWidget = cb.querySelector("nx-binding");
-                out.hasBindingWidget = !!bindingWidget;
+                // a Message source: msg.disabled
+                cb.querySelector(".nx-bl-add").click(); await NexaTest.wait();
+                var kind = cb.querySelector(".nx-bl-row nx-select select");
+                var msgAt = Array.from(kind.options).findIndex(function (o) { return /Message/.test(o.textContent); });
+                out.hasMsgSource = msgAt !== -1;
+                kind.value = String(msgAt); kind.dispatchEvent(new Event("change", { bubbles: true })); await NexaTest.wait();
+                var msgInput = cb.querySelector(".nx-bl-row nx-text input");
+                msgInput.focus();
+                msgInput.value = "disabled";
+                msgInput.dispatchEvent(new Event("input", { bubbles: true }));
+                msgInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+                await NexaTest.wait();
+                out.propAfterBind = JSON.stringify(props.disabled.$bind);
 
-                // Pick "msg" source
-                var msgBtn = Array.from(bindingWidget.querySelectorAll(".nx-seg-item")).find(function (b) { return b.textContent.indexOf("Message") !== -1; });
-                out.hasMsgSource = !!msgBtn;
-                if (msgBtn) { msgBtn.click(); await NexaTest.wait(); }
+                // 3. the static value (last): a checkbox below the list
+                var staticBox = cb.querySelector(".nx-bl-static input[type=checkbox]");
+                out.hasFallbackBox = !!staticBox;
+                if (staticBox) { staticBox.click(); await NexaTest.wait(); }
+                out.fallbackValue = props.disabled.static;
 
-                // Type msg path: "disabled"
-                var msgInput = bindingWidget.querySelector("nx-text input");
-                if (msgInput) {
-                    msgInput.focus();
-                    msgInput.value = "disabled";
-                    msgInput.dispatchEvent(new Event("input", { bubbles: true }));
-                    msgInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-                    await NexaTest.wait();
-                }
-                out.propAfterBind = props.disabled;
-
-                // 3. Fallback checkbox
-                var fallbackBox = cb.querySelector(".nx-fallback input[type=checkbox]");
-                out.hasFallbackBox = !!fallbackBox;
-                if (fallbackBox) {
-                    fallbackBox.click();
-                    await NexaTest.wait();
-                }
-                out.fallbackValue = props.__fallback ? props.__fallback.disabled : undefined;
-
-                // 4. Unbind
-                var unbindBtn = cb.querySelector("[title*='Bound']");
-                if (unbindBtn) {
-                    unbindBtn.click();
-                    await NexaTest.wait();
-                }
+                // 4. Static again: the static value is the value
+                cb.querySelector(".nx-bl-static-btn").click(); await NexaTest.wait();
                 out.propAfterUnbind = props.disabled;
-                out.isInlineAgain = !!cb.querySelector(".nx-inline") && !cb.querySelector("nx-binding");
+                out.isInlineAgain = !!cb.querySelector(".nx-inline") && !cb.querySelector("nx-binding-list");
 
                 h.destroy(); root.remove();
                 return out;
             })()`);
             assert.strictEqual(r.hasBpBtn, true, 'has 📱 responsive button');
             assert.deepStrictEqual(r.bpChips, ['xl', 'md', 'sm'], 'clicking 📱 reveals breakpoint chips on nx-checkbox');
-            assert.strictEqual(r.hasBindBtn, true, 'has ⛓ bind button');
-            assert.strictEqual(r.hasBindingWidget, true, 'clicking ⛓ reveals nx-binding editor');
-            assert.strictEqual(r.hasMsgSource, true, 'nx-binding has Message source');
-            assert.strictEqual(r.propAfterBind, '{msg.disabled}', 'binding path sets {msg.disabled}');
-            assert.strictEqual(r.hasFallbackBox, true, 'shows fallback checkbox below nx-binding');
-            assert.strictEqual(r.fallbackValue, true, 'clicking fallback checkbox sets __fallback.disabled');
-            assert.strictEqual(r.propAfterUnbind, false, 'unbinding resets prop to default');
-            assert.strictEqual(r.isInlineAgain, true, 'returns to inline checkbox after unbinding');
+            assert.strictEqual(r.hasBindBtn, true, 'has the Static | Binding switch');
+            assert.strictEqual(r.hasBindingWidget, true, 'Binding shows the priority list');
+            assert.strictEqual(r.hasMsgSource, true, 'a Message source is offered');
+            assert.strictEqual(r.propAfterBind, '[{"src":"msg","ref":"disabled"}]', 'the source reads msg.disabled');
+            assert.strictEqual(r.hasFallbackBox, true, 'the static checkbox below the list');
+            assert.strictEqual(r.fallbackValue, true, 'it sets the static value');
+            assert.strictEqual(r.propAfterUnbind, true, 'Static: the static value is the value');
+            assert.strictEqual(r.isInlineAgain, true, 'the inline checkbox again');
         });
 
-        await ok('fallback: a bound field (⛓) and a tag input edit their fallback (props.__fallback) below the binding', async () => {
+        await ok('a legacy bound field edits its static (saved as a list); a tag input edits its fallback (props.__fallback)', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { label: "{speed}", inputValue: "{sparkplug:G::N::D::Speed}", outputValue: "{sparkplug:G::N::D::Set}" }, calls = [];
@@ -673,9 +665,9 @@ async function main() {
                 return out;
             })()`);
             assert.deepStrictEqual(r.hasFallback, [true, true, false], 'an output (a write target) has none');
-            assert.deepStrictEqual(r.calls, [['__fallback', '{"label":"n/a"}'], ['__fallback', '{"label":"n/a","inputValue":"0"}']]);
+            assert.deepStrictEqual(r.calls, [['label', '{"$bind":[{"src":"var","ref":"speed"}],"static":"n/a"}'], ['__fallback', '{"inputValue":"0"}']]);
             assert.deepStrictEqual(r.shown, ['n/a', '0']);
-            assert.strictEqual(r.binding, '{speed}', 'the binding itself is untouched');
+            assert.deepStrictEqual(r.binding, { $bind: [{ src: 'var', ref: 'speed' }], static: 'n/a' }, 'the legacy {speed} is kept as the source');
         });
 
         await ok('theme tokens (◆): a colour field picks one ({token:…}), shows it as a chip, × gives its value back; a number field only with `tokens`', async () => {

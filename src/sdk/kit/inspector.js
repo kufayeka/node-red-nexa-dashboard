@@ -22,6 +22,7 @@
 import { html, nothing, render } from "lit";
 import { str } from "./base.js";
 import { createTreeView } from "./prop-tree/view.js";
+import { isBindingList, toBindingList } from "../../model/binding.js";
 
 var warnedInspector = {};
 
@@ -53,8 +54,27 @@ function isBinding(v) {
     return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
 }
 
-// Types whose widget can switch to a binding (⛓: Variable / Tag / Message / Expression).
-var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1 };
+// Types whose widget can switch to a binding (Static | Binding: a priority list of sources).
+var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+
+/**
+ * A field's value as a binding list to show, or null (static): a list as it is, a legacy
+ * binding string ("{speed}", "{sparkplug:…}", "Line {x}") converted, its fallback the static.
+ */
+export function shownBinding(value, fallback) {
+    if (isBindingList(value)) return value;
+    if (!isBinding(value)) return null;
+    var b = toBindingList(value, fallback);
+    return { $bind: b.sources, static: b.static };
+}
+
+/** The Static | Binding switch of a field: toStatic() / toBinding() commit the change. */
+export function modeSwitch(isBound, toStatic, toBinding) {
+    return html`<span class="nx-bl-mode" role="group" aria-label="Static or binding">
+        <button type="button" class="nx-bl-static-btn ${isBound ? "" : "nx-on"}" title="A fixed value" @click="${(e) => { e.stopPropagation(); if (isBound) toStatic(); }}">Static</button>
+        <button type="button" class="nx-bl-bind-btn ${isBound ? "nx-on" : ""}" title="The first source with a value, in priority order; the static value last" @click="${(e) => { e.stopPropagation(); if (!isBound) toBinding(); }}">Binding</button>
+    </span>`;
+}
 
 /** Built-in checks + prop.validate(value, p) -> message | null. */
 export function validateProp(prop, value, p) {
@@ -93,7 +113,6 @@ export function renderInspector(container, opts) {
     if (container && container.jquery) container = container.get(0);
     var meta = opts.meta;
     var persist = opts.persistKey || meta.id || "component";
-    var bindMode = {};             // keys switched to "bound" by ⛓ before a binding was typed
     var respOpen = {};             // keys whose breakpoint chips are shown (📱)
     var respSel = {};              // key -> the breakpoint its control edits
     var asyncCache = {};           // ui.async results
@@ -131,17 +150,24 @@ export function renderInspector(container, opts) {
             btns.push(html`<button type="button" class="nx-icon-btn nx-bp-toggle ${resp.shown ? "nx-on" : ""}" title="${resp.anySet ? "Responsive: set per breakpoint (clear them to go back to one value)" : resp.shown ? "Responsive: one value again" : "Responsive: a value per breakpoint (xs … 3xl)"}"
                 @click="${() => { respOpen[prop.key] = !resp.shown; if (!respOpen[prop.key]) delete respSel[prop.key]; update(); }}"><i class="fa fa-mobile"></i></button>`);
         }
-        if (prop.bindable && BINDABLE_BY_TOGGLE[prop.type]) {
-            btns.push(html`<button type="button" class="nx-icon-btn ${bound ? "nx-on" : ""}" title="${bound ? "Bound — click for a static value" : "Bind to a tag or template parameter"}"
-                @click="${() => {
-                    if (bound) { delete bindMode[prop.key]; set(prop.key, clone(prop.default)); }
-                    else { bindMode[prop.key] = true; update(); }
-                }}"><i class="fa fa-link"></i></button>`);
-        }
         if (!prop.noReset && !same(value, prop.default)) {
-            btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => { delete bindMode[prop.key]; set(prop.key, clone(prop.default)); }}"><i class="fa fa-undo"></i></button>`);
+            btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => { clearFallback(prop.key); set(prop.key, clone(prop.default)); }}"><i class="fa fa-undo"></i></button>`);
+        }
+        if (BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound)) {
+            btns.push(modeSwitch(!!bound,
+                function () { clearFallback(prop.key); set(prop.key, bound.static !== undefined ? clone(bound.static) : clone(prop.default)); },
+                function () { set(prop.key, { $bind: [], static: clone(value === undefined ? prop.default : value) }); }));
         }
         return btns.length ? html`${btns}` : nothing;
+    }
+
+    // a legacy binding's fallback moves into the list's static: its old entry goes
+    function clearFallback(key) {
+        var fb = props().__fallback;
+        if (!fb || !(key in fb)) return;
+        var next = Object.assign({}, fb);
+        delete next[key];
+        opts.set("__fallback", Object.keys(next).length ? next : undefined);
     }
 
     // What bind(key) does to the widget it sits on, on every render.
@@ -206,15 +232,15 @@ export function renderInspector(container, opts) {
             }
         }
 
-        var bound = !!BINDABLE_BY_TOGGLE[prop.type] && prop.bindable && (isBinding(value) || !!bindMode[key]);
-        var message = validateProp(prop, value, p);
-        el.value = prop.type === "json" && value !== null && typeof value !== "string" ? JSON.stringify(value, null, 2) : value;
-        el.binding = bound ? (isBinding(value) ? value : "") : null;   // entering bind mode from a static value: empty picker
-        // bound: its control edits the fallback (props.__fallback[key])
+        // bound: a binding priority list (a legacy binding string is shown as one); its static
+        // value is the widget's own control, below the list
         var fallbacks = p.__fallback || {};
-        var takesFallback = opts.fallbacks !== false && (bound || (prop.type === "tag" && prop.access !== "write"));
-        el.fallback = takesFallback;
-        if (bound && takesFallback) el.value = fallbacks[key] !== undefined ? fallbacks[key] : prop.default;
+        var bound = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || isBindingList(value)) ? shownBinding(value, fallbacks[key]) : null;
+        var shown = bound ? (bound.static === undefined ? prop.default : bound.static) : value;
+        var message = validateProp(prop, shown, p);
+        el.value = prop.type === "json" && shown !== null && shown !== undefined && typeof shown !== "string" ? JSON.stringify(shown, null, 2) : shown;
+        el.binding = bound;
+        el.fallback = !!bound || (opts.fallbacks !== false && prop.type === "tag" && prop.access !== "write");
         if (prop.type === "tag") el.fallbackValue = fallbacks[key];
         // theme tokens: a colour takes the colour tokens; another prop names its categories (tokens: "fontSizes")
         el.tokens = prop.tokens !== undefined ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
@@ -224,13 +250,24 @@ export function renderInspector(container, opts) {
         el.actions = actionsFor(prop, value, bound, resp);
         if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
         if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
-        wire(el, function (v) {
-            if (prop.type === "json" && typeof v === "string") { try { v = v.trim() ? JSON.parse(v) : null; } catch (e) { /* kept as text: shown invalid */ } }
+        var commit = function (v) {
             // another breakpoint than the one being edited: kept as that breakpoint's value
             if (resp && resp.shown && resp.sel !== resp.active) { R.setAt(key, resp.sel, v); update(); return; }
             set(key, v);
+        };
+        wire(el, function (v) {
+            if (prop.type === "json" && typeof v === "string") { try { v = v.trim() ? JSON.parse(v) : null; } catch (e) { /* kept as text: shown invalid */ } }
+            // the list changed: a legacy string becomes a list now (its fallback is in the static)
+            if (bound && isBindingList(v)) clearFallback(key);
+            commit(v);
         });
         wireFallback(el, function (v) {
+            if (prop.type === "json" && typeof v === "string") { try { v = v.trim() ? JSON.parse(v) : null; } catch (e) { /* kept as text */ } }
+            if (bound) {   // the list's static value
+                clearFallback(key);
+                commit({ $bind: bound.$bind.slice(), static: v });
+                return;
+            }
             var next = Object.assign({}, props().__fallback || {});
             if (v === undefined || v === null || v === "") delete next[key]; else next[key] = v;
             set("__fallback", Object.keys(next).length ? next : undefined);
@@ -304,16 +341,25 @@ export function renderInspector(container, opts) {
         return plainWidget(Object.assign({ label: "" }, item), value, setItem);
     }
 
+    // A list item's field: bindable like a prop (Static | Binding) unless field.bindable === false.
     function plainWidget(f, v, onChange) {
+        var b = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? shownBinding(v) : null;
+        var acts = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false
+            ? modeSwitch(!!b, function () { onChange(b.static !== undefined ? clone(b.static) : clone(f.default)); },
+                function () { onChange({ $bind: [], static: clone(v === undefined ? f.default : v) }); })
+            : nothing;
+        if (b) v = b.static === undefined ? f.default : b.static;
         var ch = function (e) { e.stopPropagation(); onChange(e.detail.value); };
+        // bound: the control below the list edits its static value
+        var fb = function (e) { e.stopPropagation(); onChange({ $bind: b.$bind.slice(), static: e.detail.value }); };
         switch (f.type) {
-            case "number": return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" @nx-change="${ch}"></nx-number>`;
-            case "boolean": return html`<nx-checkbox .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-checkbox>`;
-            case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" @nx-change="${ch}"></nx-select>`;
-            case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-color>`;
+            case "number": return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
+            case "boolean": return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
+            case "enum": return html`<nx-select .value="${v}" .options="${(f.options || []).map(function (o) { return typeof o === "object" ? o : { value: o, label: String(o) }; })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
+            case "color": return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
             case "tag": return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
-            case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-asset>`;
-            default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" @nx-change="${ch}"></nx-text>`;
+            case "asset": return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
+            default: return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
         }
     }
 

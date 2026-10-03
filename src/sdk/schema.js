@@ -87,12 +87,16 @@ function slotsFn(decl) {
             return x !== null && typeof x === "object" ? x : { name: x };
         }).filter(function (x) {
             if (x.name === undefined || x.name === null || x.name === "") return false;
+            // a slot's name is fixed text (a binding list there is a plugin's mistake: skipped)
+            if (typeof x.name === "object") return false;
             var k = String(x.name);
             if (seen[k]) return false;
             seen[k] = true;
             return true;
         }).map(function (x) {
-            return { name: String(x.name), label: x.label !== undefined && x.label !== null && x.label !== "" ? String(x.label) : String(x.name), layout: x.layout };
+            // a bound label: the name until the page resolves it
+            var label = x.label !== undefined && x.label !== null && x.label !== "" && typeof x.label !== "object" ? String(x.label) : String(x.name);
+            return { name: String(x.name), label: label, layout: x.layout };
         });
     };
 }

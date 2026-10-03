@@ -250,6 +250,21 @@ nx-tab[hidden] { display: none !important; }
 
 /* the prop currently previewed in the state switcher */
 .nx-kit .nx-field.nx-current > .nx-field-head .nx-label { color: var(--nx-accent); }
+/* nx-binding-list (binding-list.js): the binding priority */
+.nx-kit .nx-bl { display: flex; flex-direction: column; gap: 4px; }
+.nx-kit .nx-bl-row { display: flex; align-items: flex-start; gap: 4px; padding: 4px; border-radius: 4px; background: var(--nx-bg-subtle); border: 1px solid transparent; }
+.nx-kit .nx-bl-row.nx-dragging { opacity: .45; }
+.nx-kit .nx-bl-row.nx-drop, .nx-kit .nx-bl-end.nx-drop { border-top: 2px solid var(--nx-accent, #0f62fe); }
+.nx-kit .nx-bl-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.nx-kit .nx-bl-n { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; margin: 6px 2px 0 0; padding: 0 3px; border-radius: 8px; font-size: 10px; font-weight: 600; color: var(--nx-text-muted); background: var(--nx-bg-hover); }
+.nx-kit .nx-bl-static .nx-bl-n { margin: 0 4px 0 0; }
+.nx-kit .nx-bl-static .nx-fallback-label { display: flex; align-items: center; }
+.nx-kit .nx-bl-grip { flex: 0 0 auto; cursor: grab; padding: 6px 4px; color: var(--nx-text-faint); }
+.nx-kit .nx-bl-del { flex: 0 0 auto; }
+.nx-kit .nx-bl-add { width: 100%; justify-content: center; }
+.nx-kit .nx-bl-mode { display: inline-flex; border: 1px solid var(--nx-border-subtle); border-radius: 4px; overflow: hidden; margin-left: 4px; }
+.nx-kit.nx-kit .nx-bl-mode button { border: 0; background: transparent; font: inherit; font-size: 10.5px; padding: 1px 6px; cursor: pointer; color: var(--nx-text-muted); }
+.nx-kit.nx-kit .nx-bl-mode button.nx-on { background: var(--nx-bg-hover); color: var(--nx-text); font-weight: 600; }
 /* nx-binding (binding.js) */
 .nx-kit .nx-binding { display: flex; flex-direction: column; gap: 6px; }
 .nx-kit .nx-binding-source { width: 100%; }
@@ -524,7 +539,13 @@ nx-tab[hidden] { display: none !important; }
      * nx-binding, and the control below it for the fallback), then the message / help.
      */
     frame(control) {
-      if (this.binding !== void 0 && this.binding !== null) {
+      if (this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind)) {
+        var list = html`<nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => {
+          e.stopPropagation();
+          this._changeBinding(e.detail.value);
+        }}"></nx-binding-list>`;
+        control = html`${list}<div class="nx-fallback nx-bl-static"><div class="nx-fallback-label"><span class="nx-bl-n">${this.binding.$bind.length + 1}</span>Static — when no source above has a value</div>${control}</div>`;
+      } else if (this.binding !== void 0 && this.binding !== null) {
         var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => {
           e.stopPropagation();
           this._changeBinding(e.detail.value);
@@ -957,21 +978,21 @@ nx-tab[hidden] { display: none !important; }
       }
     }
     _allowed() {
-      var sdk3 = sdkApi();
-      var all = sdk3 ? sdk3.listTagProviders() : [];
+      var sdk4 = sdkApi();
+      var all = sdk4 ? sdk4.listTagProviders() : [];
       return this.providers && this.providers.length ? all.filter((p) => this.providers.indexOf(p.name) !== -1) : all;
     }
     _make(provider, address) {
-      var sdk3 = sdkApi();
-      return sdk3 ? sdk3.makeTag(provider, address) : "{" + provider + ":" + address + "}";
+      var sdk4 = sdkApi();
+      return sdk4 ? sdk4.makeTag(provider, address) : "{" + provider + ":" + address + "}";
     }
     _currentProvider() {
-      var sdk3 = sdkApi();
-      if (!sdk3) return null;
-      var t = sdk3.parseTag(str(this.value));
+      var sdk4 = sdkApi();
+      if (!sdk4) return null;
+      var t = sdk4.parseTag(str(this.value));
       var allowed = this._allowed();
       var name = t && t.known && t.provider || this._provider || allowed[0] && allowed[0].name;
-      return name ? sdk3.getTagProvider(name) : null;
+      return name ? sdk4.getTagProvider(name) : null;
     }
     willUpdate(changed) {
       if (changed.has("access") && !this.badge && this.access) this.badge = this.access === "write" ? "WRITE" : "READ";
@@ -984,10 +1005,10 @@ nx-tab[hidden] { display: none !important; }
     _status() {
       var v = str(this.value).trim();
       if (!v) return nothing;
-      var sdk3 = sdkApi();
-      var t = sdk3 ? sdk3.parseTag(v) : null;
+      var sdk4 = sdkApi();
+      var t = sdk4 ? sdk4.parseTag(v) : null;
       if (t && t.valid) {
-        var p = sdk3.getTagProvider(t.provider);
+        var p = sdk4.getTagProvider(t.provider);
         return html`<div class="nx-tag-status nx-ok"><i class="${p && p.icon || "fa fa-check"}"></i><span>${p ? p.label + ": " : ""}${t.display}</span></div>`;
       }
       if (/^\{\$route\.query\.[A-Za-z_$][\w$]*\}$/.test(v)) {
@@ -1325,6 +1346,282 @@ nx-tab[hidden] { display: none !important; }
     }
   };
 
+  // src/model/binding.js
+  var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
+  var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
+  function registerSourceKind(name, def) {
+    KINDS[name] = Object.assign({ name, label: name }, def || {});
+    return KINDS[name];
+  }
+  function sourceKind(name) {
+    return KINDS[name] || null;
+  }
+  function sourceKinds() {
+    return Object.keys(KINDS).map(function(k) {
+      return KINDS[k];
+    });
+  }
+  registerSourceKind("screen", { label: "Screen variable", variable: "screen" });
+  registerSourceKind("app", { label: "App variable", variable: "app" });
+  registerSourceKind("shared", { label: "Shared variable", variable: "shared" });
+  registerSourceKind("param", { label: "Template parameter", variable: "param" });
+  registerSourceKind("msg", { label: "Message", message: true });
+  registerSourceKind("sparkplug", { label: "Sparkplug tag", tag: true, provider: "sparkplug" });
+  registerSourceKind("expr", { label: "Expression", expression: true });
+  registerSourceKind("var", { label: "Variable (nearest)", variable: "any", legacy: true });
+  function isBindingList(v) {
+    return !!v && typeof v === "object" && !Array.isArray(v) && Array.isArray(v.$bind);
+  }
+  var LEGACY_RE = /\{[^{}]+\}/;
+  function isLegacyBinding(v) {
+    return typeof v === "string" && LEGACY_RE.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
+  }
+  var WHOLE_RE = /^\{([^{}]+)\}$/;
+  function legacySource(text) {
+    var m = WHOLE_RE.exec(String(text).trim());
+    if (m) {
+      var inner = m[1];
+      var tag = /^([A-Za-z][\w-]*):([\s\S]+)$/.exec(inner);
+      if (tag) return { src: KINDS[tag[1]] && KINDS[tag[1]].tag ? tag[1] : "sparkplug", ref: tag[2], provider: tag[1] };
+      if (/^msg(\.|\[|$)/.test(inner)) return { src: "msg", ref: inner.replace(/^msg\.?/, "") };
+      return { src: "var", ref: inner };
+    }
+    return { src: "expr", ref: templateToExpression(text) };
+  }
+  function templateToExpression(text) {
+    var out = [], re = /\{([^{}]+)\}/g, last = 0, m;
+    text = String(text);
+    while (m = re.exec(text)) {
+      if (m.index > last) out.push(JSON.stringify(text.slice(last, m.index)));
+      var s = legacySource(m[0]);
+      out.push(s.src === "var" ? "{" + s.ref + "}" : s.src === "msg" ? "[msg]{" + s.ref + "}" : "[" + (s.provider || s.src) + "]{" + s.ref + "}");
+      last = re.lastIndex;
+    }
+    if (last < text.length) out.push(JSON.stringify(text.slice(last)));
+    return out.join(" ");
+  }
+  function toBindingList(value, fallback) {
+    if (isBindingList(value)) return { sources: value.$bind.slice(), static: value.static, legacy: false };
+    if (isLegacyBinding(value)) {
+      var s = legacySource(value);
+      return { sources: [{ src: s.src, ref: s.ref }], static: fallback, legacy: true };
+    }
+    return { sources: [], static: value, legacy: false };
+  }
+  function tokenize(text) {
+    var t = [], i = 0, s = String(text);
+    while (i < s.length) {
+      var c = s[i];
+      if (/\s/.test(c)) {
+        i++;
+        continue;
+      }
+      if (c === "[" || c === "{") {
+        var kind = "var";
+        if (c === "[") {
+          var close = s.indexOf("]", i);
+          if (close === -1) throw new Error("a [kind] is not closed");
+          kind = s.slice(i + 1, close).trim();
+          i = close + 1;
+          while (/\s/.test(s[i] || "")) i++;
+          if (s[i] !== "{") throw new Error("[" + kind + "] needs {ref} after it");
+        }
+        var end = s.indexOf("}", i);
+        if (end === -1) throw new Error("a {ref} is not closed");
+        t.push({ t: "ref", src: kind === "var" ? "var" : kind, ref: s.slice(i + 1, end).trim() });
+        i = end + 1;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        var j = i + 1, str2 = "";
+        while (j < s.length && s[j] !== c) {
+          if (s[j] === "\\" && j + 1 < s.length) {
+            j++;
+          }
+          str2 += s[j];
+          j++;
+        }
+        if (j >= s.length) throw new Error("a text is not closed");
+        t.push({ t: "str", v: str2 });
+        i = j + 1;
+        continue;
+      }
+      var num = /^(\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)/.exec(s.slice(i));
+      if (num) {
+        t.push({ t: "num", v: Number(num[1]) });
+        i += num[1].length;
+        continue;
+      }
+      var op = /^(==|!=|<=|>=|&&|\|\||[-+*/%()<>!?:,])/.exec(s.slice(i));
+      if (op) {
+        t.push({ t: "op", v: op[1] });
+        i += op[1].length;
+        continue;
+      }
+      var id = /^[A-Za-z_][\w]*/.exec(s.slice(i));
+      if (id) {
+        t.push({ t: "id", v: id[0] });
+        i += id[0].length;
+        continue;
+      }
+      throw new Error('unexpected "' + c + '"');
+    }
+    return t;
+  }
+  var FUNCS = {
+    round: function(x, d) {
+      var p = Math.pow(10, d || 0);
+      return Math.round(x * p) / p;
+    },
+    floor: Math.floor,
+    ceil: Math.ceil,
+    abs: Math.abs,
+    min: Math.min,
+    max: Math.max,
+    sqrt: Math.sqrt,
+    fixed: function(x, d) {
+      return Number(x).toFixed(d === void 0 ? 0 : d);
+    },
+    upper: function(s) {
+      return String(s).toUpperCase();
+    },
+    lower: function(s) {
+      return String(s).toLowerCase();
+    }
+  };
+  function parse(tokens) {
+    var i = 0;
+    function peek() {
+      return tokens[i];
+    }
+    function isOp(v) {
+      var x = tokens[i];
+      return x && x.t === "op" && x.v === v;
+    }
+    function next() {
+      return tokens[i++];
+    }
+    function expect(v) {
+      if (!isOp(v)) throw new Error('expected "' + v + '"');
+      i++;
+    }
+    function startsValue() {
+      var x = peek();
+      return !!x && (x.t === "num" || x.t === "str" || x.t === "ref" || x.t === "id" || x.t === "op" && (x.v === "(" || x.v === "!"));
+    }
+    function primary() {
+      var x = next();
+      if (!x) throw new Error("the expression ends too early");
+      if (x.t === "num") return { k: "lit", v: x.v };
+      if (x.t === "str") return { k: "lit", v: x.v };
+      if (x.t === "ref") return { k: "ref", src: x.src, ref: x.ref };
+      if (x.t === "id") {
+        if (x.v === "true" || x.v === "false") return { k: "lit", v: x.v === "true" };
+        if (x.v === "null") return { k: "lit", v: null };
+        if (!FUNCS[x.v]) throw new Error('unknown function "' + x.v + '"');
+        expect("(");
+        var args = [];
+        if (!isOp(")")) {
+          args.push(ternary());
+          while (isOp(",")) {
+            i++;
+            args.push(ternary());
+          }
+        }
+        expect(")");
+        return { k: "call", f: x.v, args };
+      }
+      if (x.t === "op" && x.v === "(") {
+        var e = ternary();
+        expect(")");
+        return e;
+      }
+      throw new Error('unexpected "' + x.v + '"');
+    }
+    function unary() {
+      if (isOp("-")) {
+        i++;
+        return { k: "neg", a: unary() };
+      }
+      if (isOp("!")) {
+        i++;
+        return { k: "not", a: unary() };
+      }
+      return primary();
+    }
+    function mul() {
+      var a = unary();
+      while (isOp("*") || isOp("/") || isOp("%")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: unary() };
+      }
+      return a;
+    }
+    function add() {
+      var a = mul();
+      while (isOp("+") || isOp("-")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: mul() };
+      }
+      return a;
+    }
+    function join() {
+      var a = add();
+      while (startsValue() && !isOp("!")) a = { k: "join", a, b: add() };
+      return a;
+    }
+    function cmp() {
+      var a = join();
+      while (isOp("==") || isOp("!=") || isOp("<") || isOp("<=") || isOp(">") || isOp(">=")) {
+        var o = next().v;
+        a = { k: "bin", o, a, b: join() };
+      }
+      return a;
+    }
+    function and() {
+      var a = cmp();
+      while (isOp("&&")) {
+        i++;
+        a = { k: "and", a, b: cmp() };
+      }
+      return a;
+    }
+    function or() {
+      var a = and();
+      while (isOp("||")) {
+        i++;
+        a = { k: "or", a, b: and() };
+      }
+      return a;
+    }
+    function ternary() {
+      var c = or();
+      if (isOp("?")) {
+        i++;
+        var a = ternary();
+        expect(":");
+        return { k: "if", c, a, b: ternary() };
+      }
+      return c;
+    }
+    var ast = ternary();
+    if (i < tokens.length) throw new Error('unexpected "' + (tokens[i].v || tokens[i].ref) + '"');
+    return ast;
+  }
+  var CACHE = {};
+  function parseExpression(text) {
+    var key = String(text);
+    if (CACHE[key]) return CACHE[key];
+    var r;
+    try {
+      r = { ast: parse(tokenize(key)) };
+    } catch (e) {
+      r = { error: e.message };
+    }
+    CACHE[key] = r;
+    return r;
+  }
+
   // src/sdk/kit/prop-tree/model.js
   function isEmpty(v) {
     return v === void 0 || v === null || v === "" || Array.isArray(v) && !v.length;
@@ -1364,6 +1661,13 @@ nx-tab[hidden] { display: none !important; }
       return { text: t === void 0 || t === null ? "" : String(t), empty: isEmpty(t) };
     }
     if (prop.bindable && isBinding(v)) return { text: v, bound: true };
+    if (isBindingList(v)) {
+      var parts = v.$bind.map(function(s2) {
+        return s2.src === "expr" ? s2.ref : s2.src + ": " + (s2.ref || "\u2026");
+      });
+      if (v.static !== void 0 && v.static !== null && v.static !== "") parts.push(typeof v.static === "object" ? JSON.stringify(v.static) : String(v.static));
+      return { text: parts.join(" \u203A ") || "no source", bound: true };
+    }
     var tok = typeof v === "string" && /^\{token:([^{}]+)\}$/.exec(v.trim());
     if (tok) return { text: tok[1], token: true };
     switch (prop.type) {
@@ -2315,7 +2619,25 @@ nx-tab[hidden] { display: none !important; }
   function isBinding2(v) {
     return typeof v === "string" && /\{[^{}]+\}/.test(v) && !/^\{(asset|token):[^{}]+\}$/.test(v.trim());
   }
-  var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1 };
+  var BINDABLE_BY_TOGGLE = { number: 1, range: 1, boolean: 1, enum: 1, color: 1, string: 1, text: 1, asset: 1, json: 1 };
+  function shownBinding(value, fallback) {
+    if (isBindingList(value)) return value;
+    if (!isBinding2(value)) return null;
+    var b = toBindingList(value, fallback);
+    return { $bind: b.sources, static: b.static };
+  }
+  function modeSwitch(isBound, toStatic, toBinding) {
+    return html`<span class="nx-bl-mode" role="group" aria-label="Static or binding">
+        <button type="button" class="nx-bl-static-btn ${isBound ? "" : "nx-on"}" title="A fixed value" @click="${(e) => {
+      e.stopPropagation();
+      if (isBound) toStatic();
+    }}">Static</button>
+        <button type="button" class="nx-bl-bind-btn ${isBound ? "nx-on" : ""}" title="The first source with a value, in priority order; the static value last" @click="${(e) => {
+      e.stopPropagation();
+      if (!isBound) toBinding();
+    }}">Binding</button>
+    </span>`;
+  }
   function validateProp(prop, value, p) {
     var empty = value === void 0 || value === null || value === "" || Array.isArray(value) && !value.length;
     if (prop.required && empty) return "Required";
@@ -2361,7 +2683,6 @@ nx-tab[hidden] { display: none !important; }
     if (container && container.jquery) container = container.get(0);
     var meta = opts.meta;
     var persist = opts.persistKey || meta.id || "component";
-    var bindMode = {};
     var respOpen = {};
     var respSel = {};
     var asyncCache = {};
@@ -2411,25 +2732,32 @@ nx-tab[hidden] { display: none !important; }
           update();
         }}"><i class="fa fa-mobile"></i></button>`);
       }
-      if (prop.bindable && BINDABLE_BY_TOGGLE[prop.type]) {
-        btns.push(html`<button type="button" class="nx-icon-btn ${bound ? "nx-on" : ""}" title="${bound ? "Bound \u2014 click for a static value" : "Bind to a tag or template parameter"}"
-                @click="${() => {
-          if (bound) {
-            delete bindMode[prop.key];
-            set(prop.key, clone2(prop.default));
-          } else {
-            bindMode[prop.key] = true;
-            update();
-          }
-        }}"><i class="fa fa-link"></i></button>`);
-      }
       if (!prop.noReset && !same2(value, prop.default)) {
         btns.push(html`<button type="button" class="nx-icon-btn" title="Reset to default" @click="${() => {
-          delete bindMode[prop.key];
+          clearFallback(prop.key);
           set(prop.key, clone2(prop.default));
         }}"><i class="fa fa-undo"></i></button>`);
       }
+      if (BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || bound)) {
+        btns.push(modeSwitch(
+          !!bound,
+          function() {
+            clearFallback(prop.key);
+            set(prop.key, bound.static !== void 0 ? clone2(bound.static) : clone2(prop.default));
+          },
+          function() {
+            set(prop.key, { $bind: [], static: clone2(value === void 0 ? prop.default : value) });
+          }
+        ));
+      }
       return btns.length ? html`${btns}` : nothing;
+    }
+    function clearFallback(key) {
+      var fb = props().__fallback;
+      if (!fb || !(key in fb)) return;
+      var next = Object.assign({}, fb);
+      delete next[key];
+      opts.set("__fallback", Object.keys(next).length ? next : void 0);
     }
     function decorate(el, rawKey, o) {
       if (rawKey === "__previewState") {
@@ -2511,14 +2839,13 @@ nx-tab[hidden] { display: none !important; }
           el._nxOwnItems = true;
         }
       }
-      var bound = !!BINDABLE_BY_TOGGLE[prop.type] && prop.bindable && (isBinding2(value) || !!bindMode[key]);
-      var message = validateProp(prop, value, p);
-      el.value = prop.type === "json" && value !== null && typeof value !== "string" ? JSON.stringify(value, null, 2) : value;
-      el.binding = bound ? isBinding2(value) ? value : "" : null;
       var fallbacks = p.__fallback || {};
-      var takesFallback = opts.fallbacks !== false && (bound || prop.type === "tag" && prop.access !== "write");
-      el.fallback = takesFallback;
-      if (bound && takesFallback) el.value = fallbacks[key] !== void 0 ? fallbacks[key] : prop.default;
+      var bound = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || isBindingList(value)) ? shownBinding(value, fallbacks[key]) : null;
+      var shown = bound ? bound.static === void 0 ? prop.default : bound.static : value;
+      var message = validateProp(prop, shown, p);
+      el.value = prop.type === "json" && shown !== null && shown !== void 0 && typeof shown !== "string" ? JSON.stringify(shown, null, 2) : shown;
+      el.binding = bound;
+      el.fallback = !!bound || opts.fallbacks !== false && prop.type === "tag" && prop.access !== "write";
       if (prop.type === "tag") el.fallbackValue = fallbacks[key];
       el.tokens = prop.tokens !== void 0 ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
       el.modified = !prop.noReset && !same2(value, prop.default);
@@ -2527,6 +2854,14 @@ nx-tab[hidden] { display: none !important; }
       el.actions = actionsFor(prop, value, bound, resp);
       if (prop.state && !el.hasAttribute("badge")) el.badge = prop.state === currentState() ? "previewing" : "";
       if (typeof prop.enabledWhen === "function") el.disabled = !prop.enabledWhen(p);
+      var commit = function(v) {
+        if (resp && resp.shown && resp.sel !== resp.active) {
+          R.setAt(key, resp.sel, v);
+          update();
+          return;
+        }
+        set(key, v);
+      };
       wire(el, function(v) {
         if (prop.type === "json" && typeof v === "string") {
           try {
@@ -2534,14 +2869,21 @@ nx-tab[hidden] { display: none !important; }
           } catch (e) {
           }
         }
-        if (resp && resp.shown && resp.sel !== resp.active) {
-          R.setAt(key, resp.sel, v);
-          update();
-          return;
-        }
-        set(key, v);
+        if (bound && isBindingList(v)) clearFallback(key);
+        commit(v);
       });
       wireFallback(el, function(v) {
+        if (prop.type === "json" && typeof v === "string") {
+          try {
+            v = v.trim() ? JSON.parse(v) : null;
+          } catch (e) {
+          }
+        }
+        if (bound) {
+          clearFallback(key);
+          commit({ $bind: bound.$bind.slice(), static: v });
+          return;
+        }
         var next = Object.assign({}, props().__fallback || {});
         if (v === void 0 || v === null || v === "") delete next[key];
         else next[key] = v;
@@ -2617,27 +2959,42 @@ nx-tab[hidden] { display: none !important; }
       return plainWidget(Object.assign({ label: "" }, item), value, setItem);
     }
     function plainWidget(f, v, onChange) {
+      var b = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? shownBinding(v) : null;
+      var acts = BINDABLE_BY_TOGGLE[f.type || "string"] && f.bindable !== false ? modeSwitch(
+        !!b,
+        function() {
+          onChange(b.static !== void 0 ? clone2(b.static) : clone2(f.default));
+        },
+        function() {
+          onChange({ $bind: [], static: clone2(v === void 0 ? f.default : v) });
+        }
+      ) : nothing;
+      if (b) v = b.static === void 0 ? f.default : b.static;
       var ch = function(e) {
         e.stopPropagation();
         onChange(e.detail.value);
       };
+      var fb = function(e) {
+        e.stopPropagation();
+        onChange({ $bind: b.$bind.slice(), static: e.detail.value });
+      };
       switch (f.type) {
         case "number":
-          return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" @nx-change="${ch}"></nx-number>`;
+          return html`<nx-number .value="${v}" label="${f.label || ""}" .min="${f.min}" .max="${f.max}" .step="${f.step}" unit="${f.unit || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-number>`;
         case "boolean":
-          return html`<nx-checkbox .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-checkbox>`;
+          return html`<nx-checkbox .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-checkbox>`;
         case "enum":
           return html`<nx-select .value="${v}" .options="${(f.options || []).map(function(o) {
             return typeof o === "object" ? o : { value: o, label: String(o) };
-          })}" label="${f.label || ""}" @nx-change="${ch}"></nx-select>`;
+          })}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-select>`;
         case "color":
-          return html`<nx-color .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-color>`;
+          return html`<nx-color .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-color>`;
         case "tag":
           return html`<nx-tag .value="${v}" label="${f.label || ""}" access="${f.access || ""}" .providers="${f.providers || null}" @nx-change="${ch}"></nx-tag>`;
         case "asset":
-          return html`<nx-asset .value="${v}" label="${f.label || ""}" @nx-change="${ch}"></nx-asset>`;
+          return html`<nx-asset .value="${v}" label="${f.label || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-asset>`;
         default:
-          return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" @nx-change="${ch}"></nx-text>`;
+          return html`<nx-text .value="${v}" label="${f.label || ""}" ?mono="${f.mono}" placeholder="${f.placeholder || ""}" .binding="${b}" ?fallback="${!!b}" .actions="${acts}" @nx-change="${ch}" @nx-fallback="${fb}"></nx-text>`;
       }
     }
     function enumStyle(prop) {
@@ -3312,8 +3669,231 @@ nx-tab[hidden] { display: none !important; }
   // written — a tag or a variable (a Write Tag of a field / button)
   __publicField(NxBinding, "properties", { providers: { attribute: false }, access: { type: String }, defaultSource: { type: String, attribute: "default-source" }, _source: { state: true } });
 
-  // src/sdk/kit/asset.js
+  // src/sdk/kit/binding-list.js
+  var LAYER_OWNERS = { screen: { container: 1, screen: 1, template: 1 }, param: { template: 1 }, app: { app: 1 }, shared: { shared: 1 } };
   function sdk2() {
+    return window.NexaSDK || null;
+  }
+  function variables2() {
+    var h = getHost();
+    try {
+      return typeof h.listVariables === "function" ? h.listVariables() || [] : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function insertables() {
+    var out = [];
+    var layerOf = { container: "screen", screen: "screen", template: "screen", app: "app", shared: "shared" };
+    variables2().forEach(function(x) {
+      var kind = x.owner && layerOf[x.owner.kind];
+      if (kind) out.push({ value: "[" + kind + "]{" + x.name + "}", label: "[" + kind + "]{" + x.name + "}  \xB7 " + (x.owner.name || "") });
+    });
+    out.push({ value: "[msg]{payload}", label: "[msg]{payload}  \xB7 message" });
+    var S = sdk2();
+    if (S) S.listTagProviders().forEach(function(pr) {
+      if (typeof pr.list !== "function" || !sourceKind(pr.name)) return;
+      (pr.list() || []).slice(0, 200).forEach(function(t) {
+        out.push({ value: "[" + pr.name + "]{" + t.address + "}", label: (t.label || t.address) + "  \xB7 " + (pr.label || pr.name) });
+      });
+    });
+    return out;
+  }
+  function offeredKinds(access) {
+    var allowed = getHost().bindingKinds;
+    return sourceKinds().filter(function(k) {
+      if (k.legacy) return false;
+      if (Array.isArray(allowed) && allowed.indexOf(k.name) === -1) return false;
+      if (access === "write") return !!k.tag || k.variable && k.variable !== "param";
+      return true;
+    });
+  }
+  var NxBindingList = class extends KitElement {
+    constructor() {
+      super();
+      this._drag = -1;
+      this._over = -1;
+    }
+    get list() {
+      var v = this.value;
+      return v && Array.isArray(v.$bind) ? v : { $bind: [], static: void 0 };
+    }
+    _emit(sources) {
+      this._bindingChange = true;
+      try {
+        this.change({ $bind: sources, static: this.list.static });
+      } finally {
+        this._bindingChange = false;
+      }
+    }
+    _setRow(i, patch) {
+      var s = this.list.$bind.slice();
+      s[i] = Object.assign({}, s[i], patch);
+      this._emit(s);
+    }
+    _add() {
+      var kinds = offeredKinds(this.access);
+      var used = this.list.$bind.map(function(s) {
+        return s.src;
+      });
+      var next = kinds.filter(function(k) {
+        return used.indexOf(k.name) === -1;
+      })[0] || kinds[0];
+      this._emit(this.list.$bind.concat([{ src: next ? next.name : "screen", ref: "" }]));
+    }
+    _remove(i) {
+      var s = this.list.$bind.slice();
+      s.splice(i, 1);
+      this._emit(s);
+    }
+    _move(from, to) {
+      if (from === to || from < 0) return;
+      var s = this.list.$bind.slice();
+      var item = s.splice(from, 1)[0];
+      s.splice(to > from ? to - 1 : to, 0, item);
+      this._emit(s);
+    }
+    _ref(row, i) {
+      var k = sourceKind(row.src) || {};
+      var ch = (fn) => (e) => {
+        e.stopPropagation();
+        this._setRow(i, { ref: fn(str(e.detail.value).trim()) });
+      };
+      if (k.variable) {
+        var owners = LAYER_OWNERS[row.src];
+        var opts = variables2().filter(function(x) {
+          return x.owner && (!owners || owners[x.owner.kind]);
+        }).map(function(x) {
+          return { value: x.name, label: x.name, detail: (x.owner ? x.owner.name : "") + " = " + str(x.value) };
+        });
+        return html`<nx-combobox class="nx-bl-ref" mono .free="${true}" .options="${opts}" .value="${row.ref || ""}" placeholder="name"
+                @nx-change="${ch(function(v) {
+          return v.replace(/^\{|\}$/g, "");
+        })}"></nx-combobox>`;
+      }
+      if (k.message) {
+        return html`<nx-text class="nx-bl-ref" mono addon-before="msg." .value="${row.ref || ""}" placeholder="payload.speed"
+                @nx-change="${ch(function(v) {
+          return v.replace(/^msg\.?/, "");
+        })}"></nx-text>`;
+      }
+      if (k.tag) {
+        var S = sdk2(), provider = k.provider || row.src;
+        var tag = row.ref && S ? S.makeTag(provider, row.ref) : "";
+        return html`<nx-tag class="nx-bl-ref" tags-only .value="${tag}" .providers="${[provider]}" .access="${this.access === "write" ? "write" : ""}"
+                @nx-change="${ch(function(v) {
+          var t = S && S.parseTag(v);
+          return t ? t.address : v;
+        })}"></nx-tag>`;
+      }
+      if (k.expression) {
+        var err = row.ref ? parseExpression(row.ref).error : null;
+        return html`<div class="nx-bl-ref nx-binding-expr">
+                <textarea class="nx-control nx-mono" rows="2" spellcheck="false" .value="${row.ref || ""}" placeholder='(0.5 * [screen]{speed}) / [app]{ratio} " rpm"'
+                    @keydown="${(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            this._setRow(i, { ref: e.target.value });
+          }
+        }}"
+                    @keyup="${(e) => {
+          this._caret = e.target.selectionStart;
+        }}" @click="${(e) => {
+          this._caret = e.target.selectionStart;
+        }}"
+                    @change="${(e) => this._setRow(i, { ref: e.target.value })}"></textarea>
+                <nx-select .options="${[{ value: "", label: "Insert a reference\u2026" }].concat(insertables())}" .value="${""}"
+                    @nx-change="${(e) => {
+          e.stopPropagation();
+          var sel = e.target.querySelector("select");
+          if (sel) sel.selectedIndex = 0;
+          if (!e.detail.value) return;
+          var ta = this.querySelector('.nx-bl-row[data-i="' + i + '"] textarea');
+          var cur = ta ? ta.value : str(row.ref);
+          var at = typeof this._caret === "number" && this._caret <= cur.length ? this._caret : cur.length;
+          this._setRow(i, { ref: cur.slice(0, at) + e.detail.value + cur.slice(at) });
+        }}"></nx-select>
+                ${err ? html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>${err}</span></div>` : nothing}
+            </div>`;
+      }
+      return html`<nx-text class="nx-bl-ref" mono .value="${row.ref || ""}" @nx-change="${ch(function(v) {
+        return v;
+      })}"></nx-text>`;
+    }
+    _row(row, i) {
+      var kinds = offeredKinds(this.access);
+      if (!kinds.some(function(k) {
+        return k.name === row.src;
+      }) && sourceKind(row.src)) kinds = kinds.concat([sourceKind(row.src)]);
+      var opts = kinds.map(function(k) {
+        return { value: k.name, label: k.label || k.name };
+      });
+      var cls = "nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
+      return html`<div class="${cls}" data-i="${i}"
+            @dragover="${(e) => {
+        if (this._drag < 0) return;
+        e.preventDefault();
+        this._over = i;
+      }}"
+            @drop="${(e) => {
+        e.preventDefault();
+        var from = this._drag;
+        this._drag = -1;
+        this._over = -1;
+        this._move(from, i);
+      }}">
+            <span class="nx-bl-n" title="Priority ${i + 1}">${i + 1}</span>
+            <div class="nx-bl-main">
+                <nx-select class="nx-bl-kind" .options="${opts}" .value="${row.src}"
+                    @nx-change="${(e) => {
+        e.stopPropagation();
+        if (e.detail.value !== row.src) this._setRow(i, { src: e.detail.value, ref: "" });
+      }}"></nx-select>
+                ${this._ref(row, i)}
+            </div>
+            <span class="nx-bl-grip" draggable="true" title="Drag to change the priority"
+                @dragstart="${(e) => {
+        this._drag = i;
+        e.dataTransfer.effectAllowed = "move";
+        try {
+          e.dataTransfer.setData("text/plain", String(i));
+        } catch (x) {
+        }
+      }}"
+                @dragend="${() => {
+        this._drag = -1;
+        this._over = -1;
+      }}"><i class="fa fa-bars"></i></span>
+            <button type="button" class="nx-icon-btn nx-bl-del" title="Remove this source" @click="${() => this._remove(i)}"><i class="fa fa-trash-o"></i></button>
+        </div>`;
+    }
+    render() {
+      var rows = this.list.$bind;
+      var n2 = rows.length;
+      return html`<div class="nx-bl">
+            ${rows.map((r, i) => this._row(r, i))}
+            <div class="${"nx-bl-end" + (this._over === n2 ? " nx-drop" : "")}"
+                @dragover="${(e) => {
+        if (this._drag < 0) return;
+        e.preventDefault();
+        this._over = n2;
+      }}"
+                @drop="${(e) => {
+        e.preventDefault();
+        var from = this._drag;
+        this._drag = -1;
+        this._over = -1;
+        this._move(from, n2);
+      }}">
+                <button type="button" class="nx-btn nx-btn-ghost nx-bl-add" @click="${() => this._add()}"><i class="fa fa-plus"></i><span>Add source</span></button>
+            </div>
+        </div>`;
+    }
+  };
+  __publicField(NxBindingList, "properties", { access: { type: String }, _drag: { state: true }, _over: { state: true } });
+
+  // src/sdk/kit/asset.js
+  function sdk3() {
     return window.NexaSDK || null;
   }
   var STYLE_ID = "nx-asset-styles";
@@ -3353,7 +3933,7 @@ nx-tab[hidden] { display: none !important; }
     connectedCallback() {
       super.connectedCallback();
       ensureAssetStyles(this.ownerDocument);
-      var S = sdk2();
+      var S = sdk3();
       this._off = S && S.onAssetsChange ? S.onAssetsChange(() => this.requestUpdate()) : null;
     }
     disconnectedCallback() {
@@ -3383,7 +3963,7 @@ nx-tab[hidden] { display: none !important; }
       });
     }
     _panel() {
-      var S = sdk2();
+      var S = sdk3();
       var v = str(this.value);
       var current = S ? S.resolveAsset(v) : null;
       var q = this._q.trim().toLowerCase();
@@ -3420,7 +4000,7 @@ nx-tab[hidden] { display: none !important; }
         </div>`;
     }
     render() {
-      var S = sdk2();
+      var S = sdk3();
       var v = str(this.value);
       var a = S ? S.resolveAsset(v) : null;
       var url = S ? S.assetUrl(v) : null;
@@ -3467,6 +4047,7 @@ nx-tab[hidden] { display: none !important; }
     "nx-align": NxAlign,
     "nx-spacing": NxSpacing,
     "nx-binding": NxBinding,
+    "nx-binding-list": NxBindingList,
     "nx-asset": NxAsset
   };
   function defineWidget(tag, factory) {

@@ -188,6 +188,7 @@ These attributes apply to every type:
 - `visibleWhen(p)` and `enabledWhen(p)`.
 - `perState: "<state>"`, shown only while that state is previewed.
 - `bindable` (default `true` for plain values), `noReset`, `hidden`.
+  - A list item's fields are bindable too. Give `bindable: false` to a field that names something: a slot's name (a Tabs tab's `value`), a key other code looks up.
 - `options` (an enum) may be a function `(p) → list | Promise<list>`: loaded once per inspector.
 - `summary(value, p) → text`: what the prop's tree row shows (default: a simple form of the value).
 - `editor: "<tag>"`: the prop's own editor ([§9](#9-the-inspector)).
@@ -234,7 +235,10 @@ outputs: {
   - an output: Variable / Tag.
   - `<nx-tag tags-only>` offers tags only.
 - A **plain property** (a label, a colour, `disabled`…) needs no declaration: it is bindable by default (`bindable: false` turns it off).
-  - Its ⛓ button binds it to the same four sources.
+  - Its **Static | Binding** switch turns it into a binding priority list: `{ $bind: [{ src, ref }, …], static }`.
+    - The sources are screen / app / shared variables, template parameters, the message, a tag, or an expression (`(0.5 * [screen]{speed}) / [app]{ratio} " rpm"`).
+    - From the top, the first source that has a value wins. A source with null, undefined or an unknown tag (`???`) falls through to the next. `static` is the last.
+    - A legacy binding string (`{speed}`, `{sparkplug:…}`) is still read and is shown as a list. It is saved as a list when edited.
   - `this.p.key` is then the resolved value, so the view never parses a binding itself.
 
 Components never parse tag strings themselves. The host resolves values and routes writes to the provider: Sparkplug goes through the dashboard's own write path, and any other provider through its `write()`.
