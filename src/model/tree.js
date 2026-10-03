@@ -55,6 +55,22 @@ export function syncSlots(node, slots, genId) {
     var list = node.children || (node.children = []);
     var byName = {};
     list.forEach(function (c) { if (isSlotFrame(c) && !byName[c.inSlot]) byName[c.inSlot] = c; });
+    // A slot renamed in place (a tab's value edited): as many slots as before, and where the old
+    // one was, a name nothing has yet. Its frame takes the new name, with its content, instead of
+    // being left "not used" next to a new empty one. (A reorder, an add or a remove is not this.)
+    var wanted = (slots || []).filter(function (sl) { return sl && sl.name !== undefined && sl.name !== null && sl.name !== ""; })
+        .map(function (sl) { return String(sl.name); });
+    var active = list.filter(function (c) { return isSlotFrame(c) && !c.slotUnused; });
+    if (active.length === wanted.length) {
+        active.forEach(function (f, i) {
+            var was = f.inSlot, now = wanted[i];
+            if (was === now || wanted.indexOf(was) !== -1 || byName[now] || byName[was] !== f) return;
+            delete byName[was];
+            f.inSlot = now;
+            byName[now] = f;
+            changed = true;
+        });
+    }
     var ordered = [];
     (slots || []).forEach(function (slot) {
         if (!slot || slot.name === undefined || slot.name === null || slot.name === "") return;

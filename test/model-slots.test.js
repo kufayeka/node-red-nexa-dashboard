@@ -32,6 +32,29 @@ ok('syncSlots: one frame per slot, in order; a gone slot keeps its frame (not us
     assert.strictEqual(M.slotOf(t, 'b').inSlot, 'b');
 });
 
+ok('syncSlots: a slot renamed in place (the value of a tab edited) keeps its frame and content, no "not used" left', () => {
+    const s = surface(), t = s.components[0];
+    M.syncSlots(t, [{ name: 'overview' }, { name: 'tab-7', label: 'Tab 7' }], genId);
+    const f7 = t.children[1];
+    M.insert(s, f7.id, null, { id: 'chart', type: 'nexa-ui-line-chart', x: 0, y: 0, w: 10, h: 10 });
+    // the value of the new tab edited: "tab-7" -> "testingg"
+    assert.strictEqual(M.syncSlots(t, [{ name: 'overview' }, { name: 'testingg', label: 'Testing' }], genId), true);
+    assert.deepStrictEqual(t.children.map((c) => [c.inSlot, !!c.slotUnused]), [['overview', false], ['testingg', false]], 'renamed, nothing left unused');
+    assert.strictEqual(t.children[1], f7, 'the same frame');
+    assert.strictEqual(f7.slotLabel, 'Testing');
+    assert.deepStrictEqual(M.kids(f7).map((c) => c.id), ['chart'], 'its content kept');
+    // a reorder is not a rename; a new tab is added; a removed one is kept unused (as before)
+    M.syncSlots(t, [{ name: 'testingg' }, { name: 'overview' }], genId);
+    assert.deepStrictEqual(t.children.map((c) => c.inSlot), ['testingg', 'overview']);
+    M.syncSlots(t, [{ name: 'testingg' }, { name: 'overview' }, { name: 'tab-3' }], genId);
+    assert.deepStrictEqual(t.children.map((c) => [c.inSlot, !!c.slotUnused]), [['testingg', false], ['overview', false], ['tab-3', false]]);
+    M.syncSlots(t, [{ name: 'testingg' }, { name: 'tab-3' }], genId);
+    assert.deepStrictEqual(t.children.map((c) => [c.inSlot, !!c.slotUnused]), [['testingg', false], ['tab-3', false], ['overview', true]]);
+    // renamed to a name an unused frame has: that frame comes back (its content), the renamed one stays unused
+    M.syncSlots(t, [{ name: 'testingg' }, { name: 'overview' }], genId);
+    assert.deepStrictEqual(t.children.map((c) => [c.inSlot, !!c.slotUnused]), [['testingg', false], ['overview', false], ['tab-3', true]]);
+});
+
 ok('what is dropped goes into a slot frame, not into the component; a slot frame stays in it', () => {
     const s = surface(), t = s.components[0];
     M.syncSlots(t, [{ name: 'a' }, { name: 'b' }], genId);

@@ -209,6 +209,24 @@ function syncSlots(node, slots, genId) {
   list.forEach(function(c) {
     if (isSlotFrame(c) && !byName[c.inSlot]) byName[c.inSlot] = c;
   });
+  var wanted = (slots || []).filter(function(sl) {
+    return sl && sl.name !== void 0 && sl.name !== null && sl.name !== "";
+  }).map(function(sl) {
+    return String(sl.name);
+  });
+  var active = list.filter(function(c) {
+    return isSlotFrame(c) && !c.slotUnused;
+  });
+  if (active.length === wanted.length) {
+    active.forEach(function(f, i) {
+      var was = f.inSlot, now = wanted[i];
+      if (was === now || wanted.indexOf(was) !== -1 || byName[now] || byName[was] !== f) return;
+      delete byName[was];
+      f.inSlot = now;
+      byName[now] = f;
+      changed = true;
+    });
+  }
   var ordered = [];
   (slots || []).forEach(function(slot) {
     if (!slot || slot.name === void 0 || slot.name === null || slot.name === "") return;
