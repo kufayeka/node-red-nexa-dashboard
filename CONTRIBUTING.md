@@ -1,6 +1,6 @@
 # How we change this code (SOP)
 
-For people and AI agents alike. The map of the code is [ARCHITECTURE.md](ARCHITECTURE.md): read it before you change anything.
+For people and AI agents alike. The map of the code is [ARCHITECTURE.md](ARCHITECTURE.md): read it before you change anything. Component plugins, and every SDK change made for one, follow the strict [docs/PLUGIN_RULES.md](docs/PLUGIN_RULES.md); its machine-checkable part is `sdk/lint-plugin.js` (run by every plugin's `npm test` and by `test/plugin-rules.test.js`).
 
 ## 1. Before you write code
 
@@ -50,6 +50,7 @@ For people and AI agents alike. The map of the code is [ARCHITECTURE.md](ARCHITE
   - Nexa Link, workers, IO plumbing: `node test/link-e2e.test.js`;
   - shared variables across pages: `node test/shared-vars-e2e.test.js`;
   - the editor's selection and properties panel (canvas clicks, typing, undo, redraws): `node test/editor-selection-e2e.test.js`;
+  - the inspector of every node kind (frame, group, a component in a layout, a template instance, a Lit component): `node test/editor-inspector-e2e.test.js`;
   - editor UI: an isolated Node-RED e2e with a screenshot you have looked at (`.agents/skills/nexa-testing-and-verification`).
 - Docs updated (§3.5).
 - Never test against the real `data/` userDir. Use an isolated Node-RED on 1899 / 1898 (link 1897).
@@ -73,3 +74,7 @@ For people and AI agents alike. The map of the code is [ARCHITECTURE.md](ARCHITE
 - Put new code where the map says. If the map has no place for it, ask or propose one. Don't invent a new folder quietly.
 - Don't copy a function to change it slightly: extend or parametrise the existing one.
 - Report what you ran and what failed, with the output. If a step was skipped, say so.
+- One change = one type (feature / fix / refactor / SDK / docs) and one sentence. When the work grows past that sentence, stop and ask.
+- Never weaken, skip or delete a test to get green. Change a test only when the expected behaviour changed, and say so in the commit.
+- Never edit what the change does not need ("while I'm here"). Note it on the backlog (ARCHITECTURE §7) instead.
+- The drift signals of PLUGIN_RULES §11 apply here too: stop and ask.

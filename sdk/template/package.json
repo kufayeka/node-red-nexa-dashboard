@@ -4,7 +4,8 @@
   "description": "A Nexa Dashboard component plugin (start from here: rename acme-nexa-sample everywhere).",
   "main": "widgets/plugin.js",
   "scripts": {
-    "test": "node test/browser.test.js"
+    "lint": "node -e \"process.exit(require('@kufayeka/node-red-nexa-dashboard/sdk/lint-plugin').cli('.'))\"",
+    "test": "npm run lint && node test/browser.test.js"
   },
   "node-red": {
     "version": ">=4.0.0",
@@ -12,5 +13,9 @@
       "acme-nexa-sample": "widgets/plugin.js"
     }
   },
-  "keywords": ["node-red", "node-red-plugin", "nexa"]
+  "keywords": [
+    "node-red",
+    "node-red-plugin",
+    "nexa"
+  ]
 }

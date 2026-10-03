@@ -643,6 +643,8 @@ The harness loads the registry, the SDK, the property kit and your modules in he
 
 ## 15. Rules and limits
 
+The strict version, with the change recipes and the definition of done, is [PLUGIN_RULES.md](PLUGIN_RULES.md). Its machine-checkable part runs in every plugin's `npm test` (`npm run lint` → `sdk/lint-plugin.js`).
+
 - A view renders **only inside its own element**. It doesn't reach into the canvas, other components or `window.RED`.
 - Props, event payloads and action params are **JSON-serializable**.
 - Writes go **only** through `this.out.write()` to declared outputs; components don't open their own connections to devices.
