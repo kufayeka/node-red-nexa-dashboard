@@ -75,30 +75,34 @@ async function main() {
             assert.strictEqual(await js('NexaTest.wc("gv").in.value'), 30, 'follows the variable');
         });
 
-        await ok('the Read / Write Tag picker (nx-tag) offers the sources: an input all four, an output Variable / Tag', async () => {
+        await ok('an input / output (nx-tag) is a binding priority list: an input offers every source kind, an output what can be written', async () => {
             const r = await js(`(async function () {
                 var ins = NexaTest.inspector("acme-gauge", {});
                 await NexaTest.wait(80);
-                function sources(t) { return Array.from(t.querySelectorAll(".nx-binding-source button")).map(function (b) { return b.textContent.trim(); }); }
+                async function kinds(key) {
+                    var w = await ins.field(key);
+                    w.querySelector(".nx-bl-add").click(); await NexaTest.wait();
+                    w = await ins.field(key);
+                    return { w: w, kinds: Array.from(w.querySelectorAll(".nx-bl-row select.nx-bl-kind")[0].options).map(function (o) { return o.value; }) };
+                }
                 var out = {}, labels = [];
-                var w = await ins.field("outputSetpoint"); out.output = sources(w); labels.push(w.label);
-                w = await ins.field("inputSetpoint"); labels.unshift(w.label);
-                w = await ins.field("inputValue"); out.input = sources(w); labels.unshift(w.label);
+                var o = await kinds("outputSetpoint"); out.output = o.kinds; labels.push(o.w.label); out.outputStatic = !!o.w.querySelector(".nx-bt-static");
+                var s = await ins.field("inputSetpoint"); labels.unshift(s.label);
+                var i = await kinds("inputValue"); out.input = i.kinds; labels.unshift(i.w.label); out.inputStatic = !!i.w.querySelector(".nx-bt-static");
                 out.labels = labels;
-                // Variable, then a name: the input is bound to it
-                Array.from(w.querySelectorAll(".nx-binding-source button")).find(function (b) { return b.textContent.trim() === "Variable"; }).click();
-                await NexaTest.wait();
-                var cb = w.querySelector("nx-combobox input");
+                // its first source (a screen variable): a name
+                var cb = i.w.querySelector(".nx-bl-row nx-combobox input");
                 cb.value = "param1.speed"; cb.dispatchEvent(new Event("input")); cb.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
                 await NexaTest.wait();
-                out.saved = ins.props.inputValue;
+                out.saved = JSON.stringify(ins.props.inputValue);
                 ins.destroy();
                 return out;
             })()`);
-            assert.deepStrictEqual(r.input, ['Variable', 'Tag', 'Message', 'Expression']);
-            assert.deepStrictEqual(r.output, ['Variable', 'Tag'], 'a write target: only what can be written');
+            assert.deepStrictEqual(r.input, ['screen', 'app', 'shared', 'param', 'msg', 'sparkplug', 'expr', 'opcua'], 'every kind, a plugin tag provider too');
+            assert.deepStrictEqual(r.output, ['screen', 'app', 'shared', 'opcua'], 'a write target: only what can be written (its provider: OPC UA)');
+            assert.deepStrictEqual([r.inputStatic, r.outputStatic], [true, false], 'an input has a static value (last), an output none');
             assert.deepStrictEqual(r.labels, ['Value', 'Setpoint (OPC UA)', 'Setpoint write'], 'each keeps its own label');
-            assert.strictEqual(r.saved, '{param1.speed}');
+            assert.strictEqual(r.saved, '{"$bind":[{"src":"screen","ref":"param1.speed"}]}');
         });
 
         await ok('throttle: a burst of changes reaches the view at most every 150 ms, ending on the last value', async () => {
@@ -169,15 +173,24 @@ async function main() {
                 await NexaTest.wait(80);
                 var row = function (id) { return NexaTest.rows(box).filter(function (x) { return x.id === id; })[0]; };
                 out.groups = NexaTest.rows(box).filter(function (x) { return /^@[^/]+$/.test(x.id); }).map(function (x) { return x.label; });
-                var v = await ins.field("inputValue");
-                out.valueChips = v.querySelectorAll(".nx-tag-providers .nx-state").length;
-                var sp = await ins.field("inputSetpoint");
-                out.setpointChips = sp.querySelectorAll(".nx-tag-providers .nx-state").length;
-                sp.querySelector("input").focus(); await NexaTest.wait();
-                out.suggestions = Array.from(sp.querySelectorAll(".nx-menu-item span")).map(function (s) { return s.textContent; });
-                sp.querySelector(".nx-menu-item").click(); await NexaTest.wait();
-                out.setpoint = ins.props.inputSetpoint;
-                out.setpointStatus = sp.querySelector(".nx-tag-status").textContent.trim();
+                // an input's tag kinds: every provider; an OPC-UA-only input: that one
+                var tagKinds = async function (key) {
+                    var w = await ins.field(key);
+                    w.querySelector(".nx-bl-add").click(); await NexaTest.wait();
+                    w = await ins.field(key);
+                    return { w: w, kinds: Array.from(w.querySelector(".nx-bl-row select.nx-bl-kind").options).map(function (o) { return o.value; }).filter(function (k) { return k === "sparkplug" || k === "opcua"; }) };
+                };
+                out.valueChips = (await tagKinds("inputValue")).kinds.length;
+                var t = await tagKinds("inputSetpoint"), sp = t.w;
+                out.setpointChips = t.kinds.length;
+                var kind = sp.querySelector(".nx-bl-row select.nx-bl-kind"); kind.value = "opcua"; kind.dispatchEvent(new Event("change", { bubbles: true })); await NexaTest.wait();
+                sp = await ins.field("inputSetpoint");
+                sp.querySelector(".nx-bl-row nx-tag input").focus(); await NexaTest.wait();
+                out.suggestions = Array.from(sp.querySelectorAll(".nx-bl-row .nx-menu-item span")).map(function (s) { return s.textContent; });
+                sp.querySelector(".nx-bl-row .nx-menu-item").click(); await NexaTest.wait();
+                out.setpoint = JSON.stringify(ins.props.inputSetpoint);
+                sp = await ins.field("inputSetpoint");
+                out.setpointStatus = sp.querySelector(".nx-bl-row .nx-tag-status").textContent.trim();
                 // a list: its items are rows of the tree; the pane adds / removes
                 await ins.field("inputPens");
                 box.querySelector(".nx-pt-pane .nx-pt-add").click(); await NexaTest.wait();
@@ -227,9 +240,9 @@ async function main() {
                 return out;
             })()`);
             assert.deepStrictEqual(r.groups, ['Data', 'Scale', 'Style']);
-            assert.deepStrictEqual([r.valueChips, r.setpointChips], [2, 0], 'any provider -> chips; OPC-UA-only input -> none');
+            assert.deepStrictEqual([r.valueChips, r.setpointChips], [2, 1], 'any provider -> both tag kinds; OPC-UA-only input -> that one');
             assert.deepStrictEqual(r.suggestions, ['Motor.Speed', 'Motor.Setpoint'], 'suggestions come from the provider');
-            assert.strictEqual(r.setpoint, '{opcua:ns=2;s=Motor.Speed}');
+            assert.strictEqual(r.setpoint, '{"$bind":[{"src":"opcua","ref":"ns=2;s=Motor.Speed"}]}');
             assert.strictEqual(r.setpointStatus, 'OPC UA: ns2 Motor.Speed');
             assert.deepStrictEqual([r.pens, r.penRows, r.firstAdded, r.selAfterAdd], [['', ''], ['Tag 1', 'Tag 2'], 'inputPens#0', 'inputPens#1'], 'the new item is selected');
             assert.strictEqual(r.penWidget, 'nx-tag', 'an item of a tag list: a tag picker');
@@ -638,7 +651,7 @@ async function main() {
             assert.strictEqual(r.isInlineAgain, true, 'the inline checkbox again');
         });
 
-        await ok('a legacy bound field edits its static (saved as a list); a tag input edits its fallback (props.__fallback)', async () => {
+        await ok('a legacy bound field and a tag input edit their static (saved as a list); an output has none', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
                 var props = { label: "{speed}", inputValue: "{sparkplug:G::N::D::Speed}", outputValue: "{sparkplug:G::N::D::Set}" }, calls = [];
@@ -649,21 +662,22 @@ async function main() {
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { calls.push([k, JSON.stringify(v)]); props[k] = v; } });
                 await NexaTest.wait();
                 var type = async function (input, v) { input.value = v; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await NexaTest.wait(); };
-                var write = await NexaTest.pick(h, "outputValue"), hasWrite = !!write.querySelector(".nx-fallback");
+                var write = await NexaTest.pick(h, "outputValue"), hasWrite = !!write.querySelector(".nx-bt-static");
                 var label = await NexaTest.pick(h, "label"), hasLabel = !!label.querySelector(".nx-bt-static");
                 await type(label.querySelector(".nx-bt-static input"), "n/a");
                 var labelShown = label.querySelector(".nx-bt-static input").value;
-                var read = await NexaTest.pick(h, "inputValue"), hasRead = !!read.querySelector(".nx-fallback");
-                await type(read.querySelector(".nx-fallback input"), "0");
+                var read = await NexaTest.pick(h, "inputValue"), hasRead = !!read.querySelector(".nx-bt-static");
+                await type(read.querySelector(".nx-bt-static input"), "0");
                 var out = { hasFallback: [hasLabel, hasRead, hasWrite] };
-                out.shown = [labelShown, read.querySelector(".nx-fallback input").value];
+                read = await NexaTest.pick(h, "inputValue");
+                out.shown = [labelShown, read.querySelector(".nx-bt-static input").value];
                 out.binding = props.label;
                 out.calls = calls;
                 h.destroy(); root.remove();
                 return out;
             })()`);
             assert.deepStrictEqual(r.hasFallback, [true, true, false], 'an output (a write target) has none');
-            assert.deepStrictEqual(r.calls, [['label', '{"$bind":[{"src":"var","ref":"speed"}],"static":"n/a"}'], ['__fallback', '{"inputValue":"0"}']]);
+            assert.deepStrictEqual(r.calls, [['label', '{"$bind":[{"src":"var","ref":"speed"}],"static":"n/a"}'], ['inputValue', '{"$bind":[{"src":"sparkplug","ref":"G::N::D::Speed"}],"static":"0"}']]);
             assert.deepStrictEqual(r.shown, ['n/a', '0']);
             assert.deepStrictEqual(r.binding, { $bind: [{ src: 'var', ref: 'speed' }], static: 'n/a' }, 'the legacy {speed} is kept as the source');
         });

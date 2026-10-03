@@ -31,12 +31,16 @@ function registry() {
 
 var TAG_RE = /^\{([A-Za-z][\w-]*):([\s\S]+)\}$/;
 
+import { registerSourceKind, sourceKind } from "../model/binding.js";
+
 export function defineTagProvider(name, provider) {
     if (!/^[A-Za-z][\w-]*$/.test(name || "")) throw new Error("[nexa] tag provider name must be an identifier: " + name);
     if (!provider || typeof provider.parse !== "function") throw new Error("[nexa] tag provider \"" + name + "\" needs parse(address)");
     var reg = registry();
     if (!reg.providers[name]) reg.order.push(name);
     reg.providers[name] = Object.assign({ name: name, label: name, icon: "fa fa-tag" }, reg.providers[name] || {}, provider);
+    // a binding priority list can read its tags: a source kind of the same name ("OPC UA tag")
+    if (!sourceKind(name)) registerSourceKind(name, { label: (reg.providers[name].label || name) + " tag", tag: true, provider: name });
     return reg.providers[name];
 }
 

@@ -11,21 +11,20 @@ Function node API.
 $route                  the page URL: params (:id in the screen path), query (?a=1), path, hash
  └ App                  variables every screen shares (the project) — global state
     └ Screen            this screen's variables
-       └ Group / Frame  a container's variables (for what is inside it)
-          └ the node    binds {name}: the NEAREST declaration going outwards wins
+       └ the node       binds {name}: the NEAREST declaration going outwards wins
 ```
 
 | Where | Declared in | Lives |
 | --- | --- | --- |
 | **App** | Screens tab → "App variables (every screen)" | The page. With **Kept for**: *tab session* (sessionStorage) or *browser* (localStorage), across pages and reloads. |
 | **Screen** | Screens tab → "Variables" | The page. |
-| **Group / Frame** | Properties → "Variables" | The page. |
 | **Template** | Templates tab → "Parameters" and "Variables" (the same block as a screen's, types / UDT included) | Each instance / copy. |
 
 - **Template boundary.** Inside an instance you see the app and the
   template's own params and variables, not the screen around the instance.
   Values cross through the instance's paramValues (e.g. `who = {label}`),
   which are passed again when that variable changes.
+- **Frames and groups have no variables of their own** (removed from the editor: never used). Variables in old projects are still read on the page.
 - **Variable shape:** `{ id, name, type, defaultValue, persist? }`, with
   types string / number / boolean / object / array / color. `persist`
   applies to app variables only.
@@ -72,6 +71,8 @@ Each field's row is `[breakpoint ▾][static | binding ▾][value]`. Its second 
 | **Message** | `payload.speed` | the last message an **Update Component** node sent this component; no value until one arrives |
 | **Sparkplug tag** | `G::N::D::Speed` | the live value (a number stays a number) |
 | **Expression** | `(0.5 * [screen]{var3}) / [app]{var1} + [sparkplug]{G::N::D::Speed} " rpm"` | arithmetic and text over references (see below) |
+
+**On the canvas, a bound prop shows its static value** (a legacy binding shows its fallback), so the design is what you set. A binding with no static value still shows what it reads (a template parameter, a live tag). The live page resolves the list.
 
 Stored: `{ $bind: [{ src: "app", ref: "speed" }, …], static: 0 }` (`src/model/binding.js`). One resolver serves the canvas and the page.
 Other tag providers (OPC UA…) add a source kind with `registerSourceKind`.

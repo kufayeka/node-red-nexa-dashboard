@@ -41,6 +41,8 @@ function writeFlows() {
             { id: 'BL', type: 'nexa-ui-button', x: 700, y: 400, w: 120, h: 40, props: { text: { $bind: [{ src: 'screen', ref: 'empty' }, { src: 'app', ref: 'title' }], static: 'Static' } } },
             // the old way: a legacy binding string + its fallback (Convert legacy bindings)
             { id: 'LG', type: 'nexa-ui-button', x: 700, y: 460, w: 120, h: 40, props: { text: '{title}', __fallback: { text: 'fb' } } },
+            // an input tag (Data Array): a binding list like every bound prop, its static last
+            { id: 'CH', type: 'nexa-ui-line-chart', x: 20, y: 520, w: 400, h: 200, props: { inputData: '{msg.payload}' } },
             { id: 'L', type: '@lit-component', x: 500, y: 200, w: 160, h: 60, props: {}, litCode: 'render() { return html`<b>hi</b>`; }', litStyles: '', litBindable: [{ name: 'label', type: 'string', defaultValue: 'x' }], litEvents: [] }
         ] };
     const project = { id: 'proj', type: 'kufayeka-nexa-project', name: 'Insp', sparkplugConnection: '', screens: [screen], templates: [template], types: [], breakpoints: [], theme: null, variables: [{ id: 'av1', name: 'title', type: 'string', defaultValue: 'App T' }] };
@@ -88,7 +90,7 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
 
             // a frame: its own groups; Auto layout rows follow the mode, without a rebuild
             await select('F');
-            check('a frame: one tree, its groups', JSON.stringify(await groups()) === JSON.stringify(['General', 'Position & Size', 'Position', 'Constraints', 'Overlay', 'Auto layout', 'Fill & stroke', 'Zoom & pan', 'Variables', 'Teleport']), await groups());
+            check('a frame: one tree, its groups', JSON.stringify(await groups()) === JSON.stringify(['General', 'Position & Size', 'Position', 'Constraints', 'Overlay', 'Auto layout', 'Fill & stroke', 'Zoom & pan', 'Teleport']), await groups());
             check('... Gap and Wrap shown for a row layout', (await rows()).includes('fr$gap') && (await rows()).includes('fr$wrap'), null);
             await shot('frame');
             await pick('fr$mode');
@@ -141,7 +143,7 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('... the pane shows the list editor', await js(`!!${pane}.querySelector(".nx-pt-pane nx-binding-list")`), null);
 
             const blText = await js(`(function(){ var e = document.querySelector('.nexa-artboard [data-id="BL"]') || document.querySelector('[data-id="BL"]'); if (!e) return null; var t = e.textContent; e.querySelectorAll('*').forEach(function(c){ if (c.shadowRoot) t += c.shadowRoot.textContent; }); return t; })()`);
-            check('canvas: a binding list shows its first source with a value (the app variable)', /App T/.test(blText || '') && !/Static/.test(blText || ''), blText);
+            check('canvas: a binding list shows its STATIC value (the design), not what it reads', /Static/.test(blText || '') && !/App T/.test(blText || ''), blText);
             // a prop bound to a priority list: its sources in order, the static last
             await select('BL');
             const textRow = await js(`(function(){ var r = Array.from(${pane}.querySelectorAll(".nx-tree-row.nx-pt-k-prop")).find(function(x){ return /(^|\\$)text$/.test(x.dataset.id); }); return r ? r.dataset.id : null; })()`);
@@ -164,13 +166,9 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await wait(400);
             check('Binding: an empty list, the value kept as its static', (await js(`JSON.stringify(${node('BL')}.props.text)`)) === '{"$bind":[],"static":"New static"}', await js(`JSON.stringify(${node('BL')}.props.text)`));
 
-            // a group: its X / Y and size (follows children), Ungroup, Variables
+            // a group: its X / Y and size (follows children), Ungroup; no variables of its own (layout has none)
             await select('G');
-            check('a group: General, Position & Size, Variables …', JSON.stringify((await groups()).slice(0, 2)) === '["General","Position & Size"]' && (await groups()).includes('Variables'), await groups());
-            await pick('var$variables');
-            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-pt-add"); if (b) b.click(); return !!b; })()`);
-            await wait(400);
-            check('Variables → Add: one declared, picked', (await js(`(${node('G')}.variables || []).length`)) === 1 && /^var\$variables#0/.test(await js(`${pane}.querySelector(".nx-tree-row.nx-on").dataset.id`)), await js(`${node('G')}.variables`));
+            check('a group: General, Position & Size …, no Variables', JSON.stringify((await groups()).slice(0, 2)) === '["General","Position & Size"]' && !(await groups()).includes('Variables'), await groups());
 
             // a template instance: its box and its params
             await select('I');
@@ -205,6 +203,26 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('Types: a new type is a tree (Type, Parameters, Members) + its instances', JSON.stringify(typeRows) === JSON.stringify(['Type', 'Parameters', 'Members', 'Instances (app — every screen)']), typeRows);
 
             const errs = logs.filter((l) => !/favicon|DevTools/.test(l));
+            // regression: an enum (Tabs on) → binding → Add binding source: an empty reference (not "{}")
+            await select('TB');
+            const posRow = await js(`(function(){ var r = Array.from(${pane}.querySelectorAll(".nx-tree-row")).find(function(x){ return /Tabs on/.test(x.textContent); }); return r ? r.dataset.id : null; })()`);
+            await pick(posRow);
+            await js(`(function(){ var m = ${pane}.querySelector(".nx-pt-pane .nx-mode-select"); m.value = "binding"; m.dispatchEvent(new Event("change", {bubbles:true})); return 1; })()`);
+            await wait(400);
+            await js(`(function(){ var b = ${pane}.querySelector(".nx-pt-pane .nx-bl-add"); if (b) b.click(); return !!b; })()`);
+            await wait(400);
+            const posUi = await js(`(function(){ var i = ${pane}.querySelector(".nx-pt-pane .nx-bl-row nx-combobox input"); return { shown: i ? i.value : null, stored: JSON.stringify(${node('TB')}.props[${JSON.stringify((posRow || '').replace(/^.*\$/, ''))}]) }; })()`);
+            check('Tabs on → binding → Add source: the reference is empty, not "{}"', posUi.shown === '', posUi);
+            await shot('enum-binding');
+
+            // an input tag: the field row and the binding table (not the old source picker)
+            await select('CH');
+            const dataRow = await js(`(function(){ var r = Array.from(${pane}.querySelectorAll(".nx-tree-row")).find(function(x){ return /Data Array/.test(x.textContent); }); return r ? r.dataset.id : null; })()`);
+            await pick(dataRow);
+            const dataUi = await js(`(function(){ var p = ${pane}.querySelector(".nx-pt-pane"); return { table: !!p.querySelector("nx-binding-list"), old: !!p.querySelector("nx-binding"), rows: p.querySelectorAll(".nx-bl-row").length, kind: (p.querySelector(".nx-bl-kind") || {}).value, stat: !!p.querySelector(".nx-bt-static") }; })()`);
+            check('an input tag (chart Data): the binding table, its message source, a static row; no old picker', dataUi.table && !dataUi.old && dataUi.rows === 1 && dataUi.kind === 'msg' && dataUi.stat, dataUi);
+            await shot('chart-data');
+
             // the Update Component node's dialog: the component's tree, keep / set
             const U = `__nexaEditorState.screens[0].logic.nodes.filter(function(n){ return n.id === "U1"; })[0]`;
             await js(`__nexaEditor.openUiUpdateNodeEditor(${U}); true`);
@@ -239,7 +257,7 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await wait(800);
             const lg = await js(`JSON.stringify(${node('LG')}.props)`);
             check('Convert legacy bindings: {title} + its fallback -> a list, its static the fallback', lg === '{"text":{"$bind":[{"src":"var","ref":"title"}],"static":"fb"}}', { report, lg });
-            check('... the canvas shows the same', /App T/.test(before || '') && /App T/.test(await lgText() || ''), [before, await lgText()]);
+            check('... the canvas shows the same (the static value: the old fallback)', /fb/.test(before || '') && /fb/.test(await lgText() || ''), [before, await lgText()]);
 
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));
             return true;

@@ -230,10 +230,12 @@ outputs: {
   - `this.out.canWrite("sp")` and `this.out.target("sp")` tell you where a write would go.
   - `this.status("value")` returns `{ bound, unknown, provider, providerLabel, address, display, valid }`.
 - `providers` limits which tag providers the picker offers for that input or output.
-- In the inspector (group "Data" unless the input / output gives `group` / `section`), its tag field shows a Source picker:
-  - an input: Variable / Tag / Message / Expression;
-  - an output: Variable / Tag.
-  - `<nx-tag tags-only>` offers tags only.
+- In the inspector (group "Data" unless the input / output gives `group` / `section`), it is a **binding priority list**, like every bound prop: the field's row, then the table of sources.
+  - An input offers every source kind and has a **static** value last (shown while no source has one; none = unknown, `???`).
+  - An output (a write target) offers what can be written: a tag, a screen / app / shared variable. It has no static value. A write goes to its first such source.
+  - `providers` narrows the tag kinds. Every tag provider a plugin defines (`defineTagProvider`) is a source kind of the same name.
+  - A legacy value (`{sparkplug:…}`, `{msg.x}`, its fallback) is shown as a list and saved as one when edited.
+  - `<nx-tag tags-only>` is the tag picker of a tag row.
 - A **plain property** (a label, a colour, `disabled`…) needs no declaration: it is bindable by default (`bindable: false` turns it off).
   - Its row is `[breakpoint ▾][static | binding ▾][value]`. **binding** turns the value into a binding priority list: `{ $bind: [{ src, ref }, …], static }`.
     - The value cell then reads "follows the binding priority below".

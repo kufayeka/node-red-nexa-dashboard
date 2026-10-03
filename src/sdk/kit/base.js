@@ -212,15 +212,15 @@ export class KitElement extends LitElement {
             // a binding priority list: the row's value follows it; the table below lists its sources,
             // the static value (this widget's control) last
             table = html`<div class="nx-bt">
-                <nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding-list>
-                <div class="nx-bt-row nx-bt-static">
+                <nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" .providers="${this.providers || null}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding-list>
+                ${this.access === "write" ? nothing : html`<div class="nx-bt-row nx-bt-static">
                     <span class="nx-bt-n">${this.binding.$bind.length + 1}</span>
                     <span class="nx-bt-kind">static</span>
                     <div class="nx-bt-ref">${control}</div>
                     <span class="nx-bt-act"></span>
-                </div>
+                </div>`}
             </div>`;
-            control = html`<div class="nx-control nx-follows" aria-disabled="true">follows the binding priority below</div>`;
+            control = html`<div class="nx-control nx-follows" aria-disabled="true">${this.access === "write" ? "writes to the first tag / variable below" : "follows the binding priority below"}</div>`;
         } else if (this.binding !== undefined && this.binding !== null) {
             var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => { e.stopPropagation(); this._changeBinding(e.detail.value); }}"></nx-binding>`;
             control = this.fallback

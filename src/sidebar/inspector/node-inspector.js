@@ -11,10 +11,10 @@ import { params, lit, legacy } from "./sources/template.js";
 import { componentSource } from "../kit-inspector.js";
 
 var BEFORE = ["General", "Position & Size", "Position", "Layout", "Constraints"];
-var AFTER = ["Parameters", "Lit Code", "Properties", "Overlay", "Auto layout", "Slides", "Fill & stroke", "Zoom & pan", "Variables", "Teleport"];
+var AFTER = ["Parameters", "Lit Code", "Properties", "Overlay", "Auto layout", "Slides", "Fill & stroke", "Zoom & pan", "Teleport"];
 
 var SOURCES = [general, instanceBox, geometry, groupBox, frame, position, layoutChild, constraints,
-    componentSource, params, lit, legacy, variablesSource(false), teleport];
+    componentSource, params, lit, legacy, teleport];
 
 /** The component's groups, in its order: `groups`, then the order its props declare them. */
 function componentGroups(typeDef) {

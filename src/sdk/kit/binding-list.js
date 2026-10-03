@@ -38,18 +38,23 @@ function insertables() {
     return out;
 }
 
-export function offeredKinds(access) {
+/**
+ * The kinds offered (the legacy "var" is read, never offered); a host may narrow them, and an
+ * input / output its tag providers (providers: ["opcua"]: its only tag kind).
+ */
+export function offeredKinds(access, providers) {
     var allowed = getHost().bindingKinds;
     return sourceKinds().filter(function (k) {
         if (k.legacy) return false;
         if (Array.isArray(allowed) && allowed.indexOf(k.name) === -1) return false;
+        if (k.tag && Array.isArray(providers) && providers.length && providers.indexOf(k.provider || k.name) === -1) return false;
         if (access === "write") return !!k.tag || (k.variable && k.variable !== "param");
         return true;
     });
 }
 
 export class NxBindingList extends KitElement {
-    static properties = { access: { type: String }, _drag: { state: true }, _over: { state: true } };
+    static properties = { access: { type: String }, providers: { attribute: false }, _drag: { state: true }, _over: { state: true } };
 
     constructor() { super(); this._drag = -1; this._over = -1; }
 
@@ -70,7 +75,7 @@ export class NxBindingList extends KitElement {
     }
 
     _add() {
-        var kinds = offeredKinds(this.access);
+        var kinds = offeredKinds(this.access, this.providers);
         var used = this.list.$bind.map(function (s) { return s.src; });
         var next = kinds.filter(function (k) { return used.indexOf(k.name) === -1; })[0] || kinds[0];
         this._emit(this.list.$bind.concat([{ src: next ? next.name : "screen", ref: "" }]));
@@ -135,7 +140,7 @@ export class NxBindingList extends KitElement {
 
     // one row of the table: [#][kind ▾][its reference][≡ drag][🗑]
     _row(row, i) {
-        var kinds = offeredKinds(this.access);
+        var kinds = offeredKinds(this.access, this.providers);
         if (!kinds.some(function (k) { return k.name === row.src; }) && sourceKind(row.src)) kinds = kinds.concat([sourceKind(row.src)]);
         var cls = "nx-bt-row nx-bl-row" + (this._drag === i ? " nx-dragging" : "") + (this._over === i && this._drag !== i ? " nx-drop" : "");
         return html`<div class="${cls}" data-i="${i}"

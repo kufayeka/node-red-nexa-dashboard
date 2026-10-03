@@ -5,7 +5,7 @@ import { planDrop, applyDrop, frameAt, flowInsert } from "./drop-target.js";
 import { showDropFrame, showInsertLine, clearDragFeedback, pointerOnArtboard } from "./drag-feedback.js";
 import { pushHistory, pushTreeChange, treeSnapshot } from "../history.js";
 import { resolveSparkplugProps, makeSparkplugBindingPath, onSparkplugLiveUpdate, refKeysInString, parseSparkplugBindingPath, getSparkplugEntry } from "./sparkplug-live.js";
-import { resolveBindingProps, bindingCandidates, scopeReader } from "../model/binding.js";
+import { resolveBindingProps, bindingCandidates, scopeReader, isBindingList, isLegacyBinding, containsBindingList } from "../model/binding.js";
 import { applyFallbacks } from "../model/breakpoints.js";
 import * as Theme from "../model/theme.js";
 
@@ -306,6 +306,10 @@ export function resolveBindableValue(raw, scope) {
 // any per-template-instance scope the way {path} params do, it comes from
 // sparkplug-live.js's own global cache.
 export function interpolateProps(props, paramState) {
+    // the canvas designs with the static values: a bound prop shows its static value (a binding
+    // list's `static`, a legacy binding's fallback), so what you see is what you set; a binding
+    // without one still shows what it reads (a template param, a live tag)
+    props = designValues(props);
     var withTemplateBindings = props;
     if (paramState) {
         var out = {};
@@ -324,6 +328,29 @@ export function interpolateProps(props, paramState) {
     var th = Theme.currentTheme();
     resolved = Theme.resolveTokenProps(resolved, th.theme, th.mode);
     return applyFallbacks(props, resolved);
+}
+
+/** props with each bound prop's static value where it has one (see interpolateProps). */
+export function designValues(props) {
+    var fb = (props && props.__fallback) || {}, out = null;
+    Object.keys(props || {}).forEach(function (k) {
+        var v = props[k], st;
+        if (isBindingList(v) && v.static !== undefined) st = v.static;
+        else if (isLegacyBinding(v) && fb[k] !== undefined) st = fb[k];
+        else if (Array.isArray(v) && v.some(containsBindingList)) st = v.map(function (it) { return designItem(it); });
+        else return;
+        if (!out) out = Object.assign({}, props);
+        out[k] = st;
+    });
+    return out || props;
+}
+
+function designItem(it) {
+    if (isBindingList(it)) return it.static !== undefined ? it.static : it;
+    if (!it || typeof it !== "object" || Array.isArray(it)) return it;
+    var o = {};
+    Object.keys(it).forEach(function (f) { o[f] = isBindingList(it[f]) && it[f].static !== undefined ? it[f].static : it[f]; });
+    return o;
 }
 
 // The canvas's reader for binding lists: the node's scope chain (declared values), the live

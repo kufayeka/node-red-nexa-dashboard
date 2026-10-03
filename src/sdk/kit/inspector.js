@@ -225,12 +225,16 @@ export function renderInspector(container, opts) {
         // value is the widget's own control, below the list
         var fallbacks = p.__fallback || {};
         var bound = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || isBindingList(value)) ? shownBinding(value, fallbacks[key]) : null;
+        // an input / output (a tag prop): always a binding list (its sources; an input's static last)
+        var tagList = prop.type === "tag" && !prop.multiple && !Array.isArray(value) && opts.tagLists !== false;
+        if (tagList) bound = shownBinding(value, fallbacks[key]) || { $bind: [], static: fallbacks[key] };
         var shown = bound ? (bound.static === undefined ? prop.default : bound.static) : value;
         var message = validateProp(prop, shown, p);
         el.value = prop.type === "json" && shown !== null && shown !== undefined && typeof shown !== "string" ? JSON.stringify(shown, null, 2) : shown;
         el.binding = bound;
         el.fallback = !!bound || (opts.fallbacks !== false && prop.type === "tag" && prop.access !== "write");
         if (prop.type === "tag") el.fallbackValue = fallbacks[key];
+        if (tagList && prop.access === "write" && el.access !== "write") el.access = "write";
         // theme tokens: a colour takes the colour tokens; another prop names its categories (tokens: "fontSizes")
         el.tokens = prop.tokens !== undefined ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
         el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same(value, prop.default);

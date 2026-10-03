@@ -157,9 +157,20 @@ export class NxTag extends NxCombobox {
         return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>not a valid tag${t ? " for " + t.provider : ""} — {provider:address}</span></div>`;
     }
     _foot() {
+        // a binding list: the table says it all
+        if (this._listed()) return super._foot();
         return html`${this._status()}${super._foot()}`;
     }
+    _listed() { return !!(this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind)); }
     render() {
+        // an input / output of a component as a binding priority list (the inspector sets
+        // .binding): the field's row, the table of sources; an input's static value (shown while
+        // no source has one) is the last row, a write target has none (KitElement.frame)
+        if (!this.tagsOnly && this._listed()) {
+            var st = this.binding.static;
+            return this.frame(this.access === "write" ? nothing : html`<nx-text class="nx-tag-static" .value="${st === undefined || st === null ? "" : st}" placeholder="(none: unknown, ???)"
+                @nx-change="${(e) => { e.stopPropagation(); var v = e.detail.value; this.change(v === "" ? undefined : v); }}"></nx-text>`);
+        }
         // an input / output of a component: bound to any source (Variable / Tag / Message /
         // Expression; a write target: Variable / Tag) — nx-binding, with this widget's label
         if (!this.tagsOnly) {

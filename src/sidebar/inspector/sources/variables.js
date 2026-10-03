@@ -59,7 +59,9 @@ export function variablesSource(kind) {
     var owner = function (ctx) { return ctx.owner || ctx.node; };
     return {
         id: "variables", prefix: "var$",
-        applies: function (ctx) { return isSurface || ctx.node.type === "@frame" || ctx.node.type === "@group"; },
+        // the screen / a template / the app only: a frame's or a group's own variables are gone from
+        // the editor (never used); old ones in a project are still read on the page
+        applies: function () { return isSurface; },
         props: function () {
             var fields = {
                 name: { type: "string", label: "Name", default: "" },

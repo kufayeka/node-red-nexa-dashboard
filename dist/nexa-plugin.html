@@ -4378,6 +4378,7 @@
     });
   }
   function interpolateProps(props, paramState) {
+    props = designValues(props);
     var withTemplateBindings = props;
     if (paramState) {
       var out = {};
@@ -4392,6 +4393,30 @@
     var th = currentTheme();
     resolved = resolveTokenProps(resolved, th.theme, th.mode);
     return applyFallbacks(props, resolved);
+  }
+  function designValues(props) {
+    var fb = props && props.__fallback || {}, out = null;
+    Object.keys(props || {}).forEach(function(k) {
+      var v = props[k], st;
+      if (isBindingList(v) && v.static !== void 0) st = v.static;
+      else if (isLegacyBinding(v) && fb[k] !== void 0) st = fb[k];
+      else if (Array.isArray(v) && v.some(containsBindingList)) st = v.map(function(it) {
+        return designItem(it);
+      });
+      else return;
+      if (!out) out = Object.assign({}, props);
+      out[k] = st;
+    });
+    return out || props;
+  }
+  function designItem(it) {
+    if (isBindingList(it)) return it.static !== void 0 ? it.static : it;
+    if (!it || typeof it !== "object" || Array.isArray(it)) return it;
+    var o = {};
+    Object.keys(it).forEach(function(f) {
+      o[f] = isBindingList(it[f]) && it[f].static !== void 0 ? it[f].static : it[f];
+    });
+    return o;
   }
   function editorTagValue(address) {
     var ref = parseSparkplugBindingPath("{sparkplug:" + address + "}");
@@ -20146,9 +20171,9 @@
     Run a full parse, returning the resulting tree.
     */
     parse(input, fragments, ranges) {
-      let parse3 = this.startParse(input, fragments, ranges);
+      let parse2 = this.startParse(input, fragments, ranges);
       for (; ; ) {
-        let done = parse3.advance();
+        let done = parse2.advance();
         if (done)
           return done;
       }
@@ -26552,10 +26577,10 @@
       this.top = this.topRules[Object.keys(this.topRules)[0]];
     }
     createParse(input, fragments, ranges) {
-      let parse3 = new Parse(this, input, fragments, ranges);
+      let parse2 = new Parse(this, input, fragments, ranges);
       for (let w of this.wrappers)
-        parse3 = w(parse3, input, fragments, ranges);
-      return parse3;
+        parse2 = w(parse2, input, fragments, ranges);
+      return parse2;
     }
     /**
     Get a goto table entry @internal
@@ -30290,130 +30315,6 @@
     }
   };
 
-  // src/sidebar/inspector/sources/variables.js
-  var TYPES2 = ["string", "number", "boolean", "object", "array", "color"];
-  var PERSIST = [{ value: "none", label: "this page" }, { value: "session", label: "tab session" }, { value: "local", label: "browser (kept)" }];
-  function showParams(p) {
-    return Object.keys(p || {}).map(function(k) {
-      return k + "=" + p[k];
-    }).join(", ");
-  }
-  function parseParams(text2) {
-    var out = {};
-    String(text2 || "").split(",").forEach(function(pair2) {
-      var i2 = pair2.indexOf("=");
-      if (i2 > 0) out[pair2.slice(0, i2).trim()] = pair2.slice(i2 + 1).trim();
-    });
-    return out;
-  }
-  function typeOptions() {
-    return TYPES2.map(function(t2) {
-      return { value: t2, label: t2 };
-    }).concat((getApp().types || []).map(function(t2) {
-      return { value: "type:" + t2.id, label: t2.name + " (type)" };
-    }));
-  }
-  function show(v, type) {
-    if (v === void 0 || v === null) return "";
-    if (type === "object" || type === "array") return JSON.stringify(v);
-    return String(v);
-  }
-  function parse2(text2, type) {
-    var t2 = text2 === void 0 || text2 === null ? "" : String(text2);
-    if (type === "number") {
-      var n = parseFloat(t2);
-      return isFinite(n) ? n : 0;
-    }
-    if (type === "boolean") return t2 === "true" || t2 === "1";
-    if (type === "object" || type === "array") {
-      try {
-        return t2.trim() ? JSON.parse(t2) : type === "array" ? [] : {};
-      } catch (e) {
-        return type === "array" ? [] : {};
-      }
-    }
-    return t2;
-  }
-  function variableProblems(list) {
-    var seen = {}, out = [];
-    (list || []).forEach(function(v) {
-      if (!scope_exports.NAME_RE.test(v.name || "")) out.push('"' + (v.name || "") + '" is not a valid name (letters, digits, _ or $, not starting with a digit)');
-      else if (seen[v.name]) out.push('"' + v.name + '" is declared twice');
-      seen[v.name] = true;
-    });
-    return out;
-  }
-  function variablesSource(kind) {
-    var isApp = kind === "app";
-    var isSurface = kind === true || kind === "screen" || kind === "template" || isApp;
-    var owner = function(ctx) {
-      return ctx.owner || ctx.node;
-    };
-    return {
-      id: "variables",
-      prefix: "var$",
-      applies: function(ctx) {
-        return isSurface || ctx.node.type === "@frame" || ctx.node.type === "@group";
-      },
-      props: function() {
-        var fields = {
-          name: { type: "string", label: "Name", default: "" },
-          type: { type: "enum", label: "Type", default: "string", options: typeOptions() },
-          value: { type: "string", label: "Default", default: "" }
-        };
-        if (isApp) fields.persist = { type: "enum", label: "Kept for", default: "none", options: PERSIST };
-        return {
-          variables: {
-            type: "list",
-            group: isApp ? "App variables" : "Variables",
-            label: isApp ? "App variables (every screen)" : "Variables",
-            default: [],
-            noun: "variable",
-            itemLabel: "name",
-            item: { fields },
-            validate: function(value, v, ctx) {
-              return variableProblems(owner(ctx).variables).join(" \xB7 ") || null;
-            },
-            help: isApp ? 'Shared by every screen (global state). "Kept for" a tab session or the browser keeps the value across pages / reloads. Bind with {name}; set it with Set Variable, watch it with On Variable Change.' : "Bind with {name} in the props of anything " + (kind === "template" ? "in this template (each copy / instance has its own)" : isSurface ? "on this screen" : "inside") + '; the nearest declaration wins. Change one live with the Logic "Set Variable" node, or getVariable() / setVariable() in a Function.'
-          }
-        };
-      },
-      view: function(node, ctx) {
-        return { variables: (owner(ctx).variables || []).map(function(v) {
-          var it = { name: v.name, type: v.type || "string", value: types_exports.isTypeRef(v.type) ? showParams(v.params) : show(v.defaultValue, v.type) };
-          if (isApp) it.persist = v.persist || "none";
-          return it;
-        }) };
-      },
-      write: function() {
-      },
-      set: function(key, items, ctx) {
-        var o = owner(ctx);
-        if (!isSurface && isNodeLocked(o.id)) return;
-        var old = o.variables || [];
-        var next = (items || []).map(function(it, i2) {
-          var isInst = types_exports.isTypeRef(it.type) && !!types_exports.findType(it.type);
-          var type = isInst ? it.type : TYPES2.indexOf(it.type) === -1 ? "string" : it.type;
-          var v = { id: old[i2] && old[i2].id || genId(), name: String(it.name || "").trim() || "var" + (i2 + 1), type };
-          if (isInst) {
-            v.params = parseParams(it.value);
-            v.overrides = old[i2] && old[i2].overrides || {};
-          } else v.defaultValue = parse2(it.value, type);
-          if (isApp && (it.persist === "session" || it.persist === "local")) v.persist = it.persist;
-          return v;
-        });
-        var before = old.length ? JSON.parse(JSON.stringify(old)) : void 0;
-        if (next.length || isApp) o.variables = next;
-        else delete o.variables;
-        var screen = getActiveScreen();
-        if (!isSurface && screen) pushHistory({ t: "node", screenId: screen.id, id: o.id, key: "variables", from: before, to: next.length ? JSON.parse(JSON.stringify(next)) : void 0 });
-        markDirty();
-        redrawCanvas();
-        ctx.update();
-      }
-    };
-  }
-
   // src/param-types.js
   var PARAM_TYPES = ["string", "number", "boolean", "object", "array", "color"];
   function normalizeParamType(type) {
@@ -30998,7 +30899,7 @@
 
   // src/sidebar/inspector/node-inspector.js
   var BEFORE = ["General", "Position & Size", "Position", "Layout", "Constraints"];
-  var AFTER = ["Parameters", "Lit Code", "Properties", "Overlay", "Auto layout", "Slides", "Fill & stroke", "Zoom & pan", "Variables", "Teleport"];
+  var AFTER = ["Parameters", "Lit Code", "Properties", "Overlay", "Auto layout", "Slides", "Fill & stroke", "Zoom & pan", "Teleport"];
   var SOURCES = [
     general,
     instanceBox,
@@ -31012,7 +30913,6 @@
     params,
     lit,
     legacy,
-    variablesSource(false),
     teleport
   ];
   function componentGroups(typeDef) {

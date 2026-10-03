@@ -586,18 +586,18 @@ nx-tab[hidden] { display: none !important; }
       var table = nothing;
       if (listed) {
         table = html`<div class="nx-bt">
-                <nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" @nx-change="${(e) => {
+                <nx-binding-list .value="${this.binding}" .access="${this.access === "write" ? "write" : ""}" .providers="${this.providers || null}" @nx-change="${(e) => {
           e.stopPropagation();
           this._changeBinding(e.detail.value);
         }}"></nx-binding-list>
-                <div class="nx-bt-row nx-bt-static">
+                ${this.access === "write" ? nothing : html`<div class="nx-bt-row nx-bt-static">
                     <span class="nx-bt-n">${this.binding.$bind.length + 1}</span>
                     <span class="nx-bt-kind">static</span>
                     <div class="nx-bt-ref">${control}</div>
                     <span class="nx-bt-act"></span>
-                </div>
+                </div>`}
             </div>`;
-        control = html`<div class="nx-control nx-follows" aria-disabled="true">follows the binding priority below</div>`;
+        control = html`<div class="nx-control nx-follows" aria-disabled="true">${this.access === "write" ? "writes to the first tag / variable below" : "follows the binding priority below"}</div>`;
       } else if (this.binding !== void 0 && this.binding !== null) {
         var editor = html`<nx-binding .value="${this.binding}" @nx-change="${(e) => {
           e.stopPropagation();
@@ -1098,9 +1098,22 @@ nx-tab[hidden] { display: none !important; }
       return html`<div class="nx-tag-status nx-bad"><i class="fa fa-exclamation-triangle"></i><span>not a valid tag${t ? " for " + t.provider : ""} — {provider:address}</span></div>`;
     }
     _foot() {
+      if (this._listed()) return super._foot();
       return html`${this._status()}${super._foot()}`;
     }
+    _listed() {
+      return !!(this.binding && typeof this.binding === "object" && Array.isArray(this.binding.$bind));
+    }
     render() {
+      if (!this.tagsOnly && this._listed()) {
+        var st = this.binding.static;
+        return this.frame(this.access === "write" ? nothing : html`<nx-text class="nx-tag-static" .value="${st === void 0 || st === null ? "" : st}" placeholder="(none: unknown, ???)"
+                @nx-change="${(e) => {
+          e.stopPropagation();
+          var v = e.detail.value;
+          this.change(v === "" ? void 0 : v);
+        }}"></nx-text>`);
+      }
       if (!this.tagsOnly) {
         var fb = this.fallback && str(this.value).trim() && this.access !== "write" ? html`<div class="nx-fallback"><div class="nx-fallback-label">Fallback — shown while the binding has no value (none yet, null, ???)</div>
                     <nx-text .value="${this.fallbackValue === void 0 || this.fallbackValue === null ? "" : this.fallbackValue}" placeholder="(none: unknown)"
@@ -2873,12 +2886,15 @@ nx-tab[hidden] { display: none !important; }
       }
       var fallbacks = p.__fallback || {};
       var bound = BINDABLE_BY_TOGGLE[prop.type] && (prop.bindable || isBindingList(value)) ? shownBinding(value, fallbacks[key]) : null;
+      var tagList = prop.type === "tag" && !prop.multiple && !Array.isArray(value) && opts.tagLists !== false;
+      if (tagList) bound = shownBinding(value, fallbacks[key]) || { $bind: [], static: fallbacks[key] };
       var shown = bound ? bound.static === void 0 ? prop.default : bound.static : value;
       var message = validateProp(prop, shown, p);
       el.value = prop.type === "json" && shown !== null && shown !== void 0 && typeof shown !== "string" ? JSON.stringify(shown, null, 2) : shown;
       el.binding = bound;
       el.fallback = !!bound || opts.fallbacks !== false && prop.type === "tag" && prop.access !== "write";
       if (prop.type === "tag") el.fallbackValue = fallbacks[key];
+      if (tagList && prop.access === "write" && el.access !== "write") el.access = "write";
       el.tokens = prop.tokens !== void 0 ? prop.tokens || "" : prop.type === "color" ? "colors" : "";
       el.modified = opts.keep ? opts.keep.isSet(key) : !prop.noReset && !same2(value, prop.default);
       el.invalid = !!message;
@@ -3742,11 +3758,12 @@ nx-tab[hidden] { display: none !important; }
     });
     return out;
   }
-  function offeredKinds(access) {
+  function offeredKinds(access, providers) {
     var allowed = getHost().bindingKinds;
     return sourceKinds().filter(function(k) {
       if (k.legacy) return false;
       if (Array.isArray(allowed) && allowed.indexOf(k.name) === -1) return false;
+      if (k.tag && Array.isArray(providers) && providers.length && providers.indexOf(k.provider || k.name) === -1) return false;
       if (access === "write") return !!k.tag || k.variable && k.variable !== "param";
       return true;
     });
@@ -3775,7 +3792,7 @@ nx-tab[hidden] { display: none !important; }
       this._emit(s);
     }
     _add() {
-      var kinds = offeredKinds(this.access);
+      var kinds = offeredKinds(this.access, this.providers);
       var used = this.list.$bind.map(function(s) {
         return s.src;
       });
@@ -3865,7 +3882,7 @@ nx-tab[hidden] { display: none !important; }
     }
     // one row of the table: [#][kind ▾][its reference][≡ drag][🗑]
     _row(row, i) {
-      var kinds = offeredKinds(this.access);
+      var kinds = offeredKinds(this.access, this.providers);
       if (!kinds.some(function(k) {
         return k.name === row.src;
       }) && sourceKind(row.src)) kinds = kinds.concat([sourceKind(row.src)]);
@@ -3941,7 +3958,7 @@ nx-tab[hidden] { display: none !important; }
         </div>`;
     }
   };
-  __publicField(NxBindingList, "properties", { access: { type: String }, _drag: { state: true }, _over: { state: true } });
+  __publicField(NxBindingList, "properties", { access: { type: String }, providers: { attribute: false }, _drag: { state: true }, _over: { state: true } });
 
   // src/sdk/kit/asset.js
   function sdk3() {
