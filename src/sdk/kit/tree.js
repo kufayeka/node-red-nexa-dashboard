@@ -1,7 +1,12 @@
 // --- nx-tree: a hierarchy tree (the look of the MQTT Sparkplug explorer) --------
-//   .nodes     [{ id, label, icon, badge, muted, children, container, actions: [{ id, icon, title, on }] }]
+//   .nodes     [{ id, label, icon, badge, muted, children, container, actions: [{ id, icon, title, on }],
+//                 value, title, cls, collapsed, draggable }]
+//              label / value may be Lit templates (title: the plain text for the tooltip); value
+//              shows right-aligned (a property's value); cls: extra row classes; collapsed: the
+//              row starts collapsed (until the user opens it); draggable: false = not draggable
 //   .selected  [ids]
-//   persist-key   remembers which rows are collapsed (rows start expanded)
+//   persist-key   remembers which rows are open / collapsed (rows start expanded)
+//   expand-all    every row open, whatever was collapsed (a search showing its matches)
 //   droppable-root   whether dropping at the top level is allowed (default true)
 // Events (bubbling):
 //   nx-tree-select   { id, additive }        click (Shift / Ctrl / Cmd = additive)
@@ -30,6 +35,7 @@ export class NxTree extends KitElement {
         persistKey: { type: String, attribute: "persist-key" },
         emptyText: { type: String, attribute: "empty-text" },
         renamable: { type: Boolean },
+        expandAll: { type: Boolean, attribute: "expand-all" },
         _collapsed: { state: true },
         _renaming: { state: true },
         _drop: { state: true }
@@ -57,18 +63,24 @@ export class NxTree extends KitElement {
         if (this.persistKey) store("nexa-kit:tree:" + this.persistKey, JSON.stringify(this._collapsed));
     }
 
+    /** Whether a row is collapsed now: what the user chose, else the node's own `collapsed`. */
+    isCollapsed(id, node) {
+        if (this.expandAll) return false;
+        if (id in this._collapsed) return !!this._collapsed[id];
+        if (!node) (function search(list) { (list || []).forEach(function (n) { if (n.id === id) node = n; else if (!node) search(n.children); }); })(this.nodes);
+        return !!(node && node.collapsed);
+    }
+
     toggle(id) {
         var next = Object.assign({}, this._collapsed);
-        if (next[id]) delete next[id]; else next[id] = true;
+        next[id] = !this.isCollapsed(id);
         this._collapsed = next;
         this._saveCollapsed();
     }
 
     setAllCollapsed(collapsed) {
         var next = {};
-        if (collapsed) {
-            (function walk(list) { (list || []).forEach(function (n) { if (n.children && n.children.length) { next[n.id] = true; walk(n.children); } }); })(this.nodes);
-        }
+        (function walk(list) { (list || []).forEach(function (n) { if (n.children && n.children.length) { next[n.id] = !!collapsed; walk(n.children); } }); })(this.nodes);
         this._collapsed = next;
         this._saveCollapsed();
     }
@@ -84,9 +96,9 @@ export class NxTree extends KitElement {
             }
             return false;
         })(this.nodes, []);
-        if (!found || !path.some((p) => this._collapsed[p])) return;
+        if (!found || !path.some((p) => this.isCollapsed(p))) return;
         var next = Object.assign({}, this._collapsed);
-        path.forEach(function (p) { delete next[p]; });
+        path.forEach(function (p) { next[p] = false; });
         this._collapsed = next;
         this._saveCollapsed();
     }
@@ -112,13 +124,13 @@ export class NxTree extends KitElement {
 
     _row(node, depth) {
         var hasKids = node.children && node.children.length;
-        var collapsed = !!this._collapsed[node.id];
+        var collapsed = this.isCollapsed(node.id, node);
         var selected = (this.selected || []).indexOf(node.id) !== -1;
         var drop = this._drop && this._drop.targetId === node.id ? this._drop.position : "";
         var renaming = this._renaming === node.id;
         return html`
-            <div class="nx-tree-row ${selected ? "nx-on" : ""} ${node.muted ? "nx-muted" : ""} ${drop ? "nx-drop-" + drop : ""}"
-                data-id="${node.id}" draggable="${renaming ? "false" : "true"}" role="treeitem" aria-selected="${selected}" aria-expanded="${hasKids ? String(!collapsed) : nothing}"
+            <div class="nx-tree-row ${selected ? "nx-on" : ""} ${node.muted ? "nx-muted" : ""} ${drop ? "nx-drop-" + drop : ""} ${node.cls || ""}"
+                data-id="${node.id}" draggable="${renaming || node.draggable === false ? "false" : "true"}" role="treeitem" aria-selected="${selected}" aria-expanded="${hasKids ? String(!collapsed) : nothing}"
                 @click="${(e) => {
                     var additive = e.shiftKey || e.ctrlKey || e.metaKey;
                     if (additive) {
@@ -138,7 +150,7 @@ export class NxTree extends KitElement {
                         this._fire("nx-tree-open", { id: node.id });
                     }
                 }}"
-                @dragstart="${(e) => { this._dragId = node.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", node.id); } catch (err) { /* ok */ } }}"
+                @dragstart="${(e) => { if (node.draggable === false) { e.preventDefault(); return; } this._dragId = node.id; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", node.id); } catch (err) { /* ok */ } }}"
                 @dragend="${() => { this._dragId = null; this._drop = null; }}"
                 @dragover="${(e) => {
                     if (!this._dragId || this._dragId === node.id || this._isInside(this._dragId, node.id)) return;
@@ -163,7 +175,7 @@ export class NxTree extends KitElement {
                             if (e.key === "Enter") { this._renaming = null; this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() }); }
                             if (e.key === "Escape") this._renaming = null;
                         }}" @blur="${(e) => { if (this._renaming === node.id) { this._renaming = null; this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() }); } }}">`
-                    : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => {
+                    : html`<span class="nx-tree-label" title="${node.title || (typeof node.label === "string" ? node.label : "")}" @dblclick="${(e) => {
                         e.stopPropagation();
                         if (this.renamable !== false && !this.hasAttribute("no-rename") && node.renamable !== false) {
                             this._renaming = node.id;
@@ -171,6 +183,7 @@ export class NxTree extends KitElement {
                             this._fire("nx-tree-open", { id: node.id });
                         }
                     }}">${node.label}</span>`}
+                ${node.value !== undefined && node.value !== null && node.value !== "" ? html`<span class="nx-tree-value">${node.value}</span>` : nothing}
                 ${node.badge !== undefined && node.badge !== "" ? html`<span class="nx-badge">${node.badge}</span>` : nothing}
                 ${node.actions && node.actions.length ? html`
                     <span class="nx-tree-actions">${(node.actions || []).map((a) => html`<button type="button" class="nx-icon-btn ${a.on ? "nx-on" : ""}" title="${a.title || a.id}"

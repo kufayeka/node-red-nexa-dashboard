@@ -1,6 +1,8 @@
 // --- The inspector's look: a property tree over one editor pane --------------------
-// The search and the tree on top (rows show simple values only, never a control);
-// below, the editor of the ONE node picked in the tree:
+// The search and the tree on top: the same nx-tree as the Hierarchy (rows show simple values
+// only, never a control; a list's row adds an item like "Add Screen", an item's row removes it,
+// items drag to reorder); below, the editor of the ONE node picked in the tree (its height is
+// the one the user resizes; the tree takes the rest of the panel):
 //   a prop        its widget (the same bound widget as everywhere: ⛓ binding, 📱 per
 //                 breakpoint, reset, validation), or its plugin's own editor (prop.editor)
 //   a list        its items (each is also a tree row): add, remove, move, duplicate
@@ -11,20 +13,33 @@
 // What is selected / open / searched is remembered per component type (persistKey).
 // The pane is keyed by the selection: a widget never carries one prop's draft to another.
 import { html, nothing, keyed, live } from "lit";
-import { buildTree, indexTree, ancestorIds, nearestId, firstLeafId, visibleRows, summary, emptyText, editorKind, listOp, itemSchema, itemNoun, itemLabel } from "./model.js";
+import { buildTree, indexTree, ancestorIds, nearestId, firstLeafId, filterTree, summary, emptyText, editorKind, listOp, itemSchema, itemNoun, itemLabel } from "./model.js";
 import { editorClass } from "./editors.js";
 import { str } from "../base.js";
 
 var MEMORY = {};
-var HEIGHT_KEY = "nexa-inspector-tree-height";
+var PANE_KEY = "nexa-inspector-pane-height";
 var seq = 0;
 
 function memoryFor(key) {
-    return MEMORY[key] || (MEMORY[key] = { sel: null, open: {}, q: "", max: false, top: 0 });
+    return MEMORY[key] || (MEMORY[key] = { sel: null, q: "", max: false, top: 0 });
 }
 
-function storedHeight() {
-    try { var v = Number(window.localStorage.getItem(HEIGHT_KEY)); return v >= 80 && v <= 2000 ? v : 260; } catch (e) { return 260; }
+function storedPane() {
+    try { var v = Number(window.localStorage.getItem(PANE_KEY)); return v >= 100 && v <= 2000 ? v : 280; } catch (e) { return 280; }
+}
+
+// the row's icon, like the Hierarchy's: what kind of value it holds
+var TYPE_ICON = { string: "fa fa-font", text: "fa fa-align-left", number: "fa fa-hashtag", range: "fa fa-sliders", boolean: "fa fa-check-square-o",
+    enum: "fa fa-list-ul", color: "fa fa-tint", css: "fa fa-css3", code: "fa fa-code", json: "fa fa-code", tag: "fa fa-tag", asset: "fa fa-picture-o",
+    list: "fa fa-list", align: "fa fa-th", spacing: "fa fa-arrows-alt", action: "fa fa-hand-pointer-o" };
+function iconOf(n) {
+    if (n.kind === "group") return "fa fa-folder-open-o";
+    if (n.kind === "section") return "fa fa-folder-o";
+    if (n.kind === "item") return "fa fa-file-o";
+    var prop = n.kind === "itemField" ? n.field : n.prop;
+    if (prop && prop.editor) return "fa fa-puzzle-piece";
+    return TYPE_ICON[(prop && prop.type) || "string"] || "fa fa-square-o";
 }
 
 function clone(v) {
@@ -53,8 +68,6 @@ function marks(text, q) {
     return out;
 }
 
-var CARET = html`<svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 7 5 3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
 /**
  * A: what the inspector gives the view
  *   meta, props(), set(key, v), preview(key, v), persist, responsive, update()
@@ -68,29 +81,18 @@ var CARET = html`<svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true
 export function createTreeView(A) {
     var mem = memoryFor(A.persist);
     var uid = "nx-pt" + (++seq);
-    var height = storedHeight();
+    var paneH = storedPane();
     var root = null;            // the .nx-pt element, once rendered
-    var pending = null;         // after the next render: { scroll, focus }
+    var pending = null;         // after the next render: { scroll, focus, reveal }
     var first = true;           // the first render: the tree's scroll as it was (a rebuilt panel)
     var editors = new Map();    // node id -> a plugin editor element (kept while it is shown)
-    var map = new Map(), roots = [], rows = [];
+    var map = new Map(), roots = [];
 
     function p() { return A.props(); }
     function valueOf(key) { var v = p()[key]; return v === undefined ? A.meta.props[key].default : v; }
     function items(key) { var v = valueOf(key); return Array.isArray(v) ? v : []; }
 
-    function isOpen(id) {
-        if (id in mem.open) return mem.open[id];
-        var n = map.get(id);
-        return !!n && n.kind !== "item";       // groups, sections and lists start open
-    }
-    function openAncestors(id) {
-        ancestorIds(map, id).forEach(function (a) { mem.open[a] = true; });
-    }
-    function toggle(id) {
-        mem.open[id] = !isOpen(id);
-        A.update();
-    }
+    function treeEl() { return root && root.querySelector("nx-tree"); }
 
     // the field being typed in is applied first, to the node it was typed for
     function commitPending() {
@@ -107,8 +109,7 @@ export function createTreeView(A) {
         }
         commitPending();
         mem.sel = id;
-        openAncestors(id);
-        pending = Object.assign(pending || {}, { scroll: true, focus: !!o.focus });
+        pending = Object.assign(pending || {}, { scroll: true, reveal: true, focus: !!o.focus });
         A.update();
     }
 
@@ -172,34 +173,60 @@ export function createTreeView(A) {
         return html`<span class="nx-pt-val" title="${s.text}">${parts}</span>`;
     }
 
-    function rowId(id) { return uid + "-" + String(id).replace(/[^\w-]/g, "_"); }
+    // nx-tree's nodes: the tree (or what the search found), nested
+    function treeNodes(list, q) {
+        return list.map(function (w) {
+            var n = w.node, prop = n.prop;
+            var actions = [];
+            if (n.kind === "prop" && prop.type === "list" && !prop.readonly && !(prop.max > 0 && items(n.key).length >= prop.max)) {
+                actions.push({ id: "add", icon: "fa fa-plus", title: "Add " + itemNoun(prop) });
+            }
+            if (n.kind === "item" && !prop.readonly && !(prop.min > 0 && items(n.key).length <= prop.min)) {
+                actions.push({ id: "remove", icon: "fa fa-trash-o", title: "Remove" });
+            }
+            return {
+                id: n.id, icon: iconOf(n), title: n.label, cls: "nx-pt-k-" + n.kind,
+                label: html`<span class="nx-pt-t">${marks(n.label, q)}</span>${rowMarks(n)}`,
+                value: valueCell(n, q), actions: actions, renamable: false,
+                collapsed: n.kind === "item", draggable: n.kind === "item",
+                children: treeNodes(w.children, q)
+            };
+        });
+    }
 
-    function rowTpl(r, q) {
-        var n = r.node, on = n.id === mem.sel;
-        var cls = "nx-pt-row nx-pt-" + n.kind + (on ? " nx-on" : "");
-        return html`<div class=${cls} id=${rowId(n.id)} role="treeitem" aria-level=${n.depth + 1} aria-selected=${on ? "true" : "false"}
-                aria-expanded=${r.hasKids ? (r.open ? "true" : "false") : nothing} data-id=${n.id} style=${"--d:" + n.depth}
-                @click=${function () { select(n.id); }}
-                @dblclick=${function () { if (r.hasKids && !q) toggle(n.id); else select(n.id, { focus: true }); }}>
-            ${r.hasKids ? html`<button type="button" class="nx-pt-caret ${r.open ? "nx-open" : ""}" tabindex="-1" aria-label=${r.open ? "Collapse" : "Expand"}
-                @click=${function (e) { e.stopPropagation(); if (!q) toggle(n.id); }}>${CARET}</button>` : html`<span></span>`}
-            <span class="nx-pt-label" title=${n.label}><span class="nx-pt-t">${marks(n.label, q)}</span>${rowMarks(n)}</span>
-            ${valueCell(n, q)}
-        </div>`;
+    function onTreeSelect(e) { e.stopPropagation(); select(e.detail.id); }
+    function onTreeOpen(e) { e.stopPropagation(); select(e.detail.id, { focus: true }); }
+    function onTreeAction(e) {
+        e.stopPropagation();
+        var n = map.get(e.detail.id);
+        if (!n) return;
+        if (e.detail.action === "add") listDo(n, "add");
+        if (e.detail.action === "remove") listDo(map.get(n.key), "remove", n.index);
+    }
+    // an item dragged before / after another item of the same list: moved there
+    function onTreeMove(e) {
+        e.stopPropagation();
+        var a = map.get(e.detail.id), b = map.get(e.detail.targetId);
+        if (!a || !b || a.kind !== "item" || b.kind !== "item" || a.key !== b.key) return;
+        listDo(map.get(a.key), "move", a.index, e.detail.position === "after" ? b.index + 1 : b.index);
     }
 
     // ---- keyboard: the tree is one tab stop; arrows move the selection ---------------------
     function onTreeKey(e) {
-        var ids = rows.map(function (r) { return r.node.id; });
+        var t = treeEl();
+        if (!t) return;
+        var rowsNow = Array.prototype.slice.call(t.querySelectorAll(".nx-tree-row"));
+        var ids = rowsNow.map(function (r) { return r.dataset.id; });
         var i = ids.indexOf(mem.sel), n = map.get(mem.sel);
+        var row = rowsNow[i];
+        var open = row && row.getAttribute("aria-expanded");
         var go = function (j) { if (ids[j] !== undefined) select(ids[j]); };
-        var has = n && n.children.length > 0;
         if (e.key === "ArrowDown") go(i < 0 ? 0 : i + 1);
         else if (e.key === "ArrowUp") go(Math.max(0, i - 1));
         else if (e.key === "Home") go(0);
         else if (e.key === "End") go(ids.length - 1);
-        else if (e.key === "ArrowRight" && n) { if (has && !isOpen(n.id) && !mem.q) toggle(n.id); else if (has) go(i + 1); }
-        else if (e.key === "ArrowLeft" && n) { if (has && isOpen(n.id) && !mem.q) toggle(n.id); else if (n.parentId) select(n.parentId); }
+        else if (e.key === "ArrowRight" && n) { if (open === "false") t.toggle(n.id); else if (open === "true") go(i + 1); }
+        else if (e.key === "ArrowLeft" && n) { if (open === "true") t.toggle(n.id); else if (n.parentId) select(n.parentId); }
         else if (e.key === "Enter" && n) select(n.id, { focus: true });
         else return;
         e.preventDefault();
@@ -214,25 +241,27 @@ export function createTreeView(A) {
         if (e.key === "Escape" && mem.q) { e.preventDefault(); e.stopPropagation(); mem.q = ""; e.target.value = ""; A.update(); }
         else if (e.key === "ArrowDown" || e.key === "Enter") {
             e.preventDefault();
-            var first = rows.filter(function (r) { return r.node.kind !== "group" && r.node.kind !== "section"; })[0];
-            if (first) select(first.node.id);
-            var t = root && root.querySelector(".nx-pt-tree");
-            if (t) t.focus();
+            var t = treeEl();
+            var firstRow = t && t.querySelector(".nx-tree-row:not(.nx-pt-k-group):not(.nx-pt-k-section)");
+            if (firstRow) select(firstRow.dataset.id);
+            var box = root && root.querySelector(".nx-pt-tree");
+            if (box) box.focus();
         }
     }
 
+    // the splitter resizes the EDITOR below (the tree takes what is left)
     function onSplit(e) {
-        var tree = root && root.querySelector(".nx-pt-tree");
-        if (!tree) return;
+        var pane = root && root.querySelector(".nx-pt-pane");
+        if (!pane) return;
         e.preventDefault();
-        var y0 = e.clientY, h0 = tree.getBoundingClientRect().height;
+        var y0 = e.clientY, h0 = pane.getBoundingClientRect().height;
         mem.max = false;
         root.classList.remove("nx-pt-max");
-        var move = function (ev) { height = Math.max(80, Math.min(1200, Math.round(h0 + ev.clientY - y0))); root.style.setProperty("--nx-pt-h", height + "px"); };
+        var move = function (ev) { paneH = Math.max(100, Math.min(1600, Math.round(h0 - (ev.clientY - y0)))); fitHeight(); };
         var up = function () {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
-            try { window.localStorage.setItem(HEIGHT_KEY, String(height)); } catch (err) { /* storage blocked */ }
+            try { window.localStorage.setItem(PANE_KEY, String(paneH)); } catch (err) { /* storage blocked */ }
         };
         window.addEventListener("pointermove", move);
         window.addEventListener("pointerup", up);
@@ -252,7 +281,7 @@ export function createTreeView(A) {
     function overviewPane(n) {
         return html`${crumbs(n)}<div class="nx-pt-title">${n.label}</div>
             <div class="nx-pt-items">${n.children.map(function (c) {
-                return html`<div class="nx-pt-item"><button type="button" class="nx-pt-go" @click=${function () { select(c.id, { focus: c.kind === "prop" }); }}>${c.label}</button>${valueCell(c, "")}</div>`;
+                return html`<div class="nx-pt-listrow"><button type="button" class="nx-pt-go" @click=${function () { select(c.id, { focus: c.kind === "prop" }); }}>${c.label}</button>${valueCell(c, "")}</div>`;
             })}</div>`;
     }
 
@@ -267,12 +296,11 @@ export function createTreeView(A) {
         return "";
     }
 
-    function listDo(n, op, i) {
-        var r = listOp(items(n.key), op, i, function () { return newItem(n.prop); });
+    function listDo(n, op, i, j) {
+        var r = listOp(items(n.key), op, i, function () { return newItem(n.prop); }, j);
         commitPending();
         mem.sel = r.index >= 0 ? n.key + "#" + r.index : n.key;
-        mem.open[n.key] = true;
-        pending = Object.assign(pending || {}, { scroll: true });
+        pending = Object.assign(pending || {}, { scroll: true, reveal: true });
         A.set(n.key, r.next);
     }
 
@@ -290,7 +318,7 @@ export function createTreeView(A) {
         return html`${crumbs(n)}<div class="nx-pt-title">${prop.label}${prop.required ? html`<span class="nx-req">*</span>` : nothing}</div>
             ${prop.help ? html`<div class="nx-help">${prop.help}</div>` : nothing}
             ${list.length ? html`<div class="nx-pt-items">${list.map(function (it, i) {
-                return html`<div class="nx-pt-item">
+                return html`<div class="nx-pt-listrow">
                     <button type="button" class="nx-pt-go" @click=${function () { select(n.key + "#" + i, { focus: true }); }}>${itemLabel(prop, it, i)}</button>
                     <span class="nx-pt-tools">
                         <button type="button" class="nx-icon-btn" title="Move up" ?disabled=${i === 0} @click=${function () { listDo(n, "up", i); }}><i class="fa fa-arrow-up"></i></button>
@@ -301,7 +329,7 @@ export function createTreeView(A) {
             <div class="nx-pt-bar"><button type="button" class="nx-btn nx-pt-add" ?disabled=${!canAdd} @click=${function () { listDo(n, "add"); }}><i class="fa fa-plus"></i> Add ${noun}</button>
                 <span class="nx-badge">${list.length}</span></div>
             ${msg ? html`<div class="nx-message">${msg}</div>` : nothing}
-            <div class="nx-help">Each ${noun} is also a row in the tree: pick it there to edit it.</div>`;
+            <div class="nx-help">Each ${noun} is also a row in the tree: pick it there to edit it, drag it to reorder; the + on the list's row adds one.</div>`;
     }
 
     function itemPane(n) {
@@ -408,62 +436,78 @@ export function createTreeView(A) {
         map = indexTree(roots);
         if (mem.sel && !map.has(mem.sel)) mem.sel = nearestId(map, mem.sel, roots);
         if (!mem.sel) mem.sel = firstLeafId(roots);
-        if (mem.sel) openAncestors(mem.sel);
         // editors of nodes no longer shown are dropped
         editors.forEach(function (_el, id) { if (id !== mem.sel) editors.delete(id); });
         var q = mem.q.trim().toLowerCase();
-        var vr = visibleRows(roots, q, isOpen, textOf);
-        rows = vr.rows;
+        var found = filterTree(roots, q, textOf);
         var sel = map.get(mem.sel);
-        return html`<div class="nx-pt ${mem.max ? "nx-pt-max" : ""}" style=${"--nx-pt-h:" + height + "px"}>
+        return html`<div class="nx-pt ${mem.max ? "nx-pt-max" : ""}">
             <div class="nx-pt-head">
                 ${A.stateSwitcher()}
                 <label class="nx-pt-search"><i class="fa fa-search" aria-hidden="true"></i>
                     <input type="search" class="nx-pt-q" placeholder="Search properties and values" aria-label="Search properties" autocomplete="off" spellcheck="false"
                         .value=${live(mem.q)} @input=${onSearch} @keydown=${onSearchKey}>
-                    ${q ? html`<span class="nx-pt-hits">${vr.hits} ${vr.hits === 1 ? "match" : "matches"}</span>` : nothing}</label>
+                    ${q ? html`<span class="nx-pt-hits">${found.hits} ${found.hits === 1 ? "match" : "matches"}</span>` : nothing}</label>
             </div>
-            <div class="nx-pt-tree" role="tree" tabindex="0" aria-label="Properties" aria-activedescendant=${sel ? rowId(sel.id) : nothing} @keydown=${onTreeKey}
-                @scroll=${function (e) { mem.top = e.target.scrollTop; }}>
-                ${rows.map(function (r) { return rowTpl(r, q); })}
-                ${!rows.length ? html`<div class="nx-pt-empty">${q ? "Nothing matches “" + mem.q.trim() + "”." : "No properties."}</div>` : nothing}
+            <div class="nx-pt-tree" tabindex="0" aria-label="Properties" @keydown=${onTreeKey} @scroll=${function (e) { mem.top = e.target.scrollTop; }}>
+                <nx-tree no-rename persist-key=${"nexa-props:" + A.persist} .renamable=${false} ?expand-all=${!!q}
+                    .nodes=${treeNodes(found.roots, q)} .selected=${mem.sel ? [mem.sel] : []}
+                    empty-text=${q ? "Nothing matches \u201C" + mem.q.trim() + "\u201D." : "No properties."}
+                    @nx-tree-select=${onTreeSelect} @nx-tree-open=${onTreeOpen} @nx-tree-action=${onTreeAction} @nx-tree-move=${onTreeMove}></nx-tree>
             </div>
-            <div class="nx-pt-split" role="separator" aria-orientation="horizontal" title="Drag to resize" @pointerdown=${onSplit}></div>
+            <div class="nx-pt-split" role="separator" aria-orientation="horizontal" title="Drag to resize the editor" @pointerdown=${onSplit}></div>
             <div class="nx-pt-pane" data-node=${mem.sel || ""}>${keyed(mem.sel || "", paneTpl(sel))}</div>
         </div>`;
     }
 
-    // The tree's height: the one the user dragged (stored), but at most about half of what
-    // the panel shows (a short sidebar: the pane below stays in view, no scroll in a scroll)
+    // The inspector fills the panel it is in, down to its bottom: the editor below at the height
+    // the user dragged (at most what leaves the tree 90 px), the tree the rest. Not in a
+    // scrolling panel (a dialog): a fixed height.
     function fitHeight() {
-        var el = root && root.parentNode;
-        while (el && el !== document.body) {
+        if (!root) return;
+        var el = root.parentNode;
+        while (el && el !== document.body && el.nodeType === 1) {
             var oy = window.getComputedStyle(el).overflowY;
             if ((oy === "auto" || oy === "scroll") && el.clientHeight > 0) break;
             el = el.parentNode;
         }
-        var avail = el && el !== document.body ? el.clientHeight : window.innerHeight;
-        var h = mem.max ? height : Math.max(96, Math.min(height, Math.round(avail * 0.55)));
-        root.style.setProperty("--nx-pt-h", h + "px");
+        var total = 560;
+        if (el && el !== document.body && el.nodeType === 1) {
+            var top = root.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+            var pad = parseFloat(window.getComputedStyle(el).paddingBottom) || 0;
+            total = Math.max(360, Math.floor(el.clientHeight - top - pad - 12));
+        }
+        var head = root.querySelector(".nx-pt-head");
+        var room = total - (head ? head.offsetHeight : 34) - 8;
+        var pane = mem.max ? room - 90 : Math.min(paneH, room - 90);
+        root.style.setProperty("--nx-pt-total", total + "px");
+        root.style.setProperty("--nx-pt-pane-h", Math.max(100, pane) + "px");
     }
 
     // after each render: bring the selected row into view, move the focus into the pane
     function afterRender(container) {
         root = container.querySelector(".nx-pt");
-        if (root) fitHeight();
+        if (!root) return;
+        fitHeight();
         var todo = pending;
         pending = null;
-        if (root && first) {
+        var t = treeEl();
+        if (first) {
             first = false;
-            var t = root.querySelector(".nx-pt-tree");
-            if (t) t.scrollTop = mem.top || 0;
-            todo = Object.assign({ scroll: true }, todo || {});
+            var box = root.querySelector(".nx-pt-tree");
+            if (box) box.scrollTop = mem.top || 0;
+            todo = Object.assign({ scroll: true, reveal: true }, todo || {});
         }
-        if (!root || !todo) return;
-        if (todo.scroll) {
-            var row = root.querySelector(".nx-pt-row.nx-on");
-            if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
-        }
+        if (!todo) return;
+        var after = function () {
+            if (todo.reveal && t && mem.sel && typeof t.reveal === "function") t.reveal(mem.sel);
+            if (todo.scroll) {
+                var row = root.querySelector('.nx-tree-row.nx-on');
+                if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
+            }
+        };
+        // nx-tree renders in its own update
+        if (t && t.updateComplete) t.updateComplete.then(function () { after(); if (t.updateComplete) t.updateComplete.then(after); }); else after();
         if (todo.focus) {
             // the widgets render in their own update: after that
             setTimeout(function () {

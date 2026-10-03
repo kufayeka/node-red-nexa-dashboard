@@ -76,6 +76,14 @@ ok('search: labels, keys and values; ancestors kept; counts the hits', () => {
     assert.deepStrictEqual(r.rows.map((x) => x.node.id), ['@Data', '@General', '@Style', '@Style/Text', 'bg', 'css']);
 });
 
+ok('a search keeps the tree nested (for nx-tree)', () => {
+    const roots = M.buildTree(meta, { title: 'Line 1', tabs: [{ label: 'Alarms' }], bg: '#abcdef' });
+    const r = M.filterTree(roots, 'alarms', () => '');
+    assert.strictEqual(r.hits, 1);
+    assert.deepStrictEqual([r.roots[0].node.id, r.roots[0].children[0].node.id, r.roots[0].children[0].children[0].node.id], ['@General', 'tabs', 'tabs#0']);
+    assert.strictEqual(M.filterTree(roots, '', null).roots.length, 3, 'no search: everything');
+});
+
 ok('a vanished selection goes to the nearest node', () => {
     const roots = M.buildTree(meta, { tabs: [{ label: 'A' }] });
     const map = M.indexTree(roots);
@@ -95,6 +103,9 @@ ok('list ops work on a copy and say where the item went', () => {
     const d = M.listOp(a, 'duplicate', 0);
     assert.strictEqual(d.next.length, 4); assert.notStrictEqual(d.next[1], a[0]); assert.strictEqual(d.index, 1);
     assert.deepStrictEqual(M.listOp(a, 'add', -1, () => ({ l: 'N' })).index, 3);
+    assert.deepStrictEqual(M.listOp(a, 'move', 0, null, 3), { next: [{ l: 'B' }, { l: 'C' }, { l: 'A' }], index: 2 }, 'to the end');
+    assert.deepStrictEqual(M.listOp(a, 'move', 2, null, 0), { next: [{ l: 'C' }, { l: 'A' }, { l: 'B' }], index: 0 }, 'to the top');
+    assert.deepStrictEqual(M.listOp(a, 'move', 1, null, 2).index, 1, 'before the next one: no move');
     assert.strictEqual(a.length, 3, 'the input untouched');
 });
 

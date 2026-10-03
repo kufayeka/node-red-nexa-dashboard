@@ -275,6 +275,30 @@ export function visibleRows(roots, q, isOpen, textOf) {
 }
 
 /**
+ * The tree a search shows, nested (for nx-tree): a match and its ancestors; a matching node's
+ * children only where they match too. -> { roots: [{ node, children }], hits }.
+ */
+export function filterTree(roots, q, textOf) {
+    q = (q || "").trim().toLowerCase();
+    var hits = 0;
+    var wrap = function (n) { return { node: n, children: n.children.map(wrap) }; };
+    if (!q) return { roots: roots.map(wrap), hits: 0 };
+    var match = function (n) {
+        if (String(n.label).toLowerCase().indexOf(q) !== -1) return true;
+        if (n.key && n.kind === "prop" && String(n.key).toLowerCase().indexOf(q) !== -1) return true;
+        var t = textOf ? textOf(n) : "";
+        return !!t && String(t).toLowerCase().indexOf(q) !== -1;
+    };
+    var collect = function (n) {
+        var self = match(n);
+        var kids = n.children.map(collect).filter(Boolean);
+        if (self) hits++;
+        return self || kids.length ? { node: n, children: kids } : null;
+    };
+    return { roots: roots.map(collect).filter(Boolean), hits: hits };
+}
+
+/**
  * How the editor pane edits a prop:
  *   "inline"  the widget in the pane                 (text, number, choice, colour, tag, …)
  *   "large"   needs room: the pane can grow          (code, CSS, JSON, long text)
@@ -290,8 +314,9 @@ export function editorKind(prop) {
     return "inline";
 }
 
-/** A list op on a copy of the array: { next, index } (index: where the item is now, for the selection). */
-export function listOp(items, op, i, make) {
+/** A list op on a copy of the array: { next, index } (index: where the item is now, for the selection).
+ *  op: add / remove / up / down / duplicate / move (to j: before the item now at j; j = length: last). */
+export function listOp(items, op, i, make, j) {
     var next = (Array.isArray(items) ? items : []).slice();
     var copy = function (v) { return v === undefined || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v)); };
     if (op === "add") { next.push(make ? make() : ""); return { next: next, index: next.length - 1 }; }
@@ -299,5 +324,13 @@ export function listOp(items, op, i, make) {
     if (op === "up" && i > 0) { var a = next[i - 1]; next[i - 1] = next[i]; next[i] = a; return { next: next, index: i - 1 }; }
     if (op === "down" && i < next.length - 1) { var b = next[i + 1]; next[i + 1] = next[i]; next[i] = b; return { next: next, index: i + 1 }; }
     if (op === "duplicate") { next.splice(i + 1, 0, copy(next[i])); return { next: next, index: i + 1 }; }
+    // move item i to index j (j counted in the list as it is now: "before the item at j")
+    if (op === "move") {
+        if (j === undefined || j === i || j === i + 1) return { next: next, index: i };
+        var it = next.splice(i, 1)[0];
+        var to = j > i ? j - 1 : j;
+        next.splice(to, 0, it);
+        return { next: next, index: to };
+    }
     return { next: next, index: i };
 }

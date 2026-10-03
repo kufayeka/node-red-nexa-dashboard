@@ -202,9 +202,9 @@ async function main() {
                 // warn (does not block) and required (does)
                 var mx = await ins.field("max"), input = mx.querySelector("input");
                 input.value = "5000"; input.dispatchEvent(new Event("change")); await NexaTest.wait();
-                out.alert = [!!box.querySelector(".nx-pt-pane nx-alert"), !!box.querySelector('.nx-pt-row[data-id="max"] .nx-pt-warn'), ins.props.max];
+                out.alert = [!!box.querySelector(".nx-pt-pane nx-alert"), !!box.querySelector('.nx-tree-row[data-id="max"] .nx-pt-warn'), ins.props.max];
                 input.value = ""; input.dispatchEvent(new Event("change")); await NexaTest.wait();
-                out.required = [(mx.querySelector(".nx-message") || {}).textContent, !!box.querySelector('.nx-pt-row[data-id="max"] .nx-pt-bad')];
+                out.required = [(mx.querySelector(".nx-message") || {}).textContent, !!box.querySelector('.nx-tree-row[data-id="max"] .nx-pt-bad')];
                 // a plugin's dialog editor: summary + Edit..., Apply commits once
                 await ins.field("range");
                 box.querySelector(".nx-pt-pane .nx-pt-open").click(); await NexaTest.wait();
@@ -253,7 +253,7 @@ async function main() {
                 var ins = NexaTest.inspector("acme-plain", { a: 5 }), box = ins.box, out = {};
                 await NexaTest.wait();
                 var ids = function () { return NexaTest.rows(box).map(function (x) { return x.id; }); };
-                var rowEl = function (id) { return box.querySelector('.nx-pt-row[data-id="' + id + '"]'); };
+                var rowEl = function (id) { return box.querySelector('.nx-tree-row[data-id="' + id + '"]'); };
                 out.rows = ids();
                 out.aRow = [NexaTest.rows(box)[1].value, !!rowEl("a").querySelector(".nx-dot")];
                 out.bBad = !!rowEl("b").querySelector(".nx-pt-bad");
@@ -361,7 +361,7 @@ async function main() {
                 await NexaTest.wait();
                 await NexaTest.pick(h, "rows");
                 props.__previewState = "on"; h.update(); await NexaTest.wait();
-                var out = [NexaTest.rows(root).map(function (x) { return x.id; }).join(","), h.selected(), root.querySelectorAll(".nx-pt-pane .nx-pt-item").length, JSON.stringify(props.rows)];
+                var out = [NexaTest.rows(root).map(function (x) { return x.id; }).join(","), h.selected(), root.querySelectorAll(".nx-pt-pane .nx-pt-listrow").length, JSON.stringify(props.rows)];
                 h.destroy(); root.remove();
                 return out;
             })()`);

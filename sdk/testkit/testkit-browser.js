@@ -172,8 +172,8 @@
             });
         },
         rows: function (box) {
-            return Array.from(box.querySelectorAll(".nx-pt-row")).map(function (r) {
-                return { id: r.dataset.id, label: r.querySelector(".nx-pt-label .nx-pt-t").textContent, value: (r.querySelector(".nx-pt-val") || {}).textContent.trim() };
+            return Array.from(box.querySelectorAll(".nx-tree-row")).map(function (r) {
+                return { id: r.dataset.id, label: r.querySelector(".nx-tree-label .nx-pt-t").textContent, value: (r.querySelector(".nx-pt-val") || {}).textContent.trim() };
             });
         },
         wait: function (ms) { return new Promise(function (r) { setTimeout(r, ms || 60); }); }

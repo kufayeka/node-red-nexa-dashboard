@@ -293,34 +293,24 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-spacing { display: flex; gap: 4px; align-items: center; }
 .nx-kit.nx-kit .nx-spacing-input { flex: 1 1 0; min-width: 0; width: auto; }
 
-/* ---- the inspector: property tree + editor pane (prop-tree/view.js) ---- */
-.nx-kit .nx-pt { display: flex; flex-direction: column; min-width: 0; }
-.nx-kit .nx-pt-head { display: grid; gap: 6px; padding: 0 0 6px; }
+/* ---- the inspector: nx-tree + editor pane (prop-tree/view.js) ---- */
+.nx-kit .nx-pt { display: flex; flex-direction: column; height: var(--nx-pt-total, 560px); min-width: 0; }
+.nx-kit .nx-pt-head { flex: 0 0 auto; display: grid; gap: 6px; padding: 0 0 6px; }
 .nx-kit .nx-pt-search { display: flex; align-items: center; gap: 6px; height: var(--nx-control-h); padding: 0 7px; margin: 0;
     background: var(--nx-bg); border: 1px solid var(--nx-border); border-radius: var(--nx-radius); color: var(--nx-text-faint); cursor: text; font-weight: normal; }
 .nx-kit .nx-pt-search:focus-within { border-color: var(--nx-focus); box-shadow: 0 0 0 1px var(--nx-focus); }
 .nx-kit.nx-kit .nx-pt-search input.nx-pt-q { flex: 1 1 auto; min-width: 0; width: auto; height: 100%; margin: 0; padding: 0; border: none; outline: none; box-shadow: none;
     background: transparent; color: var(--nx-text-strong); font: inherit; font-size: 12px; }
 .nx-kit .nx-pt-hits { flex: 0 0 auto; font-size: 10.5px; color: var(--nx-text-faint); white-space: nowrap; }
-.nx-kit .nx-pt-tree { height: var(--nx-pt-h, 260px); overflow: auto; outline: none; padding: 2px 0;
-    border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius) var(--nx-radius) 0 0; background: var(--nx-bg); }
-.nx-kit .nx-pt-max .nx-pt-tree { height: 84px; }
-.nx-kit .nx-pt-tree:focus-visible { border-color: var(--nx-focus); }
-.nx-kit .nx-pt-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) minmax(0, 1.1fr); align-items: center; gap: 4px; height: 22px;
-    padding: 0 6px 0 calc(3px + var(--d, 0) * 12px); cursor: default; user-select: none; }
-.nx-kit .nx-pt-row:hover { background: var(--nx-bg-hover); }
-.nx-kit .nx-pt-row.nx-on { background: var(--nx-bg-selected); box-shadow: inset 2px 0 0 var(--nx-accent); }
-.nx-kit .nx-pt-group, .nx-kit .nx-pt-section { grid-template-columns: 14px minmax(0, 1fr) auto; }
-.nx-kit .nx-pt-group .nx-pt-label { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--nx-text-muted); }
-.nx-kit .nx-pt-section .nx-pt-label { font-weight: 600; color: var(--nx-text-muted); }
-.nx-kit .nx-pt-item .nx-pt-label { font-weight: 600; }
-.nx-kit.nx-kit .nx-pt-caret { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin: 0; padding: 0; border: none;
-    background: none; color: var(--nx-text-faint); cursor: pointer; border-radius: 2px; }
-.nx-kit .nx-pt-caret svg { transition: transform .1s; }
-.nx-kit .nx-pt-caret.nx-open svg { transform: rotate(90deg); }
-.nx-kit .nx-pt-label { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--nx-text-strong); }
+.nx-kit .nx-pt-tree { flex: 1 1 auto; min-height: 90px; overflow: auto; outline: none; }
+.nx-kit .nx-pt-tree:focus-visible { box-shadow: inset 0 0 0 1px var(--nx-focus); border-radius: var(--nx-radius); }
+.nx-kit .nx-pt nx-tree .nx-tree { width: 100%; min-width: 0; }
+.nx-kit .nx-pt .nx-tree-label { display: flex; align-items: center; gap: 4px; }
+.nx-kit .nx-pt .nx-pt-k-group > .nx-tree-label { font-weight: 600; }
+.nx-kit .nx-tree-value { flex: 0 1 auto; min-width: 0; max-width: 55%; margin-left: auto; overflow: hidden; }
+.nx-kit .nx-tree-value + .nx-tree-actions { margin-left: 4px; }
 .nx-kit .nx-pt-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.nx-kit .nx-pt-val { display: flex; align-items: center; gap: 5px; min-width: 0; font-family: var(--nx-mono); font-size: 10.5px; color: var(--nx-text-muted); font-variant-numeric: tabular-nums; }
+.nx-kit .nx-pt-val { display: flex; align-items: center; justify-content: flex-end; gap: 5px; min-width: 0; font-family: var(--nx-mono); font-size: 10.5px; color: var(--nx-text-muted); font-variant-numeric: tabular-nums; }
 .nx-kit .nx-pt-count { color: var(--nx-text-faint); font-family: inherit; }
 .nx-kit .nx-pt-none { color: var(--nx-text-faint); font-style: italic; font-family: var(--nx-font); }
 .nx-kit .nx-pt-swatch { flex: 0 0 auto; width: 11px; height: 11px; border-radius: 2px; border: 1px solid var(--nx-border); }
@@ -332,19 +322,20 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-pt-warn { flex: 0 0 auto; color: var(--nx-warn); font-size: 11px; }
 .nx-kit .nx-pt mark { background: var(--nx-warn); color: #fff; border-radius: 2px; padding: 0 1px; }
 .nx-kit .nx-pt-empty { padding: 14px 8px; font-size: 11px; color: var(--nx-text-faint); text-align: center; }
-.nx-kit .nx-pt-split { flex: 0 0 auto; height: 7px; cursor: row-resize; touch-action: none; display: flex; align-items: center; justify-content: center;
-    background: var(--nx-bg-subtle); border: 1px solid var(--nx-border-subtle); border-top: none; border-radius: 0 0 var(--nx-radius) var(--nx-radius); }
+.nx-kit .nx-pt-split { flex: 0 0 auto; height: 8px; cursor: row-resize; touch-action: none; display: flex; align-items: center; justify-content: center;
+    border-top: 1px solid var(--nx-border-subtle); }
 .nx-kit .nx-pt-split::after { content: ""; width: 26px; height: 2px; border-radius: 1px; background: var(--nx-border); }
-.nx-kit .nx-pt-pane { padding: 10px 0 0; min-width: 0; }
+.nx-kit .nx-pt-split:hover::after { background: var(--nx-accent); }
+.nx-kit .nx-pt-pane { flex: 0 0 var(--nx-pt-pane-h, 280px); overflow: auto; padding: 8px 2px 0; min-width: 0; }
 .nx-kit .nx-pt-panehead { display: flex; align-items: flex-start; gap: 6px; }
 .nx-kit .nx-pt-panehead .nx-pt-crumb { flex: 1 1 auto; }
 .nx-kit .nx-pt-crumb { display: flex; flex-wrap: wrap; gap: 0 5px; margin: 0 0 6px; font-size: 10.5px; color: var(--nx-text-faint); min-width: 0; }
-.nx-kit .nx-pt-crumb span + span::before { content: "\x83A"; margin-right: 5px; }
+.nx-kit .nx-pt-crumb span + span::before { content: "\\203A"; margin-right: 5px; }
 .nx-kit .nx-pt-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--nx-text-strong); }
 .nx-kit .nx-pt-items { border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius); margin: 0 0 8px; }
-.nx-kit .nx-pt-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 26px; padding: 0 4px 0 8px; border-top: 1px solid var(--nx-border-subtle); }
-.nx-kit .nx-pt-item:first-child { border-top: none; }
-.nx-kit .nx-pt-item > .nx-pt-val { justify-content: flex-end; max-width: 150px; }
+.nx-kit .nx-pt-listrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 26px; padding: 0 4px 0 8px; border-top: 1px solid var(--nx-border-subtle); }
+.nx-kit .nx-pt-listrow:first-child { border-top: none; }
+.nx-kit .nx-pt-listrow > .nx-pt-val { max-width: 150px; }
 .nx-kit.nx-kit .nx-pt-go { margin: 0; padding: 3px 0; border: none; background: none; text-align: left; font: inherit; color: var(--nx-text-strong); cursor: pointer;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .nx-kit.nx-kit .nx-pt-go:hover { color: var(--nx-accent); text-decoration: underline; }
@@ -355,6 +346,8 @@ nx-tab[hidden] { display: none !important; }
 .nx-kit .nx-pt-dialogrow { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 4px 4px 8px; border: 1px solid var(--nx-border-subtle); border-radius: var(--nx-radius); }
 .nx-kit .nx-pt-dialogrow .nx-pt-t { flex: 1 1 auto; font-family: var(--nx-mono); font-size: 11px; }
 .nx-kit.nx-kit .nx-btn.nx-primary { background: var(--nx-accent); border-color: var(--nx-accent); color: #fff; }
+.nx-kit.nx-kit .nx-btn.nx-pt-action.nx-on { border-color: var(--nx-accent); background: var(--nx-bg-selected); font-weight: 600; }
+.nx-kit .nx-pt-info { margin: 0 0 8px; font-size: 11.5px; color: var(--nx-text-muted); }
 `;
   function ensureStyles(doc) {
     doc = doc || document;
@@ -1556,19 +1549,13 @@ nx-tab[hidden] { display: none !important; }
     })(roots || []);
     return found;
   }
-  function visibleRows(roots, q, isOpen, textOf) {
-    var rows = [], hits = 0;
+  function filterTree(roots, q, textOf) {
     q = (q || "").trim().toLowerCase();
-    if (!q) {
-      (function walk(list) {
-        list.forEach(function(n2) {
-          var has = n2.children.length > 0, open = has && isOpen(n2.id);
-          rows.push({ node: n2, open, hasKids: has });
-          if (open) walk(n2.children);
-        });
-      })(roots);
-      return { rows, hits: 0 };
-    }
+    var hits = 0;
+    var wrap = function(n2) {
+      return { node: n2, children: n2.children.map(wrap) };
+    };
+    if (!q) return { roots: roots.map(wrap), hits: 0 };
     var match = function(n2) {
       if (String(n2.label).toLowerCase().indexOf(q) !== -1) return true;
       if (n2.key && n2.kind === "prop" && String(n2.key).toLowerCase().indexOf(q) !== -1) return true;
@@ -1579,15 +1566,9 @@ nx-tab[hidden] { display: none !important; }
       var self = match(n2);
       var kids = n2.children.map(collect).filter(Boolean);
       if (self) hits++;
-      return self || kids.length ? { n: n2, kids } : null;
+      return self || kids.length ? { node: n2, children: kids } : null;
     };
-    (function flat(list) {
-      list.forEach(function(r) {
-        rows.push({ node: r.n, open: r.kids.length > 0, hasKids: r.n.children.length > 0 });
-        flat(r.kids);
-      });
-    })(roots.map(collect).filter(Boolean));
-    return { rows, hits };
+    return { roots: roots.map(collect).filter(Boolean), hits };
   }
   function editorKind(prop) {
     if (prop.type === "action") return "action";
@@ -1596,7 +1577,7 @@ nx-tab[hidden] { display: none !important; }
     if (prop.type === "css" || prop.type === "code" || prop.type === "json" || prop.type === "text") return "large";
     return "inline";
   }
-  function listOp(items, op, i, make) {
+  function listOp(items, op, i, make, j) {
     var next = (Array.isArray(items) ? items : []).slice();
     var copy = function(v) {
       return v === void 0 || v === null || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
@@ -1624,6 +1605,13 @@ nx-tab[hidden] { display: none !important; }
     if (op === "duplicate") {
       next.splice(i + 1, 0, copy(next[i]));
       return { next, index: i + 1 };
+    }
+    if (op === "move") {
+      if (j === void 0 || j === i || j === i + 1) return { next, index: i };
+      var it = next.splice(i, 1)[0];
+      var to = j > i ? j - 1 : j;
+      next.splice(to, 0, it);
+      return { next, index: to };
     }
     return { next, index: i };
   }
@@ -1711,18 +1699,44 @@ nx-tab[hidden] { display: none !important; }
 
   // src/sdk/kit/prop-tree/view.js
   var MEMORY = {};
-  var HEIGHT_KEY = "nexa-inspector-tree-height";
+  var PANE_KEY = "nexa-inspector-pane-height";
   var seq2 = 0;
   function memoryFor(key) {
-    return MEMORY[key] || (MEMORY[key] = { sel: null, open: {}, q: "", max: false, top: 0 });
+    return MEMORY[key] || (MEMORY[key] = { sel: null, q: "", max: false, top: 0 });
   }
-  function storedHeight() {
+  function storedPane() {
     try {
-      var v = Number(window.localStorage.getItem(HEIGHT_KEY));
-      return v >= 80 && v <= 2e3 ? v : 260;
+      var v = Number(window.localStorage.getItem(PANE_KEY));
+      return v >= 100 && v <= 2e3 ? v : 280;
     } catch (e) {
-      return 260;
+      return 280;
     }
+  }
+  var TYPE_ICON = {
+    string: "fa fa-font",
+    text: "fa fa-align-left",
+    number: "fa fa-hashtag",
+    range: "fa fa-sliders",
+    boolean: "fa fa-check-square-o",
+    enum: "fa fa-list-ul",
+    color: "fa fa-tint",
+    css: "fa fa-css3",
+    code: "fa fa-code",
+    json: "fa fa-code",
+    tag: "fa fa-tag",
+    asset: "fa fa-picture-o",
+    list: "fa fa-list",
+    align: "fa fa-th",
+    spacing: "fa fa-arrows-alt",
+    action: "fa fa-hand-pointer-o"
+  };
+  function iconOf(n2) {
+    if (n2.kind === "group") return "fa fa-folder-open-o";
+    if (n2.kind === "section") return "fa fa-folder-o";
+    if (n2.kind === "item") return "fa fa-file-o";
+    var prop = n2.kind === "itemField" ? n2.field : n2.prop;
+    if (prop && prop.editor) return "fa fa-puzzle-piece";
+    return TYPE_ICON[prop && prop.type || "string"] || "fa fa-square-o";
   }
   function clone(v) {
     return v === null || v === void 0 || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
@@ -1750,16 +1764,15 @@ nx-tab[hidden] { display: none !important; }
     out.push(text.slice(i));
     return out;
   }
-  var CARET = html`<svg width="8" height="8" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 1.5 7 5 3.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   function createTreeView(A) {
     var mem = memoryFor(A.persist);
     var uid = "nx-pt" + ++seq2;
-    var height = storedHeight();
+    var paneH = storedPane();
     var root = null;
     var pending = null;
     var first = true;
     var editors = /* @__PURE__ */ new Map();
-    var map = /* @__PURE__ */ new Map(), roots = [], rows = [];
+    var map = /* @__PURE__ */ new Map(), roots = [];
     function p() {
       return A.props();
     }
@@ -1771,19 +1784,8 @@ nx-tab[hidden] { display: none !important; }
       var v = valueOf(key);
       return Array.isArray(v) ? v : [];
     }
-    function isOpen(id) {
-      if (id in mem.open) return mem.open[id];
-      var n2 = map.get(id);
-      return !!n2 && n2.kind !== "item";
-    }
-    function openAncestors(id) {
-      ancestorIds(map, id).forEach(function(a) {
-        mem.open[a] = true;
-      });
-    }
-    function toggle(id) {
-      mem.open[id] = !isOpen(id);
-      A.update();
+    function treeEl() {
+      return root && root.querySelector("nx-tree");
     }
     function commitPending() {
       var a = document.activeElement;
@@ -1801,8 +1803,7 @@ nx-tab[hidden] { display: none !important; }
       }
       commitPending();
       mem.sel = id;
-      openAncestors(id);
-      pending = Object.assign(pending || {}, { scroll: true, focus: !!o.focus });
+      pending = Object.assign(pending || {}, { scroll: true, reveal: true, focus: !!o.focus });
       A.update();
     }
     function summaryOf(n2) {
@@ -1867,48 +1868,74 @@ nx-tab[hidden] { display: none !important; }
       } else parts.push(html`<span class="nx-pt-t">${marks(s.text, q)}</span>`);
       return html`<span class="nx-pt-val" title="${s.text}">${parts}</span>`;
     }
-    function rowId(id) {
-      return uid + "-" + String(id).replace(/[^\w-]/g, "_");
+    function treeNodes(list, q) {
+      return list.map(function(w) {
+        var n2 = w.node, prop = n2.prop;
+        var actions = [];
+        if (n2.kind === "prop" && prop.type === "list" && !prop.readonly && !(prop.max > 0 && items(n2.key).length >= prop.max)) {
+          actions.push({ id: "add", icon: "fa fa-plus", title: "Add " + itemNoun(prop) });
+        }
+        if (n2.kind === "item" && !prop.readonly && !(prop.min > 0 && items(n2.key).length <= prop.min)) {
+          actions.push({ id: "remove", icon: "fa fa-trash-o", title: "Remove" });
+        }
+        return {
+          id: n2.id,
+          icon: iconOf(n2),
+          title: n2.label,
+          cls: "nx-pt-k-" + n2.kind,
+          label: html`<span class="nx-pt-t">${marks(n2.label, q)}</span>${rowMarks(n2)}`,
+          value: valueCell(n2, q),
+          actions,
+          renamable: false,
+          collapsed: n2.kind === "item",
+          draggable: n2.kind === "item",
+          children: treeNodes(w.children, q)
+        };
+      });
     }
-    function rowTpl(r, q) {
-      var n2 = r.node, on = n2.id === mem.sel;
-      var cls = "nx-pt-row nx-pt-" + n2.kind + (on ? " nx-on" : "");
-      return html`<div class=${cls} id=${rowId(n2.id)} role="treeitem" aria-level=${n2.depth + 1} aria-selected=${on ? "true" : "false"}
-                aria-expanded=${r.hasKids ? r.open ? "true" : "false" : nothing} data-id=${n2.id} style=${"--d:" + n2.depth}
-                @click=${function() {
-        select(n2.id);
-      }}
-                @dblclick=${function() {
-        if (r.hasKids && !q) toggle(n2.id);
-        else select(n2.id, { focus: true });
-      }}>
-            ${r.hasKids ? html`<button type="button" class="nx-pt-caret ${r.open ? "nx-open" : ""}" tabindex="-1" aria-label=${r.open ? "Collapse" : "Expand"}
-                @click=${function(e) {
-        e.stopPropagation();
-        if (!q) toggle(n2.id);
-      }}>${CARET}</button>` : html`<span></span>`}
-            <span class="nx-pt-label" title=${n2.label}><span class="nx-pt-t">${marks(n2.label, q)}</span>${rowMarks(n2)}</span>
-            ${valueCell(n2, q)}
-        </div>`;
+    function onTreeSelect(e) {
+      e.stopPropagation();
+      select(e.detail.id);
+    }
+    function onTreeOpen(e) {
+      e.stopPropagation();
+      select(e.detail.id, { focus: true });
+    }
+    function onTreeAction(e) {
+      e.stopPropagation();
+      var n2 = map.get(e.detail.id);
+      if (!n2) return;
+      if (e.detail.action === "add") listDo(n2, "add");
+      if (e.detail.action === "remove") listDo(map.get(n2.key), "remove", n2.index);
+    }
+    function onTreeMove(e) {
+      e.stopPropagation();
+      var a = map.get(e.detail.id), b = map.get(e.detail.targetId);
+      if (!a || !b || a.kind !== "item" || b.kind !== "item" || a.key !== b.key) return;
+      listDo(map.get(a.key), "move", a.index, e.detail.position === "after" ? b.index + 1 : b.index);
     }
     function onTreeKey(e) {
-      var ids = rows.map(function(r) {
-        return r.node.id;
+      var t = treeEl();
+      if (!t) return;
+      var rowsNow = Array.prototype.slice.call(t.querySelectorAll(".nx-tree-row"));
+      var ids = rowsNow.map(function(r) {
+        return r.dataset.id;
       });
       var i = ids.indexOf(mem.sel), n2 = map.get(mem.sel);
+      var row = rowsNow[i];
+      var open = row && row.getAttribute("aria-expanded");
       var go = function(j) {
         if (ids[j] !== void 0) select(ids[j]);
       };
-      var has = n2 && n2.children.length > 0;
       if (e.key === "ArrowDown") go(i < 0 ? 0 : i + 1);
       else if (e.key === "ArrowUp") go(Math.max(0, i - 1));
       else if (e.key === "Home") go(0);
       else if (e.key === "End") go(ids.length - 1);
       else if (e.key === "ArrowRight" && n2) {
-        if (has && !isOpen(n2.id) && !mem.q) toggle(n2.id);
-        else if (has) go(i + 1);
+        if (open === "false") t.toggle(n2.id);
+        else if (open === "true") go(i + 1);
       } else if (e.key === "ArrowLeft" && n2) {
-        if (has && isOpen(n2.id) && !mem.q) toggle(n2.id);
+        if (open === "true") t.toggle(n2.id);
         else if (n2.parentId) select(n2.parentId);
       } else if (e.key === "Enter" && n2) select(n2.id, { focus: true });
       else return;
@@ -1928,30 +1955,29 @@ nx-tab[hidden] { display: none !important; }
         A.update();
       } else if (e.key === "ArrowDown" || e.key === "Enter") {
         e.preventDefault();
-        var first2 = rows.filter(function(r) {
-          return r.node.kind !== "group" && r.node.kind !== "section";
-        })[0];
-        if (first2) select(first2.node.id);
-        var t = root && root.querySelector(".nx-pt-tree");
-        if (t) t.focus();
+        var t = treeEl();
+        var firstRow = t && t.querySelector(".nx-tree-row:not(.nx-pt-k-group):not(.nx-pt-k-section)");
+        if (firstRow) select(firstRow.dataset.id);
+        var box = root && root.querySelector(".nx-pt-tree");
+        if (box) box.focus();
       }
     }
     function onSplit(e) {
-      var tree = root && root.querySelector(".nx-pt-tree");
-      if (!tree) return;
+      var pane = root && root.querySelector(".nx-pt-pane");
+      if (!pane) return;
       e.preventDefault();
-      var y0 = e.clientY, h0 = tree.getBoundingClientRect().height;
+      var y0 = e.clientY, h0 = pane.getBoundingClientRect().height;
       mem.max = false;
       root.classList.remove("nx-pt-max");
       var move = function(ev) {
-        height = Math.max(80, Math.min(1200, Math.round(h0 + ev.clientY - y0)));
-        root.style.setProperty("--nx-pt-h", height + "px");
+        paneH = Math.max(100, Math.min(1600, Math.round(h0 - (ev.clientY - y0))));
+        fitHeight();
       };
       var up = function() {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         try {
-          window.localStorage.setItem(HEIGHT_KEY, String(height));
+          window.localStorage.setItem(PANE_KEY, String(paneH));
         } catch (err) {
         }
       };
@@ -1976,7 +2002,7 @@ nx-tab[hidden] { display: none !important; }
     function overviewPane(n2) {
       return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>
             <div class="nx-pt-items">${n2.children.map(function(c) {
-        return html`<div class="nx-pt-item"><button type="button" class="nx-pt-go" @click=${function() {
+        return html`<div class="nx-pt-listrow"><button type="button" class="nx-pt-go" @click=${function() {
           select(c.id, { focus: c.kind === "prop" });
         }}>${c.label}</button>${valueCell(c, "")}</div>`;
       })}</div>`;
@@ -1993,14 +2019,13 @@ nx-tab[hidden] { display: none !important; }
       }
       return "";
     }
-    function listDo(n2, op, i) {
+    function listDo(n2, op, i, j) {
       var r = listOp(items(n2.key), op, i, function() {
         return newItem(n2.prop);
-      });
+      }, j);
       commitPending();
       mem.sel = r.index >= 0 ? n2.key + "#" + r.index : n2.key;
-      mem.open[n2.key] = true;
-      pending = Object.assign(pending || {}, { scroll: true });
+      pending = Object.assign(pending || {}, { scroll: true, reveal: true });
       A.set(n2.key, r.next);
     }
     function setItem(n2, v) {
@@ -2016,7 +2041,7 @@ nx-tab[hidden] { display: none !important; }
       return html`${crumbs(n2)}<div class="nx-pt-title">${prop.label}${prop.required ? html`<span class="nx-req">*</span>` : nothing}</div>
             ${prop.help ? html`<div class="nx-help">${prop.help}</div>` : nothing}
             ${list.length ? html`<div class="nx-pt-items">${list.map(function(it, i) {
-        return html`<div class="nx-pt-item">
+        return html`<div class="nx-pt-listrow">
                     <button type="button" class="nx-pt-go" @click=${function() {
           select(n2.key + "#" + i, { focus: true });
         }}>${itemLabel(prop, it, i)}</button>
@@ -2037,7 +2062,7 @@ nx-tab[hidden] { display: none !important; }
       }}><i class="fa fa-plus"></i> Add ${noun}</button>
                 <span class="nx-badge">${list.length}</span></div>
             ${msg ? html`<div class="nx-message">${msg}</div>` : nothing}
-            <div class="nx-help">Each ${noun} is also a row in the tree: pick it there to edit it.</div>`;
+            <div class="nx-help">Each ${noun} is also a row in the tree: pick it there to edit it, drag it to reorder; the + on the list's row adds one.</div>`;
     }
     function itemPane(n2) {
       var prop = n2.prop, list = items(n2.key), i = n2.index, sch = itemSchema(prop);
@@ -2168,62 +2193,78 @@ nx-tab[hidden] { display: none !important; }
       map = indexTree(roots);
       if (mem.sel && !map.has(mem.sel)) mem.sel = nearestId(map, mem.sel, roots);
       if (!mem.sel) mem.sel = firstLeafId(roots);
-      if (mem.sel) openAncestors(mem.sel);
       editors.forEach(function(_el, id) {
         if (id !== mem.sel) editors.delete(id);
       });
       var q = mem.q.trim().toLowerCase();
-      var vr = visibleRows(roots, q, isOpen, textOf);
-      rows = vr.rows;
+      var found = filterTree(roots, q, textOf);
       var sel = map.get(mem.sel);
-      return html`<div class="nx-pt ${mem.max ? "nx-pt-max" : ""}" style=${"--nx-pt-h:" + height + "px"}>
+      return html`<div class="nx-pt ${mem.max ? "nx-pt-max" : ""}">
             <div class="nx-pt-head">
                 ${A.stateSwitcher()}
                 <label class="nx-pt-search"><i class="fa fa-search" aria-hidden="true"></i>
                     <input type="search" class="nx-pt-q" placeholder="Search properties and values" aria-label="Search properties" autocomplete="off" spellcheck="false"
                         .value=${live(mem.q)} @input=${onSearch} @keydown=${onSearchKey}>
-                    ${q ? html`<span class="nx-pt-hits">${vr.hits} ${vr.hits === 1 ? "match" : "matches"}</span>` : nothing}</label>
+                    ${q ? html`<span class="nx-pt-hits">${found.hits} ${found.hits === 1 ? "match" : "matches"}</span>` : nothing}</label>
             </div>
-            <div class="nx-pt-tree" role="tree" tabindex="0" aria-label="Properties" aria-activedescendant=${sel ? rowId(sel.id) : nothing} @keydown=${onTreeKey}
-                @scroll=${function(e) {
+            <div class="nx-pt-tree" tabindex="0" aria-label="Properties" @keydown=${onTreeKey} @scroll=${function(e) {
         mem.top = e.target.scrollTop;
       }}>
-                ${rows.map(function(r) {
-        return rowTpl(r, q);
-      })}
-                ${!rows.length ? html`<div class="nx-pt-empty">${q ? "Nothing matches \u201C" + mem.q.trim() + "\u201D." : "No properties."}</div>` : nothing}
+                <nx-tree no-rename persist-key=${"nexa-props:" + A.persist} .renamable=${false} ?expand-all=${!!q}
+                    .nodes=${treeNodes(found.roots, q)} .selected=${mem.sel ? [mem.sel] : []}
+                    empty-text=${q ? "Nothing matches \u201C" + mem.q.trim() + "\u201D." : "No properties."}
+                    @nx-tree-select=${onTreeSelect} @nx-tree-open=${onTreeOpen} @nx-tree-action=${onTreeAction} @nx-tree-move=${onTreeMove}></nx-tree>
             </div>
-            <div class="nx-pt-split" role="separator" aria-orientation="horizontal" title="Drag to resize" @pointerdown=${onSplit}></div>
+            <div class="nx-pt-split" role="separator" aria-orientation="horizontal" title="Drag to resize the editor" @pointerdown=${onSplit}></div>
             <div class="nx-pt-pane" data-node=${mem.sel || ""}>${keyed(mem.sel || "", paneTpl(sel))}</div>
         </div>`;
     }
     function fitHeight() {
-      var el = root && root.parentNode;
-      while (el && el !== document.body) {
+      if (!root) return;
+      var el = root.parentNode;
+      while (el && el !== document.body && el.nodeType === 1) {
         var oy = window.getComputedStyle(el).overflowY;
         if ((oy === "auto" || oy === "scroll") && el.clientHeight > 0) break;
         el = el.parentNode;
       }
-      var avail = el && el !== document.body ? el.clientHeight : window.innerHeight;
-      var h = mem.max ? height : Math.max(96, Math.min(height, Math.round(avail * 0.55)));
-      root.style.setProperty("--nx-pt-h", h + "px");
+      var total = 560;
+      if (el && el !== document.body && el.nodeType === 1) {
+        var top = root.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+        var pad = parseFloat(window.getComputedStyle(el).paddingBottom) || 0;
+        total = Math.max(360, Math.floor(el.clientHeight - top - pad - 12));
+      }
+      var head = root.querySelector(".nx-pt-head");
+      var room = total - (head ? head.offsetHeight : 34) - 8;
+      var pane = mem.max ? room - 90 : Math.min(paneH, room - 90);
+      root.style.setProperty("--nx-pt-total", total + "px");
+      root.style.setProperty("--nx-pt-pane-h", Math.max(100, pane) + "px");
     }
     function afterRender(container) {
       root = container.querySelector(".nx-pt");
-      if (root) fitHeight();
+      if (!root) return;
+      fitHeight();
       var todo = pending;
       pending = null;
-      if (root && first) {
+      var t = treeEl();
+      if (first) {
         first = false;
-        var t = root.querySelector(".nx-pt-tree");
-        if (t) t.scrollTop = mem.top || 0;
-        todo = Object.assign({ scroll: true }, todo || {});
+        var box = root.querySelector(".nx-pt-tree");
+        if (box) box.scrollTop = mem.top || 0;
+        todo = Object.assign({ scroll: true, reveal: true }, todo || {});
       }
-      if (!root || !todo) return;
-      if (todo.scroll) {
-        var row = root.querySelector(".nx-pt-row.nx-on");
-        if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
-      }
+      if (!todo) return;
+      var after = function() {
+        if (todo.reveal && t && mem.sel && typeof t.reveal === "function") t.reveal(mem.sel);
+        if (todo.scroll) {
+          var row = root.querySelector(".nx-tree-row.nx-on");
+          if (row && typeof row.scrollIntoView === "function") row.scrollIntoView({ block: "nearest" });
+        }
+      };
+      if (t && t.updateComplete) t.updateComplete.then(function() {
+        after();
+        if (t.updateComplete) t.updateComplete.then(after);
+      });
+      else after();
       if (todo.focus) {
         setTimeout(function() {
           var pane = root && root.querySelector(".nx-pt-pane");
@@ -2795,25 +2836,34 @@ nx-tab[hidden] { display: none !important; }
     _saveCollapsed() {
       if (this.persistKey) store2("nexa-kit:tree:" + this.persistKey, JSON.stringify(this._collapsed));
     }
+    /** Whether a row is collapsed now: what the user chose, else the node's own `collapsed`. */
+    isCollapsed(id, node) {
+      if (this.expandAll) return false;
+      if (id in this._collapsed) return !!this._collapsed[id];
+      if (!node) (function search(list) {
+        (list || []).forEach(function(n2) {
+          if (n2.id === id) node = n2;
+          else if (!node) search(n2.children);
+        });
+      })(this.nodes);
+      return !!(node && node.collapsed);
+    }
     toggle(id) {
       var next = Object.assign({}, this._collapsed);
-      if (next[id]) delete next[id];
-      else next[id] = true;
+      next[id] = !this.isCollapsed(id);
       this._collapsed = next;
       this._saveCollapsed();
     }
     setAllCollapsed(collapsed) {
       var next = {};
-      if (collapsed) {
-        (function walk(list) {
-          (list || []).forEach(function(n2) {
-            if (n2.children && n2.children.length) {
-              next[n2.id] = true;
-              walk(n2.children);
-            }
-          });
-        })(this.nodes);
-      }
+      (function walk(list) {
+        (list || []).forEach(function(n2) {
+          if (n2.children && n2.children.length) {
+            next[n2.id] = !!collapsed;
+            walk(n2.children);
+          }
+        });
+      })(this.nodes);
       this._collapsed = next;
       this._saveCollapsed();
     }
@@ -2831,10 +2881,10 @@ nx-tab[hidden] { display: none !important; }
         }
         return false;
       })(this.nodes, []);
-      if (!found || !path.some((p) => this._collapsed[p])) return;
+      if (!found || !path.some((p) => this.isCollapsed(p))) return;
       var next = Object.assign({}, this._collapsed);
       path.forEach(function(p) {
-        delete next[p];
+        next[p] = false;
       });
       this._collapsed = next;
       this._saveCollapsed();
@@ -2867,13 +2917,13 @@ nx-tab[hidden] { display: none !important; }
     }
     _row(node, depth) {
       var hasKids = node.children && node.children.length;
-      var collapsed = !!this._collapsed[node.id];
+      var collapsed = this.isCollapsed(node.id, node);
       var selected = (this.selected || []).indexOf(node.id) !== -1;
       var drop = this._drop && this._drop.targetId === node.id ? this._drop.position : "";
       var renaming = this._renaming === node.id;
       return html`
-            <div class="nx-tree-row ${selected ? "nx-on" : ""} ${node.muted ? "nx-muted" : ""} ${drop ? "nx-drop-" + drop : ""}"
-                data-id="${node.id}" draggable="${renaming ? "false" : "true"}" role="treeitem" aria-selected="${selected}" aria-expanded="${hasKids ? String(!collapsed) : nothing}"
+            <div class="nx-tree-row ${selected ? "nx-on" : ""} ${node.muted ? "nx-muted" : ""} ${drop ? "nx-drop-" + drop : ""} ${node.cls || ""}"
+                data-id="${node.id}" draggable="${renaming || node.draggable === false ? "false" : "true"}" role="treeitem" aria-selected="${selected}" aria-expanded="${hasKids ? String(!collapsed) : nothing}"
                 @click="${(e) => {
         var additive = e.shiftKey || e.ctrlKey || e.metaKey;
         if (additive) {
@@ -2894,6 +2944,10 @@ nx-tab[hidden] { display: none !important; }
         }
       }}"
                 @dragstart="${(e) => {
+        if (node.draggable === false) {
+          e.preventDefault();
+          return;
+        }
         this._dragId = node.id;
         e.dataTransfer.effectAllowed = "move";
         try {
@@ -2943,7 +2997,7 @@ nx-tab[hidden] { display: none !important; }
           this._renaming = null;
           this._fire("nx-tree-rename", { id: node.id, name: e.target.value.trim() });
         }
-      }}">` : html`<span class="nx-tree-label" title="${node.title || node.label || ""}" @dblclick="${(e) => {
+      }}">` : html`<span class="nx-tree-label" title="${node.title || (typeof node.label === "string" ? node.label : "")}" @dblclick="${(e) => {
         e.stopPropagation();
         if (this.renamable !== false && !this.hasAttribute("no-rename") && node.renamable !== false) {
           this._renaming = node.id;
@@ -2951,6 +3005,7 @@ nx-tab[hidden] { display: none !important; }
           this._fire("nx-tree-open", { id: node.id });
         }
       }}">${node.label}</span>`}
+                ${node.value !== void 0 && node.value !== null && node.value !== "" ? html`<span class="nx-tree-value">${node.value}</span>` : nothing}
                 ${node.badge !== void 0 && node.badge !== "" ? html`<span class="nx-badge">${node.badge}</span>` : nothing}
                 ${node.actions && node.actions.length ? html`
                     <span class="nx-tree-actions">${(node.actions || []).map((a) => html`<button type="button" class="nx-icon-btn ${a.on ? "nx-on" : ""}" title="${a.title || a.id}"
@@ -2984,6 +3039,7 @@ nx-tab[hidden] { display: none !important; }
     persistKey: { type: String, attribute: "persist-key" },
     emptyText: { type: String, attribute: "empty-text" },
     renamable: { type: Boolean },
+    expandAll: { type: Boolean, attribute: "expand-all" },
     _collapsed: { state: true },
     _renaming: { state: true },
     _drop: { state: true }
