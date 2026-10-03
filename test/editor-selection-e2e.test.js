@@ -69,16 +69,21 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             };
             const showsTitle = (re) => js(`(function(){ var p = __nexaEditorState.propertiesPane; var t = p && p.get(0) ? p.get(0).textContent : ""; return ${re}.test(t); })()`);
 
+            // the component's props are a tree: click a row, its widget shows in the pane below
+            const pickRow = (match) => js(`(function(){ var p = __nexaEditorState.propertiesPane.get(0);
+                var row = Array.from(p.querySelectorAll(".nx-tree-row")).find(function(r){ return ${match}; });
+                if (!row) return false; row.click(); return true; })()`);
             await click('A');
             check('a click on the canvas selects A', JSON.stringify(await sel()) === '["A"]', await sel());
             await js('__nexaEditorState.sidebarTabs.activateTab("properties"); true'); // the panel in view (the Screens tab was)
             await wait(300);
 
             // 1. typing in the Teleport field, then clicking B: B stays selected, A keeps what was typed
-            // open every section of the panel (a fresh profile keeps some collapsed), then focus the field
+            // pick the Teleport row of the tree, then focus its field in the pane
+            check('A\'s inspector is one tree with a Teleport row', await pickRow('r.dataset.id === "tp$teleport"'), null);
+            await wait(250);
             const typed = await js(`(function(){
-                var p = __nexaEditorState.propertiesPane.get(0);
-                Array.from(p.querySelectorAll("nx-section[collapsed]")).forEach(function(sec){ sec.removeAttribute("collapsed"); });
+                var p = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-pt-pane");
                 var inp = Array.from(p.querySelectorAll("input")).find(function(i){ return /target/i.test(i.placeholder || ""); });
                 if (!inp) return "no field";
                 inp.focus(); return document.activeElement === inp; })()`);
@@ -93,7 +98,9 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             check('the panel shows B', await showsTitle('/\\bB\\b|Input/'), null);
 
             // 2. undo keeps the selection
-            await js(`(function(){ var t = Array.from(__nexaEditorState.propertiesPane.get(0).querySelectorAll("nx-text")).find(function(e){ return e.label === "Label"; }); t.change("B2"); return 1; })()`);
+            check('B\'s Label row is in the property tree', await pickRow('r.dataset.id === "label"'), null);
+            await wait(200);
+            await js(`(function(){ var t = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-pt-pane nx-text"); t.change("B2"); return 1; })()`);
             await wait(300);
             check('B\'s label changed', await js(`${node('B')}.props.label`) === 'B2', await js(`${node('B')}.props.label`));
             await js('document.activeElement && document.activeElement.blur && document.activeElement.blur(); document.body.focus(); true');
@@ -111,23 +118,29 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await key('Delete', 'Delete', 46);
             check('Delete with an inspector button focused: B is not deleted', focused && !!(await js(node('B'))), { focused });
 
-            // 5. an edit that rebuilds the panel keeps the selection and the scroll
-            const scroller = '__nexaEditorState.propertiesPane.get(0).parentNode';
-            await js(`${scroller}.scrollTop = 200; true`);
-            const before = await js(`${scroller}.scrollTop`);
-            await js(`(function(){ var c = Array.from(__nexaEditorState.propertiesPane.get(0).querySelectorAll("input[type=checkbox]")).find(function(i){ return /Locked/.test((i.parentNode && i.parentNode.textContent) || ""); }); if (!c) return 0; c.click(); return 1; })()`);
+            // 5. Locked (a redraw of the canvas and the panel): B stays selected, the tree is not rebuilt
+            await pickRow('r.dataset.id === "gen$locked"');
+            await wait(250);
+            await js(`(function(){ window.__treeBefore = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-pt-tree"); return 1; })()`);
+            await js(`(function(){ var c = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-pt-pane input[type=checkbox]"); if (!c) return 0; c.click(); return 1; })()`);
             await wait(400);
-            check('Locked: the panel rebuilt, B still selected', JSON.stringify(await sel()) === '["B"]' && await js(`${node('B')}.locked`) === true, await sel());
-            check('... and the scroll position stayed', Math.abs((await js(`${scroller}.scrollTop`)) - before) <= 2 && before > 0, { before, after: await js(`${scroller}.scrollTop`) });
+            check('Locked: B still selected and locked', JSON.stringify(await sel()) === '["B"]' && await js(`${node('B')}.locked`) === true, await sel());
+            check('... the same tree (updated, not rebuilt), Locked still picked', await js(`(function(){ var p = __nexaEditorState.propertiesPane.get(0); var on = p.querySelector(".nx-tree-row.nx-on"); return p.querySelector(".nx-pt-tree") === window.__treeBefore && !!on && on.dataset.id === "gen$locked"; })()`), null);
 
             // 6. a prop edit that changes a component's slots (a tab added) keeps the selection
             await click('T', 0, 'bottom');
             const t0 = await js(`(${node('T')}.children || []).length`);
-            const added = await js(`(function(){ var l = __nexaEditorState.propertiesPane.get(0).querySelector("nx-list"); if (!l) return false; var b = l.querySelector(".nx-list-foot .nx-btn"); if (!b) return false; b.click(); return true; })()`);
+            // the list of tabs: its row, then Add in the pane
+            await pickRow('r.classList.contains("nx-pt-k-prop") && /^\\[\\d+ /.test((r.querySelector(".nx-pt-val") || {}).textContent || "")');
+            await wait(200);
+            const added = await js(`(function(){ var b = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-pt-pane .nx-pt-add"); if (!b) return false; b.click(); return true; })()`);
+            if (!added) console.log('rows:', JSON.stringify(await js(`Array.from(__nexaEditorState.propertiesPane.get(0).querySelectorAll(".nx-tree-row")).map(function(r){ return r.className + "|" + r.dataset.id + "|" + (r.querySelector(".nx-pt-val") || {}).textContent; })`)));
             await wait(600);
             const t1 = await js(`(${node('T')}.children || []).length`);
             check('Tabs: a tab added (a slot frame more)', added && t1 === t0 + 1, { t0, t1, added });
             check('... and Tabs is still selected', JSON.stringify(await sel()) === '["T"]', await sel());
+            const picked = await js(`(function(){ var on = __nexaEditorState.propertiesPane.get(0).querySelector(".nx-tree-row.nx-on"); return on ? on.dataset.id : null; })()`);
+            check('... and the new tab is picked in the property tree', /#\d+$/.test(picked || ''), picked);
 
             const errs = logs.filter((l) => !/favicon|DevTools/.test(l));
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));

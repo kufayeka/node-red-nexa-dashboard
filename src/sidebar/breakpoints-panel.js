@@ -38,7 +38,7 @@ export function renderBreakpointsPanel() {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Breakpoints tab needs the Nexa property kit.").appendTo(pane);
         return;
     }
-    var html = lit().html, nothing = lit().nothing;
+    var html = lit().html;
     var app = getApp();
     var view = function () {
         return { bps: BP.breakpointsOf(app).slice().reverse().map(function (b) {
@@ -47,40 +47,46 @@ export function renderBreakpointsPanel() {
     };
     var current = view();
     var screen = getActiveScreen();
+    // problems with the list (shown on its row and in its pane)
+    var problems = function () {
+        var mins = {}, names = {}, out = [];
+        (app.breakpoints && app.breakpoints.length ? app.breakpoints : []).forEach(function (b) {
+            if (mins[b.min]) out.push("two breakpoints start at " + b.min + " px");
+            if (names[b.name]) out.push("\"" + b.name + "\" twice");
+            mins[b.min] = names[b.name] = true;
+        });
+        return out.join(" · ") || null;
+    };
     var meta = {
         id: "@breakpoints", stateList: [], inputs: [], outputs: [],
+        groupOrder: ["Breakpoints", "Ranges"],
         props: {
-            bps: { key: "bps", type: "list", label: "", default: [], noReset: true, addLabel: "Breakpoint", item: { row: true, fields: {
-                name: { type: "string", label: "Name", default: "" },
-                min: { type: "number", label: "From px", default: 0, min: 0 },
-                preview: { type: "enum", label: "Preview (device)", default: 390, options: previewOptions(0) } } } }
-        },
-        inspector: function (o) {
-            var list = BP.breakpointsOf(app).slice().reverse();
-            var mins = {}, names = {}, problems = [];
-            (app.breakpoints && app.breakpoints.length ? app.breakpoints : []).forEach(function (b) {
-                if (mins[b.min]) problems.push("two breakpoints start at " + b.min + " px");
-                if (names[b.name]) problems.push("\"" + b.name + "\" twice");
-                mins[b.min] = names[b.name] = true;
-            });
-            return html`
-                <div class="nx-help" style="margin-bottom:8px">Bands of window widths, like Tailwind's sm md lg xl: each one starts at its "From" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.</div>
-                ${screen ? html`<nx-alert tone="info" text="${(screen.name || "This screen") + " (" + screen.width + " px) is designed in " + BP.designBreakpoint(app, screen) + "."}"></nx-alert>` : nothing}
-                ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
-                <nx-section heading="Breakpoints (widest first)" persist-key="nexa-breakpoints-list">
-                    <nx-list ${o.bind("bps")} .sortable="${false}"></nx-list>
-                </nx-section>
-                <nx-section heading="Ranges" persist-key="nexa-breakpoints-ranges">
-                    ${list.map(function (b) { var d = deviceAt(BP.previewWidthOf(app, b.id)); return html`<div class="nx-help"><b>${b.name}</b>: ${BP.rangeOf(app, b.id)} · shown at ${BP.previewWidthOf(app, b.id)} px${d ? " (" + d + ")" : ""}</div>`; })}
-                </nx-section>
-                <div style="display:flex;gap:6px;margin-top:8px">
-                    ${o.ui.action("Reset to the defaults", function () {
-                        if (app.breakpoints && app.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 · 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
-                        app.breakpoints = [];
-                        changed(true);
-                    }, { icon: "fa fa-undo" })}
-                </div>
-                <div class="nx-help" style="margin-top:10px">On the live page: {$breakpoint} is the band in use ("md", …); an On Breakpoint Change event fires when it changes.</div>`;
+            bps: { key: "bps", type: "list", group: "Breakpoints", label: "Breakpoints (widest first)", default: [], noReset: true, noun: "breakpoint", itemLabel: "name",
+                validate: problems,
+                help: "Bands of window widths, like Tailwind's sm md lg xl: each one starts at its \"From\" width, up to the next. A screen is designed in the band of its own width (★ on the canvas bar); every other band can change a field (its 📱) or anything (the canvas bar). Desktop-first: a narrower band inherits from the next wider one.",
+                item: { row: true, fields: {
+                    name: { type: "string", label: "Name", default: "" },
+                    min: { type: "number", label: "From px", default: 0, min: 0 },
+                    preview: { type: "enum", label: "Preview (device)", default: 390, options: previewOptions(0) } } } },
+            design: { key: "design", type: "action", group: "Breakpoints", label: "This screen", noReset: true, hidden: !screen,
+                summary: function () { return screen ? BP.designBreakpoint(app, screen) : ""; },
+                info: function () { return screen ? (screen.name || "This screen") + " (" + screen.width + " px) is designed in " + BP.designBreakpoint(app, screen) + "." : ""; },
+                help: "On the live page: {$breakpoint} is the band in use (\"md\", …); an On Breakpoint Change event fires when it changes." },
+            reset: { key: "reset", type: "action", group: "Breakpoints", label: "Defaults", noReset: true,
+                info: "xs 0 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 · 3xl 1920",
+                buttons: [{ label: "Reset to the defaults", icon: "fa fa-undo", run: function () {
+                    if (app.breakpoints && app.breakpoints.length && !window.confirm("Go back to the default breakpoints (xs 0 · sm 640 · md 768 · lg 1024 · xl 1280 · 2xl 1536 · 3xl 1920)? What was set for a breakpoint whose name is not among them is no longer used.")) return;
+                    app.breakpoints = [];
+                    changed(true);
+                } }] },
+            ranges: { key: "ranges", type: "action", group: "Ranges", label: "Ranges", noReset: true,
+                summary: function () { return BP.breakpointsOf(app).length + " bands"; },
+                info: function () {
+                    return html`${BP.breakpointsOf(app).slice().reverse().map(function (b) {
+                        var d = deviceAt(BP.previewWidthOf(app, b.id));
+                        return html`<div><b>${b.name}</b>: ${BP.rangeOf(app, b.id)} · shown at ${BP.previewWidthOf(app, b.id)} px${d ? " (" + d + ")" : ""}</div>`;
+                    })}`;
+                } }
         }
     };
     // the preview options of each row: the presets and the row's own width

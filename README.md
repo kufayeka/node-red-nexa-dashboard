@@ -290,9 +290,9 @@ node-red-nexa-dashboard/
 │   ├── sidebar/                          # Node-RED Left/Right Sidebar Panels
 │   │   ├── assets-panel.js               # Asset library management panel (upload, preview)
 │   │   ├── breakpoints-panel.js          # Responsive breakpoints manager panel
-│   │   ├── frame-inspector.js            # Auto-layout, flex direction, padding & constraint inspector
+│   │   ├── inspector/                    # The node inspector: compose.js merges sources/*.js into one property tree
 │   │   ├── hierarchy-panel.js            # Outline / DOM tree hierarchy tab
-│   │   ├── kit-inspector.js              # Renders dynamic component property forms using NexaKit
+│   │   ├── kit-inspector.js              # The component's own props as an inspector source; the kit's host
 │   │   ├── palette-events-panel.js       # Draggable component palette and event triggers
 │   │   ├── properties-panel.js           # Right-side component properties panel dispatcher
 │   │   ├── screens-panel.js              # Screens, Templates, Folders & Flows tree (Screens & Flows tab)
@@ -301,7 +301,6 @@ node-red-nexa-dashboard/
 │   │   ├── templates-panel.js            # Screen template management panel
 │   │   ├── theme-panel.js                # Project color palettes, typography & theme manager
 │   │   ├── types-panel.js                # User-Defined Types (UDT) data structure builder
-│   │   └── variables-inspector.js        # Scoped variables inspector for screens and containers
 │   ├── assets-client.js                  # Client API for requesting project assets
 │   ├── editor-tray.js                    # Pages studio tray setup (dual tabs, toolbar, zoom, keys)
 │   ├── history.js                        # Undo/Redo stack manager with coalescing
@@ -455,7 +454,7 @@ Compiled by `build.js` into `dist/nexa-runtime.bundle.js` and served to public c
 | `src/sdk/field/controller.js` | `FieldController` managing industrial two-way bindings (reading live PLC tag, handling user edits, echoing writes, quality states). | Field input value reverting while user is typing, write echo not updating state, `???` bad quality badge missing. | `FieldController`. |
 | `src/sdk/field/codecs.js` | Data transformation codecs: scaling, offset, bit masking, unit conversion, and number formatting. | Scaled sensor value calculating incorrectly, raw integer not converting to decimal. | `applyCodec()`. |
 | `src/sdk/kit/tree.js` | The `<nx-tree>` web component implementing the virtualized 2D hierarchy tree. | Tree horizontal scroll clipping text, double click inline rename triggering when disabled, drag-and-drop tree reordering issues. | `NxTree`, `nx-tree-select`, `nx-tree-open`, `nx-tree-move`. |
-| `src/sdk/kit/inspector.js` | Dynamically generates property inspector forms for components based on their `props` schema. | Property field missing in inspector, wrong widget rendered for property type. | `renderInspector()`. |
+| `src/sdk/kit/inspector.js` | The inspector from a schema: the bound widgets (⛓ binding, 📱 per breakpoint, ◆ token, reset, validation) and the property tree (`prop-tree/`). | Property field missing in inspector, wrong widget rendered for property type. | `renderInspector()`. |
 | `src/sdk/kit/inputs.js` | Reusable property kit controls: `<nx-text>`, `<nx-number>`, `<nx-switch>`, `<nx-select>`, `<nx-color>`. | Number input stepping incorrectly, color picker failing to update value. | Custom element definitions. |
 | `src/sdk/kit/binding.js` | Property data binding picker widget (`<nx-binding>`). Allows binding properties to variables, tags, or expressions. | Binding picker missing variable from scope, expression evaluation syntax errors. | `<nx-binding>`. |
 | `src/sdk/zag.js` | Adapts Zag.js state machines (tabs, dropdowns, dialogs, sliders) for accessible Lit components. | Keyboard navigation not working in custom widget, dropdown closing prematurely. | `ZagController`. |
@@ -492,16 +491,15 @@ Compiled by `build.js` into `dist/nexa-runtime.bundle.js` and served to public c
 | `src/sidebar/sidebar-content.js` | Shell container for the 10 sidebar tabs. Manages tab switching, active tab state (`state.sidebarTabs.selected`), and pane visibility. | Clicking a tab fails to show pane, active tab desyncs when switching tools. | `buildSidebarContent()`. |
 | `src/sidebar/screens-panel.js` | "Screens & Flows" tab. Renders the Optix-style hierarchy tree (`<nx-tree>`), handles screen/template/flow creation, reparenting, and component selection. | Tree item inline rename activating on double-click, component click not selecting component on canvas or jumping to Properties tab. | `renderScreenList()`, `buildScreensFlowsTreeNodes()`, `selectComponentFromTree()`, `openPropertiesDialogForId()`. |
 | `src/sidebar/hierarchy-panel.js` | "Hierarchy" tab. Displays outline DOM tree of the currently active screen, manages visibility toggles, locks, and layer reordering. | Element lock/hide button not updating canvas, unplaced components not appearing in Unplaced group. | `renderHierarchyPanel()`. |
-| `src/sidebar/properties-panel.js` | "Properties" tab. Contextual inspector dispatcher. Routes to Frame Inspector, Component Inspector, or Screen properties. | Properties panel blank when element selected, inspector not refreshing after undo. | `renderPropertiesPanel()`. |
-| `src/sidebar/frame-inspector.js` | Inspector for Auto-Layout Frames: Flex direction, wrap, alignment, gap, padding, and child constraint settings. | Frame padding input not applying, child constraint dropdown disabled. | `renderFrameInspector()`. |
-| `src/sidebar/kit-inspector.js` | Renders dynamic property forms for custom Lit components using the NexaKit property kit. | Component prop edit not creating undo history entry, typing in text field causes focus loss. | `renderKitInspector()`. |
+| `src/sidebar/properties-panel.js` | "Properties" tab: one property tree for the selected node (or the multi-selection actions). | Properties panel blank when element selected, inspector not refreshing after undo. | `renderPropertiesPanel()`. |
+| `src/sidebar/inspector/` | The node inspector: `compose.js` merges the sources (`sources/*.js`: name / box / layout / frame / variables / params / Lit) into one kit tree. | A frame setting missing, a field shown when it should not be (visibleWhen). | `renderNodeInspector()`, `renderComposed()`. |
+| `src/sidebar/kit-inspector.js` | The component's own props as an inspector source (`componentSource`), the kit's host (code tray, variables, assets). | Component prop edit not creating undo history entry. | `setComponentProp()`. |
 | `src/sidebar/palette-events-panel.js` | "Components" and "Events" tabs. Renders draggable component palette and Logic canvas event chip shortcuts. | Draggable palette component not spawning on canvas, event chips missing for custom actions. | `buildPalette()`, `renderEventsPanel()`. |
 | `src/sidebar/sparkplug-panel.js` | "MQTT Sparkplug" tab. Live interactive explorer for discovered Sparkplug B topics, devices, and metric tags. | Sparkplug tree not populating, dragging tag onto canvas doesn't create bound widget. | `renderSparkplugPanel()`. |
 | `src/sidebar/theme-panel.js` | "Theme" tab. Color scheme management, primary/neutral palettes, typography, and live token previews. | Custom color token not saving, theme changes not reflecting immediately. | `renderThemePanel()`. |
 | `src/sidebar/types-panel.js` | "Types" tab. Schema editor for User-Defined Types (UDT) and data structures. | UDT field addition failing, nested object schema corruption. | `renderTypesPanel()`. |
 | `src/sidebar/assets-panel.js` | "Assets" tab. Upload, preview, and drag project images, SVG symbols, and media into the canvas. | Image upload failing, drag-and-drop asset onto canvas creates broken image. | `renderAssetsPanel()`. |
 | `src/sidebar/breakpoints-panel.js`| "Breakpoints" tab. Configure custom screen responsive breakpoint widths and test simulated resolutions. | Custom breakpoint width not saving, responsive preview glitching. | `renderBreakpointsPanel()`. |
-| `src/sidebar/variables-inspector.js`| "Variables" sub-inspector. Manages scoped variables on selected frames, groups, or screens. | Container-scoped variable leaking to parent, variable deletion not removing bindings. | `renderVariablesInspector()`. |
 
 ---
 

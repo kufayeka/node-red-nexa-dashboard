@@ -11,7 +11,6 @@ import { openCodeEditorTray } from "../dialogs/lit-code-dialog.js";
 import { listKnownSparkplugBindings } from "../canvas/sparkplug-live.js";
 import { uploadAssets, loadAssets } from "../assets-client.js";
 import { pushTreeChange, treeSnapshot } from "../history.js";
-import { responsiveHost } from "../canvas/breakpoints-ui.js";
 
 // Changes to the same prop within this window are one undo step (typing).
 var PROP_HISTORY_MERGE_MS = 1500;
@@ -83,31 +82,32 @@ export function setComponentProp(comp, key, value) {
     refreshComponentRender(comp);
 }
 
-/** true when the kit rendered the inspector (the caller skips its legacy form). */
-export function renderKitInspector(container, comp, typeDef) {
-    if (!typeDef || !typeDef.nexa || !window.NexaKit) return false;
-    ensureKitHost();
-    comp.props = comp.props || {};
-    var screen = getActiveScreen();
+/**
+ * The component's own props, as a source of the node's inspector (inspector/compose.js):
+ * its schema (def.nexa) with no prefix, edited through setComponentProp (undo, merged typing).
+ */
+export var componentSource = {
+    id: "component", prefix: "",
+    applies: function (ctx) {
+        if (!ctx.typeDef || !ctx.typeDef.nexa || !window.NexaKit) return false;
+        ensureKitHost();
+        ctx.node.props = ctx.node.props || {};
+        return true;
+    },
+    props: function (ctx) { return ctx.typeDef.nexa.props; },
+    view: function (node) { return node.props || {}; },
+    write: function (n, key, v) { n.props = Object.assign({}, n.props || {}); if (v === undefined) delete n.props[key]; else n.props[key] = v; },
+    set: function (key, value, ctx) { setComponentProp(ctx.node, key, value); },
+    // the state switcher: design-time only, no undo step, not "unsaved"
+    preview: function (key, value, ctx) { ctx.node.props[key] = value; refreshComponentRender(ctx.node); },
     // a prop per breakpoint (📱 of each field): kept in comp.overrides[band].props
-    var responsive = screen ? responsiveHost(comp, Tree.parentOf(screen, comp.id), function (n) { return n.props || {}; },
-        function (n, key, v) { n.props = Object.assign({}, n.props || {}); if (v === undefined) delete n.props[key]; else n.props[key] = v; },
-        function (key) { return key !== "__previewState" && key !== "__fallback"; },
-        function (fn) {
-            var before = treeSnapshot(screen);
-            fn();
-            pushTreeChange(screen, before);
-            markDirty();
-            refreshComponentRender(comp);
-        }) : null;
-    window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
-        meta: typeDef.nexa,
-        props: function () { return comp.props || {}; },
-        persistKey: comp.type,
-        responsive: responsive,
-        set: function (key, value) { setComponentProp(comp, key, value); },
-        // the state switcher: design-time only, no undo step, not "unsaved"
-        preview: function (key, value) { comp.props[key] = value; refreshComponentRender(comp); }
-    });
-    return true;
-}
+    canVary: function (key) { return key !== "__previewState" && key !== "__fallback"; },
+    commitResponsive: function (fn, ctx) {
+        var screen = getActiveScreen();
+        var before = treeSnapshot(screen);
+        fn();
+        pushTreeChange(screen, before);
+        markDirty();
+        refreshComponentRender(ctx.node);
+    }
+};

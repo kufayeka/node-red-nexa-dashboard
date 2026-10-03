@@ -5,7 +5,6 @@ import { renderActiveScreen } from "../canvas/canvas-ui.js";
 import { refreshLogicCanvasIfActive, renderScreenList, renderScreenForm } from "./screens-panel.js";
 import { buildPalette } from "./palette-events-panel.js";
 import { normalizeParamType, buildTypedInputWidget, buildEditableListWidget } from "../param-types.js";
-import { renderVariablesInspector } from "./variables-inspector.js";
 
 function refreshComponentsPaletteIfVisible() {
     if (state.componentsPane && state.componentsPane.is(":visible")) {

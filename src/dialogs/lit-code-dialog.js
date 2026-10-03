@@ -198,3 +198,6 @@ export function openCodeEditorTray(opts) {
         });
     });
 }
+
+// test hook (the jQuery mock tests open it without the property kit's button)
+if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { openLitCode: openLitComponentCodeEditor });

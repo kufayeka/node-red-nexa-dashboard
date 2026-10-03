@@ -282,3 +282,6 @@ export function startMarqueeSelect(e) {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
 }
+
+// test hook (e2e): select a node like a click on the canvas does
+if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { selectOnly: selectOnly });

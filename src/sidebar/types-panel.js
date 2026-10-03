@@ -38,7 +38,6 @@ export function renderTypesPanel() {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Types tab needs the Nexa property kit.").appendTo(pane);
         return;
     }
-    var html = lit().html, nothing = lit().nothing;
     var types = app.types;
     if (!types.some(function (t) { return t.id === selectedId; })) selectedId = types[0] ? types[0].id : null;
     var type = types.filter(function (t) { return t.id === selectedId; })[0] || null;
@@ -84,38 +83,32 @@ export function renderTypesPanel() {
         };
     };
     var current = view();
+    var memberProblems = function () {
+        var problems = [], names = {};
+        (type.members || []).forEach(function (m) {
+            if (!Scope.NAME_RE.test(m.name || "")) problems.push("member \"" + (m.name || "") + "\": letters, digits, _ or $, not starting with a digit");
+            else if (names[m.name]) problems.push("member \"" + m.name + "\" twice");
+            names[m.name] = true;
+        });
+        return problems.join(" · ") || null;
+    };
     var meta = {
-        id: "@type", stateList: [], inputs: [], outputs: [],
+        id: "@type", stateList: [], inputs: [], outputs: [], groupOrder: ["Type", "Parameters", "Members"],
         props: {
-            name: { key: "name", type: "string", label: "Type name", default: "", noReset: true },
-            params: { key: "params", type: "list", label: "", default: [], noReset: true, item: { row: true, fields: {
+            name: { key: "name", type: "string", group: "Type", label: "Type name", default: "", noReset: true },
+            params: { key: "params", type: "list", group: "Parameters", label: "Parameters", default: [], noReset: true, noun: "parameter", itemLabel: "name",
+                help: "Filled in per instance, used in the members' sources as {Name}. Built in: {InstanceName}, {ParentInstanceName}.",
+                item: { row: true, fields: {
                 name: { type: "string", label: "Parameter", default: "" }, value: { type: "string", label: "Default", default: "" } } } },
-            members: { key: "members", type: "list", label: "", default: [], noReset: true, item: { fields: {
+            members: { key: "members", type: "list", group: "Members", label: "Members", default: [], noReset: true, noun: "member", itemLabel: "name",
+                validate: memberProblems,
+                item: { fields: {
                 name: { type: "string", label: "Member", default: "" },
                 dataType: { type: "enum", label: "Data type", default: "number", options: typeRefOptions(type.id) },
                 source: { type: "string", label: "Tag (with {Params}); empty = a value", placeholder: "{sparkplug:{Group}::{Node}::{Device}::Speed}", default: "" },
                 value: { type: "string", label: "Default (a value member)", default: "" },
                 unit: { type: "string", label: "Unit", default: "" },
                 access: { type: "enum", label: "Access", default: "read", options: [{ value: "read", label: "read" }, { value: "readwrite", label: "read / write" }] } } } }
-        },
-        inspector: function (o) {
-            var problems = [];
-            var names = {};
-            (type.members || []).forEach(function (m) {
-                if (!Scope.NAME_RE.test(m.name || "")) problems.push("member \"" + (m.name || "") + "\": letters, digits, _ or $, not starting with a digit");
-                else if (names[m.name]) problems.push("member \"" + m.name + "\" twice");
-                names[m.name] = true;
-            });
-            return html`
-                <nx-text ${o.bind("name")}></nx-text>
-                <nx-section heading="Parameters" persist-key="nexa-type-params">
-                    <div class="nx-help" style="margin-bottom:6px">Filled in per instance, used in the members' sources as {Name}. Built in: {InstanceName}, {ParentInstanceName}.</div>
-                    <nx-list ${o.bind("params")}></nx-list>
-                </nx-section>
-                <nx-section heading="Members" persist-key="nexa-type-members">
-                    ${problems.map(function (p) { return html`<nx-alert tone="warning" text="${p}"></nx-alert>`; })}
-                    <nx-list ${o.bind("members")}></nx-list>
-                </nx-section>`;
         }
     };
     var handle = window.NexaKit.renderInspector(host, {
@@ -166,13 +159,9 @@ export function renderTypesPanel() {
         var icurrent = iview();
         var ih = window.NexaKit.renderInspector(instHost, {
             meta: { id: "@instances", stateList: [], inputs: [], outputs: [], props: {
-                instances: { key: "instances", type: "list", label: "", default: [], noReset: true, item: { row: params.length < 3, fields: fields } } },
-                inspector: function (o) {
-                    return html`<nx-section heading="Instances (app — every screen)" persist-key="nexa-type-instances">
-                        <div class="nx-help" style="margin-bottom:6px">Each is an app variable of type ${type.name}: bind {${"name"}.Member}. A screen / frame can declare its own instance in its Variables list.</div>
-                        <nx-list ${o.bind("instances")}></nx-list>
-                    </nx-section>`;
-                } },
+                instances: { key: "instances", type: "list", group: "Instances (app — every screen)", label: "Instances", default: [], noReset: true, noun: "instance", itemLabel: "name",
+                    help: "Each is an app variable of type " + type.name + ": bind {name.Member}. A screen / frame can declare its own instance in its Variables list.",
+                    item: { row: params.length < 3, fields: fields } } } },
             props: icurrent, persistKey: "nexa-type-instances",
             set: function (key, rows) {
                 var old = mine();

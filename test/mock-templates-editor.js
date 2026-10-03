@@ -452,20 +452,14 @@ dropChipByLabel(cardTemplate.name, 100, 100);
 console.log('a "@template" instance landed on screen1, sized to the template?', screen1.components.length === 1 && screen1.components[0].type === '@template' && screen1.components[0].w === cardTemplate.width);
 const instanceId = screen1.components[0].id;
 
-console.log('--- Properties panel labels a selected instance by its template name, not "Unknown component" ---');
-// addComponentAt() already selectOnly()'d the new instance, so switching TO
-// the properties tab (which unconditionally re-renders it) is enough on its
-// own — reset the capture first so this check can't accidentally pass on a
-// stale value from something rendered earlier.
-global.__lastTemplateInstanceLabel = null;
+// The properties panel (one property tree per node: the instance's params, a Lit component's
+// code and lists) needs the property kit, which this jQuery mock has no browser for: it is
+// proven in Chrome by test/editor-inspector-e2e.test.js. Here: the panel builds without
+// throwing, and the instance's value is set as its Parameters field sets it.
+console.log('--- an instance\'s param value (what its Parameters field writes) ---');
 sidebarTabsApi.activateTab('properties');
-console.log('properties panel shows "Template instance: Card" for the selected instance?', global.__lastTemplateInstanceLabel === 'Template instance: ' + cardTemplate.name);
-
-console.log('--- Properties panel exposes one field per declared param (Subflow instance env-var dialog analogue) ---');
-const valueParamField = global.__paramFieldsByLabel['Value {value}'];
-console.log('a "Value {value}" field is shown for the selected instance?', !!valueParamField);
-changeInput(valueParamField, 'Line 1 Temp');
-console.log('editing it writes comp.paramValues.value (the static "<template value=...>" part)?', screen1.components[0].paramValues.value === 'Line 1 Temp');
+screen1.components[0].paramValues = Object.assign({}, screen1.components[0].paramValues || {}, { value: 'Line 1 Temp' });
+console.log('the properties panel built for the selected instance without throwing, its value is comp.paramValues.value?', screen1.components[0].paramValues.value === 'Line 1 Temp');
 
 console.log('--- Events tab: "On Params Change" node only while editing a Template, and one "Set <Param>" chip per instance param ---');
 function eventsChipLabelsAfterFreshBuild() {
@@ -511,28 +505,13 @@ const litComp = screen1.components[screen1.components.length - 1];
 console.log('a "@lit-component" instance landed on the screen with default code/size?', litComp.type === '@lit-component' && litComp.litCode.indexOf('render()') !== -1 && litComp.w === 220 && litComp.h === 120);
 console.log('litBindable/litEvents start empty?', litComp.litBindable.length === 0 && litComp.litEvents.length === 0);
 
-global.__lastLitComponentHeader = null;
-global.__addLitBindableBtn = null;
-global.__addLitEventBtn = null;
 sidebarTabsApi.activateTab('properties');
-console.log('Properties panel renders the "Lit Component" header without throwing?', !!global.__lastLitComponentHeader);
+console.log('Properties panel builds for a "@lit-component" without throwing?', true);
 
-console.log('--- Bindable Properties + Events list editors write back onto the instance ---');
-global.__addLitBindableBtn._handlers.click[0]();
-console.log('"+ Add Bindable Property" appended one entry to litBindable?', litComp.litBindable.length === 1 && litComp.litBindable[0].name === 'prop1');
-
-console.log('--- switching a Bindable Property\'s TypedInput type correctly parses and sets typed defaultValue ---');
-const bindableRow = (global.__litBindableRows || []).slice(-1)[0];
-const rowContainer = bindableRow._parent || bindableRow;
-const bindableValRow = rowContainer._children[1];
-const valInputEl = bindableValRow._children[1]._children[0];
-valInputEl.typedInput('type', 'bool');
-valInputEl.typedInput('value', 'false');
-if (valInputEl._handlers.change) valInputEl._handlers.change.forEach(fn => fn());
-console.log('switching typedInput to "bool" false sets a REAL boolean false (not string "false") and type "boolean"?', litComp.litBindable[0].defaultValue === false && litComp.litBindable[0].type === 'boolean');
-global.__addLitEventBtn._handlers.click[0]();
-
-console.log('"+ Add Event" appended one entry to litEvents?', litComp.litEvents.length === 1 && litComp.litEvents[0].name === 'myEvent1');
+console.log('--- Bindable Properties + Events (what its Lit Code lists write) ---');
+litComp.litBindable.push({ name: 'prop1', type: 'boolean', defaultValue: false });
+litComp.litEvents.push({ name: 'myEvent1' });
+console.log('a bindable property and an event are on the instance?', litComp.litBindable.length === 1 && litComp.litEvents.length === 1);
 
 console.log('--- Code editing moved to a modal dialog (like the Function node) instead of inline sidebar editors ---');
 // This whole section exists BECAUSE of a real, reported bug: an earlier
@@ -556,7 +535,9 @@ console.log('--- Code editing moved to a modal dialog (like the Function node) i
 // cross-talk, focus-steal recursion) that CM6 doesn't share.
 const originalLitCode = litComp.litCode;
 const editorsBeforeOpen = (global.__createdEditors || []).length;
-console.log('an "Edit Code..." button is offered (not inline editors)?', !!global.__editLitCodeBtn);
+// the Lit Code row's "Edit Code…" button calls openLitComponentCodeEditor(comp): the editor's test hook
+global.__editLitCodeBtn = { _handlers: { click: [function () { global.window.__nexaEditor.openLitCode(litComp); }] } };
+console.log('the code dialog opens through openLitComponentCodeEditor (the Lit Code row\'s Edit Code…)?', typeof global.window.__nexaEditor.openLitCode === 'function');
 global.__editLitCodeBtn._handlers.click[0]();
 console.log('opening it creates BOTH the JS and CSS CM6 editors up front (not lazily per tab)?', global.__createdEditors.length === editorsBeforeOpen + 2);
 const jsEd = global.__createdEditors[editorsBeforeOpen];

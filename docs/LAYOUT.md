@@ -465,8 +465,9 @@ scope inside it. The runtime finds who to re-render with
 | `src/canvas/layout-readback.js` | boxes back from the DOM |
 | `src/canvas/constraints.js` | constraints on resize |
 | `src/sidebar/hierarchy-panel.js` | the Hierarchy tab (`nx-tree`) |
-| `src/sidebar/frame-inspector.js` | Frame / "In frame" / Constraints inspectors |
-| `src/sidebar/variables-inspector.js` | the Variables block |
+| `src/sidebar/inspector/sources/frame.js` | a frame's props in the inspector: box, overlay, auto layout, fill, zoom |
+| `src/sidebar/inspector/sources/layout.js` | Position / "In frame" (layout child) / Constraints / Teleport / a template instance's box |
+| `src/sidebar/inspector/sources/variables.js` | the Variables list |
 | `src/runtime/` (`dist/nexa-runtime.bundle.js`) | recursive mount, node visibility, layout CSS, scopes, Set Variable, overlays, teleport |
 
 Tests:

@@ -98,7 +98,14 @@ What the palette *offers* in each mode (screen / flow / template), and the chips
 
 - **The selection is state.** It changes only through a select action (`canvas/selection.js`). Drawing never clears it: `renderActiveScreen` drops only the ids that no longer exist, then draws the outline and handles again. This holds for undo / redo, a plugin that registers late, and a theme or breakpoint redraw.
 - **A redraw asked for while a pointer pressed on the canvas is down waits for its release** (`state.canvasPointerDown`, `flushDeferredRender`). Emptying the artboard under a click or a drag would cut it.
-- **The properties panel** (`sidebar/properties-panel.js`) builds one pass at a time. It commits the field being typed first (blur), to the node it was typed for, and keeps its scroll position while the same node is shown.
+- **The properties panel** (`sidebar/properties-panel.js`) builds one pass at a time. It commits the field being typed first (blur), to the node it was typed for. The same node still shown (same object, same breakpoint): its tree is only updated, never rebuilt; otherwise rebuilt with its scroll position kept.
+
+## 4c. The inspector (one property tree per node)
+
+- **The kit** (`src/sdk/kit/prop-tree/`): `model.js` is the pure tree (nodes from a schema, row summaries, search, list ops, where a lost selection goes; `test/kit-prop-tree.test.js`); `view.js` renders the search, the tree and ONE editor pane for the picked row; `editors.js` is `PropertyEditor` / `definePropertyEditor` / `adminApi`. Every component gets it from its schema (docs/SDK.md §9); there is no hand-written panel.
+- **The editor** (`src/sidebar/inspector/`): `compose.js` merges SOURCES into one kit inspector; `node-inspector.js` lists them and orders the groups. A source (`sources/*.js`: node, layout, frame, variables, template, and the component's own in `sidebar/kit-inspector.js`) gives kit props with `group` / `section`, a view of the node, a write, and optionally its own `set` and `canVary` (📱). What shows with the node's state is `visibleWhen` on the source's view, so an edit never rebuilds the panel.
+- **A new node property** = a prop in the right source (or a new source added to `SOURCES`), never DOM in `properties-panel.js`.
+- Proven end to end by `test/editor-inspector-e2e.test.js` (every node kind) and `test/editor-selection-e2e.test.js`.
 - **Canvas shortcuts** (Delete, Enter, Ctrl+Z…) do not act when the focus is in the sidebar, the property kit, a select or a button (`editor-tray.js` `isEditableTarget`).
 - Proven end to end by `test/editor-selection-e2e.test.js`.
 

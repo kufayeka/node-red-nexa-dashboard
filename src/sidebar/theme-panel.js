@@ -43,7 +43,7 @@ export function renderThemePanel() {
         window.$("<div>").css({ color: "#999", "font-size": "12px" }).text("The Theme tab needs the Nexa property kit.").appendTo(pane);
         return;
     }
-    var html = lit().html, nothing = lit().nothing;
+    var html = lit().html;
     var theme = Theme.themeOf(getApp());
     var paletteNames = Object.keys(theme.palettes);
 
@@ -61,19 +61,40 @@ export function renderThemePanel() {
     };
     var current = view();
     var props = {
-        defaultMode: { key: "defaultMode", type: "enum", label: "The page opens in", default: "light", noReset: true, options: [
+        sample: { key: "sample", type: "action", group: "Mode", label: "Sample", noReset: true,
+            summary: function () { return editorThemeMode(Theme.themeOf(getApp())); },
+            info: function () { return semanticSample(Theme.themeOf(getApp())); },
+            help: "The app's design tokens. Use one anywhere with the ◆ of a colour / size field ({token:colors.primary.solid}); on the page it is a CSS variable (var(--nexa-colors-bg)) that follows the colour mode. Set Variable $colorMode (light / dark / system) switches the page." },
+        defaultMode: { key: "defaultMode", type: "enum", group: "Mode", label: "The page opens in", default: "light", noReset: true, options: [
             { value: "light", label: "Light" }, { value: "dark", label: "Dark" }, { value: "system", label: "The viewer's system setting" }] },
-        primary: { key: "primary", type: "enum", label: "Primary palette (colors.primary.*)", default: "blue", noReset: true, options: paletteNames.map(function (n) { return { value: n, label: n }; }) },
-        preview: { key: "preview", type: "enum", label: "The canvas shows", default: "light", noReset: true, options: [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }] },
-        palettes: { key: "palettes", type: "list", label: "", default: [], noReset: true, addLabel: "Palette", item: { row: true, fields: {
+        primary: { key: "primary", type: "enum", group: "Mode", label: "Primary palette (colors.primary.*)", default: "blue", noReset: true, options: paletteNames.map(function (n) { return { value: n, label: n }; }) },
+        preview: { key: "preview", type: "enum", group: "Mode", label: "The canvas shows", default: "light", noReset: true, options: [{ value: "light", label: "Light" }, { value: "dark", label: "Dark" }],
+            help: "The canvas preview only (not saved)." },
+        reset: { key: "reset", type: "action", group: "Mode", label: "Defaults", noReset: true,
+            buttons: [{ label: "Reset the theme to the defaults", icon: "fa fa-undo", run: function () {
+                if (!window.confirm("Go back to the default theme? Your palettes, semantic colours and scales are replaced by the defaults.")) return;
+                getApp().theme = null;
+                changed();
+                renderThemePanel();
+            } }] },
+        palettes: { key: "palettes", type: "list", group: "Colors", label: "Palettes", default: [], noReset: true, noun: "palette", itemLabel: "name",
+            help: "Each palette is 50 … 950 from its 500: change the colour and the shades follow. Every palette also has colors.<name>.solid / contrast / fg / muted / subtle / emphasized / focusRing / border, light and dark.",
+            item: { row: true, fields: {
             name: { type: "string", label: "Palette", default: "" }, base: { type: "color", label: "500 (its colour)", default: "#6366f1" } } } },
-        semantic: { key: "semantic", type: "list", label: "", default: [], noReset: true, addLabel: "Semantic colour", item: { fields: {
+        shades: { key: "shades", type: "action", group: "Colors", label: "Shades", noReset: true,
+            summary: function () { return Object.keys(Theme.themeOf(getApp()).palettes).length + " palettes"; },
+            info: function () { return strips(Theme.themeOf(getApp())); } },
+        semantic: { key: "semantic", type: "list", group: "Semantic", label: "Semantic colours", default: [], noReset: true, noun: "colour", itemLabel: "name",
+            help: "What a colour is for, light and dark: a colour (#1e293b) or a token ({colors.gray.900}). Name \"bg.subtle\" is the token colors.bg.subtle.",
+            item: { fields: {
             name: { type: "string", label: "Name (colors.…)", default: "", placeholder: "e.g. brand.accent" },
             light: { type: "string", label: "Light", default: "{colors.gray.500}", mono: true },
             dark: { type: "string", label: "Dark", default: "{colors.gray.400}", mono: true } } } }
     };
+    var TYPE_SCALES = ["fonts", "fontSizes", "fontWeights", "lineHeights", "letterSpacings"];
     SCALES.forEach(function (sc) {
-        props[sc.key] = { key: sc.key, type: "list", label: "", default: [], noReset: true, addLabel: "Token", item: { row: true, fields: {
+        props[sc.key] = { key: sc.key, type: "list", group: TYPE_SCALES.indexOf(sc.key) !== -1 ? "Type" : "Space & shape", label: sc.label, default: [], noReset: true,
+            noun: "token", itemLabel: "name", item: { row: true, fields: {
             name: { type: "string", label: "Name", default: "" }, value: sc.number ? { type: "number", label: "Value", default: 0 } : { type: "string", label: "Value", default: "" } } } };
     });
 
@@ -99,46 +120,7 @@ export function renderThemePanel() {
         </div>`;
     }
 
-    var meta = {
-        id: "@theme", stateList: [], inputs: [], outputs: [], props: props,
-        inspector: function (o) {
-            var t = Theme.themeOf(getApp());
-            return html`
-                <div class="nx-help" style="margin-bottom:8px">The app's design tokens. Use one anywhere with the <i class="fa fa-diamond"></i> of a colour / size field ({token:colors.primary.solid}); on the page it is a CSS variable (var(--nexa-colors-bg)) that follows the colour mode. Set Variable <b>$colorMode</b> (light / dark / system) switches the page.</div>
-                ${semanticSample(t)}
-                <nx-tabs persist-key="nexa-theme">
-                    <nx-tab label="Mode">
-                        <nx-select ${o.bind("defaultMode")}></nx-select>
-                        <nx-select ${o.bind("primary")}></nx-select>
-                        <nx-segmented ${o.bind("preview")}></nx-segmented>
-                        <div class="nx-help">The canvas preview only (not saved).</div>
-                    </nx-tab>
-                    <nx-tab label="Colors">
-                        <div class="nx-help" style="margin-bottom:6px">Each palette is 50 … 950 from its 500: change the colour and the shades follow. Every palette also has colors.&lt;name&gt;.solid / contrast / fg / muted / subtle / emphasized / focusRing / border, light and dark.</div>
-                        <nx-list ${o.bind("palettes")} .sortable="${false}"></nx-list>
-                        <div style="margin-top:8px">${strips(t)}</div>
-                    </nx-tab>
-                    <nx-tab label="Semantic">
-                        <div class="nx-help" style="margin-bottom:6px">What a colour is for, light and dark: a colour (#1e293b) or a token ({colors.gray.900}). Name "bg.subtle" is the token colors.bg.subtle.</div>
-                        <nx-list ${o.bind("semantic")} .sortable="${false}"></nx-list>
-                    </nx-tab>
-                    <nx-tab label="Type">${["fonts", "fontSizes", "fontWeights", "lineHeights", "letterSpacings"].map(function (k) {
-                        var sc = SCALES.filter(function (x) { return x.key === k; })[0];
-                        return html`<nx-section heading="${sc.label}" persist-key="${"nexa-theme:" + k}"><nx-list ${o.bind(k)} .sortable="${false}"></nx-list></nx-section>`;
-                    })}</nx-tab>
-                    <nx-tab label="Space & shape">${["spacing", "radii", "shadows", "durations", "zIndex"].map(function (k) {
-                        var sc = SCALES.filter(function (x) { return x.key === k; })[0];
-                        return html`<nx-section heading="${sc.label}" persist-key="${"nexa-theme:" + k}"><nx-list ${o.bind(k)} .sortable="${false}"></nx-list></nx-section>`;
-                    })}</nx-tab>
-                </nx-tabs>
-                <div style="margin-top:10px">${o.ui.action("Reset the theme to the defaults", function () {
-                    if (!window.confirm("Go back to the default theme? Your palettes, semantic colours and scales are replaced by the defaults.")) return;
-                    getApp().theme = null;
-                    changed();
-                    renderThemePanel();
-                }, { icon: "fa fa-undo" })}</div>`;
-        }
-    };
+    var meta = { id: "@theme", stateList: [], inputs: [], outputs: [], props: props, groupOrder: ["Mode", "Colors", "Semantic", "Type", "Space & shape"] };
 
     var host = window.$("<div>").appendTo(pane).get(0);
     var handle = window.NexaKit.renderInspector(host, {
