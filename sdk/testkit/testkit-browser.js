@@ -40,7 +40,7 @@
                 ? Object.assign(base, { mode: "editor", emit: function () {} })
                 : Object.assign(base, {
                     mode: "runtime",
-                    emit: function (n, p) { item.events.push([n, p]); },
+                    emit: function (n, p, target) { item.events.push(target ? [n, p, target] : [n, p]); },
                     setBindableValue: function (k, v) { item.raw[k] = v; },
                     writeTag: function (key, value) {
                         item.writes.push([key, value]);
@@ -144,9 +144,10 @@
             if (a) { if (ok) a.res({ ok: true }); else a.rej(new Error(msg || "rejected")); }
             return !!a;
         },
-        invoke: function (name, action, params) {
+        // target ({ list, id }): an action of one item of a target list (a chart's series)
+        invoke: function (name, action, params, target) {
             var i = T.items[name];
-            return i.def.invoke(i.el, action, params);
+            return i.def.invoke(i.el, action, params, target);
         },
         settle: function () {
             var wait = function () {

@@ -130,18 +130,22 @@ export function fireLifecycle(screen, type, msg) {
     matches.forEach(function (n) { runLogicGraph(screen, n, cloneMsg(baseMsg)); });
 }
 
-export function fireUiEvent(screen, compId, eventName, payload) {
+// target ({ list, id }): an event of one item of a target list (a series): only its own nodes fire
+export function fireUiEvent(screen, compId, eventName, payload, target) {
     if (!screen || !screen.logic) {
         logicTrace("fireUiEvent: no logic graph on this screen");
         return;
     }
     var matches = (screen.logic.nodes || []).filter(function (n) {
-        return n.type === "ui-event" && n.props.compId === compId && n.props.event === eventName;
+        if (n.type !== "ui-event" || n.props.compId !== compId || n.props.event !== eventName) return false;
+        var it = n.props.item;
+        return target ? !!(it && it.list === target.list && it.id === target.id) : !it;
     });
     logicTrace("fireUiEvent(" + eventName + ") for component " + compId + ": " + matches.length + " matching node(s)");
     matches.forEach(function (n) {
         var initialPayload = (payload !== undefined && payload !== null && typeof payload === "object") ? cloneMsg(payload) : payload;
         var initialMsg = { event: eventName, payload: initialPayload };
+        if (target) initialMsg.target = { list: target.list, id: target.id };
         var cut = compId.lastIndexOf("::");
         var owner = cut !== -1 && screen.__paramStates && screen.__paramStates[compId.slice(0, cut)];
         if (owner && Object.prototype.hasOwnProperty.call(owner, "item") && Object.prototype.hasOwnProperty.call(owner, "index")) {
@@ -164,8 +168,8 @@ export function makeCtx(screen, comp) {
         namespace: comp.id,
         mode: "runtime",
         screen: screen,
-        emit: function (eventName, payload) {
-            fireUiEvent(screen, comp.id, eventName, payload);
+        emit: function (eventName, payload, target) {
+            fireUiEvent(screen, comp.id, eventName, payload, target);
         },
         setBindableValue: function (name, value) {
             comp.props = comp.props || {};

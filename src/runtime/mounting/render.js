@@ -14,7 +14,7 @@ import { mountAndFlatten } from "../features/navigation.js";
 import { runLogicGraph, fireUiEvent } from "../logic/runner.js";
 import { THEME } from "../features/theme.js";
 import { resolveBindingProps, isBindingList, readsMessage, writeTargetOf } from "../../model/binding.js";
-import { runtimeReader } from "../state/binding-reader.js";
+import { runtimeReader, itemMessage, targetListsOf } from "../state/binding-reader.js";
 
 export const LOGIC_GEOMETRY_KEYS = { x: 1, y: 1, w: 1, h: 1, rotation: 1, flipH: 1, flipV: 1 };
 export const LOCAL_TARGET_RE = /^\{(\$route\.query\.([A-Za-z_$][\w$]*)|([A-Za-z_][\w$]*)((?:\.[A-Za-z_$][\w$]*)*))\}$/;
@@ -42,7 +42,16 @@ export function interpolateProps(props, paramState, comp) {
         withTemplateBindings = out;
     }
     let resolved = resolveSparkplugProps(withTemplateBindings);
-    // binding priority lists: the first source with a value, static last (src/model/binding.js)
+    // binding priority lists: the first source with a value, static last (src/model/binding.js);
+    // an item of a target list (a series) reads its own message
+    targetListsOf(comp).forEach(function (t) {
+        const list = resolved[t.key];
+        if (!Array.isArray(list)) return;
+        resolved = Object.assign({}, resolved);
+        resolved[t.key] = list.map(function (it) {
+            return it && typeof it === "object" ? resolveBindingProps(it, runtimeReader(comp, paramState, itemMessage(comp, t.key, it[t.idField || "id"]))) : it;
+        });
+    });
     resolved = resolveBindingProps(resolved, runtimeReader(comp, paramState));
     if (window.NexaModel && window.NexaModel.resolveTokenProps && propsMention(resolved, "{token:")) {
         const t = (window.__NEXA_THEME__ && window.__NEXA_THEME__.theme) ? window.__NEXA_THEME__ : THEME;
@@ -128,7 +137,7 @@ export function applyUiUpdateMulti(screen, compId, staticConfig, payloadProps, m
     Object.keys(overrides).forEach(function (k) { applyUiUpdateProp(screen, compId, k, overrides[k]); });
 }
 
-export function runComponentAction(screen, compId, action, params) {
+export function runComponentAction(screen, compId, action, params, target) {
     const comp = findComponent(screen, compId);
     const typeDef = comp && window.NEXA && window.NEXA.getComponent(comp.type);
     const el = comp && (document.querySelector('[data-id="' + comp.id + '"]') || document.querySelector('[data-component-id="' + comp.id + '"]'));
@@ -136,10 +145,48 @@ export function runComponentAction(screen, compId, action, params) {
         console.warn("[nexa-logic] action \"" + action + "\": component " + compId + " has no actions");
         return;
     }
-    try { typeDef.invoke(el, action, params); } catch (e) { console.error("[nexa-logic] action \"" + action + "\" failed:", e); }
+    try { typeDef.invoke(el, action, params, target); } catch (e) { console.error("[nexa-logic] action \"" + action + "\" failed:", e); }
+}
+
+/**
+ * An Update node of ONE item of a target list (node.item = { list, id }: a chart's series): the
+ * message is that item's own (its fields bound to Message read it); then its action, or the
+ * fields it sets (a field the item binds itself is left to its binding).
+ */
+function runItemUpdateNode(screen, node, msg) {
+    const comp = findComponent(screen, node.compId);
+    if (!comp) return;
+    const t = targetListsOf(comp).filter(function (x) { return x.key === node.item.list; })[0];
+    const list = comp.props && Array.isArray(comp.props[node.item.list]) ? comp.props[node.item.list] : null;
+    const idField = (t && t.idField) || "id";
+    const index = list ? list.findIndex(function (it) { return it && it[idField] === node.item.id; }) : -1;
+    if (index < 0) { console.warn("[nexa-logic] update: " + node.item.list + " \"" + node.item.id + "\" is not in " + node.compId); return; }
+    const own = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
+    comp.__itemMsgs = comp.__itemMsgs || {};
+    comp.__itemMsgs[node.item.list + "#" + node.item.id] = own;
+    const target = { list: node.item.list, id: node.item.id, index: index };
+    const act = msg && typeof msg === "object" && typeof msg.action === "string" && msg.action ? msg.action : node.action;
+    if (act) {
+        const pl = msg && typeof msg === "object" ? msg.payload : msg;
+        const noPayload = pl === undefined || pl === null || pl === "";
+        runComponentAction(screen, node.compId, act, noPayload ? node.actionParams : pl, target);
+        refreshComponentRender(screen, comp);
+        return;
+    }
+    const config = resolveBindingProps(node.config || {}, runtimeReader(comp, comp.__paramState, own));
+    const keys = Object.keys(config).filter(function (k) { return config[k] !== undefined && config[k] !== ""; });
+    if (keys.length) {
+        const item = Object.assign({}, list[index]);
+        keys.forEach(function (k) { if (!isBindingList(item[k])) item[k] = config[k]; });
+        const next = list.slice();
+        next[index] = item;
+        comp.props[node.item.list] = next;
+    }
+    refreshComponentRender(screen, comp);
 }
 
 export function runUiUpdateNode(screen, node, msg) {
+    if (node.item && node.item.list) { runItemUpdateNode(screen, node, msg); return; }
     const act = msg && typeof msg === "object" && typeof msg.action === "string" && msg.action ? msg.action : node.action;
     if (act) {
         const pl = msg && typeof msg === "object" ? msg.payload : msg;
@@ -190,6 +237,9 @@ export function runUiUpdateNode(screen, node, msg) {
         });
     }
 
+    // a prop the node sets with a binding reads the message itself: nothing guessed from the
+    // payload replaces it (a payload { label: "" } must not win over Message -> payload.direction)
+    if (payloadProps) Object.keys(node.config || {}).forEach(function (k) { if (isBindingList(node.config[k])) delete payloadProps[k]; });
     applyUiUpdateMulti(screen, node.compId, config, payloadProps, msg && msg.properties);
     if (comp) refreshComponentRender(screen, comp);
 }
@@ -199,8 +249,8 @@ export function makeCtx(screen, comp) {
         namespace: comp.id,
         mode: "runtime",
         screen: screen,
-        emit: function (eventName, payload) {
-            fireUiEvent(screen, comp.id, eventName, payload);
+        emit: function (eventName, payload, target) {
+            fireUiEvent(screen, comp.id, eventName, payload, target);
         },
         setBindableValue: function (name, value) {
             comp.props = comp.props || {};

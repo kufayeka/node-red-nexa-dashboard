@@ -29,7 +29,10 @@ function writeFlows() {
         components: [], variables: [], logic: { nodes: [], wires: [] } };
     const screen = { id: 'sI', name: 'Insp', path: '/insp', width: 900, height: 600, gridSize: 10, snap: false, treeVersion: 1, orphans: [], variables: [{ id: 'sv1', name: 'empty', type: 'string', defaultValue: null }],
         // an Update Component node on the button C: it sets its text only
-        logic: { nodes: [{ id: 'U1', type: 'ui-update', x: 200, y: 100, props: { compId: 'C', config: { text: 'Set!' } } }], wires: [] },
+        // Update nodes: of the button C; of the chart CH (its own props) and of its series s1
+        logic: { nodes: [{ id: 'U1', type: 'ui-update', x: 200, y: 100, props: { compId: 'C', config: { text: 'Set!' } } },
+            { id: 'UC', type: 'ui-update', x: 200, y: 200, props: { compId: 'CH', config: {} } },
+            { id: 'US', type: 'ui-update', x: 200, y: 300, props: { compId: 'CH', item: { list: 'series', id: 's1' }, config: {} } }], wires: [] },
         components: [
             { id: 'F', type: '@frame', name: 'Row', x: 20, y: 20, w: 400, h: 120, layout: { mode: 'horizontal', gap: 8, padding: { t: 8, r: 8, b: 8, l: 8 } },
                 children: [{ id: 'C', type: 'nexa-ui-button', x: 0, y: 0, w: 120, h: 40, props: { text: 'In row' } }] },
@@ -230,10 +233,10 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="series#0"] .nx-tree-caret'); if (r && !${pane}.querySelector('.nx-tree-row[data-id="series#0/Data"]')) r.click(); return 1; })()`);
             await wait(300);
             const chRows = await rows();
-            check('Line Chart: Series is a list, Series 1 its item, with sections (Data, Line, Fill …)', chRows.includes('series#0') && chRows.includes('series#0/Data') && chRows.includes('series#0/Line') && chRows.includes('series#0.data'), chRows.filter((x) => /^series/.test(x)));
-            await pick('series#0.data');
+            check('Line Chart: Series is a list, Series 1 its item, with sections (Data, Line, Fill …)', chRows.includes('series#0') && chRows.includes('series#0/Data') && chRows.includes('series#0/Line') && chRows.includes('series#0.live'), chRows.filter((x) => /^series/.test(x)));
+            await pick('series#0.live');
             const dataUi = await js(`(function(){ var p = ${pane}.querySelector(".nx-pt-pane"); return { table: !!p.querySelector("nx-binding-list"), old: !!p.querySelector("nx-binding"), rows: p.querySelectorAll(".nx-bl-row").length, kind: (p.querySelector(".nx-bl-kind") || {}).value, stat: !!p.querySelector(".nx-bt-static") }; })()`);
-            check('... its Data (migrated from {msg.payload}): the binding table, a message source, a static row; no old picker', dataUi.table && !dataUi.old && dataUi.rows === 1 && dataUi.kind === 'msg' && dataUi.stat, dataUi);
+            check('... its Live value (migrated from {msg.payload}): the binding table, a message source, a static row; no old picker', dataUi.table && !dataUi.old && dataUi.rows === 1 && dataUi.kind === 'msg' && dataUi.stat, dataUi);
             await shot('chart-data');
             await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="series"] .nx-tree-actions button'); if (r) r.click(); return !!r; })()`);
             await wait(500);
@@ -279,6 +282,35 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             const lg = await js(`JSON.stringify(${node('LG')}.props)`);
             check('Convert legacy bindings: {title} + its fallback -> a list, its static the fallback', lg === '{"text":{"$bind":[{"src":"var","ref":"title"}],"static":"fb"}}', { report, lg });
             check('... the canvas shows the same (the static value: the old fallback)', /fb/.test(before || '') && /fb/.test(await lgText() || ''), [before, await lgText()]);
+
+            // the Events tab: the chart, and each series its own Update node and events
+            await js('__nexaEditorState.sidebarTabs.activateTab("events"); true');
+            await wait(600);
+            const chips = await js(`Array.from(document.querySelectorAll('.nexa-palette-item[data-comp-id="CH"]')).map(function(e){ return e.textContent.trim(); })`);
+            check('Events tab: the chart Update and events, and per series its own Update and events', chips.some((t) => /Line Chart #w+ → Update$/.test(t)) && chips.some((t) => /· Series 1 → Update$/.test(t)) && chips.some((t) => /· Series 1 → On Threshold Crossed$/.test(t)) && chips.some((t) => /→ On Range Change$/.test(t)), chips);
+            await js('__nexaEditorState.sidebarTabs.activateTab("properties"); true');
+
+            // the series' Update node: only that series' props and its actions (cards that say what they do)
+            const US = `__nexaEditorState.screens[0].logic.nodes.filter(function(n){ return n.id === "US"; })[0]`;
+            await js(`__nexaEditor.openUiUpdateNodeEditor(${US}); true`);
+            await wait(1200);
+            const sdlg = await js(`(function(){ var t = document.querySelector(".nexa-uiupdate-tree"); return { title: (document.querySelector(".red-ui-tray-titlebar") || {}).textContent, cards: Array.from(document.querySelectorAll(".nexa-uu-card b")).map(function(b){ return b.textContent; }), help: Array.from(document.querySelectorAll(".nexa-uu-card code")).map(function(c){ return c.textContent; }), groups: Array.from(t.querySelectorAll(".nx-tree-row")).map(function(r){ return r.dataset.id; }).filter(function(id){ return /^@[^/]+$/.test(id); }) }; })()`);
+            check('the series Update node: its title, its actions as cards (with the message they expect)', /Update series: Series 1/.test(sdlg.title || '') && JSON.stringify(sdlg.cards) === JSON.stringify(['Set properties', 'Append points', 'Replace points', 'Clear', 'Show', 'Hide']) && /msg\.payload = /.test(sdlg.help[0] || ''), sdlg);
+            check('... its tree: only the series props (General, Data, Line …), nothing of the chart', sdlg.groups.includes('@General') && sdlg.groups.includes('@Line') && !sdlg.groups.includes('@Time axis') && !sdlg.groups.includes('@Series'), sdlg.groups);
+            await shot('series-update', { x: 300, y: 0, width: 700, height: 1100, scale: 1 });
+            await js(`(function(){ var c = Array.from(document.querySelectorAll(".nexa-uu-card")).find(function(x){ return /Append points/.test(x.textContent); }); c.querySelector("input").click(); return 1; })()`);
+            await wait(200);
+            await js(`(function(){ var b = Array.from(document.querySelectorAll(".red-ui-tray-footer button, .red-ui-tray-toolbar button")).find(function(x){ return x.textContent.trim() === "Done"; }); if (b) b.click(); return !!b; })()`);
+            await wait(600);
+            check('... Append points chosen: the node runs that action', (await js(`${US}.props.action`)) === 'appendPoints', await js(`${US}.props.action`));
+            // the chart's Update node: its own props, not the series
+            const UC = `__nexaEditorState.screens[0].logic.nodes.filter(function(n){ return n.id === "UC"; })[0]`;
+            await js(`__nexaEditor.openUiUpdateNodeEditor(${UC}); true`);
+            await wait(1200);
+            const cdlg = await js(`(function(){ var t = document.querySelector(".nexa-uiupdate-tree"); return { cards: Array.from(document.querySelectorAll(".nexa-uu-card b")).map(function(b){ return b.textContent; }), groups: Array.from(t.querySelectorAll(".nx-tree-row")).map(function(r){ return r.dataset.id; }).filter(function(id){ return /^@[^/]+$/.test(id); }) }; })()`);
+            check("the chart's Update node: its own props (Time axis, Axes …), no Series; its actions", !cdlg.groups.includes('@Series') && cdlg.groups.includes('@Time axis') && cdlg.cards.includes('Follow live') && cdlg.cards.includes('Export (download)') && !cdlg.cards.includes('Append points'), cdlg);
+            await js(`(function(){ var b = Array.from(document.querySelectorAll(".red-ui-tray-footer button, .red-ui-tray-toolbar button")).find(function(x){ return x.textContent.trim() === "Cancel"; }); if (b) b.click(); return !!b; })()`);
+            await wait(400);
 
             check('no errors in the editor', errs.length === 0, errs.slice(0, 3));
             return true;

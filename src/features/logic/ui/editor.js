@@ -16,6 +16,24 @@ function componentName(compId) {
     return { name: typeLabel + " #" + (comp ? comp.id.slice(-4) : "?"), def: def };
 }
 
+/** The action an Update node runs, its label. */
+function actionLabel(node, def, item) {
+    const list = item ? (item.target ? item.target.actions : []) : (def && def.actions) || [];
+    const a = list.filter(function (x) { return x.name === node.props.action; })[0];
+    return a ? a.label : node.props.action;
+}
+
+/** The item a node targets (node.props.item = { list, id }): { name, target def } or null. */
+function itemOf(node, def) {
+    const ref = node.props.item;
+    if (!ref || !ref.list) return null;
+    const comp = findComponent(node.props.compId);
+    const t = def && (def.targets || []).filter(function (x) { return x.key === ref.list; })[0];
+    const list = comp && comp.props && Array.isArray(comp.props[ref.list]) ? comp.props[ref.list] : [];
+    const it = list.filter(function (x) { return x && x[(t && t.idField) || "id"] === ref.id; })[0];
+    return { name: it ? (it.name || it.label || ref.id) : ref.id + " (removed)", target: t };
+}
+
 function overlayNodeLabel(node) {
     const screen = getActiveScreen();
     const of = node.props.overlay && screen ? Tree.find(screen, node.props.overlay) : null;
@@ -29,12 +47,19 @@ defineLogicEditors({
             const c = componentName(node.props.compId);
             if (node.props.event === "sparkplug-change" || node.props.event === "sparkplug-update") return c.name + " on Sparkplug Update";
             if (node.props.event === "slide-change") return c.name + " on Slide Change";
-            const evt = c.def && c.def.events && c.def.events.find(function (e) { return e.name === node.props.event; });
-            return c.name + " " + (evt ? evt.label : "on " + node.props.event);
+            const item = itemOf(node, c.def);
+            const events = item ? (item.target ? item.target.events : []) : (c.def && c.def.events);
+            const evt = events && events.find(function (e) { return e.name === node.props.event; });
+            return c.name + (item ? " · " + item.name : "") + " " + (evt ? evt.label : "on " + node.props.event);
         }
     },
     "ui-update": {
-        label: function (node) { return "Update " + componentName(node.props.compId).name; },
+        label: function (node) {
+            const c = componentName(node.props.compId);
+            const item = itemOf(node, c.def);
+            const what = node.props.action ? actionLabel(node, c.def, item) : "";
+            return (item ? "Update " + c.name + " · " + item.name : "Update " + c.name) + (what ? ": " + what : "");
+        },
         edit: openUiUpdateNodeEditor,
         hint: "Double-click to configure"
     },

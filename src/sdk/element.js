@@ -237,8 +237,9 @@ export class NexaElement extends LitElement {
 
     // ---- helpers ------------------------------------------------------------------
 
-    emit(name, payload) {
-        if (this._ctx && typeof this._ctx.emit === "function") this._ctx.emit(name, payload || {});
+    /** A Logic event; `target` ({ list, id }): an event of one item of a target list (a series). */
+    emit(name, payload, target) {
+        if (this._ctx && typeof this._ctx.emit === "function") this._ctx.emit(name, payload || {}, target || undefined);
     }
 
     setProp(key, value) {

@@ -1,3 +1,4 @@
+import { formatValue } from "./numformat.js";
 // --- A prop's value: static, or a binding priority list ------------------------------
 // One resolver for the editor AND the deployed page (and the server). A prop holds:
 //   a static value                      anything that is not a binding
@@ -237,12 +238,18 @@ function tokenize(text) {
     return t;
 }
 
+var FMT_BASE = null;   // the format fmt() starts from, during one evaluateExpression
 var FUNCS = {
     round: function (x, d) { var p = Math.pow(10, d || 0); return Math.round(x * p) / p; },
     floor: Math.floor, ceil: Math.ceil, abs: Math.abs, min: Math.min, max: Math.max, sqrt: Math.sqrt,
     fixed: function (x, d) { return Number(x).toFixed(d === undefined ? 0 : d); },
     upper: function (s) { return String(s).toUpperCase(); },
-    lower: function (s) { return String(s).toLowerCase(); }
+    lower: function (s) { return String(s).toLowerCase(); },
+    // fmt(x, "compact" | "si" | "standard" | "scientific", decimals?, unit?): 12 345 -> "12.3K"
+    fmt: function (x, notation, decimals, unit) {
+        return formatValue(x, Object.assign({}, FMT_BASE || {}, { notation: notation || (FMT_BASE && FMT_BASE.notation) || "standard",
+            decimals: decimals === undefined ? (FMT_BASE && FMT_BASE.decimals) || "auto" : decimals }), unit);
+    }
 };
 
 function parse(tokens) {
@@ -376,15 +383,23 @@ function evalNode(n, read) {
 }
 
 /** The value of an expression, or null when a reference has none (or it does not parse). */
-export function evaluateExpression(textOrAst, read) {
+/**
+ * The value of an expression; null when it has none. opts.format: the number format fmt() starts
+ * from (a chart's separators / thousands), its notation / decimals given in the call.
+ */
+export function evaluateExpression(textOrAst, read, opts) {
     var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
     if (!p.ast) return null;
+    var before = FMT_BASE;
+    FMT_BASE = opts && opts.format ? opts.format : null;
     try {
         var v = evalNode(p.ast, read);
         return typeof v === "number" && !isFinite(v) ? null : v;
     } catch (e) {
         if (e === NONE) return null;
         return null;
+    } finally {
+        FMT_BASE = before;
     }
 }
 

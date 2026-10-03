@@ -92,7 +92,16 @@ Other tag providers (OPC UA…) add a source kind with `registerSourceKind`.
   - then deploy to save.
 - A list with no static value shows `???` while its tag is unknown, as a tag binding always did.
 
-**The Update Component node.** Its dialog is the component's property tree, the same one as the Properties tab: its place and size, then its own groups.
+**The Update node.** **What it does** comes first, as cards.
+- **Set properties**: the props you set below change each time a message arrives.
+- Then one card per action. Each says what the action is for and what `msg.payload` it expects.
+
+Its dialog is the component's property tree, the same one as the Properties tab: its place and size, then its own groups.
+- **A component with item targets** (a Line Chart's series) has one Update node for the component and one per item.
+  - The component's node covers its own props.
+  - An item's node covers only that item's fields and actions (Append / Replace / Clear / Show / Hide).
+  - **Its message is the item's own**, so two series can both bind `msg.payload`, each from its own node.
+  - Each item also has its own events (a series: On Threshold Crossed, On Stale, …). See SDK.md §6.
 - A prop the node does not set shows **keep**. Edit it to set it; **Keep** takes it back.
 - A set value can be static or a binding. **Message → `payload.speed`** takes it from the message the node gets.
 - A prop the component itself binds (Properties: Binding) is not set here. The message reaches it through that list's **Message** source, and its place in the list decides.
@@ -100,6 +109,7 @@ Other tag providers (OPC UA…) add a source kind with `registerSourceKind`.
 - **Run a component's action.** *What it does* is **Set its properties** (the default) or **Run: <action>** for any action the component declares, such as the Iframe's Reload / Open URL / Send a message.
   - The action's parameters come from `msg.payload`. When it has none, the node's own *parameters* field (JSON or text) is used.
   - `msg.action = "<name>"` from a Function also runs an action.
+- **Guessing from the payload (older flows):** a node that sets nothing, or a payload that is an object of props, still sets those props. A prop the node sets with a binding is never replaced by a guess.
 - **One value, many components:** use a variable. The flow does **Set Variable** once, and every component binds it.
 
 **Writing (fields, buttons, knobs…):** a component's write target (its

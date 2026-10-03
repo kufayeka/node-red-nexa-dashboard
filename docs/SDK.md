@@ -265,6 +265,30 @@ actions: { reset: { label: "Reset peak" }, scrollTo: { label: "Scroll to row", p
 
 - **Events** go out to Logic: `this.emit("overMax", { value })`. They appear as "On …" chips in the editor's Events tab.
 - **Actions** come in from Logic. Declare them, then implement a method of the same name on the view: `reset()` / `scrollTo(params)`. On a deployed page, a Logic *Update Component* node whose message has `msg.action = "reset"` (and optionally `msg.payload` as params) calls it.
+- **Say what each one is for.** The Update node's "What it does" shows every action as a card: its `label`, its `help` (one sentence: what it is for), and `example` (what `msg.payload` holds, e.g. `"[{x, y}, …] or a number (time = now)"`; built from `params` when absent). Events show their `help` too.
+
+### Items as Logic targets (`item.target`)
+
+A list whose items are things of their own (a chart's series, a map's layers) makes each item a target in Logic:
+
+```js
+series: { type: "list", item: {
+    target: true,                       // each item: its own Update node, message, actions, events
+    fields: { id: …, name: …, live: { type: "tag", … }, color: … },
+    create: (items) => ({ id: "s" + (items.length + 1), name: "Series " + (items.length + 1) }),
+    actions: { appendPoints: { label: "Append points", help: "…", example: "[{x, y}, …]" } },
+    events:  { thresholdCross: { label: "On Threshold Crossed", payload: { direction: "string" } } }
+} }
+```
+
+- **The id.** Every item needs a fixed `id` field (`idField` names another one). Logic finds the item by it, so renaming the item keeps its nodes.
+- **The Events tab.** Under the component, each item gets an **Update** chip and one chip per item event, e.g. "Chart · Temperature → Update" and "Chart · Temperature → On Threshold Crossed".
+- **An item's Update node.** Its dialog shows only that item's fields (keep / set) and the item's actions as cards.
+  - Its message is the item's own: an item field bound to Message reads the message sent to that item's node. Two series can each read `msg.payload`, each from its own node.
+  - Without any node of its own, an item reads the component's message.
+- **The component's Update node.** It never shows a target list. Its items have their own nodes.
+- **Actions.** An item's action method gets `(params, target)`, with `target = { list, id, index }`. `params` is `msg.payload`.
+- **Events.** `this.emit("thresholdCross", payload, { list: "series", id: "s1" })` fires only the nodes of that item. The message carries `msg.target`.
 
 ---
 

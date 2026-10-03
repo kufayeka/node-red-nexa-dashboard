@@ -26,6 +26,7 @@ export const {
     kit, NexaKit, KitElement,
     defineTagProvider, extendTagProvider, getTagProvider, listTagProviders, parseTag, makeTag, isTag,
     asBinding, isBindingList, isBound,
+    formatValue, formatParts, splitSiUnit, NUMBER_FORMAT_FIELDS, evaluateExpression, parseExpression,
     defineCodec, getCodec, format, isUnknown,
     assetUrl, resolveAsset, assetRef, listAssets, getAsset, onAssetsChange,
     theme, zag

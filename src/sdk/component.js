@@ -65,6 +65,12 @@ export function defineComponent(def) {
         bindable: Object.keys(meta.props).filter(function (k) { return meta.props[k].bindable; }).map(function (k) { return "props." + k; }),
         events: meta.eventList.map(function (e) { return { name: e.name, label: e.label }; }),
         actions: meta.actionList.map(function (a) { return { name: a.name, label: a.label }; }),
+        // lists whose items are Logic targets of their own (see schema.js targetList)
+        targets: (meta.targetList || []).map(function (t) {
+            return { key: t.key, noun: t.noun, idField: t.idField, label: t.label,
+                events: t.eventList.map(function (e) { return { name: e.name, label: e.label }; }),
+                actions: t.actionList.map(function (a) { return { name: a.name, label: a.label }; }) };
+        }),
         version: meta.version,
         nexa: meta,
         tag: tag,
@@ -87,13 +93,22 @@ export function defineComponent(def) {
             if (!wc || !target || target.indexOf("props.") !== 0) return;
             wc._nexaBind(target.slice(6), value);
         },
-        /** Logic "call action": runs the view's method of that name. */
-        invoke: function (el, name, params) {
+        /**
+         * Logic "call action": runs the view's method of that name. With a target ({ list, id, index }):
+         * one of that list's item actions, the method gets (params, target).
+         */
+        invoke: function (el, name, params, target) {
             var wc = el.__nexaEl;
             if (!wc) return undefined;
-            if (!meta.actionList.some(function (a) { return a.name === name; })) throw new Error("[nexa] " + meta.id + " has no action \"" + name + "\"");
+            var list = meta.actionList;
+            if (target && target.list) {
+                var t = (meta.targetList || []).filter(function (x) { return x.key === target.list; })[0];
+                if (!t) throw new Error("[nexa] " + meta.id + ": \"" + target.list + "\" is not a target list");
+                list = t.actionList;
+            }
+            if (!list.some(function (a) { return a.name === name; })) throw new Error("[nexa] " + meta.id + " has no action \"" + name + "\"" + (target ? " for a " + target.list + " item" : ""));
             if (typeof wc[name] !== "function") throw new Error("[nexa] " + meta.id + ": action \"" + name + "\" has no method on the view");
-            return wc[name](params);
+            return target ? wc[name](params, target) : wc[name](params);
         }
     };
     window.NEXA.registerComponent(meta.id, compiled);

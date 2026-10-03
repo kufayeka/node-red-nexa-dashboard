@@ -101,6 +101,21 @@ function slotsFn(decl) {
     };
 }
 
+// events / actions as lists: { name, label, help, payload (an event) | params (an action), example }
+function eventListOf(map) {
+    return Object.keys(map || {}).map(function (name) {
+        var e = map[name] || {};
+        if (typeof e === "string") e = { label: e };
+        return { name: name, label: e.label || ("On " + name), payload: e.payload || null, help: e.help || "", example: e.example };
+    });
+}
+function actionListOf(map) {
+    return Object.keys(map || {}).map(function (name) {
+        var a = map[name] || {};
+        return { name: name, label: a.label || humanize(name), params: a.params || null, help: a.help || "", example: a.example };
+    });
+}
+
 export function buildMeta(def) {
     if (!def || !def.id) throw new Error("[nexa] defineComponent: `id` is required");
     var meta = {
@@ -172,14 +187,17 @@ export function buildMeta(def) {
     meta.props = {};
     Object.keys(props).forEach(function (k) { meta.props[k] = normalizeProp(k, props[k]); });
 
-    meta.eventList = Object.keys(def.events || {}).map(function (name) {
-        var e = def.events[name] || {};
-        if (typeof e === "string") e = { label: e };
-        return { name: name, label: e.label || ("On " + name), payload: e.payload || null, help: e.help || "" };
-    });
-    meta.actionList = Object.keys(def.actions || {}).map(function (name) {
-        var a = def.actions[name] || {};
-        return { name: name, label: a.label || humanize(name), params: a.params || null, help: a.help || "" };
+    meta.eventList = eventListOf(def.events);
+    meta.actionList = actionListOf(def.actions);
+    // a list whose items are targets of their own (a chart's series): each item (by its fixed id) gets
+    // its own Update node, its own message and its own events / actions in Logic
+    meta.targetList = Object.keys(meta.props).filter(function (k) {
+        var p = meta.props[k];
+        return p.type === "list" && p.item && p.item.target;
+    }).map(function (k) {
+        var p = meta.props[k], it = p.item;
+        return { key: k, noun: it.noun || p.noun || "item", idField: it.idField || "id", label: p.label || k,
+            eventList: eventListOf(it.events), actionList: actionListOf(it.actions) };
     });
     return meta;
 }

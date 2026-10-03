@@ -35,6 +35,7 @@ var NexaModel = (() => {
     LAYOUT_MODES: () => LAYOUT_MODES,
     LOGIC_NODE_OWN_KEYS: () => LOGIC_NODE_OWN_KEYS,
     NAME_RE: () => NAME_RE,
+    NUMBER_FORMAT_FIELDS: () => NUMBER_FORMAT_FIELDS,
     OVERLAY_DEFAULT: () => OVERLAY_DEFAULT,
     OVERLAY_KINDS: () => OVERLAY_KINDS,
     OVERRIDABLE: () => OVERRIDABLE,
@@ -90,6 +91,8 @@ var NexaModel = (() => {
     flowAxis: () => flowAxis,
     flowEndpoint: () => flowEndpoint,
     flowScreenIds: () => flowScreenIds,
+    formatParts: () => formatParts,
+    formatValue: () => formatValue,
     frameCss: () => frameCss,
     frameHugs: () => frameHugs,
     generatePalette: () => generatePalette,
@@ -168,6 +171,7 @@ var NexaModel = (() => {
     slotOf: () => slotOf,
     sourceKind: () => sourceKind,
     sourceKinds: () => sourceKinds,
+    splitSiUnit: () => splitSiUnit,
     styleOf: () => styleOf,
     surfaceScope: () => surfaceScope,
     syncSlots: () => syncSlots,
@@ -2000,6 +2004,167 @@ var NexaModel = (() => {
     return notFound("No Nexa flow found for path: " + subPath + ". Direct screen access is disabled \u2014 all routes must go through a Flow gateway (e.g. /nexa" + (flows[0] && flows[0].endpoint || "/flow1") + ").");
   }
 
+  // src/model/numformat.js
+  var SI_UP = ["", "k", "M", "G", "T", "P", "E"];
+  var SI_DOWN = ["", "m", "\xB5", "n", "p"];
+  var COMPACT = ["", "K", "M", "B", "T"];
+  var PREFIX = { k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, m: 1e-3, "\xB5": 1e-6, u: 1e-6, n: 1e-9, p: 1e-12 };
+  var SI_BASES = ["W", "Wh", "VA", "VAr", "var", "V", "A", "Ah", "Hz", "g", "s", "m", "Pa", "bar", "B", "J", "L", "l", "\u03A9", "ohm", "F", "H", "N", "lm", "lx"];
+  var localeSeps = null;
+  function pageSeparators() {
+    if (localeSeps) return localeSeps;
+    localeSeps = { decimal: ".", group: "," };
+    try {
+      var lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+      var parts = new Intl.NumberFormat(lang).formatToParts(12345.6);
+      parts.forEach(function(p) {
+        if (p.type === "decimal") localeSeps.decimal = p.value;
+        if (p.type === "group") localeSeps.group = p.value === "\u202F" || p.value === "\xA0" ? " " : p.value;
+      });
+    } catch (e) {
+    }
+    return localeSeps;
+  }
+  function separators(spec) {
+    var s = spec.separators || "locale";
+    if (s === "dot") return { decimal: ".", group: "," };
+    if (s === "comma") return { decimal: ",", group: "." };
+    if (s === "custom") return { decimal: spec.decimalSep || ".", group: spec.thousandsSep === void 0 ? "," : spec.thousandsSep };
+    return pageSeparators();
+  }
+  function splitSiUnit(unit) {
+    unit = String(unit || "");
+    if (!unit) return null;
+    if (SI_BASES.indexOf(unit) !== -1) return { factor: 1, base: unit };
+    var p = unit.charAt(0), rest = unit.slice(1);
+    if (PREFIX[p] && SI_BASES.indexOf(rest) !== -1) return { factor: PREFIX[p], base: rest };
+    return null;
+  }
+  function digits(x, spec, significant) {
+    var d = spec.decimals;
+    if (d !== void 0 && d !== "auto" && d !== "" && isFinite(Number(d))) return { min: Number(d), max: Number(d) };
+    var min = isFinite(Number(spec.minDecimals)) && spec.minDecimals !== "" && spec.minDecimals !== void 0 ? Number(spec.minDecimals) : 0;
+    var max = isFinite(Number(spec.maxDecimals)) && spec.maxDecimals !== "" && spec.maxDecimals !== void 0 ? Number(spec.maxDecimals) : null;
+    if (max === null) {
+      if (significant) {
+        var a = Math.abs(x);
+        max = a >= 100 ? 0 : a >= 10 ? 1 : 2;
+      } else max = 6;
+    }
+    return { min: Math.min(min, max), max: Math.max(min, max) };
+  }
+  function fixed(x, dg, seps, group) {
+    var p = Math.pow(10, dg.max);
+    var r = Math.round(x * p) / p;
+    var t = r.toFixed(dg.max);
+    if (dg.max > dg.min && t.indexOf(".") !== -1) {
+      var keep = t.indexOf(".") + 1 + dg.min;
+      var end = t.length;
+      while (end > keep && t.charAt(end - 1) === "0") end--;
+      t = t.slice(0, end);
+      if (t.charAt(t.length - 1) === ".") t = t.slice(0, -1);
+    }
+    var neg = t.charAt(0) === "-";
+    if (neg) t = t.slice(1);
+    var dot = t.indexOf(".");
+    var ip = dot === -1 ? t : t.slice(0, dot), fp = dot === -1 ? "" : t.slice(dot + 1);
+    if (group && seps.group) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, seps.group);
+    var out = ip + (fp ? seps.decimal + fp : "");
+    if (neg && /[1-9]/.test(out)) out = "-" + out;
+    return out;
+  }
+  function withUnit(text2, unit, spec) {
+    if (!unit || spec.unitAt === "none") return text2;
+    return spec.unitAt === "before" ? unit + " " + text2 : text2 + " " + unit;
+  }
+  function formatParts(value, spec, unit) {
+    var s = Object.assign({}, spec || {}, { unitAt: "after" });
+    var u = unit ? String(unit) : "";
+    var si = s.notation === "si" && splitSiUnit(u);
+    if (!u) return { text: formatValue(value, s, ""), unit: "" };
+    if (si) {
+      var full = formatValue(value, s, u), cut = full.lastIndexOf(" ");
+      return cut === -1 ? { text: full, unit: "" } : { text: full.slice(0, cut), unit: full.slice(cut + 1) };
+    }
+    return { text: formatValue(value, Object.assign({}, s, { unitAt: "none" }), u), unit: u };
+  }
+  function formatValue(value, spec, unit) {
+    spec = spec || {};
+    if (value === null || value === void 0 || value === "") return "";
+    var x = typeof value === "number" ? value : Number(value);
+    if (!isFinite(x)) return typeof value === "number" ? "\u2014" : String(value);
+    var seps = separators(spec);
+    var notation = spec.notation || "standard";
+    var group = spec.thousands !== false;
+    if (notation === "scientific") {
+      var dg = digits(x, spec, true);
+      var e = x.toExponential(Math.max(dg.max, 0));
+      var m = e.split("e");
+      return withUnit(fixed(Number(m[0]), dg, seps, false) + "e" + Number(m[1]), unit, spec);
+    }
+    if (notation === "compact" || notation === "si") {
+      var u = unit ? String(unit) : "";
+      var si = notation === "si" ? splitSiUnit(u) : null;
+      var v = si ? x * si.factor : x;
+      var a = Math.abs(v), sfx = "", step = 0;
+      if (notation === "compact") {
+        while (a >= 1e3 && step < COMPACT.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = COMPACT[step];
+      } else if (a >= 1e3) {
+        while (a >= 1e3 && step < SI_UP.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = SI_UP[step];
+      } else if (a > 0 && a < 1 && (si || notation === "si")) {
+        while (a < 1 && step < SI_DOWN.length - 1) {
+          a *= 1e3;
+          v *= 1e3;
+          step++;
+        }
+        sfx = SI_DOWN[step];
+      }
+      var dg2 = digits(v, spec, true);
+      var text2 = fixed(v, dg2, seps, false);
+      if (si) return withUnit(text2, sfx + si.base, spec);
+      if (notation === "si") return withUnit(text2 + sfx, u, spec);
+      return withUnit(text2 + sfx, u, spec);
+    }
+    return withUnit(fixed(x, digits(x, spec, false), seps, group), unit, spec);
+  }
+  var NUMBER_FORMAT_FIELDS = {
+    notation: {
+      type: "enum",
+      label: "Notation",
+      default: "standard",
+      options: [
+        { value: "standard", label: "As it is (1,234.5)" },
+        { value: "compact", label: "Short (1.2K, 3.4M, 5B)" },
+        { value: "si", label: "Engineering (k, M, G; 1.5 MW, 2 ms)" },
+        { value: "scientific", label: "Scientific (1.23e6)" }
+      ]
+    },
+    decimals: {
+      type: "enum",
+      label: "Decimals",
+      default: "auto",
+      options: [{ value: "auto", label: "Automatic" }, { value: "0", label: "0" }, { value: "1", label: "1" }, { value: "2", label: "2" }, { value: "3", label: "3" }, { value: "4", label: "4" }]
+    },
+    thousands: { type: "boolean", label: "Thousands separator", default: true },
+    separators: {
+      type: "enum",
+      label: "Separators",
+      default: "locale",
+      options: [{ value: "locale", label: "The page's language" }, { value: "dot", label: "1,234.5" }, { value: "comma", label: "1.234,5" }]
+    },
+    unitAt: { type: "enum", label: "Unit", default: "after", options: [{ value: "after", label: "After (12 kW)" }, { value: "before", label: "Before ($ 12)" }, { value: "none", label: "Hidden" }] }
+  };
+
   // src/model/binding.js
   var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
   var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
@@ -2201,6 +2366,7 @@ var NexaModel = (() => {
     }
     return t;
   }
+  var FMT_BASE = null;
   var FUNCS = {
     round: function(x, d) {
       var p = Math.pow(10, d || 0);
@@ -2220,6 +2386,13 @@ var NexaModel = (() => {
     },
     lower: function(s) {
       return String(s).toLowerCase();
+    },
+    // fmt(x, "compact" | "si" | "standard" | "scientific", decimals?, unit?): 12 345 -> "12.3K"
+    fmt: function(x, notation, decimals, unit) {
+      return formatValue(x, Object.assign({}, FMT_BASE || {}, {
+        notation: notation || FMT_BASE && FMT_BASE.notation || "standard",
+        decimals: decimals === void 0 ? FMT_BASE && FMT_BASE.decimals || "auto" : decimals
+      }), unit);
     }
   };
   function parse(tokens) {
@@ -2435,15 +2608,19 @@ var NexaModel = (() => {
     }
     return null;
   }
-  function evaluateExpression(textOrAst, read) {
+  function evaluateExpression(textOrAst, read, opts) {
     var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
     if (!p.ast) return null;
+    var before = FMT_BASE;
+    FMT_BASE = opts && opts.format ? opts.format : null;
     try {
       var v = evalNode(p.ast, read);
       return typeof v === "number" && !isFinite(v) ? null : v;
     } catch (e) {
       if (e === NONE) return null;
       return null;
+    } finally {
+      FMT_BASE = before;
     }
   }
   function markScopeLayer(scope, layer) {

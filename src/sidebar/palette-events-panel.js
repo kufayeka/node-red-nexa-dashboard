@@ -601,6 +601,23 @@ export function renderEventsPanel() {
             chip(state.eventsPane, name + " → Update", function () {
                 return { type: "ui-update", compId: comp.id, config: {} };
             }, comp.id, "ui-update");
+            // the items of its target lists (a chart's series): each its own Update node and events
+            ((typeDef && typeDef.targets) || []).forEach(function (t) {
+                var items = comp.props && Array.isArray(comp.props[t.key]) ? comp.props[t.key] : [];
+                items.forEach(function (it, i) {
+                    var id = it && it[t.idField || "id"];
+                    if (!id) return;
+                    var itemName = name + " · " + (it.name || it.label || (t.noun + " " + (i + 1)));
+                    chip(state.eventsPane, itemName + " → Update", function () {
+                        return { type: "ui-update", compId: comp.id, item: { list: t.key, id: id }, config: {} };
+                    }, comp.id, "ui-update");
+                    (t.events || []).forEach(function (evtDef) {
+                        chip(state.eventsPane, itemName + " → " + evtDef.label, function () {
+                            return { type: "ui-event", compId: comp.id, item: { list: t.key, id: id }, event: evtDef.name };
+                        }, comp.id, "ui-event");
+                    });
+                });
+            });
         });
     } else {
         window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "10px", "text-align": "center" }).text("Add components to the screen (Components tab) to see their event/update nodes here.").appendTo(state.eventsPane);

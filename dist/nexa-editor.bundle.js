@@ -1646,6 +1646,129 @@
     return out;
   }
 
+  // src/model/numformat.js
+  var SI_UP = ["", "k", "M", "G", "T", "P", "E"];
+  var SI_DOWN = ["", "m", "\xB5", "n", "p"];
+  var COMPACT = ["", "K", "M", "B", "T"];
+  var PREFIX = { k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, m: 1e-3, "\xB5": 1e-6, u: 1e-6, n: 1e-9, p: 1e-12 };
+  var SI_BASES = ["W", "Wh", "VA", "VAr", "var", "V", "A", "Ah", "Hz", "g", "s", "m", "Pa", "bar", "B", "J", "L", "l", "\u03A9", "ohm", "F", "H", "N", "lm", "lx"];
+  var localeSeps = null;
+  function pageSeparators() {
+    if (localeSeps) return localeSeps;
+    localeSeps = { decimal: ".", group: "," };
+    try {
+      var lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+      var parts = new Intl.NumberFormat(lang).formatToParts(12345.6);
+      parts.forEach(function(p) {
+        if (p.type === "decimal") localeSeps.decimal = p.value;
+        if (p.type === "group") localeSeps.group = p.value === "\u202F" || p.value === "\xA0" ? " " : p.value;
+      });
+    } catch (e) {
+    }
+    return localeSeps;
+  }
+  function separators(spec) {
+    var s = spec.separators || "locale";
+    if (s === "dot") return { decimal: ".", group: "," };
+    if (s === "comma") return { decimal: ",", group: "." };
+    if (s === "custom") return { decimal: spec.decimalSep || ".", group: spec.thousandsSep === void 0 ? "," : spec.thousandsSep };
+    return pageSeparators();
+  }
+  function splitSiUnit(unit) {
+    unit = String(unit || "");
+    if (!unit) return null;
+    if (SI_BASES.indexOf(unit) !== -1) return { factor: 1, base: unit };
+    var p = unit.charAt(0), rest = unit.slice(1);
+    if (PREFIX[p] && SI_BASES.indexOf(rest) !== -1) return { factor: PREFIX[p], base: rest };
+    return null;
+  }
+  function digits(x, spec, significant) {
+    var d = spec.decimals;
+    if (d !== void 0 && d !== "auto" && d !== "" && isFinite(Number(d))) return { min: Number(d), max: Number(d) };
+    var min = isFinite(Number(spec.minDecimals)) && spec.minDecimals !== "" && spec.minDecimals !== void 0 ? Number(spec.minDecimals) : 0;
+    var max = isFinite(Number(spec.maxDecimals)) && spec.maxDecimals !== "" && spec.maxDecimals !== void 0 ? Number(spec.maxDecimals) : null;
+    if (max === null) {
+      if (significant) {
+        var a = Math.abs(x);
+        max = a >= 100 ? 0 : a >= 10 ? 1 : 2;
+      } else max = 6;
+    }
+    return { min: Math.min(min, max), max: Math.max(min, max) };
+  }
+  function fixed(x, dg, seps, group) {
+    var p = Math.pow(10, dg.max);
+    var r = Math.round(x * p) / p;
+    var t2 = r.toFixed(dg.max);
+    if (dg.max > dg.min && t2.indexOf(".") !== -1) {
+      var keep = t2.indexOf(".") + 1 + dg.min;
+      var end = t2.length;
+      while (end > keep && t2.charAt(end - 1) === "0") end--;
+      t2 = t2.slice(0, end);
+      if (t2.charAt(t2.length - 1) === ".") t2 = t2.slice(0, -1);
+    }
+    var neg = t2.charAt(0) === "-";
+    if (neg) t2 = t2.slice(1);
+    var dot2 = t2.indexOf(".");
+    var ip = dot2 === -1 ? t2 : t2.slice(0, dot2), fp = dot2 === -1 ? "" : t2.slice(dot2 + 1);
+    if (group && seps.group) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, seps.group);
+    var out = ip + (fp ? seps.decimal + fp : "");
+    if (neg && /[1-9]/.test(out)) out = "-" + out;
+    return out;
+  }
+  function withUnit(text2, unit, spec) {
+    if (!unit || spec.unitAt === "none") return text2;
+    return spec.unitAt === "before" ? unit + " " + text2 : text2 + " " + unit;
+  }
+  function formatValue(value, spec, unit) {
+    spec = spec || {};
+    if (value === null || value === void 0 || value === "") return "";
+    var x = typeof value === "number" ? value : Number(value);
+    if (!isFinite(x)) return typeof value === "number" ? "\u2014" : String(value);
+    var seps = separators(spec);
+    var notation = spec.notation || "standard";
+    var group = spec.thousands !== false;
+    if (notation === "scientific") {
+      var dg = digits(x, spec, true);
+      var e = x.toExponential(Math.max(dg.max, 0));
+      var m = e.split("e");
+      return withUnit(fixed(Number(m[0]), dg, seps, false) + "e" + Number(m[1]), unit, spec);
+    }
+    if (notation === "compact" || notation === "si") {
+      var u = unit ? String(unit) : "";
+      var si = notation === "si" ? splitSiUnit(u) : null;
+      var v = si ? x * si.factor : x;
+      var a = Math.abs(v), sfx = "", step = 0;
+      if (notation === "compact") {
+        while (a >= 1e3 && step < COMPACT.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = COMPACT[step];
+      } else if (a >= 1e3) {
+        while (a >= 1e3 && step < SI_UP.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = SI_UP[step];
+      } else if (a > 0 && a < 1 && (si || notation === "si")) {
+        while (a < 1 && step < SI_DOWN.length - 1) {
+          a *= 1e3;
+          v *= 1e3;
+          step++;
+        }
+        sfx = SI_DOWN[step];
+      }
+      var dg2 = digits(v, spec, true);
+      var text2 = fixed(v, dg2, seps, false);
+      if (si) return withUnit(text2, sfx + si.base, spec);
+      if (notation === "si") return withUnit(text2 + sfx, u, spec);
+      return withUnit(text2 + sfx, u, spec);
+    }
+    return withUnit(fixed(x, digits(x, spec, false), seps, group), unit, spec);
+  }
+
   // src/model/binding.js
   var G = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : {};
   var KINDS = G.__nexaSourceKinds || (G.__nexaSourceKinds = {});
@@ -1813,6 +1936,7 @@
     }
     return t2;
   }
+  var FMT_BASE = null;
   var FUNCS = {
     round: function(x, d) {
       var p = Math.pow(10, d || 0);
@@ -1832,6 +1956,13 @@
     },
     lower: function(s) {
       return String(s).toLowerCase();
+    },
+    // fmt(x, "compact" | "si" | "standard" | "scientific", decimals?, unit?): 12 345 -> "12.3K"
+    fmt: function(x, notation, decimals, unit) {
+      return formatValue(x, Object.assign({}, FMT_BASE || {}, {
+        notation: notation || FMT_BASE && FMT_BASE.notation || "standard",
+        decimals: decimals === void 0 ? FMT_BASE && FMT_BASE.decimals || "auto" : decimals
+      }), unit);
     }
   };
   function parse(tokens) {
@@ -2047,15 +2178,19 @@
     }
     return null;
   }
-  function evaluateExpression(textOrAst, read) {
+  function evaluateExpression(textOrAst, read, opts) {
     var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
     if (!p.ast) return null;
+    var before = FMT_BASE;
+    FMT_BASE = opts && opts.format ? opts.format : null;
     try {
       var v = evalNode(p.ast, read);
       return typeof v === "number" && !isFinite(v) ? null : v;
     } catch (e) {
       if (e === NONE) return null;
       return null;
+    } finally {
+      FMT_BASE = before;
     }
   }
   function markScopeLayer(scope, layer) {
@@ -31734,6 +31869,22 @@
         chip(state.eventsPane, name2 + " \u2192 Update", function() {
           return { type: "ui-update", compId: comp.id, config: {} };
         }, comp.id, "ui-update");
+        (typeDef && typeDef.targets || []).forEach(function(t2) {
+          var items = comp.props && Array.isArray(comp.props[t2.key]) ? comp.props[t2.key] : [];
+          items.forEach(function(it, i2) {
+            var id2 = it && it[t2.idField || "id"];
+            if (!id2) return;
+            var itemName = name2 + " \xB7 " + (it.name || it.label || t2.noun + " " + (i2 + 1));
+            chip(state.eventsPane, itemName + " \u2192 Update", function() {
+              return { type: "ui-update", compId: comp.id, item: { list: t2.key, id: id2 }, config: {} };
+            }, comp.id, "ui-update");
+            (t2.events || []).forEach(function(evtDef) {
+              chip(state.eventsPane, itemName + " \u2192 " + evtDef.label, function() {
+                return { type: "ui-event", compId: comp.id, item: { list: t2.key, id: id2 }, event: evtDef.name };
+              }, comp.id, "ui-event");
+            });
+          });
+        });
       });
     } else {
       window.$("<div>").css({ color: "#999", "font-size": "12px", padding: "10px", "text-align": "center" }).text("Add components to the screen (Components tab) to see their event/update nodes here.").appendTo(state.eventsPane);
@@ -31883,12 +32034,25 @@
   function clone7(v) {
     return v === null || v === void 0 || typeof v !== "object" ? v : JSON.parse(JSON.stringify(v));
   }
+  function keepBound(p, now, where) {
+    if (isBindingList(now) || isLegacyBinding(now)) {
+      p.enabledWhen = function() {
+        return false;
+      };
+      p.help = "Bound in " + where + " (Binding): this node's message reaches it through a Message source there.";
+    } else if (now !== void 0) p.default = clone7(now);
+    p.noReset = false;
+    return p;
+  }
   function updatableProps(comp, typeDef) {
     var out = {};
     Object.keys(GEOMETRY).forEach(function(k) {
       out[k] = normalizeProp(k, Object.assign({ group: "Position & Size", default: comp[k] !== void 0 ? comp[k] : 0 }, GEOMETRY[k]));
     });
     var own = {};
+    var targets2 = typeDef && typeDef.nexa && typeDef.nexa.targetList ? typeDef.nexa.targetList.map(function(t2) {
+      return t2.key;
+    }) : [];
     if (comp.type === "@lit-component") {
       (comp.litBindable || []).forEach(function(p) {
         var type = p.type === "number" || p.type === "boolean" || p.type === "color" ? p.type : p.type === "object" || p.type === "array" ? "json" : "string";
@@ -31897,7 +32061,7 @@
     } else if (typeDef && typeDef.nexa) {
       Object.keys(typeDef.nexa.props).forEach(function(k) {
         var p = typeDef.nexa.props[k];
-        if (SKIP_TYPES[p.type] || k.charAt(0) === "_") return;
+        if (SKIP_TYPES[p.type] || k.charAt(0) === "_" || targets2.indexOf(k) !== -1) return;
         own[k] = Object.assign({}, p);
       });
     } else if (typeDef) {
@@ -31909,32 +32073,78 @@
     }
     var props = comp.props || {};
     Object.keys(own).forEach(function(k) {
-      var p = own[k], now = props[k];
-      if (isBindingList(now) || isLegacyBinding(now)) {
-        p.enabledWhen = function() {
-          return false;
-        };
-        p.help = "Bound in the component's Properties (Binding): this node's message reaches it through a Message source there.";
-      } else if (now !== void 0) p.default = clone7(now);
-      p.noReset = false;
-      out[k] = p;
+      out[k] = keepBound(own[k], props[k], "the component's Properties");
     });
     return out;
+  }
+  function itemProps(target, listProp, item) {
+    var out = {}, fields = listProp.item && listProp.item.fields || {};
+    Object.keys(fields).forEach(function(k) {
+      var f = fields[k];
+      if (SKIP_TYPES[f.type] || k === target.idField) return;
+      var p = normalizeProp(k, Object.assign({}, f, { group: f.section || "General" }));
+      delete p.section;
+      delete p.visibleWhen;
+      out[k] = keepBound(p, item ? item[k] : void 0, "its Properties");
+    });
+    return out;
+  }
+  function paramsText(a) {
+    if (a.example !== void 0) return typeof a.example === "string" ? a.example : JSON.stringify(a.example);
+    var ps = a.params ? Object.keys(a.params) : [];
+    if (!ps.length) return "";
+    return "{ " + ps.map(function(k) {
+      var t2 = a.params[k];
+      return k + ": " + (typeof t2 === "string" ? t2 : t2 && t2.type ? t2.type : "\u2026");
+    }).join(", ") + " }";
+  }
+  var cssDone = false;
+  function ensureCss() {
+    if (cssDone) return;
+    cssDone = true;
+    var st = document.createElement("style");
+    st.textContent = [
+      ".nexa-uu-cards{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}",
+      ".nexa-uu-card{display:flex;gap:8px;align-items:flex-start;border:1px solid #d0d0d0;border-radius:4px;padding:8px 10px;cursor:pointer;background:#fff}",
+      ".nexa-uu-card:hover{border-color:#8aa4c8}",
+      ".nexa-uu-card.on{border-color:#0f62fe;box-shadow:inset 3px 0 0 #0f62fe;background:#f4f8ff}",
+      ".nexa-uu-card input{margin-top:3px}",
+      ".nexa-uu-card b{display:block;font-size:12.5px;color:#161616}",
+      ".nexa-uu-card span{display:block;font-size:11.5px;color:#525252;margin-top:2px}",
+      ".nexa-uu-card code{display:block;font-size:11px;color:#0f62fe;margin-top:4px;white-space:pre-wrap;font-family:monospace}",
+      ".nexa-uu-head{font-size:11px;color:#888;margin:0 0 6px;text-transform:uppercase;letter-spacing:.04em}",
+      ".nexa-uu-params label{display:block;font-size:11px;color:#888;margin:4px 0 2px}"
+    ].join("\n");
+    document.head.appendChild(st);
   }
   function openUiUpdateNodeEditor(node) {
     var comp = findComponent(node.props.compId);
     var isLitComponent = comp && comp.type === "@lit-component";
     var typeDef = comp && !isLitComponent && window.NEXA.getComponent(comp.type);
-    var actions = typeDef && typeDef.nexa && typeDef.nexa.actionList || [];
-    var actionSel = null, paramsInput = null, handle = null;
+    var nexa = typeDef && typeDef.nexa;
+    var ref = node.props.item && node.props.item.list ? node.props.item : null;
+    var target = ref && nexa ? (nexa.targetList || []).filter(function(t2) {
+      return t2.key === ref.list;
+    })[0] : null;
+    var listProp = target ? nexa.props[target.key] : null;
+    var items = target && comp.props && Array.isArray(comp.props[target.key]) ? comp.props[target.key] : [];
+    var item = target ? items.filter(function(it) {
+      return it && it[target.idField] === ref.id;
+    })[0] : null;
+    var itemName = item ? item.name || item.label || ref.id : ref ? ref.id : "";
+    var actions = (target ? target.actionList : nexa && nexa.actionList) || [];
+    var choice = node.props.action && actions.some(function(a) {
+      return a.name === node.props.action;
+    }) ? node.props.action : "";
+    var paramsInput = null, handle = null;
     var cfg = clone7(node.props.config || {});
     Object.keys(cfg).forEach(function(k) {
       if (cfg[k] === "" || cfg[k] === null || cfg[k] === void 0) delete cfg[k];
     });
     window.RED.tray.show({
       id: "nexa-logic-uiupdate-editor",
-      title: "Update Component",
-      width: 520,
+      title: ref ? "Update " + (target ? target.noun : "item") + ": " + itemName : "Update Component",
+      width: 560,
       buttons: [
         { text: "Cancel", click: function() {
           window.RED.tray.close();
@@ -31944,9 +32154,8 @@
           "class": "primary",
           click: function() {
             node.props.config = cfg;
-            var act = actionSel ? actionSel.val() : "";
-            if (act) {
-              node.props.action = act;
+            if (choice) {
+              node.props.action = choice;
               var rawParams = paramsInput ? String(paramsInput.val() || "").trim() : "";
               if (rawParams) {
                 try {
@@ -31971,58 +32180,73 @@
         }
       },
       open: function(tray) {
+        ensureCss();
         var body = tray.find(".red-ui-tray-body").css({ padding: "12px", overflow: "auto" });
-        if (!comp || !typeDef && !isLitComponent) {
-          window.$("<div>").text("This component no longer exists.").appendTo(body);
+        if (!comp || !typeDef && !isLitComponent || ref && (!target || !item)) {
+          window.$("<div>").text(ref ? "This " + (target ? target.noun : "item") + " is not in the component any more." : "This component no longer exists.").appendTo(body);
           return;
         }
-        var propsBox = body;
-        if (actions.length) {
-          var arow = window.$("<div>").css({ "margin-bottom": "12px" }).appendTo(body);
-          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("What it does").appendTo(arow);
-          actionSel = window.$("<select>").css({ width: "100%" }).appendTo(arow);
-          window.$("<option>", { value: "" }).text("Set its properties").appendTo(actionSel);
-          actions.forEach(function(a) {
-            window.$("<option>", { value: a.name }).text("Run: " + (a.label || a.name)).appendTo(actionSel);
-          });
-          actionSel.val(node.props.action || "");
-          var pbox = window.$("<div>").css({ "margin-top": "8px" }).appendTo(arow);
-          window.$("<label>").css({ display: "block", "font-size": "11px", color: "#888" }).text("Its parameters (JSON or text), when msg.payload has none").appendTo(pbox);
-          paramsInput = window.$("<input>", { type: "text", placeholder: 'e.g. {"url": "https://\u2026"}' }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(node.props.actionParams === void 0 ? "" : typeof node.props.actionParams === "string" ? node.props.actionParams : JSON.stringify(node.props.actionParams)).appendTo(pbox);
-          var phelp = window.$("<div>").css({ "font-size": "11px", color: "#888", "margin-top": "4px" }).appendTo(pbox);
-          propsBox = window.$("<div>").appendTo(body);
-          var sync = function() {
-            var a = actions.filter(function(x) {
-              return x.name === actionSel.val();
-            })[0];
-            pbox.toggle(!!a);
-            propsBox.toggle(!a);
-            var ps = a && a.params ? Object.keys(a.params) : [];
-            phelp.text(a ? (ps.length ? "msg.payload = { " + ps.map(function(k) {
-              return k + (a.params[k].label ? " (" + a.params[k].label + ")" : "");
-            }).join(", ") + " }" : "No parameters.") + " msg.action = another action's name also works." : "");
-          };
-          actionSel.on("change", sync);
-          sync();
+        if (ref) {
+          window.$("<div>").css({ "font-size": "12px", color: "#525252", "margin-bottom": "10px" }).text("This node updates only the " + target.noun + ' "' + itemName + '" (Id ' + ref.id + "). Its message is its own: a field bound to Message reads the message sent to this node.").appendTo(body);
         }
+        window.$("<div>").addClass("nexa-uu-head").text("What it does").appendTo(body);
+        var cards = window.$("<div>").addClass("nexa-uu-cards").appendTo(body);
+        var propsBox = window.$("<div>");
+        var pbox = window.$("<div>").addClass("nexa-uu-params");
+        function card(value, title, text2, code2) {
+          var c = window.$("<label>").addClass("nexa-uu-card").attr("data-action", value).appendTo(cards);
+          window.$("<input>", { type: "radio", name: "nexa-uu-what" }).prop("checked", choice === value).appendTo(c).on("change", function() {
+            choice = value;
+            sync();
+          });
+          var t2 = window.$("<div>").appendTo(c);
+          window.$("<b>").text(title).appendTo(t2);
+          if (text2) window.$("<span>").text(text2).appendTo(t2);
+          if (code2) window.$("<code>").text(code2).appendTo(t2);
+        }
+        card("", "Set properties", ref ? "Changes the " + target.noun + "'s properties you set below, each time a message arrives. The rest stay as they are." : "Changes the properties you set below, each time a message arrives. The rest stay as they are.", "");
+        actions.forEach(function(a) {
+          var pt = paramsText(a);
+          card(a.name, a.label, a.help || "", pt ? "msg.payload = " + pt : "msg.payload: not needed");
+        });
+        pbox.appendTo(body);
+        window.$("<label>").text("Its parameters when msg.payload has none (JSON or text)").appendTo(pbox);
+        paramsInput = window.$("<input>", { type: "text" }).css({ width: "100%", "box-sizing": "border-box", "font-family": "monospace" }).val(node.props.actionParams === void 0 ? "" : typeof node.props.actionParams === "string" ? node.props.actionParams : JSON.stringify(node.props.actionParams)).appendTo(pbox);
+        window.$("<div>").css({ "font-size": "11px", color: "#888", margin: "4px 0 12px" }).text('msg.action = "<name>" (from a Function) runs another action of the same list.').appendTo(pbox);
+        propsBox.appendTo(body);
+        function sync() {
+          cards.children().each(function() {
+            var c = window.$(this);
+            c.toggleClass("on", c.attr("data-action") === choice);
+          });
+          pbox.toggle(!!choice);
+          propsBox.toggle(!choice);
+        }
+        sync();
+        window.$("<div>").addClass("nexa-uu-head").text(ref ? "The " + target.noun + "'s properties" : "Properties").appendTo(propsBox);
         window.$("<div>").addClass("nexa-uiupdate-help").css({ "font-size": "12px", color: "#888", "margin-bottom": "8px" }).text("Only what you set changes; the rest is kept. A set value can be a binding: Message \u2192 payload.speed takes it from the message this node gets.").appendTo(propsBox);
         var host = window.$("<div>").addClass("nexa-uiupdate-tree").appendTo(propsBox);
         if (!window.NexaKit) {
           host.text("The property kit is not loaded.");
           return;
         }
-        var nexa = typeDef && typeDef.nexa;
+        var props = ref ? itemProps(target, listProp, item) : updatableProps(comp, typeDef);
+        var groups = [];
+        Object.keys(props).forEach(function(k) {
+          var g = props[k].group || "General";
+          if (groups.indexOf(g) === -1) groups.push(g);
+        });
         var meta2 = {
-          id: "ui-update:" + comp.type,
+          id: "ui-update:" + comp.type + (ref ? ":" + ref.list : ""),
           label: nexa ? nexa.label : comp.type,
-          props: updatableProps(comp, typeDef),
+          props,
           stateList: [],
           partList: [],
           inputs: [],
           outputs: [],
           eventList: [],
           actionList: [],
-          groupOrder: ["Position & Size"].concat(nexa && nexa.groupOrder ? nexa.groupOrder : [])
+          groupOrder: ref ? groups : ["Position & Size"].concat(nexa && nexa.groupOrder ? nexa.groupOrder : [])
         };
         handle = window.NexaKit.renderInspector(host.get(0), {
           meta: meta2,
@@ -32251,6 +32475,26 @@
     const typeLabel = !comp ? "?" : comp.type === "@lit-component" ? "Lit Component" : comp.type === "@template" ? "Instance" : comp.type === "@frame" ? "Frame" : def ? def.label : comp.type;
     return { name: typeLabel + " #" + (comp ? comp.id.slice(-4) : "?"), def };
   }
+  function actionLabel(node, def, item) {
+    const list = item ? item.target ? item.target.actions : [] : def && def.actions || [];
+    const a = list.filter(function(x) {
+      return x.name === node.props.action;
+    })[0];
+    return a ? a.label : node.props.action;
+  }
+  function itemOf(node, def) {
+    const ref = node.props.item;
+    if (!ref || !ref.list) return null;
+    const comp = findComponent(node.props.compId);
+    const t2 = def && (def.targets || []).filter(function(x) {
+      return x.key === ref.list;
+    })[0];
+    const list = comp && comp.props && Array.isArray(comp.props[ref.list]) ? comp.props[ref.list] : [];
+    const it = list.filter(function(x) {
+      return x && x[t2 && t2.idField || "id"] === ref.id;
+    })[0];
+    return { name: it ? it.name || it.label || ref.id : ref.id + " (removed)", target: t2 };
+  }
   function overlayNodeLabel(node) {
     const screen = getActiveScreen();
     const of = node.props.overlay && screen ? tree_exports.find(screen, node.props.overlay) : null;
@@ -32263,15 +32507,20 @@
         const c = componentName(node.props.compId);
         if (node.props.event === "sparkplug-change" || node.props.event === "sparkplug-update") return c.name + " on Sparkplug Update";
         if (node.props.event === "slide-change") return c.name + " on Slide Change";
-        const evt = c.def && c.def.events && c.def.events.find(function(e) {
+        const item = itemOf(node, c.def);
+        const events = item ? item.target ? item.target.events : [] : c.def && c.def.events;
+        const evt = events && events.find(function(e) {
           return e.name === node.props.event;
         });
-        return c.name + " " + (evt ? evt.label : "on " + node.props.event);
+        return c.name + (item ? " \xB7 " + item.name : "") + " " + (evt ? evt.label : "on " + node.props.event);
       }
     },
     "ui-update": {
       label: function(node) {
-        return "Update " + componentName(node.props.compId).name;
+        const c = componentName(node.props.compId);
+        const item = itemOf(node, c.def);
+        const what = node.props.action ? actionLabel(node, c.def, item) : "";
+        return (item ? "Update " + c.name + " \xB7 " + item.name : "Update " + c.name) + (what ? ": " + what : "");
       },
       edit: openUiUpdateNodeEditor,
       hint: "Double-click to configure"

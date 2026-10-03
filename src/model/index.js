@@ -9,6 +9,7 @@ export * from "./breakpoints.js";
 export * from "./theme.js";
 export * from "./routes.js";
 export * from "./binding.js";
+export * from "./numformat.js";
 export { migrateSurface, TREE_VERSION } from "./migrate.js";
 export { migrateLogicNode, migrateLogic, logicProps, LOGIC_NODE_OWN_KEYS } from "./migrate-logic.js";
 

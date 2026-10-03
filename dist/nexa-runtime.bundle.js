@@ -4987,18 +4987,21 @@
       runLogicGraph(screen2, n, cloneMsg(baseMsg));
     });
   }
-  function fireUiEvent(screen2, compId, eventName, payload) {
+  function fireUiEvent(screen2, compId, eventName, payload, target) {
     if (!screen2 || !screen2.logic) {
       logicTrace("fireUiEvent: no logic graph on this screen");
       return;
     }
     var matches = (screen2.logic.nodes || []).filter(function(n) {
-      return n.type === "ui-event" && n.props.compId === compId && n.props.event === eventName;
+      if (n.type !== "ui-event" || n.props.compId !== compId || n.props.event !== eventName) return false;
+      var it = n.props.item;
+      return target ? !!(it && it.list === target.list && it.id === target.id) : !it;
     });
     logicTrace("fireUiEvent(" + eventName + ") for component " + compId + ": " + matches.length + " matching node(s)");
     matches.forEach(function(n) {
       var initialPayload = payload !== void 0 && payload !== null && typeof payload === "object" ? cloneMsg(payload) : payload;
       var initialMsg = { event: eventName, payload: initialPayload };
+      if (target) initialMsg.target = { list: target.list, id: target.id };
       var cut = compId.lastIndexOf("::");
       var owner = cut !== -1 && screen2.__paramStates && screen2.__paramStates[compId.slice(0, cut)];
       if (owner && Object.prototype.hasOwnProperty.call(owner, "item") && Object.prototype.hasOwnProperty.call(owner, "index")) {
@@ -5020,8 +5023,8 @@
       namespace: comp.id,
       mode: "runtime",
       screen: screen2,
-      emit: function(eventName, payload) {
-        fireUiEvent(screen2, comp.id, eventName, payload);
+      emit: function(eventName, payload, target) {
+        fireUiEvent(screen2, comp.id, eventName, payload, target);
       },
       setBindableValue: function(name, value) {
         comp.props = comp.props || {};
@@ -5133,6 +5136,129 @@
         if (propsMention(c.props, "$route")) refreshComponentRender(screen2, c);
       });
     }
+  }
+
+  // src/model/numformat.js
+  var SI_UP = ["", "k", "M", "G", "T", "P", "E"];
+  var SI_DOWN = ["", "m", "\xB5", "n", "p"];
+  var COMPACT = ["", "K", "M", "B", "T"];
+  var PREFIX = { k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, m: 1e-3, "\xB5": 1e-6, u: 1e-6, n: 1e-9, p: 1e-12 };
+  var SI_BASES = ["W", "Wh", "VA", "VAr", "var", "V", "A", "Ah", "Hz", "g", "s", "m", "Pa", "bar", "B", "J", "L", "l", "\u03A9", "ohm", "F", "H", "N", "lm", "lx"];
+  var localeSeps = null;
+  function pageSeparators() {
+    if (localeSeps) return localeSeps;
+    localeSeps = { decimal: ".", group: "," };
+    try {
+      var lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+      var parts = new Intl.NumberFormat(lang).formatToParts(12345.6);
+      parts.forEach(function(p) {
+        if (p.type === "decimal") localeSeps.decimal = p.value;
+        if (p.type === "group") localeSeps.group = p.value === "\u202F" || p.value === "\xA0" ? " " : p.value;
+      });
+    } catch (e) {
+    }
+    return localeSeps;
+  }
+  function separators(spec) {
+    var s = spec.separators || "locale";
+    if (s === "dot") return { decimal: ".", group: "," };
+    if (s === "comma") return { decimal: ",", group: "." };
+    if (s === "custom") return { decimal: spec.decimalSep || ".", group: spec.thousandsSep === void 0 ? "," : spec.thousandsSep };
+    return pageSeparators();
+  }
+  function splitSiUnit(unit) {
+    unit = String(unit || "");
+    if (!unit) return null;
+    if (SI_BASES.indexOf(unit) !== -1) return { factor: 1, base: unit };
+    var p = unit.charAt(0), rest = unit.slice(1);
+    if (PREFIX[p] && SI_BASES.indexOf(rest) !== -1) return { factor: PREFIX[p], base: rest };
+    return null;
+  }
+  function digits(x, spec, significant) {
+    var d = spec.decimals;
+    if (d !== void 0 && d !== "auto" && d !== "" && isFinite(Number(d))) return { min: Number(d), max: Number(d) };
+    var min = isFinite(Number(spec.minDecimals)) && spec.minDecimals !== "" && spec.minDecimals !== void 0 ? Number(spec.minDecimals) : 0;
+    var max = isFinite(Number(spec.maxDecimals)) && spec.maxDecimals !== "" && spec.maxDecimals !== void 0 ? Number(spec.maxDecimals) : null;
+    if (max === null) {
+      if (significant) {
+        var a = Math.abs(x);
+        max = a >= 100 ? 0 : a >= 10 ? 1 : 2;
+      } else max = 6;
+    }
+    return { min: Math.min(min, max), max: Math.max(min, max) };
+  }
+  function fixed(x, dg, seps, group) {
+    var p = Math.pow(10, dg.max);
+    var r = Math.round(x * p) / p;
+    var t = r.toFixed(dg.max);
+    if (dg.max > dg.min && t.indexOf(".") !== -1) {
+      var keep = t.indexOf(".") + 1 + dg.min;
+      var end = t.length;
+      while (end > keep && t.charAt(end - 1) === "0") end--;
+      t = t.slice(0, end);
+      if (t.charAt(t.length - 1) === ".") t = t.slice(0, -1);
+    }
+    var neg = t.charAt(0) === "-";
+    if (neg) t = t.slice(1);
+    var dot = t.indexOf(".");
+    var ip = dot === -1 ? t : t.slice(0, dot), fp = dot === -1 ? "" : t.slice(dot + 1);
+    if (group && seps.group) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, seps.group);
+    var out = ip + (fp ? seps.decimal + fp : "");
+    if (neg && /[1-9]/.test(out)) out = "-" + out;
+    return out;
+  }
+  function withUnit(text2, unit, spec) {
+    if (!unit || spec.unitAt === "none") return text2;
+    return spec.unitAt === "before" ? unit + " " + text2 : text2 + " " + unit;
+  }
+  function formatValue(value, spec, unit) {
+    spec = spec || {};
+    if (value === null || value === void 0 || value === "") return "";
+    var x = typeof value === "number" ? value : Number(value);
+    if (!isFinite(x)) return typeof value === "number" ? "\u2014" : String(value);
+    var seps = separators(spec);
+    var notation = spec.notation || "standard";
+    var group = spec.thousands !== false;
+    if (notation === "scientific") {
+      var dg = digits(x, spec, true);
+      var e = x.toExponential(Math.max(dg.max, 0));
+      var m = e.split("e");
+      return withUnit(fixed(Number(m[0]), dg, seps, false) + "e" + Number(m[1]), unit, spec);
+    }
+    if (notation === "compact" || notation === "si") {
+      var u = unit ? String(unit) : "";
+      var si = notation === "si" ? splitSiUnit(u) : null;
+      var v = si ? x * si.factor : x;
+      var a = Math.abs(v), sfx = "", step = 0;
+      if (notation === "compact") {
+        while (a >= 1e3 && step < COMPACT.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = COMPACT[step];
+      } else if (a >= 1e3) {
+        while (a >= 1e3 && step < SI_UP.length - 1) {
+          a /= 1e3;
+          v /= 1e3;
+          step++;
+        }
+        sfx = SI_UP[step];
+      } else if (a > 0 && a < 1 && (si || notation === "si")) {
+        while (a < 1 && step < SI_DOWN.length - 1) {
+          a *= 1e3;
+          v *= 1e3;
+          step++;
+        }
+        sfx = SI_DOWN[step];
+      }
+      var dg2 = digits(v, spec, true);
+      var text2 = fixed(v, dg2, seps, false);
+      if (si) return withUnit(text2, sfx + si.base, spec);
+      if (notation === "si") return withUnit(text2 + sfx, u, spec);
+      return withUnit(text2 + sfx, u, spec);
+    }
+    return withUnit(fixed(x, digits(x, spec, false), seps, group), unit, spec);
   }
 
   // src/model/binding.js
@@ -5320,6 +5446,7 @@
     }
     return t;
   }
+  var FMT_BASE = null;
   var FUNCS = {
     round: function(x, d) {
       var p = Math.pow(10, d || 0);
@@ -5339,6 +5466,13 @@
     },
     lower: function(s) {
       return String(s).toLowerCase();
+    },
+    // fmt(x, "compact" | "si" | "standard" | "scientific", decimals?, unit?): 12 345 -> "12.3K"
+    fmt: function(x, notation, decimals, unit) {
+      return formatValue(x, Object.assign({}, FMT_BASE || {}, {
+        notation: notation || FMT_BASE && FMT_BASE.notation || "standard",
+        decimals: decimals === void 0 ? FMT_BASE && FMT_BASE.decimals || "auto" : decimals
+      }), unit);
     }
   };
   function parse(tokens) {
@@ -5554,15 +5688,19 @@
     }
     return null;
   }
-  function evaluateExpression(textOrAst, read) {
+  function evaluateExpression(textOrAst, read, opts) {
     var p = typeof textOrAst === "string" ? parseExpression(textOrAst) : { ast: textOrAst };
     if (!p.ast) return null;
+    var before = FMT_BASE;
+    FMT_BASE = opts && opts.format ? opts.format : null;
     try {
       var v = evalNode(p.ast, read);
       return typeof v === "number" && !isFinite(v) ? null : v;
     } catch (e) {
       if (e === NONE) return null;
       return null;
+    } finally {
+      FMT_BASE = before;
     }
   }
   function markScopeLayer(scope, layer) {
@@ -5884,6 +6022,14 @@
   }
 
   // src/runtime/state/binding-reader.js
+  function itemMessage(comp, list, id) {
+    const own = comp && comp.__itemMsgs && comp.__itemMsgs[list + "#" + id];
+    return own || comp && comp.__lastMsg || null;
+  }
+  function targetListsOf(comp) {
+    const def = comp && window.NEXA && window.NEXA.getComponent(comp.type);
+    return def && Array.isArray(def.targets) ? def.targets : [];
+  }
   function sparkplugTagValue(address) {
     const ref = parseSparkplugBindingPath("{sparkplug:" + address + "}");
     if (!ref || state.sparkplugConnectionLost) return "???";
@@ -5891,11 +6037,11 @@
     if (!entry || !entry.online || entry.isNull || entry.value === void 0 || entry.value === null) return "???";
     return entry.value;
   }
-  function runtimeReader(comp, scope) {
+  function runtimeReader(comp, scope, msg) {
     const s = scope || comp && comp.__paramState || state.currentAppScope || null;
     return scopeReader({
       scope: s,
-      msg: comp && comp.__lastMsg ? comp.__lastMsg : null,
+      msg: msg || (comp && comp.__lastMsg ? comp.__lastMsg : null),
       // a tag address may hold {variables} (…::{line}/Speed)
       address: (text2) => String(text2).indexOf("{") !== -1 && s ? resolveBindableValue(String(text2), s) : text2,
       tag: (provider, address) => provider === "sparkplug" ? sparkplugTagValue(address) : void 0,
@@ -5932,6 +6078,14 @@
       withTemplateBindings = out;
     }
     let resolved = resolveSparkplugProps(withTemplateBindings);
+    targetListsOf(comp).forEach(function(t) {
+      const list = resolved[t.key];
+      if (!Array.isArray(list)) return;
+      resolved = Object.assign({}, resolved);
+      resolved[t.key] = list.map(function(it) {
+        return it && typeof it === "object" ? resolveBindingProps(it, runtimeReader(comp, paramState, itemMessage(comp, t.key, it[t.idField || "id"]))) : it;
+      });
+    });
     resolved = resolveBindingProps(resolved, runtimeReader(comp, paramState));
     if (window.NexaModel && window.NexaModel.resolveTokenProps && propsMention(resolved, "{token:")) {
       const t = window.__NEXA_THEME__ && window.__NEXA_THEME__.theme ? window.__NEXA_THEME__ : THEME;
@@ -6018,7 +6172,7 @@
       applyUiUpdateProp(screen2, compId, k, overrides[k]);
     });
   }
-  function runComponentAction(screen2, compId, action, params) {
+  function runComponentAction(screen2, compId, action, params, target) {
     const comp = findComponent(screen2, compId);
     const typeDef = comp && window.NEXA && window.NEXA.getComponent(comp.type);
     const el = comp && (document.querySelector('[data-id="' + comp.id + '"]') || document.querySelector('[data-component-id="' + comp.id + '"]'));
@@ -6027,12 +6181,58 @@
       return;
     }
     try {
-      typeDef.invoke(el, action, params);
+      typeDef.invoke(el, action, params, target);
     } catch (e) {
       console.error('[nexa-logic] action "' + action + '" failed:', e);
     }
   }
+  function runItemUpdateNode(screen2, node, msg) {
+    const comp = findComponent(screen2, node.compId);
+    if (!comp) return;
+    const t = targetListsOf(comp).filter(function(x) {
+      return x.key === node.item.list;
+    })[0];
+    const list = comp.props && Array.isArray(comp.props[node.item.list]) ? comp.props[node.item.list] : null;
+    const idField = t && t.idField || "id";
+    const index = list ? list.findIndex(function(it) {
+      return it && it[idField] === node.item.id;
+    }) : -1;
+    if (index < 0) {
+      console.warn("[nexa-logic] update: " + node.item.list + ' "' + node.item.id + '" is not in ' + node.compId);
+      return;
+    }
+    const own = cloneMsg(msg && typeof msg === "object" ? msg : { payload: msg });
+    comp.__itemMsgs = comp.__itemMsgs || {};
+    comp.__itemMsgs[node.item.list + "#" + node.item.id] = own;
+    const target = { list: node.item.list, id: node.item.id, index };
+    const act = msg && typeof msg === "object" && typeof msg.action === "string" && msg.action ? msg.action : node.action;
+    if (act) {
+      const pl = msg && typeof msg === "object" ? msg.payload : msg;
+      const noPayload = pl === void 0 || pl === null || pl === "";
+      runComponentAction(screen2, node.compId, act, noPayload ? node.actionParams : pl, target);
+      refreshComponentRender(screen2, comp);
+      return;
+    }
+    const config = resolveBindingProps(node.config || {}, runtimeReader(comp, comp.__paramState, own));
+    const keys = Object.keys(config).filter(function(k) {
+      return config[k] !== void 0 && config[k] !== "";
+    });
+    if (keys.length) {
+      const item = Object.assign({}, list[index]);
+      keys.forEach(function(k) {
+        if (!isBindingList(item[k])) item[k] = config[k];
+      });
+      const next = list.slice();
+      next[index] = item;
+      comp.props[node.item.list] = next;
+    }
+    refreshComponentRender(screen2, comp);
+  }
   function runUiUpdateNode(screen2, node, msg) {
+    if (node.item && node.item.list) {
+      runItemUpdateNode(screen2, node, msg);
+      return;
+    }
     const act = msg && typeof msg === "object" && typeof msg.action === "string" && msg.action ? msg.action : node.action;
     if (act) {
       const pl = msg && typeof msg === "object" ? msg.payload : msg;
@@ -6080,6 +6280,9 @@
         }
       });
     }
+    if (payloadProps) Object.keys(node.config || {}).forEach(function(k) {
+      if (isBindingList(node.config[k])) delete payloadProps[k];
+    });
     applyUiUpdateMulti(screen2, node.compId, config, payloadProps, msg && msg.properties);
     if (comp) refreshComponentRender(screen2, comp);
   }
@@ -6088,8 +6291,8 @@
       namespace: comp.id,
       mode: "runtime",
       screen: screen2,
-      emit: function(eventName, payload) {
-        fireUiEvent(screen2, comp.id, eventName, payload);
+      emit: function(eventName, payload, target) {
+        fireUiEvent(screen2, comp.id, eventName, payload, target);
       },
       setBindableValue: function(name, value) {
         comp.props = comp.props || {};

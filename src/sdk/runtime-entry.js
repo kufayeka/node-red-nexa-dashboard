@@ -26,7 +26,8 @@ import F from "./format.js";
 import { setAssets, listAssets, getAsset, onAssetsChange, assetRef, resolveAsset, assetUrl } from "./assets.js";
 import { theme, setTheme } from "./theme.js";
 import { zag } from "./zag.js";
-import { toBindingList, isBindingList, isBoundValue, resolveBindingProps, sourceKind } from "../model/binding.js";
+import { toBindingList, isBindingList, isBoundValue, resolveBindingProps, sourceKind, evaluateExpression, parseExpression } from "../model/binding.js";
+import { formatValue, formatParts, splitSiUnit, NUMBER_FORMAT_FIELDS } from "../model/numformat.js";
 
 // A value as a binding priority list ({ $bind, static }): a list as it is, a legacy binding
 // string ("{sparkplug:…}", "{msg.x}", "{name}") converted, anything else static. For a
@@ -68,6 +69,9 @@ if (!window.NexaSDK) {
         get KitElement() { return window.NexaKit && window.NexaKit.KitElement; },
         // tags
         asBinding: asBinding, isBindingList: isBindingList, isBound: isBoundValue,
+        // one number format everywhere (axes, tooltips, legends); expressions without eval
+        formatValue: formatValue, formatParts: formatParts, splitSiUnit: splitSiUnit, NUMBER_FORMAT_FIELDS: NUMBER_FORMAT_FIELDS,
+        evaluateExpression: evaluateExpression, parseExpression: parseExpression,
         // the testkit resolves binding lists like the page does (not for plugins)
         _bindings: { resolveProps: resolveBindingProps, kind: sourceKind },
         defineTagProvider: defineTagProvider, extendTagProvider: extendTagProvider, getTagProvider: getTagProvider,
