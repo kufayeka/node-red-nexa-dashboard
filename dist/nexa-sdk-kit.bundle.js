@@ -2395,13 +2395,15 @@ nx-tab[hidden] { display: none !important; }
         A.update();
       }}><i class="fa ${mem.max ? "fa-compress" : "fa-expand"}"></i></button>`;
     }
-    function overviewPane(n2) {
-      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>
-            <div class="nx-pt-items">${n2.children.map(function(c) {
+    function childLinks(n2) {
+      return n2.children.length ? html`<div class="nx-pt-items">${n2.children.map(function(c) {
         return html`<div class="nx-pt-listrow"><button type="button" class="nx-pt-go" @click=${function() {
-          select(c.id, { focus: c.kind === "prop" });
+          select(c.id, { focus: c.kind === "prop" || c.kind === "itemField" });
         }}>${c.label}</button>${valueCell(c, "")}</div>`;
-      })}</div>`;
+      })}</div>` : nothing;
+    }
+    function overviewPane(n2, own) {
+      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>${own || nothing}${childLinks(n2)}`;
     }
     function newItem(prop) {
       var sch = itemSchema(prop);
@@ -2473,8 +2475,7 @@ nx-tab[hidden] { display: none !important; }
       var canRemove = !prop.readonly && !(prop.min > 0 && list.length <= prop.min);
       var canAdd = !prop.readonly && !(prop.max > 0 && list.length >= prop.max);
       var list0 = map.get(n2.key);
-      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>
-            <div class="nx-pt-bar">
+      var own = html`<div class="nx-pt-bar">
                 <button type="button" class="nx-btn" ?disabled=${i === 0} @click=${function() {
         listDo(list0, "up", i);
       }}><i class="fa fa-arrow-up"></i> Up</button>
@@ -2487,8 +2488,9 @@ nx-tab[hidden] { display: none !important; }
                 <button type="button" class="nx-btn nx-pt-danger" ?disabled=${!canRemove} @click=${function() {
         listDo(list0, "remove", i);
       }}><i class="fa fa-trash-o"></i> Remove</button>
-            </div>
-            <div class="nx-pt-form">${A.itemWidget(sch, list[i], function(v) {
+            </div>`;
+      if (sch.fields) return overviewPane(n2, own);
+      return html`${crumbs(n2)}<div class="nx-pt-title">${n2.label}</div>${own}<div class="nx-pt-form">${A.itemWidget(sch, list[i], function(v) {
         setItem(n2, v);
       })}</div>`;
     }

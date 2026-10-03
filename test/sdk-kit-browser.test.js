@@ -386,31 +386,36 @@ async function main() {
             assert.deepStrictEqual(r, ['@General,t,rows,rows#0', 'rows', 1, '["a"]']);
         });
 
-        await ok('regression: two quick edits in one list item both stay (an item merges into its current value), then add', async () => {
+        await ok('regression: two edits in one list item both stay (an item merges into its current value), then add', async () => {
             const r = await js(`(async function () {
                 var root = document.createElement("div"); document.body.appendChild(root);
-                var props = { rows: [{ name: "a", type: "string" }] }, sets = [];
+                var props = { rows: [{ name: "a", type: "string" }] }, sets = [], out0 = null;
                 var meta = { id: "rw", stateList: [], inputs: [], outputs: [], props: {
                     rows: { key: "rows", type: "list", label: "Rows", default: [], item: { row: true, fields: {
                         name: { type: "string", default: "" }, type: { type: "enum", default: "string", options: [{ value: "string", label: "string" }, { value: "number", label: "number" }] } } } } } };
                 // like an owner that saves elsewhere: it doesn't hand the kit a fresh props object
                 var h = NexaKit.renderInspector(root, { meta: meta, props: props, set: function (k, v) { sets.push(JSON.stringify(v)); props[k] = v; } });
                 await NexaTest.wait();
+                // the item's pane: links to its fields (each field has its own pane)
                 await NexaTest.pick(h, "rows#0");
+                out0 = Array.from(root.querySelectorAll(".nx-pt-pane .nx-pt-go")).map(function (b) { return b.textContent; });
+                await NexaTest.pick(h, "rows#0.name");
                 var input = root.querySelector(".nx-pt-pane nx-text input");
                 input.value = "speed"; input.dispatchEvent(new Event("input", { bubbles: true }));
                 input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-                // straight away, before any re-render: the type of the same item
+                // then the type of the same item: both stay (an item merges into its current value)
+                await NexaTest.pick(h, "rows#0.type");
                 var sel = root.querySelector(".nx-pt-pane nx-select .nx-fs-value select");
                 sel.value = "1"; sel.dispatchEvent(new Event("change", { bubbles: true }));
                 await NexaTest.wait();
                 await NexaTest.pick(h, "rows");
                 root.querySelector(".nx-pt-pane .nx-pt-add").click();
                 await NexaTest.wait();
-                var out = { rows: JSON.stringify(props.rows), labels: NexaTest.rows(root).filter(function (x) { return /^rows#[0-9]+$/.test(x.id); }).map(function (x) { return x.label; }), sel: h.selected() };
+                var out = { links: out0, rows: JSON.stringify(props.rows), labels: NexaTest.rows(root).filter(function (x) { return /^rows#[0-9]+$/.test(x.id); }).map(function (x) { return x.label; }), sel: h.selected() };
                 h.destroy(); root.remove();
                 return out;
             })()`);
+            assert.deepStrictEqual(r.links, ['name', 'type'], 'the pane of an item: a link per field, not their editors');
             assert.strictEqual(r.rows, '[{"name":"speed","type":"number"},{"name":"","type":"string"}]');
             assert.deepStrictEqual(r.labels, ['speed', 'Item 2'], 'items are tree rows, named by their first text field');
             assert.strictEqual(r.sel, 'rows#1');

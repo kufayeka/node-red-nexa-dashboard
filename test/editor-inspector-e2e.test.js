@@ -131,10 +131,18 @@ const portFree = (port) => new Promise((resolve) => { const t = net.createServer
             await shot('tabs-list');
 
             // a list item's field: Static | Binding like a prop
-            // (the item's pane: its fields; Value names the tab's panel, so it is never bindable)
+            // the item's pane: a link per field (each field has its own pane, like every parent in the tree)
             const fieldRow = listId + '#0.label';
             await pick(listId + '#0');
-            check('... a tab Value (its panel) has no Binding switch, its Label has', await js(`(function(){ var f = Array.from(${pane}.querySelectorAll(".nx-pt-pane nx-text")); return f.length >= 2 && !f[0].querySelector(".nx-mode-select") && !!f[1].querySelector(".nx-mode-select"); })()`), null);
+            const itemLinks = await js(`Array.from(${pane}.querySelectorAll(".nx-pt-pane .nx-pt-go")).map(function(b){ return b.textContent.trim(); })`);
+            check("... a tab's pane: links to its fields, no editors", itemLinks.join(',') === 'Value,Label,Icon (a Nexa UI icon name),Disabled' && !(await js(`!!${pane}.querySelector(".nx-pt-pane nx-text")`)), itemLinks);
+            // Value names the tab's panel, so it is never bindable; Label is
+            await js(`(function(){ var r = ${pane}.querySelector('.nx-tree-row[data-id="${listId}#0"] .nx-tree-caret'); if (r && !${pane}.querySelector('.nx-tree-row[data-id="${listId}#0.value"]')) r.click(); return 1; })()`);
+            await wait(300);
+            await pick(listId + '#0.value');
+            const valueHasMode = await js(`!!${pane}.querySelector(".nx-pt-pane .nx-mode-select")`);
+            await pick(fieldRow);
+            check('... a tab Value (its panel) has no Binding switch, its Label has', !valueHasMode && await js(`!!${pane}.querySelector(".nx-pt-pane .nx-mode-select")`), valueHasMode);
             await js(`(function(){ var m = ${pane}.querySelector(".nx-pt-pane .nx-mode-select"); if (!m) return false; m.value = "binding"; m.dispatchEvent(new Event("change", {bubbles:true})); return true; })()`);
             await wait(400);
             const fieldKey = fieldRow ? fieldRow.split('.').pop() : '';

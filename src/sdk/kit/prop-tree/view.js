@@ -282,11 +282,16 @@ export function createTreeView(A) {
             @click=${function () { mem.max = !mem.max; A.update(); }}><i class="fa ${mem.max ? "fa-compress" : "fa-expand"}"></i></button>`;
     }
 
-    function overviewPane(n) {
-        return html`${crumbs(n)}<div class="nx-pt-title">${n.label}</div>
-            <div class="nx-pt-items">${n.children.map(function (c) {
-                return html`<div class="nx-pt-listrow"><button type="button" class="nx-pt-go" @click=${function () { select(c.id, { focus: c.kind === "prop" }); }}>${c.label}</button>${valueCell(c, "")}</div>`;
-            })}</div>`;
+    // A parent's pane (a group, a section, a list item…): its own fields first (own), then one
+    // link per child with its value, never the children's editors (each child has its own pane)
+    function childLinks(n) {
+        return n.children.length ? html`<div class="nx-pt-items">${n.children.map(function (c) {
+            return html`<div class="nx-pt-listrow"><button type="button" class="nx-pt-go" @click=${function () { select(c.id, { focus: c.kind === "prop" || c.kind === "itemField" }); }}>${c.label}</button>${valueCell(c, "")}</div>`;
+        })}</div>` : nothing;
+    }
+
+    function overviewPane(n, own) {
+        return html`${crumbs(n)}<div class="nx-pt-title">${n.label}</div>${own || nothing}${childLinks(n)}`;
     }
 
     function newItem(prop) {
@@ -345,14 +350,15 @@ export function createTreeView(A) {
         var canRemove = !prop.readonly && !(prop.min > 0 && list.length <= prop.min);
         var canAdd = !prop.readonly && !(prop.max > 0 && list.length >= prop.max);
         var list0 = map.get(n.key);
-        return html`${crumbs(n)}<div class="nx-pt-title">${n.label}</div>
-            <div class="nx-pt-bar">
+        var own = html`<div class="nx-pt-bar">
                 <button type="button" class="nx-btn" ?disabled=${i === 0} @click=${function () { listDo(list0, "up", i); }}><i class="fa fa-arrow-up"></i> Up</button>
                 <button type="button" class="nx-btn" ?disabled=${i === list.length - 1} @click=${function () { listDo(list0, "down", i); }}><i class="fa fa-arrow-down"></i> Down</button>
                 <button type="button" class="nx-btn" ?disabled=${!canAdd} @click=${function () { listDo(list0, "duplicate", i); }}><i class="fa fa-clone"></i> Duplicate</button>
                 <button type="button" class="nx-btn nx-pt-danger" ?disabled=${!canRemove} @click=${function () { listDo(list0, "remove", i); }}><i class="fa fa-trash-o"></i> Remove</button>
-            </div>
-            <div class="nx-pt-form">${A.itemWidget(sch, list[i], function (v) { setItem(n, v); })}</div>`;
+            </div>`;
+        // an item with fields is a parent: its fields are its children (links); a plain value is edited here
+        if (sch.fields) return overviewPane(n, own);
+        return html`${crumbs(n)}<div class="nx-pt-title">${n.label}</div>${own}<div class="nx-pt-form">${A.itemWidget(sch, list[i], function (v) { setItem(n, v); })}</div>`;
     }
 
     function itemFieldPane(n) {
