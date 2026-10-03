@@ -3060,7 +3060,6 @@
       state.logicSelectedIds = [];
       if (isActiveSurface && _renderLogicCanvasFn) _renderLogicCanvasFn();
     } else {
-      state.selectedIds = [];
       if (isActiveSurface && _renderActiveScreenFn) _renderActiveScreenFn();
       notifyTreeChange();
     }
@@ -3734,7 +3733,7 @@
     }
     if (typeof typeDef.slotsOf === "function" && tree_exports.syncSlots(comp, typeDef.slotsOf(comp.props || {}), genId)) {
       markDirty();
-      _renderScreen();
+      _renderScreen({ keepPanel: true });
     }
   }
   function revealSlotsOf(id2) {
@@ -29506,7 +29505,9 @@
     ) : null;
     window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
       meta: typeDef.nexa,
-      props: comp.props,
+      props: function() {
+        return comp.props || {};
+      },
       persistKey: comp.type,
       responsive,
       set: function(key, value) {
@@ -29916,10 +29917,8 @@
     tree_exports.refitGroupsUp(screen, node.id);
     pushTreeChange(screen, before);
     markDirty();
-    if (rebuild) {
-      renderActiveScreen();
-      selectOnly(node.id);
-    } else redrawCanvas();
+    if (rebuild) renderActiveScreen();
+    else redrawCanvas();
   }
   function mountLive(container, meta2, persistKey, view, onSet, r) {
     var current2 = view();
@@ -30619,8 +30618,39 @@
     var firstLine = code2.split("\n")[0];
     return (firstLine.length > 40 ? firstLine.slice(0, 40) + "\u2026" : firstLine) + " (" + code2.length + " chars)";
   }
+  var panelBuilding = false;
+  var panelAgain = false;
+  var panelShownKey = null;
   function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
+    if (panelBuilding) {
+      panelAgain = true;
+      return;
+    }
+    panelBuilding = true;
+    try {
+      do {
+        panelAgain = false;
+        commitPendingEdit();
+        var pane = state.propertiesPane.get ? state.propertiesPane.get(0) : null;
+        var scroller = pane && pane.parentNode;
+        var key = state.selectedIds.join(",");
+        var top2 = key === panelShownKey && scroller && typeof scroller.scrollTop === "number" ? scroller.scrollTop : 0;
+        buildPropertiesPanel();
+        panelShownKey = key;
+        if (scroller && typeof scroller.scrollTop === "number") scroller.scrollTop = top2;
+      } while (panelAgain);
+    } finally {
+      panelBuilding = false;
+    }
+  }
+  function commitPendingEdit() {
+    if (typeof document === "undefined" || !document.activeElement || !state.propertiesPane || !state.propertiesPane.get) return;
+    var pane = state.propertiesPane.get(0);
+    var a = document.activeElement;
+    if (pane && a !== pane && typeof pane.contains === "function" && pane.contains(a) && typeof a.blur === "function") a.blur();
+  }
+  function buildPropertiesPanel() {
     state.propertiesPane.empty();
     if (state.selectedIds.length > 1) {
       window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
@@ -30748,7 +30778,6 @@
           comp.paramValues[param.name] = v;
           markDirty();
           renderActiveScreen();
-          selectOnly(comp.id);
         });
       });
     }
@@ -30955,7 +30984,6 @@
     if (inGroup) {
       tree_exports.refitGroupsUp(screen, comp.id);
       renderActiveScreen();
-      selectOnly(comp.id);
     } else {
       updateComponentBox(comp);
     }
@@ -34471,8 +34499,10 @@
         compIds.push(cId);
       }
     });
+    var changed4 = compIds.join("\n") !== state.selectedIds.join("\n");
     state.selectedIds = compIds;
     refreshSelectionVisuals({ keepPanel: true, keepLogicSelection: true });
+    if (changed4) renderPropertiesPanel();
   }
   function selectLogicOnly(id2) {
     state.logicSelectedIds = [id2];
@@ -34766,7 +34796,6 @@
     if (!changed4) return;
     markDirty();
     renderActiveScreen();
-    selectMultiple(ids);
   }
   function toggleFlipForSelection(axis) {
     var screen = getActiveScreen();
@@ -34831,7 +34860,7 @@
     if (parents[0]) tree_exports.refitGroupsUp(screen, group.id);
     pushTreeChange(screen, before);
     markDirty();
-    renderActiveScreen();
+    renderActiveScreen({ keepPanel: true });
     selectOnly(group.id);
   }
   function ungroupSelection() {
@@ -34850,7 +34879,7 @@
     });
     pushTreeChange(screen, before);
     markDirty();
-    renderActiveScreen();
+    renderActiveScreen({ keepPanel: true });
     selectMultiple(released);
   }
   function startMarqueeSelect(e) {
@@ -34911,9 +34940,14 @@
   }
 
   // src/canvas/canvas-ui.js
+  var deferredRender = null;
   function renderActiveScreen(opts) {
     var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
+    if (state.canvasPointerDown && !renderActiveScreen._again) {
+      deferredRender = { keepPanel: deferredRender ? deferredRender.keepPanel && keepPanel : keepPanel };
+      return;
+    }
     var screen = getActiveScreen();
     if (!screen) return;
     checkSession(screen);
@@ -34923,10 +34957,6 @@
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
     state.selectionHandlesEl = null;
-    if (!keepPanel) {
-      state.selectedIds = [];
-      renderPropertiesPanel();
-    }
     state.artboardEl.empty();
     state.artboardEl.css({
       width: canvasW + "px",
@@ -34958,6 +34988,18 @@
       art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
     }
     if (tree_exports.allNodes(screen).some(tree_exports.isSlotHost)) scheduleSlotReadback();
+    if (renderActiveScreen._again) return;
+    state.selectedIds = state.selectedIds.filter(function(id2) {
+      return !!tree_exports.find(screen, id2);
+    });
+    refreshSelectionVisuals({ keepPanel: true });
+    if (!keepPanel) renderPropertiesPanel();
+  }
+  function flushDeferredRender() {
+    if (!deferredRender) return;
+    var o = deferredRender;
+    deferredRender = null;
+    renderActiveScreen(o.keepPanel ? { keepPanel: true } : void 0);
   }
   var slotReadbackQueued = false;
   function scheduleSlotReadback() {
@@ -34976,13 +35018,7 @@
     });
   }
   function redrawCanvas() {
-    var screen = getActiveScreen();
     renderActiveScreen({ keepPanel: true });
-    if (!screen) return;
-    state.selectedIds = state.selectedIds.filter(function(id2) {
-      return !!tree_exports.find(screen, id2);
-    });
-    refreshSelectionVisuals({ keepPanel: true });
   }
   registerScreenRenderer(renderActiveScreen);
   if (typeof window !== "undefined") window.__nexaEditor = Object.assign(window.__nexaEditor || {}, { render: renderActiveScreen });
@@ -35311,7 +35347,20 @@
   function isEditableTarget(target) {
     var $t = window.$(target);
     if ($t.is("input,textarea")) return true;
-    return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
+    if ($t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0) return true;
+    var vp = state.viewportEl && state.viewportEl.get && state.viewportEl.get(0);
+    if (vp && target && typeof vp.contains === "function" && vp.contains(target)) return false;
+    if ($t.is("select,option,button,[role='button'],[role='option'],[role='tab']")) return true;
+    return $t.closest("#red-ui-sidebar, .nx-kit").length > 0;
+  }
+  function onCanvasPointerDown(e) {
+    var vp = state.viewportEl && state.viewportEl.get && state.viewportEl.get(0);
+    if (vp && e.target && typeof vp.contains === "function" && vp.contains(e.target)) state.canvasPointerDown = true;
+  }
+  function onCanvasPointerUp() {
+    if (!state.canvasPointerDown) return;
+    state.canvasPointerDown = false;
+    setTimeout(flushDeferredRender, 0);
   }
   var SPARKPLUG_DROP_ON_CANVAS = false;
   function onKeyDown(e) {
@@ -35580,6 +35629,10 @@
     canvasTabs.addTab({ id: "logic", label: "Logic" });
     updateCanvasTabsVisibility();
     window.$(document).on("keydown.nexa", onKeyDown);
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+      document.addEventListener("mousedown", onCanvasPointerDown, true);
+      document.addEventListener("mouseup", onCanvasPointerUp, true);
+    }
   }
   function updateCanvasTabsVisibility() {
     if (!state.canvasTabsUl) return;
@@ -35648,6 +35701,11 @@
         },
         close: function() {
           window.$(document).off("keydown.nexa");
+          if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+            document.removeEventListener("mousedown", onCanvasPointerDown, true);
+            document.removeEventListener("mouseup", onCanvasPointerUp, true);
+          }
+          state.canvasPointerDown = false;
           state.trayContent = null;
           if (state.pagesButton) state.pagesButton.text("Open Canvas");
           state.artboardEl = null;
@@ -41714,7 +41772,10 @@
         var screen = getActiveScreen();
         if (screen && tree_exports.allNodes(screen).some(function(c) {
           return c.type === id2;
-        })) renderActiveScreen();
+        })) {
+          var shown = state.selectedIds.length === 1 && tree_exports.find(screen, state.selectedIds[0]);
+          renderActiveScreen({ keepPanel: !(shown && shown.type === id2) });
+        }
         if (state.eventsPane && state.eventsPane.is(":visible")) {
           renderEventsPanel();
         }

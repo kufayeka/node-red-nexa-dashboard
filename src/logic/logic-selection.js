@@ -3,6 +3,7 @@ import { migrateLogicNode } from "../model/migrate-logic.js";
 import { pushHistory } from "../history.js";
 import { removeLogicNodes, renderLogicCanvas, logicNodeWidth, logicNodeHeight } from "./logic-nodes.js";
 import { refreshSelectionVisuals } from "../canvas/selection.js";
+import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 
 var logicClipboard = null; // { nodes: [], wires: [] }
 
@@ -61,8 +62,10 @@ export function syncComponentFromLogicSelection() {
         }
     });
 
+    var changed = compIds.join("\n") !== state.selectedIds.join("\n");
     state.selectedIds = compIds;
     refreshSelectionVisuals({ keepPanel: true, keepLogicSelection: true });
+    if (changed) renderPropertiesPanel();
 }
 
 export function selectLogicOnly(id) {

@@ -33,8 +33,43 @@ function previewText(code, emptyLabel) {
         " (" + code.length + " chars)";
 }
 
+// The panel is rebuilt as a whole (until the inspector tree replaces it). Three guarantees:
+//   - a value being typed is committed first, to the node it was typed for (blur), never lost
+//   - one build at a time: a commit that asks for a rebuild while one runs gets one more pass
+//   - the scroll position stays while the same node is shown
+var panelBuilding = false;
+var panelAgain = false;
+var panelShownKey = null;
 export function renderPropertiesPanel() {
     if (!state.propertiesPane) return;
+    if (panelBuilding) { panelAgain = true; return; }
+    panelBuilding = true;
+    try {
+        do {
+            panelAgain = false;
+            commitPendingEdit();
+            var pane = state.propertiesPane.get ? state.propertiesPane.get(0) : null;
+            var scroller = pane && pane.parentNode;
+            var key = state.selectedIds.join(",");
+            var top = key === panelShownKey && scroller && typeof scroller.scrollTop === "number" ? scroller.scrollTop : 0;
+            buildPropertiesPanel();
+            panelShownKey = key;
+            if (scroller && typeof scroller.scrollTop === "number") scroller.scrollTop = top;
+        } while (panelAgain);
+    } finally {
+        panelBuilding = false;
+    }
+}
+
+// a field of the panel still has focus (typing): blur it, its change commits now
+function commitPendingEdit() {
+    if (typeof document === "undefined" || !document.activeElement || !state.propertiesPane || !state.propertiesPane.get) return;
+    var pane = state.propertiesPane.get(0);
+    var a = document.activeElement;
+    if (pane && a !== pane && typeof pane.contains === "function" && pane.contains(a) && typeof a.blur === "function") a.blur();
+}
+
+function buildPropertiesPanel() {
     state.propertiesPane.empty();
     if (state.selectedIds.length > 1) {
         window.$("<div>").css({ color: "#666", "font-size": "12px", "margin-bottom": "10px" }).text(state.selectedIds.length + " components selected.").appendTo(state.propertiesPane);
@@ -179,8 +214,7 @@ export function renderPropertiesPanel() {
                 comp.paramValues = comp.paramValues || {};
                 comp.paramValues[param.name] = v;
                 markDirty();
-                renderActiveScreen();
-                selectOnly(comp.id);
+                renderActiveScreen(); // the selection stays; the panel is rebuilt
             });
         });
     }
@@ -464,8 +498,7 @@ function afterGeometryEdit(comp) {
     var inGroup = screen && Tree.ancestors(screen, comp.id).some(function (a) { return a.type === "@group"; });
     if (inGroup) {
         Tree.refitGroupsUp(screen, comp.id);
-        renderActiveScreen();
-        selectOnly(comp.id);
+        renderActiveScreen(); // the selection stays; the panel is rebuilt
     } else {
         updateComponentBox(comp);
     }

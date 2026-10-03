@@ -1340,7 +1340,7 @@ nx-tab[hidden] { display: none !important; }
     root.className = "nx-kit nx-inspector";
     container.appendChild(root);
     var props = function() {
-      return opts.props || {};
+      return (typeof opts.props === "function" ? opts.props() : opts.props) || {};
     };
     var set = function(key, value) {
       opts.set(key, value);

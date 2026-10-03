@@ -7,7 +7,7 @@ import { groupSelection, frameSelection, ungroupSelection, deselectAll, selectOn
 import { copySelection, pasteClipboard } from "./canvas/clipboard.js";
 import { removeComponents, addComponentAt, addSparkplugMetricComponentAt, refreshComponentRender } from "./canvas/component-renderer.js";
 import { makeSparkplugBindingPath } from "./canvas/sparkplug-live.js";
-import { setZoom, buildZoomToolbar, buildBreakpointBar, renderActiveScreen } from "./canvas/canvas-ui.js";
+import { setZoom, buildZoomToolbar, buildBreakpointBar, renderActiveScreen, flushDeferredRender } from "./canvas/canvas-ui.js";
 import { setLogicZoom, applyLogicZoomTransform, buildLogicZoomToolbar } from "./logic/logic-zoom.js";
 import { deselectAllLogic, copyLogicSelection, pasteLogicClipboard, refreshLogicSelectionVisuals, startLogicMarqueeSelect, selectLogicForComponents, scrollLogicToSelection } from "./logic/logic-selection.js";
 import { removeLogicNodes, renderLogicCanvas, addLogicNode, logicNodeWidth } from "./logic/logic-nodes.js";
@@ -26,10 +26,31 @@ import { migrateLogicNode } from "./model/migrate-logic.js";
 // currently-selected CANVAS component, because this canvas-wide keydown
 // handler didn't recognize the editor's focused element as "text editing"
 // and went ahead with its own Ctrl+C/Ctrl+V shortcut.
+// Also any control that takes keys itself (a select, a button: Delete / Enter there are not the
+// canvas's), and anything in the sidebar or the property kit (the inspector), which is never the
+// canvas: Delete with a dropdown focused must not delete the selected component.
 function isEditableTarget(target) {
     var $t = window.$(target);
     if ($t.is("input,textarea")) return true;
-    return $t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0;
+    if ($t.closest("[contenteditable='true'], .ace_editor, .monaco-editor, .CodeMirror").length > 0) return true;
+    // on the canvas a component may be a real <button>: Delete there still deletes it
+    var vp = state.viewportEl && state.viewportEl.get && state.viewportEl.get(0);
+    if (vp && target && typeof vp.contains === "function" && vp.contains(target)) return false;
+    if ($t.is("select,option,button,[role='button'],[role='option'],[role='tab']")) return true;
+    return $t.closest("#red-ui-sidebar, .nx-kit").length > 0;
+}
+
+// A pointer pressed on the canvas: until it is released, redraws wait (canvas-ui renderActiveScreen).
+// Capture phase: the flag is set before the canvas's own mousedown (selecting) runs.
+function onCanvasPointerDown(e) {
+    var vp = state.viewportEl && state.viewportEl.get && state.viewportEl.get(0);
+    if (vp && e.target && typeof vp.contains === "function" && vp.contains(e.target)) state.canvasPointerDown = true;
+}
+function onCanvasPointerUp() {
+    if (!state.canvasPointerDown) return;
+    state.canvasPointerDown = false;
+    // after the release's own handlers (a drag's stop draws itself)
+    setTimeout(flushDeferredRender, 0);
 }
 
 
@@ -334,6 +355,10 @@ export function buildCanvasArea(trayBody, chrome) {
     updateCanvasTabsVisibility();
 
     window.$(document).on("keydown.nexa", onKeyDown);
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+        document.addEventListener("mousedown", onCanvasPointerDown, true);
+        document.addEventListener("mouseup", onCanvasPointerUp, true);
+    }
 }
 
 export function updateCanvasTabsVisibility() {
@@ -401,6 +426,11 @@ export function registerPagesEditorAction() {
             },
             close: function () {
                 window.$(document).off("keydown.nexa");
+                if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+                    document.removeEventListener("mousedown", onCanvasPointerDown, true);
+                    document.removeEventListener("mouseup", onCanvasPointerUp, true);
+                }
+                state.canvasPointerDown = false;
                 state.trayContent = null;
                 if (state.pagesButton) state.pagesButton.text("Open Canvas");
                 state.artboardEl = null;

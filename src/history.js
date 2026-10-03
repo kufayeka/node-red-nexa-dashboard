@@ -163,7 +163,8 @@ export function applyHistoryEvent(ev, direction) {
         state.logicSelectedIds = [];
         if (isActiveSurface && _renderLogicCanvasFn) _renderLogicCanvasFn();
     } else {
-        state.selectedIds = [];
+        // the selection stays (what the undo removed drops out in the redraw); the panel is
+        // rebuilt: the restored nodes are new objects
         if (isActiveSurface && _renderActiveScreenFn) _renderActiveScreenFn();
         notifyTreeChange();
     }

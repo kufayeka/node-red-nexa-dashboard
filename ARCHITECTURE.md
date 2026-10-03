@@ -94,6 +94,14 @@ The shells only ask the registry: the Logic canvas (`src/logic/logic-nodes.js`),
 
 What the palette *offers* in each mode (screen / flow / template), and the chips per component or overlay, stays in `palette-events-panel.js`: that is the menu, not the node type.
 
+## 4b. The editor's selection (rules)
+
+- **The selection is state.** It changes only through a select action (`canvas/selection.js`). Drawing never clears it: `renderActiveScreen` drops only the ids that no longer exist, then draws the outline and handles again. This holds for undo / redo, a plugin that registers late, and a theme or breakpoint redraw.
+- **A redraw asked for while a pointer pressed on the canvas is down waits for its release** (`state.canvasPointerDown`, `flushDeferredRender`). Emptying the artboard under a click or a drag would cut it.
+- **The properties panel** (`sidebar/properties-panel.js`) builds one pass at a time. It commits the field being typed first (blur), to the node it was typed for, and keeps its scroll position while the same node is shown.
+- **Canvas shortcuts** (Delete, Enter, Ctrl+Z…) do not act when the focus is in the sidebar, the property kit, a select or a button (`editor-tray.js` `isEditableTarget`).
+- Proven end to end by `test/editor-selection-e2e.test.js`.
+
 ## 5. Where to look
 
 | Problem | Start here |

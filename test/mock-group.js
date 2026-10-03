@@ -133,6 +133,7 @@ actions['nexa:open-pages-editor']();
 const itemDraggables = draggables.filter(function (d) { return chipText(d.el) === 'Item'; });
 const chip = itemDraggables[itemDraggables.length - 1];
 // the newest draggable for a node (a re-render registers a fresh one)
+function clearSelection() { window.__nexaEditorState.selectedIds = []; }
 function state_selected() { return window.__nexaEditorState.selectedIds.slice(); }
 function lastDragOf(id) { return draggables.filter(d => d.id === id).pop(); }
 function dblclickOn(id, opts) {
@@ -210,7 +211,10 @@ console.log('item[1] did not move on screen?', abs(i1).x === absBefore[1].x);
 dispatchKey({ key: 'z', ctrlKey: true });
 console.log('undo restores the group and the member?', g2.x === gBefore.x && abs(i0).x === absBefore[0].x);
 
+console.log('--- the selection survives undo / redo (it used to be cleared) ---');
+console.log('after the undo item[0] is still selected?', JSON.stringify(state_selected()) === JSON.stringify([i0.id]), state_selected());
 console.log('--- Ctrl+Shift+G ungroups (children keep their place), undo re-creates the group ---');
+clearSelection(); // a click on the empty canvas: the next click picks the top level again
 mousedownOn(i0.id, { shiftKey: false }); // selects the group
 dispatchKey({ key: 'g', ctrlKey: true, shiftKey: true });
 console.log('ungrouped: three top-level items again, in place?', screen.components.length === 3 && !screen.components.some(c => c.type === '@group') && JSON.stringify([i0, i1, i2].map(abs)) === JSON.stringify(absBefore));
@@ -218,6 +222,7 @@ dispatchKey({ key: 'z', ctrlKey: true });
 console.log('undo: the group is back with the same members?', screen.components.length === 2 && screen.components[0].type === '@group' && screen.components[0].children[0] === i0);
 
 console.log('--- deleting the group orphans its children (not deleted, not rendered) ---');
+clearSelection();
 mousedownOn(i0.id, { shiftKey: false });
 dispatchKey({ key: 'Delete' });
 console.log('only item[2] is left in the tree, item[0] and item[1] are orphans?', screen.components.length === 1 && screen.components[0] === i2 && screen.orphans.length === 2 && screen.orphans[0] === i0);
@@ -226,6 +231,7 @@ console.log('undo: group and children back, no orphans?', screen.components.leng
 
 console.log('--- grouping nodes of different parents is refused ---');
 notifications.length = 0;
+clearSelection();
 mousedownOn(i2.id, { shiftKey: false });
 mousedownOn(i0.id, { shiftKey: true, ctrlKey: true }); // add item[0], deep inside the group
 dispatchKey({ key: 'g', ctrlKey: true });

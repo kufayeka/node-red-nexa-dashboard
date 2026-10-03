@@ -147,7 +147,10 @@ export function buildSidebarContent() {
             // A plugin that registered after the screen was drawn (plugins load
             // in no guaranteed order): draw its components for real now.
             var screen = getActiveScreen();
-            if (screen && Tree.allNodes(screen).some(function (c) { return c.type === id; })) renderActiveScreen();
+            if (screen && Tree.allNodes(screen).some(function (c) { return c.type === id; })) {
+                var shown = state.selectedIds.length === 1 && Tree.find(screen, state.selectedIds[0]);
+                renderActiveScreen({ keepPanel: !(shown && shown.type === id) });
+            }
             if (state.eventsPane && state.eventsPane.is(":visible")) {
                 renderEventsPanel();
             }

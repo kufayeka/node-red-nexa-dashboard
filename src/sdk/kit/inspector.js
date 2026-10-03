@@ -103,7 +103,8 @@ export function renderInspector(container, opts) {
     root.className = "nx-kit nx-inspector";
     container.appendChild(root);
 
-    var props = function () { return opts.props || {}; };
+    // opts.props: the object, or a function returning it (the node's props may be replaced)
+    var props = function () { return (typeof opts.props === "function" ? opts.props() : opts.props) || {}; };
     var set = function (key, value) { opts.set(key, value); update(); };
     var preview = function (key, value) { (opts.preview || opts.set)(key, value); update(); };
 

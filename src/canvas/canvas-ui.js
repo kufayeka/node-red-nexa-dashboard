@@ -6,11 +6,19 @@ import { renderPropertiesPanel } from "../sidebar/properties-panel.js";
 import { ensureSparkplugCommsWired } from "./sparkplug-live.js";
 import { activeBreakpointId, breakpointList, previewWidth, bandPreviewWidth, designId, rangeOf, enterBreakpoint, leaveBreakpoint, checkSession } from "./breakpoints-ui.js";
 
-// opts.keepPanel: redraw the canvas only — the selection stays, the properties
-// panel is not rebuilt (an edit made IN the panel must not lose its field).
+// Draws the active screen. The selection is state, not part of the drawing: a redraw
+// keeps it (only nodes that no longer exist drop out) and puts its outline / handles back.
+// opts.keepPanel: the properties panel is not rebuilt (an edit made IN the panel keeps its field).
+// While a pointer pressed on the canvas is down (a click that is selecting, a drag starting),
+// the redraw waits for its release: emptying the artboard under the pointer would cut the gesture.
+var deferredRender = null;
 export function renderActiveScreen(opts) {
     var keepPanel = !!(opts && opts.keepPanel);
     if (!state.artboardEl) return;
+    if (state.canvasPointerDown && !renderActiveScreen._again) {
+        deferredRender = { keepPanel: deferredRender ? deferredRender.keepPanel && keepPanel : keepPanel };
+        return;
+    }
     var screen = getActiveScreen();
     if (!screen) return;
     // a breakpoint is edited on one screen: another screen / a template is the design
@@ -26,10 +34,6 @@ export function renderActiveScreen(opts) {
     ensureSparkplugCommsWired();
     ensureSparkplugLiveRenderWired();
     state.selectionHandlesEl = null; // artboardEl.empty() below discards its DOM node too
-    if (!keepPanel) {
-        state.selectedIds = [];
-        renderPropertiesPanel();
-    }
     state.artboardEl.empty();
     state.artboardEl.css({
         width: canvasW + "px",
@@ -63,6 +67,19 @@ export function renderActiveScreen(opts) {
         art.addEventListener("nexa-slots-rendered", scheduleSlotReadback);
     }
     if (Tree.allNodes(screen).some(Tree.isSlotHost)) scheduleSlotReadback();
+    if (renderActiveScreen._again) return; // the outer call finishes the job
+    // the selection survives the redraw: drop what is gone, draw its outline / handles again
+    state.selectedIds = state.selectedIds.filter(function (id) { return !!Tree.find(screen, id); });
+    refreshSelectionVisuals({ keepPanel: true });
+    if (!keepPanel) renderPropertiesPanel();
+}
+
+/** The pointer pressed on the canvas is released: run the redraw it held back. */
+export function flushDeferredRender() {
+    if (!deferredRender) return;
+    var o = deferredRender;
+    deferredRender = null;
+    renderActiveScreen(o.keepPanel ? { keepPanel: true } : undefined);
 }
 
 // A component with slots drew (its first render, a tab switched): where its slot frames
@@ -84,11 +101,7 @@ function scheduleSlotReadback() {
 
 /** Redraws the canvas, keeping the selection and the properties panel as they are. */
 export function redrawCanvas() {
-    var screen = getActiveScreen();
     renderActiveScreen({ keepPanel: true });
-    if (!screen) return;
-    state.selectedIds = state.selectedIds.filter(function (id) { return !!Tree.find(screen, id); });
-    refreshSelectionVisuals({ keepPanel: true });
 }
 
 registerScreenRenderer(renderActiveScreen);

@@ -275,7 +275,7 @@ function commit(node, fn, rebuild) {
     Tree.refitGroupsUp(screen, node.id);
     pushTreeChange(screen, before);
     markDirty();
-    if (rebuild) { renderActiveScreen(); selectOnly(node.id); }
+    if (rebuild) renderActiveScreen();   // the panel shows other blocks now: rebuilt, the selection stays
     else redrawCanvas();    // re-flow (and read the boxes back); selection and panel stay
 }
 

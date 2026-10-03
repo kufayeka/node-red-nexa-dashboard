@@ -146,8 +146,7 @@ export function setLockedForSelection(locked, idsOverride) {
     });
     if (!changed) return;
     markDirty();
-    renderActiveScreen();
-    selectMultiple(ids);
+    renderActiveScreen();   // the selection stays; the panel is rebuilt
 }
 
 export function toggleFlipForSelection(axis) {
@@ -213,7 +212,7 @@ export function groupSelection(type) {
     if (parents[0]) Tree.refitGroupsUp(screen, group.id);
     pushTreeChange(screen, before);
     markDirty();
-    renderActiveScreen();
+    renderActiveScreen({ keepPanel: true });
     selectOnly(group.id);
 }
 
@@ -228,7 +227,7 @@ export function ungroupSelection() {
     containers.forEach(function (g) { released = released.concat(Tree.unwrap(screen, g.id).map(function (c) { return c.id; })); });
     pushTreeChange(screen, before);
     markDirty();
-    renderActiveScreen();
+    renderActiveScreen({ keepPanel: true });
     selectMultiple(released);
 }
 

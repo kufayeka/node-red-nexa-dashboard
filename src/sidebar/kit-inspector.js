@@ -102,7 +102,7 @@ export function renderKitInspector(container, comp, typeDef) {
         }) : null;
     window.NexaKit.renderInspector(container.jquery ? container.get(0) : container, {
         meta: typeDef.nexa,
-        props: comp.props,
+        props: function () { return comp.props || {}; },
         persistKey: comp.type,
         responsive: responsive,
         set: function (key, value) { setComponentProp(comp, key, value); },

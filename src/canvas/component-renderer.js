@@ -65,7 +65,7 @@ export function refreshComponentRender(comp) {
     // its slots changed (a tab added / removed): the frames follow, drawn again
     if (typeof typeDef.slotsOf === "function" && Tree.syncSlots(comp, typeDef.slotsOf(comp.props || {}), genId)) {
         markDirty();
-        _renderScreen();
+        _renderScreen({ keepPanel: true });
     }
 }
 
